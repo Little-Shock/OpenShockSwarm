@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -50,6 +51,18 @@ type UpdatePullRequestRequest struct {
 type DaemonExecResponse struct {
 	Output string `json:"output"`
 	Error  string `json:"error"`
+}
+
+type DaemonStreamEvent struct {
+	Type      string       `json:"type"`
+	Provider  string       `json:"provider,omitempty"`
+	Command   []string     `json:"command,omitempty"`
+	Delta     string       `json:"delta,omitempty"`
+	Output    string       `json:"output,omitempty"`
+	Error     string       `json:"error,omitempty"`
+	Duration  string       `json:"duration,omitempty"`
+	Timestamp string       `json:"timestamp,omitempty"`
+	State     *store.State `json:"state,omitempty"`
 }
 
 type WorktreeRequest struct {
@@ -176,6 +189,30 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/rooms/")
 	if path == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "room not found"})
+		return
+	}
+
+	if strings.HasSuffix(path, "/messages/stream") {
+		roomID := strings.TrimSuffix(path, "/messages/stream")
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var req RoomMessageRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		prompt := strings.TrimSpace(req.Prompt)
+		if prompt == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
+			return
+		}
+		s.handleRoomMessageStream(w, r, roomID, ExecRequest{
+			Provider: defaultString(req.Provider, "claude"),
+			Prompt:   prompt,
+			Cwd:      defaultString(req.Cwd, s.workspaceRoot),
+		}, prompt)
 		return
 	}
 
@@ -352,6 +389,61 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, payload)
 }
 
+func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request, roomID string, req ExecRequest, prompt string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	var outputBuilder strings.Builder
+	var stderrBuilder strings.Builder
+
+	resp, err := s.streamDaemonExec(r, req, func(event DaemonStreamEvent) error {
+		switch event.Type {
+		case "stdout":
+			outputBuilder.WriteString(event.Delta)
+		case "stderr":
+			stderrBuilder.WriteString(event.Delta)
+		case "done":
+			if strings.TrimSpace(event.Output) != "" {
+				outputBuilder.Reset()
+				outputBuilder.WriteString(event.Output)
+			}
+		}
+		return writeNDJSON(w, flusher, event)
+	})
+	if err != nil {
+		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("CLI 连接失败：%s", err.Error()), "blocked")
+		if appendErr != nil {
+			_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: err.Error()})
+			return
+		}
+		_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Error: err.Error(), State: &nextState})
+		return
+	}
+
+	finalOutput := strings.TrimSpace(outputBuilder.String())
+	if finalOutput == "" {
+		finalOutput = strings.TrimSpace(resp.Output)
+	}
+	if finalOutput == "" {
+		finalOutput = strings.TrimSpace(stderrBuilder.String())
+	}
+
+	nextState, appendErr := s.store.AppendConversation(roomID, prompt, finalOutput)
+	if appendErr != nil {
+		_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: appendErr.Error()})
+		return
+	}
+	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: finalOutput, State: &nextState})
+}
+
 func (s *Server) ensureWorktreeLane(req WorktreeRequest) (WorktreeResponse, error) {
 	body, _ := json.Marshal(req)
 	request, err := http.NewRequest(http.MethodPost, s.daemonURL+"/v1/worktrees/ensure", bytes.NewReader(body))
@@ -419,6 +511,65 @@ func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
 	return payload, nil
 }
 
+func (s *Server) streamDaemonExec(r *http.Request, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
+	body, _ := json.Marshal(req)
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.daemonURL+"/v1/exec/stream", bytes.NewReader(body))
+	if err != nil {
+		return DaemonExecResponse{}, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := s.httpClient.Do(request)
+	if err != nil {
+		return DaemonExecResponse{}, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode >= 400 {
+		payloadBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return DaemonExecResponse{}, readErr
+		}
+		var payload DaemonExecResponse
+		if err := json.Unmarshal(payloadBody, &payload); err == nil && payload.Error != "" {
+			return payload, errors.New(payload.Error)
+		}
+		return DaemonExecResponse{}, fmt.Errorf("daemon error: %s", response.Status)
+	}
+
+	var resp DaemonExecResponse
+	scanner := bufio.NewScanner(response.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(line, &event); err != nil {
+			return resp, err
+		}
+		if event.Type == "done" {
+			resp.Output = event.Output
+		}
+		if event.Type == "error" && strings.TrimSpace(event.Error) != "" {
+			resp.Error = event.Error
+		}
+		if emit != nil {
+			if err := emit(event); err != nil {
+				return resp, err
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return resp, err
+	}
+	if strings.TrimSpace(resp.Error) != "" {
+		return resp, errors.New(resp.Error)
+	}
+	return resp, nil
+}
+
 func (s *Server) forwardGetJSON(w http.ResponseWriter, url string) {
 	response, err := s.httpClient.Get(url)
 	if err != nil {
@@ -440,6 +591,14 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writeNDJSON(w http.ResponseWriter, flusher http.Flusher, payload any) error {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
 }
 
 func withCORS(next http.Handler) http.Handler {

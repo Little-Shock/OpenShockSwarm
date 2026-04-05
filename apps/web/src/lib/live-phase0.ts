@@ -21,6 +21,18 @@ type StateMutationResponse = {
   pullRequestId?: string;
 };
 
+export type RoomStreamEvent = {
+  type: "start" | "stdout" | "stderr" | "done" | "state" | "error";
+  provider?: string;
+  command?: string[];
+  delta?: string;
+  output?: string;
+  error?: string;
+  duration?: string;
+  timestamp?: string;
+  state?: PhaseZeroState;
+};
+
 type UpdatePullRequestInput = {
   status: "draft" | "open" | "in_review" | "changes_requested" | "merged";
 };
@@ -89,6 +101,77 @@ export function usePhaseZeroState() {
     return payload;
   }
 
+  async function streamRoomMessage(
+    roomId: string,
+    prompt: string,
+    provider = "claude",
+    onEvent?: (event: RoomStreamEvent) => void
+  ) {
+    const response = await fetch(`${API_BASE}/v1/rooms/${roomId}/messages/stream`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt, provider }),
+    });
+
+    if (!response.ok) {
+      let message = `request failed: ${response.status}`;
+      try {
+        const payload = (await response.json()) as { error?: string };
+        if (payload.error) message = payload.error;
+      } catch {
+        // ignore json parse failure
+      }
+      throw new Error(message);
+    }
+
+    if (!response.body) {
+      throw new Error("stream body is empty");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalPayload: RoomStreamEvent | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const event = JSON.parse(trimmed) as RoomStreamEvent;
+        if (event.state) {
+          setState(event.state);
+          finalPayload = event;
+        }
+        onEvent?.(event);
+      }
+    }
+
+    const tail = buffer.trim();
+    if (tail) {
+      const event = JSON.parse(tail) as RoomStreamEvent;
+      if (event.state) {
+        setState(event.state);
+        finalPayload = event;
+      }
+      onEvent?.(event);
+    }
+
+    if (finalPayload?.error) {
+      throw new Error(finalPayload.error);
+    }
+    return finalPayload;
+  }
+
   async function createPullRequest(roomId: string) {
     const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/pull-request`, {
       method: "POST",
@@ -108,5 +191,15 @@ export function usePhaseZeroState() {
     return payload;
   }
 
-  return { state, loading, error, refresh, createIssue, postRoomMessage, createPullRequest, updatePullRequest };
+  return {
+    state,
+    loading,
+    error,
+    refresh,
+    createIssue,
+    postRoomMessage,
+    streamRoomMessage,
+    createPullRequest,
+    updatePullRequest,
+  };
 }

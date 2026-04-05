@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { fallbackState, type Message, type PhaseZeroState, type Room } from "@/lib/mock-data";
-import { usePhaseZeroState } from "@/lib/live-phase0";
+import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
 import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -45,7 +45,12 @@ function ClaudeCompactComposer({
 }: {
   room: Room;
   initialMessages: Message[];
-  onSend: (roomId: string, prompt: string, provider?: string) => Promise<{ state?: PhaseZeroState }>;
+  onSend: (
+    roomId: string,
+    prompt: string,
+    provider?: string,
+    onEvent?: (event: RoomStreamEvent) => void
+  ) => Promise<{ state?: PhaseZeroState; error?: string } | null | undefined>;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [draft, setDraft] = useState("先给我一句结论：这个讨论间现在该先做哪一步？");
@@ -59,16 +64,60 @@ function ClaudeCompactComposer({
     if (!draft.trim() || loading) return;
     const prompt = draft.trim();
     setLoading(true);
+    const now = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+    const humanMessage: Message = {
+      id: `local-human-${Date.now()}`,
+      speaker: "Lead_Architect",
+      role: "human",
+      tone: "human",
+      message: prompt,
+      time: now,
+    };
+    const agentMessageId = `local-agent-${Date.now()}`;
+    const agentMessage: Message = {
+      id: agentMessageId,
+      speaker: "Shock_AI_Core",
+      role: "agent",
+      tone: "agent",
+      message: "",
+      time: now,
+    };
+    setMessages((current) => [...current, humanMessage, agentMessage]);
 
     try {
-      const payload = await onSend(room.id, prompt, "claude");
-      const nextMessages = payload.state?.roomMessages?.[room.id];
-      if (nextMessages) setMessages(nextMessages);
+      const payload = await onSend(room.id, prompt, "claude", (event) => {
+        if (event.type === "stdout" && event.delta) {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === agentMessageId ? { ...item, message: `${item.message}${event.delta}` } : item
+            )
+          );
+        }
+        if (event.type === "stderr" && event.delta) {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === agentMessageId ? { ...item, tone: "blocked", message: `${item.message}${event.delta}` } : item
+            )
+          );
+        }
+      });
+      const nextMessages = payload?.state?.roomMessages?.[room.id];
+      if (nextMessages) {
+        setMessages(nextMessages);
+      } else {
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === agentMessageId && item.message.trim() === ""
+              ? { ...item, message: payload?.error || "这次没有拿到可展示的输出。" }
+              : item
+          )
+        );
+      }
       setDraft("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "bridge error";
       setMessages((current) => [
-        ...current,
+        ...current.filter((item) => item.id !== agentMessageId),
         {
           id: `err-${Date.now()}`,
           speaker: "System",
@@ -235,7 +284,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 }
 
 export function StitchDiscussionView({ roomId }: { roomId: string }) {
-  const { state, postRoomMessage, createPullRequest, updatePullRequest } = usePhaseZeroState();
+  const { state, streamRoomMessage, createPullRequest, updatePullRequest } = usePhaseZeroState();
   const room = state.rooms.find((item) => item.id === roomId) ?? fallbackState.rooms[0];
   const run = state.runs.find((item) => item.id === room.runId) ?? fallbackState.runs[0];
   const messages = state.roomMessages[room.id] ?? fallbackState.roomMessages[room.id] ?? [];
@@ -277,7 +326,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                   <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">1 active agents</p>
                 </div>
               </div>
-              <ClaudeCompactComposer room={room} initialMessages={messages} onSend={postRoomMessage} />
+              <ClaudeCompactComposer room={room} initialMessages={messages} onSend={streamRoomMessage} />
             </div>
 
             <aside className="hidden min-h-0 flex-1 overflow-y-auto bg-[#f5f5f5] p-4 xl:block">

@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -69,6 +70,49 @@ func TestDaemonRuntimeAndWorktreeLoop(t *testing.T) {
 		output, _ := payload["output"].(string)
 		if !strings.Contains(strings.ToLower(output), "daemon-ready") {
 			t.Fatalf("daemon exec output = %q, want substring daemon-ready", output)
+		}
+
+		streamBody := map[string]any{
+			"provider": "claude",
+			"prompt":   "Reply exactly with two lines: daemon-stream then ok",
+			"cwd":      repoRoot,
+		}
+		streamData, err := json.Marshal(streamBody)
+		if err != nil {
+			t.Fatalf("marshal stream body: %v", err)
+		}
+		resp, err := http.Post(server.URL+"/v1/exec/stream", "application/json", bytes.NewReader(streamData))
+		if err != nil {
+			t.Fatalf("POST /v1/exec/stream: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("stream status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		var chunks []string
+		var doneOutput string
+		for scanner.Scan() {
+			var payload map[string]any
+			if err := json.Unmarshal(scanner.Bytes(), &payload); err != nil {
+				t.Fatalf("decode stream payload: %v", err)
+			}
+			if delta, _ := payload["delta"].(string); delta != "" {
+				chunks = append(chunks, delta)
+			}
+			if payloadType, _ := payload["type"].(string); payloadType == "done" {
+				doneOutput, _ = payload["output"].(string)
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			t.Fatalf("scanner.Err() = %v", err)
+		}
+		streamOutput := strings.ToLower(strings.Join(chunks, " ") + " " + doneOutput)
+		if !strings.Contains(streamOutput, "daemon-stream") {
+			t.Fatalf("daemon stream output = %q, want substring daemon-stream", streamOutput)
 		}
 	}
 }

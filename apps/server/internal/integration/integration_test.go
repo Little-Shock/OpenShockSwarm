@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -60,6 +61,28 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	runID := stringField(t, created, "runId")
 	sessionID := stringField(t, created, "sessionId")
 
+	if _, err := exec.LookPath("claude"); err == nil {
+		streamResp := postStream(t, serverURL+"/v1/rooms/"+roomID+"/messages/stream", map[string]any{
+			"provider": "claude",
+			"prompt":   "请只回复两行：stream-ready 和 done",
+		}, http.StatusOK)
+
+		streamText := strings.ToLower(strings.Join(streamResp.deltas, " ") + " " + streamResp.output)
+		if !strings.Contains(streamText, "stream-ready") {
+			t.Fatalf("stream output = %q, want substring stream-ready", streamText)
+		}
+
+		stateAfterStream := getJSON(t, serverURL+"/v1/state")
+		roomMessagesRaw, ok := stateAfterStream["roomMessages"].(map[string]any)
+		if !ok {
+			t.Fatalf("roomMessages payload malformed: %#v", stateAfterStream["roomMessages"])
+		}
+		messageList, ok := roomMessagesRaw[roomID].([]any)
+		if !ok || len(messageList) < 3 {
+			t.Fatalf("expected persisted room messages after stream, got %#v", roomMessagesRaw[roomID])
+		}
+	}
+
 	prCreated := postJSON(t, serverURL+"/v1/rooms/"+roomID+"/pull-request", map[string]any{}, http.StatusOK)
 	pullRequestID := stringField(t, prCreated, "pullRequestId")
 
@@ -107,6 +130,11 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	if !strings.Contains(roomContent, "Pull Request Created") || !strings.Contains(roomContent, "Pull Request Status Updated") {
 		t.Fatalf("room note missing PR lifecycle entries:\n%s", roomContent)
 	}
+}
+
+type streamResponse struct {
+	deltas []string
+	output string
 }
 
 func projectRoot(t *testing.T) string {
@@ -267,6 +295,50 @@ func postJSON(t *testing.T, url string, body map[string]any, wantStatus int) map
 		t.Fatalf("decode POST %s: %v", url, err)
 	}
 	return payload
+}
+
+func postStream(t *testing.T, url string, body map[string]any, wantStatus int) streamResponse {
+	t.Helper()
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal %s: %v", url, err)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("new request %s: %v", url, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != wantStatus {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST %s status = %d, want %d, body=%s", url, resp.StatusCode, wantStatus, string(payload))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var result streamResponse
+	for scanner.Scan() {
+		var payload map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &payload); err != nil {
+			t.Fatalf("decode stream %s: %v", url, err)
+		}
+		if delta, _ := payload["delta"].(string); delta != "" {
+			result.deltas = append(result.deltas, delta)
+		}
+		if output, _ := payload["output"].(string); output != "" {
+			result.output = output
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanner stream %s: %v", url, err)
+	}
+	return result
 }
 
 func stringField(t *testing.T, payload map[string]any, field string) string {
