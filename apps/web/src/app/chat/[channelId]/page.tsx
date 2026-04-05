@@ -17,20 +17,20 @@ export default async function ChannelPage({
   return (
     <OpenShockShell
       view="chat"
-      eyebrow="Global chat shell"
+      eyebrow="全局频道"
       title={channel.name}
       description={channel.purpose}
       selectedChannelId={channel.id}
-      contextTitle="Chat-first shell"
-      contextDescription="Global channels stay informal. Once context needs ownership, runtime, or PR truth, it moves into an Issue Room."
+      contextTitle="频道优先"
+      contextDescription="全局频道保持轻松。一旦上下文开始涉及 owner、runtime 或 PR 真相，就应该升级进讨论间。"
       contextBody={
         <DetailRail
-          label="Channel contract"
+          label="频道约束"
           items={[
-            { label: "Purpose", value: channel.summary },
-            { label: "Unread", value: String(channel.unread) },
-            { label: "Graduates into", value: "Issue Room" },
-            { label: "Internal object", value: "Session stays hidden" },
+            { label: "用途", value: channel.summary },
+            { label: "未读", value: String(channel.unread) },
+            { label: "升级目标", value: "讨论间" },
+            { label: "隐藏对象", value: "Session 不前台暴露" },
           ]}
         />
       }

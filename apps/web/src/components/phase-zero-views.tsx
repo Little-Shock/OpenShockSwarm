@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ClaudeAgentConsole } from "@/components/claude-agent-console";
 import {
   agents,
   getBoardColumns,
@@ -15,6 +16,7 @@ import {
   type InboxItem,
   type Issue,
   type Message,
+  type Priority,
   type Room,
   type Run,
   type RunStatus,
@@ -55,6 +57,80 @@ function statusTone(status: RunStatus) {
       return "bg-[var(--shock-ink)] text-white";
     default:
       return "bg-white text-[var(--shock-ink)]";
+  }
+}
+
+function runStatusLabel(status: RunStatus) {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "执行中";
+    case "blocked":
+      return "阻塞";
+    case "review":
+      return "待评审";
+    case "done":
+      return "已完成";
+  }
+}
+
+function inboxKindLabel(kind: InboxItem["kind"]) {
+  switch (kind) {
+    case "approval":
+      return "待批准";
+    case "blocked":
+      return "阻塞";
+    case "review":
+      return "待评审";
+    default:
+      return "状态";
+  }
+}
+
+function messageRoleLabel(role: Message["role"]) {
+  switch (role) {
+    case "human":
+      return "人类";
+    case "agent":
+      return "Agent";
+    default:
+      return "系统";
+  }
+}
+
+function setupStatusLabel(status: SetupStep["status"]) {
+  switch (status) {
+    case "done":
+      return "已完成";
+    case "active":
+      return "进行中";
+    default:
+      return "待接通";
+  }
+}
+
+function priorityLabel(priority: Priority) {
+  switch (priority) {
+    case "critical":
+      return "关键";
+    case "high":
+      return "高";
+    default:
+      return "中";
+  }
+}
+
+function settingsGroupLabel(id: SettingsSection["id"]) {
+  switch (id) {
+    case "settings-auth":
+      return "身份";
+    case "settings-sandbox":
+      return "沙盒";
+    case "settings-memory":
+      return "记忆";
+    default:
+      return "通知";
   }
 }
 
@@ -120,7 +196,7 @@ function SetupStepCard({ step }: { step: SetupStep }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-            {step.status}
+            {setupStatusLabel(step.status)}
           </p>
           <h3 className="mt-2 font-display text-3xl font-bold">{step.title}</h3>
         </div>
@@ -128,7 +204,7 @@ function SetupStepCard({ step }: { step: SetupStep }) {
           href={step.href}
           className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
         >
-          Open
+          打开
         </Link>
       </div>
       <p className="mt-3 text-base leading-7">{step.summary}</p>
@@ -147,22 +223,22 @@ export function SetupOverview() {
       </div>
       <div className="space-y-4">
         <Panel tone="yellow">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Workspace live state</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">工作区在线状态</p>
           <dl className="mt-4 grid gap-3">
-            <Metric label="Repo" value={workspace.repo} />
-            <Metric label="Branch" value={workspace.branch} />
+            <Metric label="仓库" value={workspace.repo} />
+            <Metric label="分支" value={workspace.branch} />
             <Metric label="Runtime" value={workspace.pairedRuntime} />
-            <Metric label="Memory" value={workspace.memoryMode} />
+            <Metric label="记忆" value={workspace.memoryMode} />
           </dl>
         </Panel>
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Phase 0 success chain</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Phase 0 成功链路</p>
           <ol className="mt-4 space-y-3 text-sm leading-6 text-white/78">
-            <li>1. Create workspace and connect repo.</li>
-            <li>2. Pair runtime and detect local CLI.</li>
-            <li>3. Create Issue Room and default Topic.</li>
-            <li>4. Run in worktree and surface truth.</li>
-            <li>5. Return result into inbox and PR lane.</li>
+            <li>1. 建立工作区并绑定仓库。</li>
+            <li>2. 配对 Runtime，识别本机 CLI。</li>
+            <li>3. 创建 Issue，并自动生成讨论间。</li>
+            <li>4. 在 worktree 中执行，把 Run 真相带回前端。</li>
+            <li>5. 把结果收回 Inbox 与 PR 闭环。</li>
           </ol>
         </Panel>
       </div>
@@ -190,7 +266,7 @@ export function ChatFeed({ messages }: { messages: Message[] }) {
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="font-display text-xl font-semibold">{message.speaker}</h3>
             <span className="rounded-full border-2 border-current px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-              {message.role}
+              {messageRoleLabel(message.role)}
             </span>
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] opacity-70">{message.time}</span>
           </div>
@@ -200,16 +276,16 @@ export function ChatFeed({ messages }: { messages: Message[] }) {
       <Panel tone="paper" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="font-display text-xl font-semibold">Promote serious work into a room</p>
+            <p className="font-display text-xl font-semibold">把讨论升级成讨论间</p>
             <p className="mt-1 text-sm text-[color:rgba(24,20,14,0.72)]">
-              Channels are for discussion. Once context hardens into ownership, branch, or run state, move it into an Issue Room.
+              频道只负责轻量讨论。一旦上下文开始涉及 owner、branch、run 或 PR，就该进入专属讨论间干活。
             </p>
           </div>
           <Link
             href="/issues"
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.2em] transition-transform hover:-translate-y-0.5"
           >
-            Create issue room
+            创建讨论间
           </Link>
         </div>
       </Panel>
@@ -234,13 +310,13 @@ export function RoomOverview({ room }: { room: Room }) {
               <h3 className="mt-2 font-display text-3xl font-bold">{room.topic.title}</h3>
             </div>
             <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(room.topic.status))}>
-              {room.topic.status}
+              {runStatusLabel(room.topic.status)}
             </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <Metric label="Run" value={run?.id ?? "No run"} />
-            <Metric label="Branch" value={run?.branch ?? "waiting"} />
-            <Metric label="Worktree" value={run?.worktree ?? "waiting"} />
+            <Metric label="Run" value={run?.id ?? "未创建"} />
+            <Metric label="分支" value={run?.branch ?? "等待中"} />
+            <Metric label="Worktree" value={run?.worktree ?? "等待中"} />
           </div>
           <p className="mt-5 max-w-3xl text-base leading-7 text-[color:rgba(24,20,14,0.8)]">{room.topic.summary}</p>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -248,55 +324,41 @@ export function RoomOverview({ room }: { room: Room }) {
               href={`/rooms/${room.id}/runs/${room.runId}`}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
             >
-              Open run detail
+              查看 Run 详情
             </Link>
             {issue ? (
               <Link
                 href={`/issues/${issue.key}`}
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
               >
-                Open issue
+                查看 Issue
               </Link>
             ) : null}
           </div>
         </Panel>
-
-        <Panel tone="white" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-display text-2xl font-bold">Room chat</h3>
-            <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-              Chat / Topic / Run
-            </span>
-          </div>
-          <div className="space-y-3">
-            {messages.map((message) => (
-              <div key={message.id} className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <p className="font-display text-lg font-semibold">{message.speaker}</p>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                    {message.time}
-                  </p>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{message.message}</p>
-              </div>
-            ))}
-          </div>
-        </Panel>
+        <ClaudeAgentConsole
+          roomId={room.id}
+          roomTitle={room.title}
+          issueKey={room.issueKey}
+          topicTitle={room.topic.title}
+          topicSummary={room.topic.summary}
+          initialMessages={messages}
+        />
       </div>
 
       <div className="space-y-4">
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Task board</p>
-          <p className="mt-3 font-display text-2xl font-bold">{room.boardCount} cards in flight</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">任务板</p>
+          <p className="mt-3 font-display text-2xl font-bold">{room.boardCount} 张任务卡进行中</p>
           <p className="mt-2 text-sm leading-6 text-white/72">
-            Board stays inside the room so execution remains anchored to chat and run truth.
+            任务板只存在于讨论间内部，避免任务脱离聊天、Run 和上下文真相。
           </p>
         </Panel>
         <Panel tone="lime">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Primary owner</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">当前主 Agent</p>
           <p className="mt-2 font-display text-2xl font-bold">{room.topic.owner}</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            This agent owns the active lane. Human guidance stays visible in the room instead of disappearing into side chats.
+            这个 Agent 正在负责当前泳道。所有纠偏都留在房间里，而不是散落到私聊和外部文档中。
           </p>
         </Panel>
       </div>
@@ -317,28 +379,28 @@ export function RunDetailView({ run }: { run: Run }) {
               <h3 className="mt-2 font-display text-3xl font-bold">{run.summary}</h3>
             </div>
             <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(run.status))}>
-              {run.status}
+              {runStatusLabel(run.status)}
             </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <Metric label="Runtime" value={`${run.runtime} / ${run.provider}`} />
-            <Metric label="Branch" value={run.branch} />
+            <Metric label="分支" value={run.branch} />
             <Metric label="Worktree" value={run.worktree} />
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <Metric label="Owner" value={run.owner} />
-            <Metric label="Next action" value={run.nextAction} />
+            <Metric label="负责人" value={run.owner} />
+            <Metric label="下一步" value={run.nextAction} />
           </div>
         </Panel>
         <Panel tone={run.approvalRequired ? "pink" : "lime"}>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Approval state</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">审批状态</p>
           <p className="mt-3 font-display text-2xl font-bold">
-            {run.approvalRequired ? "approval_required" : "clear to continue"}
+            {run.approvalRequired ? "需要人工批准" : "可继续执行"}
           </p>
           <p className="mt-2 text-sm leading-6 opacity-80">
             {run.approvalRequired
-              ? "High-risk action is paused until a human approves the next step."
-              : "This run stays inside the trusted local sandbox without escalation."}
+              ? "高风险动作已经暂停，必须等人类批准后才能继续。"
+              : "这个 Run 仍在本地可信沙盒内执行，不需要升级。"}
           </p>
         </Panel>
       </div>
@@ -346,7 +408,7 @@ export function RunDetailView({ run }: { run: Run }) {
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel tone="white">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-2xl font-bold">stdout / stderr</h3>
+            <h3 className="font-display text-2xl font-bold">标准输出 / 错误输出</h3>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
               {run.duration}
             </span>
@@ -364,7 +426,7 @@ export function RunDetailView({ run }: { run: Run }) {
         </Panel>
 
         <Panel tone="paper">
-          <h3 className="font-display text-2xl font-bold">Tool calls</h3>
+          <h3 className="font-display text-2xl font-bold">工具调用</h3>
           <div className="mt-4 space-y-3">
             {run.toolCalls.map((toolCall) => (
               <div key={toolCall.id} className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
@@ -383,7 +445,7 @@ export function RunDetailView({ run }: { run: Run }) {
 
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel tone="lime">
-          <h3 className="font-display text-2xl font-bold">Timeline</h3>
+          <h3 className="font-display text-2xl font-bold">时间线</h3>
           <div className="mt-4 space-y-3">
             {run.timeline.map((event) => (
               <div
@@ -408,27 +470,27 @@ export function RunDetailView({ run }: { run: Run }) {
           </div>
         </Panel>
         <Panel tone="white">
-          <h3 className="font-display text-2xl font-bold">PR closure</h3>
+          <h3 className="font-display text-2xl font-bold">PR 收口</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            Every run has to land somewhere visible. In Phase 0, the PR is still mocked, but the room, run, and inbox already point to the same closure object.
+            每个 Run 都必须落到一个可见的收口对象上。Phase 0 里 PR 还在 mock，但房间、Run 和收件箱已经指向同一个收口目标。
           </p>
           <div className="mt-4 grid gap-3">
-            <Metric label="Pull request" value={run.pullRequest} />
+            <Metric label="Pull Request" value={run.pullRequest} />
             <Metric label="Issue" value={run.issueKey} />
-            <Metric label="Room" value={run.roomId} />
+            <Metric label="讨论间" value={run.roomId} />
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               href={`/issues/${run.issueKey}`}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
             >
-              Open issue
+              打开 Issue
             </Link>
             <Link
               href={`/rooms/${run.roomId}`}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
             >
-              Back to room
+              回到讨论间
             </Link>
           </div>
         </Panel>
@@ -456,7 +518,7 @@ export function InboxGrid({ items }: { items: InboxItem[] }) {
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="rounded-full border-2 border-current px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-              {item.kind}
+              {inboxKindLabel(item.kind)}
             </span>
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] opacity-70">{item.time}</span>
           </div>
@@ -508,7 +570,7 @@ export function BoardView() {
                 <div className="mt-4 flex items-center justify-between gap-3">
                   <p className="text-sm text-[color:rgba(24,20,14,0.72)]">{card.owner}</p>
                   <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]", statusTone(card.state))}>
-                    {card.state}
+                    {runStatusLabel(card.state)}
                   </span>
                 </div>
               </Link>
@@ -529,18 +591,18 @@ export function IssuesListView() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
-                  {issue.key} / {issue.priority}
+                  {issue.key} / {priorityLabel(issue.priority)}
                 </p>
                 <h3 className="mt-2 font-display text-3xl font-bold">{issue.title}</h3>
               </div>
               <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(issue.state))}>
-                {issue.state}
+                {runStatusLabel(issue.state)}
               </span>
             </div>
             <p className="mt-3 text-base leading-7">{issue.summary}</p>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <Metric label="Owner" value={issue.owner} />
-              <Metric label="Room" value={issue.roomId} />
+              <Metric label="负责人" value={issue.owner} />
+              <Metric label="讨论间" value={issue.roomId} />
               <Metric label="PR" value={issue.pullRequest} />
             </div>
           </Panel>
@@ -561,33 +623,33 @@ export function IssueDetailView({ issue }: { issue: Issue }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
-                {issue.key} / {issue.priority}
+                {issue.key} / {priorityLabel(issue.priority)}
               </p>
               <h3 className="mt-2 font-display text-3xl font-bold">{issue.title}</h3>
             </div>
             <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(issue.state))}>
-              {issue.state}
+              {runStatusLabel(issue.state)}
             </span>
           </div>
           <p className="mt-4 text-base leading-7">{issue.summary}</p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link
-              href={`/rooms/${issue.roomId}`}
-              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
-            >
-              Open issue room
-            </Link>
-            <Link
-              href={`/rooms/${issue.roomId}/runs/${issue.runId}`}
-              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
-            >
-              Open run detail
-            </Link>
-          </div>
+              <Link
+                href={`/rooms/${issue.roomId}`}
+                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+              打开讨论间
+              </Link>
+              <Link
+                href={`/rooms/${issue.roomId}/runs/${issue.runId}`}
+                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+              打开 Run 详情
+              </Link>
+            </div>
         </Panel>
 
         <Panel tone="white">
-          <h3 className="font-display text-2xl font-bold">Acceptance contract</h3>
+          <h3 className="font-display text-2xl font-bold">验收契约</h3>
           <div className="mt-4 space-y-3">
             {issue.checklist.map((item) => (
               <div key={item} className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
@@ -600,16 +662,16 @@ export function IssueDetailView({ issue }: { issue: Issue }) {
 
       <div className="space-y-4">
         <Panel tone="lime">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Ownership</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">负责人</p>
           <p className="mt-2 font-display text-2xl font-bold">{issue.owner}</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            Phase 0 keeps one visible owner per live issue while the system maintains internal session continuity under the hood.
+            Phase 0 为每个活跃 Issue 保持一个可见 owner，系统内部再继续维护执行连续体。
           </p>
         </Panel>
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Closure objects</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">收口对象</p>
           <div className="mt-4 space-y-3 text-sm leading-6 text-white/78">
-            <p>Room: {room?.title ?? issue.roomId}</p>
+            <p>讨论间: {room?.title ?? issue.roomId}</p>
             <p>Run: {run?.id ?? issue.runId}</p>
             <p>PR: {issue.pullRequest}</p>
           </div>
@@ -633,12 +695,12 @@ export function AgentsListView() {
                 <h3 className="mt-2 font-display text-3xl font-bold">{agent.name}</h3>
               </div>
               <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(agent.state === "idle" ? "queued" : agent.state))}>
-                {agent.state}
+                {agent.state === "running" ? "执行中" : agent.state === "blocked" ? "阻塞" : "待命"}
               </span>
             </div>
             <p className="mt-3 text-base leading-7">{agent.description}</p>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <Metric label="Lane" value={agent.lane} />
+              <Metric label="泳道" value={agent.lane} />
               <Metric label="Runtime" value={agent.runtimePreference} />
             </div>
           </Panel>
@@ -667,18 +729,18 @@ export function AgentDetailView({
               <h3 className="mt-2 font-display text-3xl font-bold">{agent.name}</h3>
             </div>
             <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(agent.state === "idle" ? "queued" : agent.state))}>
-              {agent.state}
-            </span>
-          </div>
-          <p className="mt-3 text-base leading-7">{agent.description}</p>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <Metric label="Runtime preference" value={agent.runtimePreference} />
-            <Metric label="Active lane" value={agent.lane} />
+                {agent.state === "running" ? "执行中" : agent.state === "blocked" ? "阻塞" : "待命"}
+              </span>
+            </div>
+            <p className="mt-3 text-base leading-7">{agent.description}</p>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <Metric label="Runtime 偏好" value={agent.runtimePreference} />
+            <Metric label="当前泳道" value={agent.lane} />
           </div>
         </Panel>
 
         <Panel tone="white">
-          <h3 className="font-display text-2xl font-bold">Memory binding</h3>
+          <h3 className="font-display text-2xl font-bold">记忆绑定</h3>
           <div className="mt-4 flex flex-wrap gap-2">
             {agent.memorySpaces.map((space) => (
               <span
@@ -690,12 +752,12 @@ export function AgentDetailView({
             ))}
           </div>
           <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            Phase 0 keeps memory file-based and explicit. External providers come later.
+            Phase 0 先保持文件级、显式可见的记忆模式，外部 provider 后续再接。
           </p>
         </Panel>
 
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Inherited SOUL</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">继承的 SOUL</p>
           <p className="mt-4 text-sm leading-7 text-white/78">
             [ROOT_DIRECTIVE: THE OPENSHOCK MANIFESTO]
             <br />
@@ -706,7 +768,7 @@ export function AgentDetailView({
 
       <div className="space-y-4">
         <Panel tone="lime">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">Recent runs</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">最近 Run</p>
           <div className="mt-4 space-y-3">
             {runsForAgent.map((run) => (
               <Link
@@ -717,7 +779,7 @@ export function AgentDetailView({
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-display text-lg font-semibold">{run.id}</p>
                   <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(run.status))}>
-                    {run.status}
+                    {runStatusLabel(run.status)}
                   </span>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{run.summary}</p>
@@ -733,13 +795,13 @@ export function AgentDetailView({
 function SettingsCard({ section }: { section: SettingsSection }) {
   return (
     <Panel tone="paper">
-      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
-        {section.id.replace("settings-", "")}
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
+        {settingsGroupLabel(section.id)}
       </p>
       <h3 className="mt-2 font-display text-3xl font-bold">{section.title}</h3>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{section.summary}</p>
       <div className="mt-5 rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Current value</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前值</p>
         <p className="mt-2 font-display text-xl font-semibold">{section.value}</p>
       </div>
     </Panel>

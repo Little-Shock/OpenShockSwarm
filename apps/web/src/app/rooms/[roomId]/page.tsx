@@ -19,20 +19,20 @@ export default async function RoomPage({
   return (
     <OpenShockShell
       view="rooms"
-      eyebrow="Issue room"
+      eyebrow="讨论间"
       title={room.title}
       description={room.summary}
       selectedRoomId={room.id}
       contextTitle={room.issueKey}
-      contextDescription="Issue -> Room is the first-class user model. Topic stays visible. Session remains a system concern."
+      contextDescription="Issue -> 讨论间 是一等用户心智。Topic 可见，Session 继续留在系统内部。"
       contextBody={
         <DetailRail
-          label="Run detail"
+          label="执行上下文"
           items={[
-            { label: "Runtime", value: run?.runtime ?? "waiting" },
-            { label: "Branch", value: run?.branch ?? "waiting" },
-            { label: "Worktree", value: run?.worktree ?? "waiting" },
-            { label: "PR", value: run?.pullRequest ?? "waiting" },
+            { label: "Runtime", value: run?.runtime ?? "等待中" },
+            { label: "分支", value: run?.branch ?? "等待中" },
+            { label: "Worktree", value: run?.worktree ?? "等待中" },
+            { label: "PR", value: run?.pullRequest ?? "等待中" },
           ]}
         />
       }

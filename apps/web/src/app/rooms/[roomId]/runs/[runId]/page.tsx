@@ -18,20 +18,20 @@ export default async function RunPage({
   return (
     <OpenShockShell
       view="rooms"
-      eyebrow="Run detail"
+      eyebrow="Run 详情"
       title={run.id}
-      description="Run detail is the truth surface: runtime, branch, worktree, logs, tool calls, approval state, and closure target."
+      description="Run 详情就是执行真相面：runtime、分支、worktree、日志、工具调用、审批状态和收口目标都在这里。"
       selectedRoomId={room.id}
       contextTitle={run.issueKey}
-      contextDescription="Every active Topic produces a visible run. Humans should be able to locate failure in under thirty seconds."
+      contextDescription="每个活跃 Topic 都应该产出一个可见 Run。人类需要在 30 秒内定位问题落点。"
       contextBody={
         <DetailRail
-          label="Execution lane"
+          label="执行泳道"
           items={[
-            { label: "Owner", value: run.owner },
+            { label: "负责人", value: run.owner },
             { label: "Provider", value: run.provider },
-            { label: "Started", value: run.startedAt },
-            { label: "Duration", value: run.duration },
+            { label: "开始时间", value: run.startedAt },
+            { label: "时长", value: run.duration },
           ]}
         />
       }

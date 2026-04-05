@@ -17,19 +17,19 @@ export default async function AgentPage({
   return (
     <OpenShockShell
       view="agents"
-      eyebrow="Agent detail"
+      eyebrow="Agent 详情"
       title={agent.name}
       description={agent.description}
       contextTitle={agent.lane}
-      contextDescription="This is the lane the agent currently owns. A lane is visible to humans through room, run, and inbox state."
+      contextDescription="这是这个 Agent 当前拥有的泳道。人类应该能通过讨论间、Run 和 Inbox 看清这条泳道。"
       contextBody={
         <DetailRail
-          label="Binding"
+          label="绑定关系"
           items={[
             { label: "Provider", value: agent.provider },
             { label: "Runtime", value: agent.runtimePreference },
-            { label: "Mood", value: agent.mood },
-            { label: "State", value: agent.state },
+            { label: "状态语气", value: agent.mood },
+            { label: "运行状态", value: agent.state === "running" ? "执行中" : agent.state === "blocked" ? "阻塞" : "待命" },
           ]}
         />
       }

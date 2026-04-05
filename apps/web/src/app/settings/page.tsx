@@ -5,19 +5,19 @@ export default function SettingsPage() {
   return (
     <OpenShockShell
       view="settings"
-      eyebrow="Global settings"
-      title="Policy before magic"
-      description="Phase 0 keeps the operational knobs visible: identity, sandbox defaults, memory mode, and notification rules."
-      contextTitle="Current stack"
-      contextDescription="Frontend is Next.js. Backend is planned in Go. Local daemon is planned in Go. This shell models the product contract before the live services land."
+      eyebrow="全局设置"
+      title="先定策略，再谈魔法"
+      description="Phase 0 把关键旋钮都摆在明面上：身份、沙盒默认值、记忆模式，以及通知规则。"
+      contextTitle="当前技术栈"
+      contextDescription="前端是 Next.js，后端和本地 daemon 都是 Go。这一层先把产品契约定清楚，再把真实服务接上。"
       contextBody={
         <DetailRail
-          label="Runtime stack"
+          label="Runtime 栈"
           items={[
             { label: "Web", value: "Next.js 16" },
-            { label: "API", value: "Go (planned)" },
-            { label: "Daemon", value: "Go (planned)" },
-            { label: "Memory", value: "file-first" },
+            { label: "API", value: "Go" },
+            { label: "Daemon", value: "Go" },
+            { label: "记忆", value: "文件优先" },
           ]}
         />
       }

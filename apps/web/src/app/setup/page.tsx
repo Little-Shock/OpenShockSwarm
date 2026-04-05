@@ -6,19 +6,19 @@ export default function SetupPage() {
   return (
     <OpenShockShell
       view="setup"
-      eyebrow="Phase 0 setup"
-      title="Connect the real lane"
-      description="This is the operational spine of Phase 0: identity, repo binding, runtime pairing, and the first PR closure loop."
-      contextTitle="Workspace live"
-      contextDescription="Phase 0 is successful when a real local runtime can take an issue from room creation to run truth and PR closure."
+      eyebrow="Phase 0 配置"
+      title="接通真实执行链"
+      description="这里是 Phase 0 的操作脊柱：身份、仓库绑定、runtime 配对，以及第一条 PR 收口链。"
+      contextTitle="工作区在线"
+      contextDescription="当真实本地 runtime 能从创建讨论间一路走到 Run 真相和 PR 收口时，Phase 0 才算成立。"
       contextBody={
         <DetailRail
-          label="Setup checkpoint"
+          label="配置检查点"
           items={[
-            { label: "Identity", value: "Email first" },
-            { label: "Repo", value: "GitHub connected" },
-            { label: "Runtime", value: "shock-main online" },
-            { label: "PR loop", value: "mocked / next" },
+            { label: "身份", value: "邮箱优先" },
+            { label: "仓库", value: "GitHub 已连接" },
+            { label: "Runtime", value: "shock-main 在线" },
+            { label: "PR 链路", value: "mock / 下一步" },
           ]}
         />
       }

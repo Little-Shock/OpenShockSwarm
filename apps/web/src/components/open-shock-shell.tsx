@@ -76,6 +76,28 @@ function agentTone(state: PresenceState) {
   }
 }
 
+function machineStateLabel(state: MachineState) {
+  switch (state) {
+    case "busy":
+      return "忙碌";
+    case "online":
+      return "在线";
+    default:
+      return "离线";
+  }
+}
+
+function agentStateLabel(state: PresenceState) {
+  switch (state) {
+    case "running":
+      return "执行中";
+    case "blocked":
+      return "阻塞";
+    default:
+      return "待命";
+  }
+}
+
 export function OpenShockShell({
   view,
   title,
@@ -104,7 +126,7 @@ export function OpenShockShell({
                 <div>
                   <h1 className="font-display text-3xl font-bold leading-none">{workspace.name}</h1>
                   <p className="mt-2 max-w-[16rem] text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                    Slock shell outside. Multica bones inside. Work happens in Issue Rooms.
+                    外层像 Slock，骨架像 Multica。真正的干活发生在讨论间里。
                   </p>
                 </div>
                 <div className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]">
@@ -150,10 +172,10 @@ export function OpenShockShell({
               <section>
                 <div className="mb-3 flex items-center justify-between px-2">
                   <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                    Channels
+                    频道
                   </p>
                   <span className="rounded-full bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    Lounge
+                    公屏
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -187,10 +209,10 @@ export function OpenShockShell({
               <section>
                 <div className="mb-3 flex items-center justify-between px-2">
                   <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                    Issue Rooms
+                    讨论间
                   </p>
                   <span className="rounded-full bg-[var(--shock-pink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white">
-                    Work
+                    干活
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -225,9 +247,9 @@ export function OpenShockShell({
             <div className="space-y-3 border-t-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-3 py-3 text-white">
               <div className="rounded-[20px] border-2 border-white/80 bg-white/10 p-3">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Machines</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">机器</p>
                   <span className="rounded-full bg-[var(--shock-lime)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--shock-ink)]">
-                    Live
+                    在线
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -236,7 +258,7 @@ export function OpenShockShell({
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-display text-base">{machine.name}</p>
                         <span className={cn("rounded-full px-2 py-1 font-mono text-[10px] uppercase", machineTone(machine.state))}>
-                          {machine.state}
+                          {machineStateLabel(machine.state)}
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-white/72">{machine.cli}</p>
@@ -250,9 +272,9 @@ export function OpenShockShell({
 
               <div className="rounded-[20px] border-2 border-white/80 bg-white/10 p-3">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Agents</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">公民 Agent</p>
                   <span className="rounded-full bg-[var(--shock-yellow)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--shock-ink)]">
-                    {agents.length} Loaded
+                    已加载 {agents.length}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -265,12 +287,12 @@ export function OpenShockShell({
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-display text-base">{agent.name}</p>
                         <span className={cn("rounded-full px-2 py-1 font-mono text-[10px] uppercase", agentTone(agent.state))}>
-                          {agent.state}
+                          {agentStateLabel(agent.state)}
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-white/72">{agent.mood}</p>
                       <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/56">
-                        Lane {agent.lane}
+                        泳道 {agent.lane}
                       </p>
                     </Link>
                   ))}
@@ -315,7 +337,7 @@ export function OpenShockShell({
           <aside className="flex min-h-full flex-col gap-3">
             <section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[8px_8px_0_0_var(--shock-lime)]">
               <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                Current context
+                当前上下文
               </p>
               <h3 className="mt-2 font-display text-3xl font-bold">{contextTitle}</h3>
               <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{contextDescription}</p>
@@ -324,12 +346,12 @@ export function OpenShockShell({
             {contextBody}
 
             <section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] p-5 text-white shadow-[8px_8px_0_0_var(--shock-pink)]">
-              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">MVP contract</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">MVP 契约</p>
               <ul className="mt-4 space-y-3 text-sm leading-6 text-white/78">
-                <li>Chat stays informal in channels.</li>
-                <li>Serious work happens in Issue Rooms.</li>
-                <li>Topic is visible. Session stays internal.</li>
-                <li>Board supports the room instead of replacing it.</li>
+                <li>频道负责轻松讨论，不直接背负执行压力。</li>
+                <li>严肃工作必须进入讨论间，和 Run 保持绑定。</li>
+                <li>Topic 可见，Session 继续留在系统内部。</li>
+                <li>任务板只做辅助，不取代聊天和房间。</li>
               </ul>
             </section>
           </aside>

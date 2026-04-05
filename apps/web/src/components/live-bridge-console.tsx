@@ -34,7 +34,7 @@ function cn(...parts: Array<string | false | null | undefined>) {
 export function LiveBridgeConsole() {
   const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null);
   const [provider, setProvider] = useState("codex");
-  const [prompt, setPrompt] = useState("Reply in one sentence: OpenShock Phase 0 runtime bridge is online.");
+  const [prompt, setPrompt] = useState("请用一句中文确认：OpenShock Phase 0 的本地 runtime bridge 已经在线。");
   const [result, setResult] = useState<ExecResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,9 +102,9 @@ export function LiveBridgeConsole() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
-            Live CLI bridge
+            实时 CLI 桥
           </p>
-          <h3 className="mt-2 font-display text-3xl font-bold">Talk to the runtime</h3>
+          <h3 className="mt-2 font-display text-3xl font-bold">直接对话 Runtime</h3>
         </div>
         <span
           className={cn(
@@ -112,26 +112,26 @@ export function LiveBridgeConsole() {
             runtime?.state === "online" ? "bg-[var(--shock-lime)]" : "bg-[var(--shock-pink)] text-white"
           )}
         >
-          {runtime?.state ?? "offline"}
+          {runtime?.state === "online" ? "在线" : runtime?.state === "busy" ? "忙碌" : "离线"}
         </span>
       </div>
 
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-        This bridge hits the Go server, which proxies the local daemon, which can call `codex exec` or `claude --bare -p`.
+        这条桥会先打到 Go server，再转给本地 daemon，最后由它去调用 `codex exec` 或 `claude --bare -p`。
       </p>
 
       {runtime ? (
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Machine</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">机器</p>
             <p className="mt-2 font-display text-xl font-semibold">{runtime.machine}</p>
           </div>
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Detected CLI</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">已发现 CLI</p>
             <p className="mt-2 font-display text-xl font-semibold">{runtime.detectedCli.join(", ")}</p>
           </div>
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Transport</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">传输方式</p>
             <p className="mt-2 font-display text-xl font-semibold">
               {runtime.providers.map((item) => item.transport).join(" / ")}
             </p>
@@ -159,7 +159,7 @@ export function LiveBridgeConsole() {
           </label>
           <label className="space-y-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-              Prompt
+              提示词
             </span>
             <textarea
               value={prompt}
@@ -176,10 +176,10 @@ export function LiveBridgeConsole() {
             disabled={loading || !runtime}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Running..." : "Send prompt"}
+            {loading ? "执行中..." : "发送提示词"}
           </button>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            Both providers run through the same local HTTP bridge. Codex stays on direct CLI exec, Claude runs in bare mode.
+            两个 provider 都走同一条本地 HTTP 桥。Codex 走直连 CLI，Claude 走 bare mode。
           </p>
         </div>
       </form>
@@ -193,13 +193,13 @@ export function LiveBridgeConsole() {
       {result ? (
         <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Exec metadata</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em]">执行元信息</p>
             <p className="mt-2 text-sm leading-6">{result.provider}</p>
             <p className="mt-2 text-sm leading-6">{result.duration}</p>
             <p className="mt-2 font-mono text-[10px] leading-5 break-all">{result.command.join(" ")}</p>
           </div>
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-4 py-3 font-mono text-sm leading-6 text-[var(--shock-lime)]">
-            {result.output || "(no output)"}
+            {result.output || "（没有输出）"}
           </div>
         </div>
       ) : null}

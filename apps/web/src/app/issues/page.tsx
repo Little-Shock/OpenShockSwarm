@@ -5,19 +5,19 @@ export default function IssuesPage() {
   return (
     <OpenShockShell
       view="issues"
-      eyebrow="Issue registry"
-      title="Own the room before the work owns you"
-      description="Issues are still the durable planning unit. The difference is that every serious issue automatically becomes a room with a visible run lane."
-      contextTitle="Issue -> Room"
-      contextDescription="In Phase 0, every issue gets one room and one default topic. PRs do not need one-to-one session binding."
+      eyebrow="Issue 总表"
+      title="先拥有房间，再拥有执行"
+      description="Issue 依然是最耐久的规划对象，只是每个严肃需求都会自动长成一个带 Run 的讨论间。"
+      contextTitle="Issue -> 讨论间"
+      contextDescription="在 Phase 0 里，每个 Issue 默认只有一个讨论间和一个 Topic。PR 不要求和 Session 一一绑定。"
       contextBody={
         <DetailRail
-          label="Issue model"
+          label="Issue 模型"
           items={[
             { label: "Issue -> Room", value: "1:1" },
-            { label: "Room -> Topic", value: "1:1 in P0" },
-            { label: "Session", value: "internal only" },
-            { label: "PR binding", value: "room-centric" },
+            { label: "Room -> Topic", value: "P0 阶段 1:1" },
+            { label: "Session", value: "仅系统内部" },
+            { label: "PR 绑定", value: "以房间为中心" },
           ]}
         />
       }
