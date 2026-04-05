@@ -1,6 +1,6 @@
 # OpenShock Daemon
 
-This directory is reserved for the future local daemon.
+This directory is reserved for the future local Go daemon.
 
 Planned responsibilities:
 
