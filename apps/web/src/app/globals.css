@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f0df;
+  --foreground: #18140e;
+  --shock-yellow: #ffd500;
+  --shock-purple: #8127cf;
+  --shock-pink: #ff5c8a;
+  --shock-lime: #6dff8b;
+  --shock-ink: #18140e;
+  --shock-paper: #f5f0df;
+  --shock-cream: #fff8e6;
+  --shock-card: #fffdf7;
+  --shock-grid: rgba(24, 20, 14, 0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background:
+    linear-gradient(90deg, transparent 0, transparent 95px, var(--shock-grid) 95px, var(--shock-grid) 96px),
+    linear-gradient(transparent 0, transparent 95px, var(--shock-grid) 95px, var(--shock-grid) 96px),
+    linear-gradient(180deg, #fffbea 0%, #f7f0dd 46%, #efe5cb 100%);
+  background-size: 96px 96px, 96px 96px, 100% 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), sans-serif;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--shock-yellow);
+  color: var(--shock-ink);
+}
