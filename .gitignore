@@ -1,0 +1,6 @@
+__external_*/
+.DS_Store
+node_modules/
+.next/
+dist/
+coverage/
