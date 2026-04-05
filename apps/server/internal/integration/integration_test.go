@@ -79,6 +79,13 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	if stringField(t, binding, "authMode") != "local-git-origin" {
 		t.Fatalf("bound auth mode = %q, want local-git-origin", stringField(t, binding, "authMode"))
 	}
+	githubConnection := getJSON(t, serverURL+"/v1/github/connection")
+	if stringField(t, githubConnection, "repo") != "example/integration-loop" {
+		t.Fatalf("github connection repo = %q, want example/integration-loop", stringField(t, githubConnection, "repo"))
+	}
+	if remoteConfigured, ok := githubConnection["remoteConfigured"].(bool); !ok || !remoteConfigured {
+		t.Fatalf("github connection remoteConfigured = %#v, want true", githubConnection["remoteConfigured"])
+	}
 
 	createIssue := map[string]any{
 		"title":    "Integration Loop",

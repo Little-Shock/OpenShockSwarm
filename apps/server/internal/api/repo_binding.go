@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os/exec"
-	"path"
 	"strings"
 	"time"
 
+	githubsvc "github.com/Larkspur-Wang/OpenShock/apps/server/internal/github"
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
 
@@ -147,47 +146,5 @@ func runGit(workspaceRoot string, args ...string) (string, error) {
 }
 
 func parseRepoIdentity(remoteURL string) (string, string) {
-	if strings.HasPrefix(remoteURL, "git@") {
-		hostPath := strings.TrimPrefix(remoteURL, "git@")
-		hostPath = strings.Replace(hostPath, ":", "/", 1)
-		parts := strings.SplitN(hostPath, "/", 2)
-		if len(parts) != 2 {
-			return "", ""
-		}
-		host := parts[0]
-		repo := normalizeRepoPath(parts[1])
-		return repo, detectProvider(host)
-	}
-
-	parsed, err := url.Parse(remoteURL)
-	if err != nil || parsed.Host == "" {
-		return "", ""
-	}
-	repo := normalizeRepoPath(strings.TrimPrefix(parsed.Path, "/"))
-	return repo, detectProvider(parsed.Host)
-}
-
-func normalizeRepoPath(raw string) string {
-	clean := strings.TrimSpace(raw)
-	clean = strings.TrimSuffix(clean, ".git")
-	clean = path.Clean("/" + clean)
-	clean = strings.TrimPrefix(clean, "/")
-	if clean == "." || clean == "" {
-		return ""
-	}
-	return clean
-}
-
-func detectProvider(host string) string {
-	normalized := strings.ToLower(strings.TrimSpace(host))
-	switch {
-	case strings.Contains(normalized, "github"):
-		return "github"
-	case strings.Contains(normalized, "gitlab"):
-		return "gitlab"
-	case strings.Contains(normalized, "bitbucket"):
-		return "bitbucket"
-	default:
-		return normalized
-	}
+	return githubsvc.ParseRepoIdentity(remoteURL)
 }

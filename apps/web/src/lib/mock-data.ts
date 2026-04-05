@@ -730,8 +730,8 @@ export const setupSteps: SetupStep[] = [
     id: "setup-repo",
     title: "GitHub 仓库绑定",
     status: "done",
-    summary: "仓库已经接入工作区。",
-    detail: "OpenShock 已经绑定到 Larkspur-Wang/OpenShock，优先 GitHub App，保留 PAT/SSH 兜底。",
+    summary: "本地 repo 已接入工作区，GitHub 真连接状态可探测。",
+    detail: "当前先从本地 git origin 绑定仓库，再根据 gh CLI 认证状态判断是否具备进入真实远端 PR 的条件。",
     href: "/issues",
   },
   {
@@ -746,8 +746,8 @@ export const setupSteps: SetupStep[] = [
     id: "setup-pr",
     title: "PR 收口链路",
     status: "pending",
-    summary: "UI 已建模，真实 API 接线还在后面。",
-    detail: "PR 状态已经走通前台模型，但 GitHub 写回在 Phase 0 里仍然是 mock。",
+    summary: "本地收口已跑通，真实 GitHub 写回还差最后一段。",
+    detail: "讨论间、Run、Inbox 和本地 PR 状态都已经打通，但远端 PR 创建和 GitHub 写回仍然在下一轮。",
     href: "/board",
   },
 ];

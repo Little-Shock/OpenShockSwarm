@@ -11,12 +11,14 @@ import (
 	"strings"
 	"sync"
 
+	githubsvc "github.com/Larkspur-Wang/OpenShock/apps/server/internal/github"
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
 
 type Config struct {
 	DaemonURL     string
 	WorkspaceRoot string
+	GitHub        githubsvc.Prober
 }
 
 type Server struct {
@@ -26,6 +28,7 @@ type Server struct {
 	daemonURL        string
 	daemonMu         sync.RWMutex
 	workspaceRoot    string
+	github           githubsvc.Prober
 }
 
 type ExecRequest struct {
@@ -116,12 +119,17 @@ func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 	if workspace := s.Snapshot().Workspace; strings.TrimSpace(workspace.PairedRuntimeURL) != "" {
 		daemonURL = strings.TrimRight(workspace.PairedRuntimeURL, "/")
 	}
+	githubService := cfg.GitHub
+	if githubService == nil {
+		githubService = githubsvc.NewService(nil)
+	}
 	return &Server{
 		store:            s,
 		httpClient:       httpClient,
 		defaultDaemonURL: strings.TrimRight(cfg.DaemonURL, "/"),
 		daemonURL:        daemonURL,
 		workspaceRoot:    cfg.WorkspaceRoot,
+		github:           githubService,
 	}
 }
 
@@ -146,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/runtime", s.handleRuntime)
 	mux.HandleFunc("/v1/runtime/pairing", s.handleRuntimePairing)
 	mux.HandleFunc("/v1/repo/binding", s.handleRepoBinding)
+	mux.HandleFunc("/v1/github/connection", s.handleGitHubConnection)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
 	return withCORS(mux)
 }
