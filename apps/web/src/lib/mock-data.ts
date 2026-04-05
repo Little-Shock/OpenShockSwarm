@@ -155,6 +155,19 @@ export type SettingsSection = {
   value: string;
 };
 
+export type PhaseZeroState = {
+  workspace: WorkspaceSnapshot;
+  channels: Channel[];
+  channelMessages: Record<string, Message[]>;
+  issues: Issue[];
+  rooms: Room[];
+  roomMessages: Record<string, Message[]>;
+  runs: Run[];
+  agents: AgentStatus[];
+  machines: MachineStatus[];
+  inbox: InboxItem[];
+};
+
 export const workspace: WorkspaceSnapshot = {
   name: "OpenShock 作战台",
   repo: "Larkspur-Wang/OpenShock",
@@ -707,13 +720,18 @@ export function getRunsForAgent(agentId: string) {
   return runs.filter((run) => agent?.recentRunIds.includes(run.id));
 }
 
-export function getBoardColumns() {
+export function buildBoardColumns(issueList: Issue[]) {
   return [
-    { title: "待开始", accent: "var(--shock-paper)", cards: issues.filter((issue) => issue.state === "queued") },
-    { title: "执行中", accent: "var(--shock-yellow)", cards: issues.filter((issue) => issue.state === "running") },
-    { title: "阻塞", accent: "var(--shock-pink)", cards: issues.filter((issue) => issue.state === "blocked") },
-    { title: "待评审", accent: "var(--shock-lime)", cards: issues.filter((issue) => issue.state === "review") },
+    { title: "Backlog", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
+    { title: "Todo", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
+    { title: "In Progress", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
+    { title: "In Review", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
+    { title: "Done", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
   ];
+}
+
+export function getBoardColumns() {
+  return buildBoardColumns(issues);
 }
 
 export function getGlobalStats() {
@@ -725,3 +743,16 @@ export function getGlobalStats() {
     { label: "收件箱", value: String(inboxItems.length).padStart(2, "0"), tone: "lime" as const },
   ];
 }
+
+export const fallbackState: PhaseZeroState = {
+  workspace,
+  channels,
+  channelMessages,
+  issues,
+  rooms,
+  roomMessages,
+  runs,
+  agents,
+  machines,
+  inbox: inboxItems,
+};
