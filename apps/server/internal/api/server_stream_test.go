@@ -121,3 +121,67 @@ func TestRoomMessageStreamPersistsConversation(t *testing.T) {
 		t.Fatalf("agent message = %q, want streamed output", agentMessage)
 	}
 }
+
+func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/runtime":
+			payload := map[string]any{
+				"machine":       "shock-browser",
+				"detectedCli":   []string{"codex", "claude"},
+				"providers":     []map[string]any{{"id": "claude", "label": "Claude Code CLI", "mode": "direct-cli", "capabilities": []string{"conversation"}, "transport": "http bridge"}},
+				"state":         "online",
+				"workspaceRoot": root,
+				"reportedAt":    "2026-04-05T12:00:00Z",
+			}
+			if err := json.NewEncoder(w).Encode(payload); err != nil {
+				t.Fatalf("encode runtime payload: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{"daemonUrl": daemon.URL})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	resp, err := http.Post(server.URL+"/v1/runtime/pairing", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST pairing error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pairing status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	snapshot := s.Snapshot().Workspace
+	if snapshot.PairedRuntime != "shock-browser" {
+		t.Fatalf("paired runtime = %q, want shock-browser", snapshot.PairedRuntime)
+	}
+	if snapshot.PairedRuntimeURL != daemon.URL {
+		t.Fatalf("paired runtime url = %q, want %q", snapshot.PairedRuntimeURL, daemon.URL)
+	}
+	if snapshot.PairingStatus != "paired" {
+		t.Fatalf("pairing status = %q, want paired", snapshot.PairingStatus)
+	}
+	if snapshot.DeviceAuth != "browser-approved" {
+		t.Fatalf("device auth = %q, want browser-approved", snapshot.DeviceAuth)
+	}
+}

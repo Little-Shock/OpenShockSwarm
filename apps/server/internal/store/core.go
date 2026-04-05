@@ -56,6 +56,18 @@ func (s *Store) RoomDetail(roomID string) (RoomDetail, bool) {
 
 func (s *Store) hydrateMissingDefaults() {
 	defaults := seedState()
+	if strings.TrimSpace(s.state.Workspace.PairedRuntimeURL) == "" {
+		s.state.Workspace.PairedRuntimeURL = defaults.Workspace.PairedRuntimeURL
+	}
+	if strings.TrimSpace(s.state.Workspace.PairingStatus) == "" {
+		s.state.Workspace.PairingStatus = defaults.Workspace.PairingStatus
+	}
+	if strings.TrimSpace(s.state.Workspace.DeviceAuth) == "" {
+		s.state.Workspace.DeviceAuth = defaults.Workspace.DeviceAuth
+	}
+	if strings.TrimSpace(s.state.Workspace.LastPairedAt) == "" {
+		s.state.Workspace.LastPairedAt = defaults.Workspace.LastPairedAt
+	}
 	if len(s.state.PullRequests) == 0 {
 		s.state.PullRequests = defaults.PullRequests
 	}

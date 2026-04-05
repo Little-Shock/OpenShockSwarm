@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
@@ -22,6 +23,7 @@ type Server struct {
 	store         *store.Store
 	httpClient    *http.Client
 	daemonURL     string
+	daemonMu      sync.RWMutex
 	workspaceRoot string
 }
 
@@ -51,6 +53,33 @@ type UpdatePullRequestRequest struct {
 type DaemonExecResponse struct {
 	Output string `json:"output"`
 	Error  string `json:"error"`
+}
+
+type RuntimeSnapshotResponse struct {
+	Machine     string   `json:"machine"`
+	DetectedCLI []string `json:"detectedCli"`
+	Providers   []struct {
+		ID           string   `json:"id"`
+		Label        string   `json:"label"`
+		Mode         string   `json:"mode"`
+		Capabilities []string `json:"capabilities"`
+		Transport    string   `json:"transport"`
+	} `json:"providers"`
+	State         string `json:"state"`
+	WorkspaceRoot string `json:"workspaceRoot"`
+	ReportedAt    string `json:"reportedAt"`
+}
+
+type PairRuntimeRequest struct {
+	DaemonURL string `json:"daemonUrl"`
+}
+
+type PairingStatusResponse struct {
+	DaemonURL     string `json:"daemonUrl"`
+	PairedRuntime string `json:"pairedRuntime"`
+	PairingStatus string `json:"pairingStatus"`
+	DeviceAuth    string `json:"deviceAuth"`
+	LastPairedAt  string `json:"lastPairedAt"`
 }
 
 type DaemonStreamEvent struct {
@@ -109,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/pull-requests", s.handlePullRequests)
 	mux.HandleFunc("/v1/pull-requests/", s.handlePullRequestRoutes)
 	mux.HandleFunc("/v1/runtime", s.handleRuntime)
+	mux.HandleFunc("/v1/runtime/pairing", s.handleRuntimePairing)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
 	return withCORS(mux)
 }
@@ -368,7 +398,55 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleRuntime(w http.ResponseWriter, _ *http.Request) {
-	s.forwardGetJSON(w, s.daemonURL+"/v1/runtime")
+	s.forwardGetJSON(w, s.daemonURLValue()+"/v1/runtime")
+}
+
+func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		workspace := s.store.Snapshot().Workspace
+		writeJSON(w, http.StatusOK, PairingStatusResponse{
+			DaemonURL:     defaultString(workspace.PairedRuntimeURL, s.daemonURLValue()),
+			PairedRuntime: workspace.PairedRuntime,
+			PairingStatus: workspace.PairingStatus,
+			DeviceAuth:    workspace.DeviceAuth,
+			LastPairedAt:  workspace.LastPairedAt,
+		})
+	case http.MethodPost:
+		var req PairRuntimeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		daemonURL := strings.TrimRight(strings.TrimSpace(req.DaemonURL), "/")
+		if daemonURL == "" {
+			daemonURL = s.daemonURLValue()
+		}
+		runtimeSnapshot, err := s.fetchRuntimeSnapshot(daemonURL)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		s.setDaemonURL(daemonURL)
+		nextState, err := s.store.UpdateRuntimePairing(store.RuntimePairingInput{
+			DaemonURL:   daemonURL,
+			Machine:     runtimeSnapshot.Machine,
+			DetectedCLI: runtimeSnapshot.DetectedCLI,
+			State:       runtimeSnapshot.State,
+			ReportedAt:  runtimeSnapshot.ReportedAt,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"daemonUrl": daemonURL,
+			"runtime":   runtimeSnapshot,
+			"state":     nextState,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }
 
 func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
@@ -446,7 +524,7 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 
 func (s *Server) ensureWorktreeLane(req WorktreeRequest) (WorktreeResponse, error) {
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, s.daemonURL+"/v1/worktrees/ensure", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, s.daemonURLValue()+"/v1/worktrees/ensure", bytes.NewReader(body))
 	if err != nil {
 		return WorktreeResponse{}, err
 	}
@@ -482,7 +560,7 @@ func (s *Server) ensureWorktreeLane(req WorktreeRequest) (WorktreeResponse, erro
 
 func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, s.daemonURL+"/v1/exec", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, s.daemonURLValue()+"/v1/exec", bytes.NewReader(body))
 	if err != nil {
 		return DaemonExecResponse{}, err
 	}
@@ -513,7 +591,7 @@ func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
 
 func (s *Server) streamDaemonExec(r *http.Request, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.daemonURL+"/v1/exec/stream", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.daemonURLValue()+"/v1/exec/stream", bytes.NewReader(body))
 	if err != nil {
 		return DaemonExecResponse{}, err
 	}
@@ -585,6 +663,38 @@ func (s *Server) forwardGetJSON(w http.ResponseWriter, url string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(response.StatusCode)
 	_, _ = w.Write(body)
+}
+
+func (s *Server) fetchRuntimeSnapshot(daemonURL string) (RuntimeSnapshotResponse, error) {
+	response, err := s.httpClient.Get(daemonURL + "/v1/runtime")
+	if err != nil {
+		return RuntimeSnapshotResponse{}, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return RuntimeSnapshotResponse{}, err
+	}
+	var payload RuntimeSnapshotResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return RuntimeSnapshotResponse{}, err
+	}
+	if response.StatusCode >= 400 {
+		return RuntimeSnapshotResponse{}, fmt.Errorf("runtime probe failed: %s", response.Status)
+	}
+	return payload, nil
+}
+
+func (s *Server) daemonURLValue() string {
+	s.daemonMu.RLock()
+	defer s.daemonMu.RUnlock()
+	return strings.TrimRight(s.daemonURL, "/")
+}
+
+func (s *Server) setDaemonURL(url string) {
+	s.daemonMu.Lock()
+	defer s.daemonMu.Unlock()
+	s.daemonURL = strings.TrimRight(url, "/")
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

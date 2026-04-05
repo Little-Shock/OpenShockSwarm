@@ -3,14 +3,18 @@ package store
 import "sync"
 
 type WorkspaceSnapshot struct {
-	Name          string `json:"name"`
-	Repo          string `json:"repo"`
-	RepoURL       string `json:"repoUrl"`
-	Branch        string `json:"branch"`
-	Plan          string `json:"plan"`
-	PairedRuntime string `json:"pairedRuntime"`
-	BrowserPush   string `json:"browserPush"`
-	MemoryMode    string `json:"memoryMode"`
+	Name             string `json:"name"`
+	Repo             string `json:"repo"`
+	RepoURL          string `json:"repoUrl"`
+	Branch           string `json:"branch"`
+	Plan             string `json:"plan"`
+	PairedRuntime    string `json:"pairedRuntime"`
+	PairedRuntimeURL string `json:"pairedRuntimeUrl"`
+	PairingStatus    string `json:"pairingStatus"`
+	DeviceAuth       string `json:"deviceAuth"`
+	LastPairedAt     string `json:"lastPairedAt"`
+	BrowserPush      string `json:"browserPush"`
+	MemoryMode       string `json:"memoryMode"`
 }
 
 type Channel struct {
@@ -219,6 +223,14 @@ type LaneBinding struct {
 	Branch       string
 	WorktreeName string
 	Path         string
+}
+
+type RuntimePairingInput struct {
+	DaemonURL   string
+	Machine     string
+	DetectedCLI []string
+	State       string
+	ReportedAt  string
 }
 
 type Store struct {

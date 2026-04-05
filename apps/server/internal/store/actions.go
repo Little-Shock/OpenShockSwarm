@@ -224,6 +224,75 @@ func (s *Store) AttachLane(runID, sessionID string, payload LaneBinding) (State,
 	return cloneState(s.state), nil
 }
 
+func (s *Store) UpdateRuntimePairing(req RuntimePairingInput) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	daemonURL := defaultString(strings.TrimSpace(req.DaemonURL), s.state.Workspace.PairedRuntimeURL)
+	machine := defaultString(strings.TrimSpace(req.Machine), "shock-main")
+	runtimeState := defaultString(strings.TrimSpace(req.State), "online")
+	reportedAt := defaultString(strings.TrimSpace(req.ReportedAt), time.Now().UTC().Format(time.RFC3339))
+	cliLabel := "none-detected"
+	if len(req.DetectedCLI) > 0 {
+		cliLabel = strings.Join(req.DetectedCLI, " + ")
+	}
+
+	s.state.Workspace.PairedRuntime = machine
+	s.state.Workspace.PairedRuntimeURL = daemonURL
+	s.state.Workspace.PairingStatus = "paired"
+	s.state.Workspace.DeviceAuth = "browser-approved"
+	s.state.Workspace.LastPairedAt = reportedAt
+
+	machineIndex := -1
+	for index := range s.state.Machines {
+		if s.state.Machines[index].Name == machine || s.state.Machines[index].ID == machine {
+			machineIndex = index
+			break
+		}
+	}
+	if machineIndex == -1 {
+		s.state.Machines = append([]Machine{{
+			ID:            machine,
+			Name:          machine,
+			State:         runtimeState,
+			CLI:           cliLabel,
+			OS:            "Local",
+			LastHeartbeat: "刚刚",
+		}}, s.state.Machines...)
+	} else {
+		s.state.Machines[machineIndex].Name = machine
+		s.state.Machines[machineIndex].State = runtimeState
+		s.state.Machines[machineIndex].CLI = cliLabel
+		s.state.Machines[machineIndex].LastHeartbeat = "刚刚"
+	}
+
+	now := shortClock()
+	message := fmt.Sprintf("浏览器已完成本地 runtime 配对：%s -> %s", machine, daemonURL)
+	s.appendChannelMessageLocked("announcements", Message{
+		ID:      fmt.Sprintf("ann-pairing-%d", time.Now().UnixNano()),
+		Speaker: "System",
+		Role:    "system",
+		Tone:    "system",
+		Message: message,
+		Time:    now,
+	})
+	s.state.Inbox = append([]InboxItem{{
+		ID:      fmt.Sprintf("inbox-runtime-paired-%d", time.Now().UnixNano()),
+		Title:   "本地 Runtime 已配对",
+		Kind:    "status",
+		Room:    "Setup",
+		Time:    "刚刚",
+		Summary: "浏览器设备授权已经完成，可以直接从讨论间启动真实 Run。",
+		Action:  "打开配置",
+		Href:    "/setup",
+	}}, s.state.Inbox...)
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
 func (s *Store) CreatePullRequest(roomID string) (State, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

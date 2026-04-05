@@ -25,6 +25,14 @@ type ExecResult = {
   duration: string;
 };
 
+type PairingStatus = {
+  daemonUrl: string;
+  pairedRuntime: string;
+  pairingStatus: string;
+  deviceAuth: string;
+  lastPairedAt: string;
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -33,25 +41,35 @@ function cn(...parts: Array<string | false | null | undefined>) {
 
 export function LiveBridgeConsole() {
   const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null);
+  const [pairing, setPairing] = useState<PairingStatus | null>(null);
+  const [daemonUrl, setDaemonURL] = useState("http://127.0.0.1:8090");
   const [provider, setProvider] = useState("codex");
   const [prompt, setPrompt] = useState("请用一句中文确认：OpenShock Phase 0 的本地 runtime bridge 已经在线。");
   const [result, setResult] = useState<ExecResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pairingLoading, setPairingLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`${API_BASE}/v1/runtime`)
-      .then(async (response) => {
+    Promise.all([
+      fetch(`${API_BASE}/v1/runtime/pairing`).then(async (response) => {
+        if (!response.ok) throw new Error(`pairing request failed: ${response.status}`);
+        return response.json() as Promise<PairingStatus>;
+      }),
+      fetch(`${API_BASE}/v1/runtime`).then(async (response) => {
         if (!response.ok) throw new Error(`runtime request failed: ${response.status}`);
-        return response.json();
-      })
-      .then((data: RuntimeSnapshot) => {
+        return response.json() as Promise<RuntimeSnapshot>;
+      }),
+    ])
+      .then(([pairingData, runtimeData]) => {
         if (cancelled) return;
-        setRuntime(data);
+        setPairing(pairingData);
+        if (pairingData.daemonUrl) setDaemonURL(pairingData.daemonUrl);
+        setRuntime(runtimeData);
         const preferredProvider =
-          data.providers.find((item) => item.id === "claude")?.id ?? data.providers[0]?.id;
+          runtimeData.providers.find((item) => item.id === "claude")?.id ?? runtimeData.providers[0]?.id;
         if (preferredProvider) {
           setProvider(preferredProvider);
         }
@@ -66,6 +84,44 @@ export function LiveBridgeConsole() {
       cancelled = true;
     };
   }, []);
+
+  async function handlePairRuntime() {
+    setPairingLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/v1/runtime/pairing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ daemonUrl }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        daemonUrl?: string;
+        runtime?: RuntimeSnapshot;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || `pairing failed: ${response.status}`);
+      }
+      if (payload.runtime) {
+        setRuntime(payload.runtime);
+        const preferredProvider =
+          payload.runtime.providers.find((item) => item.id === "claude")?.id ?? payload.runtime.providers[0]?.id;
+        if (preferredProvider) {
+          setProvider(preferredProvider);
+        }
+      }
+      const pairingResponse = await fetch(`${API_BASE}/v1/runtime/pairing`);
+      if (pairingResponse.ok) {
+        setPairing((await pairingResponse.json()) as PairingStatus);
+      }
+      setResult(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "runtime pairing failed");
+    } finally {
+      setPairingLoading(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,6 +191,51 @@ export function LiveBridgeConsole() {
             <p className="mt-2 font-display text-xl font-semibold">
               {runtime.providers.map((item) => item.transport).join(" / ")}
             </p>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+        <label className="space-y-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+            Daemon URL
+          </span>
+          <input
+            value={daemonUrl}
+            onChange={(event) => setDaemonURL(event.target.value)}
+            className="w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-sm"
+            placeholder="http://127.0.0.1:8090"
+          />
+        </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={handlePairRuntime}
+            disabled={pairingLoading}
+            className="w-full rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pairingLoading ? "配对中..." : "配对 Runtime"}
+          </button>
+        </div>
+      </div>
+
+      {pairing ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">配对状态</p>
+            <p className="mt-2 font-display text-xl font-semibold">{pairing.pairingStatus}</p>
+          </div>
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">设备授权</p>
+            <p className="mt-2 font-display text-xl font-semibold">{pairing.deviceAuth}</p>
+          </div>
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前 Runtime</p>
+            <p className="mt-2 font-display text-xl font-semibold">{pairing.pairedRuntime}</p>
+          </div>
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">最近配对</p>
+            <p className="mt-2 font-display text-xl font-semibold">{pairing.lastPairedAt}</p>
           </div>
         </div>
       ) : null}

@@ -50,6 +50,21 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	)
 	waitForHealth(t, serverURL+"/healthz", server)
 
+	pairing := postJSON(t, serverURL+"/v1/runtime/pairing", map[string]any{
+		"daemonUrl": daemonURL,
+	}, http.StatusOK)
+	pairingState, ok := pairing["state"].(map[string]any)
+	if !ok {
+		t.Fatalf("pairing state payload malformed: %#v", pairing["state"])
+	}
+	workspace, ok := pairingState["workspace"].(map[string]any)
+	if !ok {
+		t.Fatalf("pairing workspace payload malformed: %#v", pairingState["workspace"])
+	}
+	if stringField(t, workspace, "pairedRuntime") == "" {
+		t.Fatalf("pairedRuntime should not be empty after pairing")
+	}
+
 	createIssue := map[string]any{
 		"title":    "Integration Loop",
 		"summary":  "verify issue room run pr inbox memory",
