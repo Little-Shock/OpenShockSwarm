@@ -1,6 +1,6 @@
 # OpenShock Phase 0 MVP 骨架功能要求
 
-**版本:** 0.1  
+**版本:** 0.2  
 **版本日期:** 2026 年 4 月 5 日  
 **关联文档:** [OpenShockPRD.md](./OpenShockPRD.md)
 
@@ -12,7 +12,7 @@
 
 Phase 0 的目标只有一个：
 
-**在一个真实本地仓库里，把 `聊天壳 + Agent 管理 + Session / Run + worktree 隔离 + 基础记忆 + PR 闭环` 跑通成第一条可用主链路。**
+**在一个真实本地仓库里，把 `聊天壳 + Agent 管理 + Topic / Run + worktree 隔离 + 基础记忆 + PR 闭环` 跑通成第一条可用主链路。**
 
 这阶段强调：
 
@@ -47,12 +47,12 @@ Phase 0 是 OpenShock 的第一个可用骨架版本：
 2. 连接 GitHub，绑定一个真实 Repo
 3. 绑定一台本地 Runtime，检测到 Codex / Claude Code CLI
 4. 创建一个 Issue
-5. 系统自动生成对应 Room
+5. 系统自动生成对应 Issue Room 与默认 Topic
 6. 用户把 Issue 派给 Agent
-7. 系统创建 Session，并在 worktree 中拉起 run
+7. 系统在该 Topic 下创建内部 Session，并在 worktree 中拉起 run
 8. 前端实时显示 run 状态、日志、工具调用
 9. Agent 完成修改并生成 PR
-10. 人类在 Room / Thread / Inbox 中完成纠偏和验收
+10. 人类在 Issue Room / Topic / Inbox 中完成纠偏和验收
 
 ---
 
@@ -64,7 +64,7 @@ Phase 0 是 OpenShock 的第一个可用骨架版本：
 - GitHub 连接与 Repo 绑定
 - 本地 daemon pairing
 - Runtime / Agent 管理
-- Issue / Room / Session / Run 主链路
+- Issue / Room / Topic / Run 主链路
 - Git worktree 隔离
 - Local Trusted Sandbox
 - Workspace File Memory
@@ -151,33 +151,37 @@ Phase 0 不做：
 
 必须有：
 
-- 左侧：频道 / Room 列表
-- 中间：消息流 / Thread 入口
-- 右侧：Issue / Agent / Runtime / Session 上下文
+- 顶级入口：`Chat`、`Rooms`、`Inbox`、`Board`
+- 左侧：全局频道与 Issue Room 列表
+- 中间：当前 Channel 或 Issue Room 的消息流
+- 右侧：Issue / Topic / Agent / Runtime 上下文
+- 左下角：Machine 与 Agent 状态
 
 首页必须让用户一眼看到：
 
-- 我在哪个 Room
+- 我在哪个频道或 Room
 - 哪些 Agent 在工作
-- 哪些 Session 正在运行
+- 哪些 Topic / Run 正在运行
 - 哪些任务卡住了
 
-### 5. Issue、Room、Session、Run
+### 5. Issue、Room、Topic、Run
 
 必须支持：
 
 - 创建 Issue
-- Issue 自动生成对应 Room
-- 一个 Issue 下允许多个活跃 Session
-- Session 列表
+- Issue 自动生成对应 Issue Room
+- 每个 Issue Room 默认有一个 Topic
+- Topic 列表
 - Run 列表
 - Run Detail 页面
 
 关键约束：
 
-- `Issue -> Session` 默认 `1:N`
-- `PR` 不强制一对一绑定 `Session`
-- 更推荐以 `Room / Workroom` 聚合交付
+- `Issue -> Room` 默认 `1:1`
+- `Room -> Topic` 在 Phase 0 默认 `1:1`，后续再扩展到 `1:N`
+- `Session` 由系统内部自动维护，不作为首页主导航对象
+- `PR` 不强制一对一绑定 `Topic` 或内部 `Session`
+- 更推荐以 `Issue Room` 聚合交付
 
 ### 6. 执行详情页
 
@@ -198,7 +202,7 @@ Phase 0 沙盒不是完整云沙盒，而是本地可信沙盒。
 
 必须做到：
 
-- 每个 Session 独立 worktree
+- 每个活跃 Topic 的执行 lane 独立 worktree
 - run 有超时
 - 可以定义高风险动作审批
 - 默认继承本地 Codex / Claude Code CLI 配置
@@ -358,7 +362,7 @@ Phase 0 至少需要这些页面或主视图：
 - Issue 列表页
 - Issue 详情页
 - Room 详情页
-- Session / Run 列表页
+- Topic / Run 列表页
 - Run Detail 页
 - Agent 列表 / Agent 详情
 - Inbox
@@ -371,8 +375,8 @@ Phase 0 至少需要这些页面或主视图：
 ### 功能验收
 
 - 可以从浏览器完成账号进入、Repo 绑定、Runtime 配对
-- 可以创建 Issue 并看到自动生成的 Room
-- 可以派发给 Agent 并跑出 Session / Run
+- 可以创建 Issue 并看到自动生成的 Issue Room 与默认 Topic
+- 可以派发给 Agent 并跑出 Topic / Run
 - 可以看到 worktree、branch、日志、工具调用
 - 可以回收到 PR
 - 可以从 Inbox 完成一次纠偏
