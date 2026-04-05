@@ -111,10 +111,14 @@ type WorktreeResponse struct {
 }
 
 func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
+	daemonURL := strings.TrimRight(cfg.DaemonURL, "/")
+	if workspace := s.Snapshot().Workspace; strings.TrimSpace(workspace.PairedRuntimeURL) != "" {
+		daemonURL = strings.TrimRight(workspace.PairedRuntimeURL, "/")
+	}
 	return &Server{
 		store:         s,
 		httpClient:    httpClient,
-		daemonURL:     strings.TrimRight(cfg.DaemonURL, "/"),
+		daemonURL:     daemonURL,
 		workspaceRoot: cfg.WorkspaceRoot,
 	}
 }

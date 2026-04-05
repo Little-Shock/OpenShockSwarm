@@ -63,8 +63,18 @@ func TestRoomMessageStreamPersistsConversation(t *testing.T) {
 	}))
 	defer daemon.Close()
 
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		DaemonURL:   daemon.URL,
+		Machine:     "shock-test",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  "2026-04-05T12:00:00Z",
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
 	server := httptest.NewServer(New(s, http.DefaultClient, Config{
-		DaemonURL:     daemon.URL,
+		DaemonURL:     "http://127.0.0.1:65531",
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
@@ -183,5 +193,20 @@ func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
 	}
 	if snapshot.DeviceAuth != "browser-approved" {
 		t.Fatalf("device auth = %q, want browser-approved", snapshot.DeviceAuth)
+	}
+
+	restarted := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer restarted.Close()
+
+	runtimeResp, err := http.Get(restarted.URL + "/v1/runtime")
+	if err != nil {
+		t.Fatalf("GET restarted runtime error = %v", err)
+	}
+	defer runtimeResp.Body.Close()
+	if runtimeResp.StatusCode != http.StatusOK {
+		t.Fatalf("restarted runtime status = %d, want %d", runtimeResp.StatusCode, http.StatusOK)
 	}
 }
