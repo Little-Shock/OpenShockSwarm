@@ -9,7 +9,6 @@ import {
   getRunById,
   issues,
   roomMessages,
-  rooms,
   settingsSections,
   setupSteps,
   workspace,
@@ -582,10 +581,10 @@ export function BoardView() {
   );
 }
 
-export function IssuesListView() {
+export function IssuesListView({ issues: issueList = issues }: { issues?: Issue[] }) {
   return (
     <div className="grid gap-4">
-      {issues.map((issue) => (
+      {issueList.map((issue) => (
         <Link key={issue.id} href={`/issues/${issue.key}`} className="block">
           <Panel tone={issue.state === "blocked" ? "pink" : issue.state === "review" ? "lime" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -612,10 +611,15 @@ export function IssuesListView() {
   );
 }
 
-export function IssueDetailView({ issue }: { issue: Issue }) {
-  const run = getRunById(issue.runId);
-  const room = rooms.find((candidate) => candidate.id === issue.roomId);
-
+export function IssueDetailView({
+  issue,
+  run = getRunById(issue.runId),
+  roomTitle,
+}: {
+  issue: Issue;
+  run?: Run;
+  roomTitle?: string;
+}) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
@@ -671,7 +675,7 @@ export function IssueDetailView({ issue }: { issue: Issue }) {
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em]">收口对象</p>
           <div className="mt-4 space-y-3 text-sm leading-6 text-white/78">
-            <p>讨论间: {room?.title ?? issue.roomId}</p>
+            <p>讨论间: {roomTitle ?? issue.roomId}</p>
             <p>Run: {run?.id ?? issue.runId}</p>
             <p>PR: {issue.pullRequest}</p>
           </div>

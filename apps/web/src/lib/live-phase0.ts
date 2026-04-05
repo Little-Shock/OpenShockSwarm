@@ -18,6 +18,11 @@ type StateMutationResponse = {
   error?: string;
   roomId?: string;
   output?: string;
+  pullRequestId?: string;
+};
+
+type UpdatePullRequestInput = {
+  status: "draft" | "open" | "in_review" | "changes_requested" | "merged";
 };
 
 async function readJSON<T>(path: string, init?: RequestInit) {
@@ -84,5 +89,24 @@ export function usePhaseZeroState() {
     return payload;
   }
 
-  return { state, loading, error, refresh, createIssue, postRoomMessage };
+  async function createPullRequest(roomId: string) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/pull-request`, {
+      method: "POST",
+    });
+
+    if (payload.state) setState(payload.state);
+    return payload;
+  }
+
+  async function updatePullRequest(pullRequestId: string, input: UpdatePullRequestInput) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/pull-requests/${pullRequestId}`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) setState(payload.state);
+    return payload;
+  }
+
+  return { state, loading, error, refresh, createIssue, postRoomMessage, createPullRequest, updatePullRequest };
 }

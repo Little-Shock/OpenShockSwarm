@@ -1,19 +1,18 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import {
-  agents,
-  channels,
-  getGlobalStats,
-  machines,
-  rooms,
+  buildGlobalStats,
+  fallbackState,
   tabs,
   utilityLinks,
-  workspace,
   type AppTab,
   type MachineState,
   type PresenceState,
 } from "@/lib/mock-data";
+import { usePhaseZeroState } from "@/lib/live-phase0";
 
 type ShellView = AppTab | "setup" | "issues" | "agents" | "settings";
 type Tone = "yellow" | "pink" | "lime";
@@ -111,7 +110,9 @@ export function OpenShockShell({
   children,
 }: OpenShockShellProps) {
   const activeTab = activeFromView(view);
-  const stats = getGlobalStats();
+  const { state } = usePhaseZeroState();
+  const resolvedState = state.channels.length > 0 ? state : fallbackState;
+  const stats = buildGlobalStats(resolvedState);
 
   return (
     <main className="min-h-screen bg-[var(--shock-paper)] text-[var(--shock-ink)]">
@@ -124,7 +125,7 @@ export function OpenShockShell({
                   OS
                 </div>
                 <div>
-                  <p className="font-display text-lg font-bold leading-none">{workspace.name}</p>
+                  <p className="font-display text-lg font-bold leading-none">{resolvedState.workspace.name}</p>
                   <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
                     local-first os
                   </p>
@@ -185,7 +186,7 @@ export function OpenShockShell({
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {channels.map((channel) => (
+                  {resolvedState.channels.map((channel) => (
                     <Link
                       key={channel.id}
                       href={`/chat/${channel.id}`}
@@ -222,7 +223,7 @@ export function OpenShockShell({
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {rooms.map((room) => (
+                  {resolvedState.rooms.map((room) => (
                     <Link
                       key={room.id}
                       href={`/rooms/${room.id}`}
@@ -253,7 +254,7 @@ export function OpenShockShell({
             <div className="space-y-3 border-t-2 border-[var(--shock-ink)] px-3 py-3">
               <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-3">
                 <div className="space-y-2">
-                  {machines.map((machine) => (
+                  {resolvedState.machines.map((machine) => (
                     <div key={machine.id} className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-display text-base">{machine.name}</p>
@@ -285,13 +286,13 @@ export function OpenShockShell({
 
               <div className="hidden rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-3 xl:block">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">公民 Agent</p>
-                  <span className="rounded-full bg-[var(--shock-yellow)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--shock-ink)]">
-                    {agents.length}
+                    <p className="font-mono text-[11px] uppercase tracking-[0.24em]">公民 Agent</p>
+                    <span className="rounded-full bg-[var(--shock-yellow)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--shock-ink)]">
+                    {resolvedState.agents.length}
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {agents.map((agent) => (
+                  {resolvedState.agents.map((agent) => (
                     <Link
                       key={agent.id}
                       href={`/agents/${agent.id}`}

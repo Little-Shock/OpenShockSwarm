@@ -21,6 +21,23 @@ function roleLabel(role: Message["role"]) {
   }
 }
 
+function pullRequestStatusLabel(status?: string) {
+  switch (status) {
+    case "draft":
+      return "草稿";
+    case "open":
+      return "已打开";
+    case "in_review":
+      return "评审中";
+    case "changes_requested":
+      return "待修改";
+    case "merged":
+      return "已合并";
+    default:
+      return "未创建";
+  }
+}
+
 function ClaudeCompactComposer({
   room,
   initialMessages,
@@ -218,10 +235,33 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 }
 
 export function StitchDiscussionView({ roomId }: { roomId: string }) {
-  const { state, postRoomMessage } = usePhaseZeroState();
+  const { state, postRoomMessage, createPullRequest, updatePullRequest } = usePhaseZeroState();
   const room = state.rooms.find((item) => item.id === roomId) ?? fallbackState.rooms[0];
   const run = state.runs.find((item) => item.id === room.runId) ?? fallbackState.runs[0];
   const messages = state.roomMessages[room.id] ?? fallbackState.roomMessages[room.id] ?? [];
+  const pullRequest = state.pullRequests.find((item) => item.roomId === room.id);
+  const [prLoading, setPrLoading] = useState(false);
+  const canMerge = pullRequest && pullRequest.status !== "merged";
+
+  async function handleCreatePullRequest() {
+    if (prLoading) return;
+    setPrLoading(true);
+    try {
+      await createPullRequest(room.id);
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function handleMergePullRequest() {
+    if (!pullRequest || prLoading) return;
+    setPrLoading(true);
+    try {
+      await updatePullRequest(pullRequest.id, { status: "merged" });
+    } finally {
+      setPrLoading(false);
+    }
+  }
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
@@ -243,7 +283,13 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
             <aside className="hidden min-h-0 flex-1 overflow-y-auto bg-[#f5f5f5] p-4 xl:block">
               <div className="mb-3 flex gap-2">
                 <button className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] text-white">注入 Guidance</button>
-                <button className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]">授权 PR</button>
+                <button
+                  disabled={prLoading || (pullRequest?.status === "merged")}
+                  onClick={pullRequest ? handleMergePullRequest : handleCreatePullRequest}
+                  className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] disabled:opacity-60"
+                >
+                  {!pullRequest ? "发起 PR" : canMerge ? "合并 PR" : "已合并"}
+                </button>
               </div>
 
               <div className="space-y-3">
@@ -260,6 +306,21 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Active Path /core/session_mgr.ts</p>
                     <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Last Sync 2s ago</p>
                   </div>
+                </section>
+
+                <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
+                      <p className="mt-2 font-display text-2xl font-bold">{pullRequest?.label ?? "未创建"}</p>
+                    </div>
+                    <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[#ececec] px-2 py-1 font-mono text-[10px]">
+                      {pullRequestStatusLabel(pullRequest?.status)}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.64)]">
+                    {pullRequest?.reviewSummary ?? "当前房间还没有进入 PR 收口。准备好后可以直接从这里发起。"}
+                  </p>
                 </section>
 
                 <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#111827] p-4 text-white">

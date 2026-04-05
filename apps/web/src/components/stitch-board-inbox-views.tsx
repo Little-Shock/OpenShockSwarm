@@ -25,6 +25,23 @@ function inboxKindLabel(kind: InboxItem["kind"]) {
   }
 }
 
+function pullRequestStatusLabel(status?: string) {
+  switch (status) {
+    case "draft":
+      return "草稿";
+    case "open":
+      return "已打开";
+    case "in_review":
+      return "评审中";
+    case "changes_requested":
+      return "待修改";
+    case "merged":
+      return "已合并";
+    default:
+      return "";
+  }
+}
+
 export function StitchBoardView() {
   const router = useRouter();
   const { state, createIssue } = usePhaseZeroState();
@@ -127,8 +144,24 @@ export function StitchBoardView() {
 }
 
 export function StitchInboxView() {
-  const { state } = usePhaseZeroState();
+  const { state, updatePullRequest } = usePhaseZeroState();
   const inboxItems = state.inbox.length > 0 ? state.inbox : fallbackState.inbox;
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  function findPullRequestForItem(item: InboxItem) {
+    return state.pullRequests.find((pullRequest) => item.href.includes(pullRequest.runId) || item.href.includes(pullRequest.roomId));
+  }
+
+  async function handleReviewAction(item: InboxItem, status: "merged" | "changes_requested") {
+    const pullRequest = findPullRequestForItem(item);
+    if (!pullRequest || busyId) return;
+    setBusyId(pullRequest.id);
+    try {
+      await updatePullRequest(pullRequest.id, { status });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
@@ -173,17 +206,41 @@ export function StitchInboxView() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{inboxKindLabel(item.kind)}</span>
                         <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{item.room}</span>
+                        {findPullRequestForItem(item) ? (
+                          <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{pullRequestStatusLabel(findPullRequestForItem(item)?.status)}</span>
+                        ) : null}
                       </div>
                       <h3 className="mt-2 font-display text-2xl font-bold">{item.title}</h3>
                       <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{item.summary}</p>
                     </div>
                     <div className="flex flex-col gap-2 xl:items-end">
-                      <Link href={item.href} className={cn("inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] px-4 py-3 font-mono text-[10px]", item.kind === "approval" ? "bg-[var(--shock-yellow)]" : item.kind === "blocked" ? "bg-[var(--shock-purple)] text-white" : "bg-white")}>
-                        {item.kind === "approval" ? "Authorize" : item.kind === "blocked" ? "Resolve" : "View"}
-                      </Link>
-                      <button className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px]">
-                        {item.kind === "approval" ? "Review Diff" : item.kind === "blocked" ? "Defer" : "Reply"}
-                      </button>
+                      {item.kind === "review" && findPullRequestForItem(item) ? (
+                        <>
+                          <button
+                            disabled={busyId === findPullRequestForItem(item)?.id}
+                            onClick={() => void handleReviewAction(item, "merged")}
+                            className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
+                          >
+                            Merge
+                          </button>
+                          <button
+                            disabled={busyId === findPullRequestForItem(item)?.id}
+                            onClick={() => void handleReviewAction(item, "changes_requested")}
+                            className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
+                          >
+                            Request Changes
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Link href={item.href} className={cn("inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] px-4 py-3 font-mono text-[10px]", item.kind === "approval" ? "bg-[var(--shock-yellow)]" : item.kind === "blocked" ? "bg-[var(--shock-purple)] text-white" : "bg-white")}>
+                            {item.kind === "approval" ? "Authorize" : item.kind === "blocked" ? "Resolve" : "View"}
+                          </Link>
+                          <button className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px]">
+                            {item.kind === "approval" ? "Review Diff" : item.kind === "blocked" ? "Defer" : "Reply"}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </article>
                 ))}

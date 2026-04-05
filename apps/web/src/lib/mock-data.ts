@@ -5,6 +5,7 @@ export type RunStatus = "queued" | "running" | "blocked" | "review" | "done";
 export type PresenceState = "running" | "idle" | "blocked";
 export type MachineState = "online" | "busy" | "offline";
 export type InboxKind = "blocked" | "approval" | "review" | "status";
+export type PullRequestStatus = "draft" | "open" | "in_review" | "changes_requested" | "merged";
 
 export type WorkspaceSnapshot = {
   name: string;
@@ -139,6 +140,21 @@ export type InboxItem = {
   href: string;
 };
 
+export type PullRequest = {
+  id: string;
+  number: number;
+  label: string;
+  title: string;
+  status: PullRequestStatus;
+  issueKey: string;
+  roomId: string;
+  runId: string;
+  branch: string;
+  author: string;
+  reviewSummary: string;
+  updatedAt: string;
+};
+
 export type SetupStep = {
   id: string;
   title: string;
@@ -166,6 +182,7 @@ export type PhaseZeroState = {
   agents: AgentStatus[];
   machines: MachineStatus[];
   inbox: InboxItem[];
+  pullRequests: PullRequest[];
 };
 
 export const workspace: WorkspaceSnapshot = {
@@ -641,6 +658,51 @@ export const inboxItems: InboxItem[] = [
   },
 ];
 
+export const pullRequests: PullRequest[] = [
+  {
+    id: "pr-runtime-18",
+    number: 18,
+    label: "PR #18",
+    title: "runtime: surface heartbeat and lane state in discussion room",
+    status: "in_review",
+    issueKey: "OPS-12",
+    roomId: "room-runtime",
+    runId: "run_runtime_01",
+    branch: "feat/runtime-state-shell",
+    author: "Codex Dockmaster",
+    reviewSummary: "等待产品确认 destructive git cleanup 的审批边界。",
+    updatedAt: "2 分钟前",
+  },
+  {
+    id: "pr-inbox-22",
+    number: 22,
+    label: "PR #22",
+    title: "inbox: unify approval, blocked, and review cards",
+    status: "in_review",
+    issueKey: "OPS-19",
+    roomId: "room-inbox",
+    runId: "run_inbox_01",
+    branch: "feat/inbox-decision-cards",
+    author: "Claude Review Runner",
+    reviewSummary: "等待人类确认卡片语气和默认动作。",
+    updatedAt: "12 分钟前",
+  },
+  {
+    id: "pr-memory-draft",
+    number: 27,
+    label: "草稿 PR",
+    title: "memory: write run summary back to MEMORY.md",
+    status: "draft",
+    issueKey: "OPS-27",
+    roomId: "room-memory",
+    runId: "run_memory_01",
+    branch: "feat/memory-writeback",
+    author: "Memory Clerk",
+    reviewSummary: "等待记忆优先级规则敲定后再进入评审。",
+    updatedAt: "7 分钟前",
+  },
+];
+
 export const setupSteps: SetupStep[] = [
   {
     id: "setup-identity",
@@ -735,12 +797,16 @@ export function getBoardColumns() {
 }
 
 export function getGlobalStats() {
-  const activeRuns = runs.filter((run) => run.status === "running" || run.status === "review").length;
-  const blockedCount = runs.filter((run) => run.status === "blocked").length;
+  return buildGlobalStats(fallbackState);
+}
+
+export function buildGlobalStats(state: PhaseZeroState) {
+  const activeRuns = state.runs.filter((run) => run.status === "running" || run.status === "review").length;
+  const blockedCount = state.runs.filter((run) => run.status === "blocked").length;
   return [
     { label: "活跃 Run", value: String(activeRuns).padStart(2, "0"), tone: "yellow" as const },
     { label: "阻塞", value: String(blockedCount).padStart(2, "0"), tone: "pink" as const },
-    { label: "收件箱", value: String(inboxItems.length).padStart(2, "0"), tone: "lime" as const },
+    { label: "收件箱", value: String(state.inbox.length).padStart(2, "0"), tone: "lime" as const },
   ];
 }
 
@@ -755,4 +821,5 @@ export const fallbackState: PhaseZeroState = {
   agents,
   machines,
   inbox: inboxItems,
+  pullRequests,
 };

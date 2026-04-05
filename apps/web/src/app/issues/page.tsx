@@ -1,5 +1,6 @@
 import { OpenShockShell } from "@/components/open-shock-shell";
-import { DetailRail, IssuesListView } from "@/components/phase-zero-views";
+import { LiveIssuesListView } from "@/components/live-detail-views";
+import { DetailRail } from "@/components/phase-zero-views";
 
 export default function IssuesPage() {
   return (
@@ -22,7 +23,7 @@ export default function IssuesPage() {
         />
       }
     >
-      <IssuesListView />
+      <LiveIssuesListView />
     </OpenShockShell>
   );
 }

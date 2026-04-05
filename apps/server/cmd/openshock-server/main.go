@@ -148,6 +148,21 @@ type inboxItem struct {
 	Href    string `json:"href"`
 }
 
+type pullRequest struct {
+	ID            string `json:"id"`
+	Number        int    `json:"number"`
+	Label         string `json:"label"`
+	Title         string `json:"title"`
+	Status        string `json:"status"`
+	IssueKey      string `json:"issueKey"`
+	RoomID        string `json:"roomId"`
+	RunID         string `json:"runId"`
+	Branch        string `json:"branch"`
+	Author        string `json:"author"`
+	ReviewSummary string `json:"reviewSummary"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
 type execRequest struct {
 	Provider string `json:"provider"`
 	Prompt   string `json:"prompt"`
@@ -167,6 +182,10 @@ type roomMessageRequest struct {
 	Cwd      string `json:"cwd"`
 }
 
+type updatePullRequestRequest struct {
+	Status string `json:"status"`
+}
+
 type daemonExecResponse struct {
 	Output string `json:"output"`
 	Error  string `json:"error"`
@@ -183,6 +202,7 @@ type apiState struct {
 	Agents          []agent              `json:"agents"`
 	Machines        []machine            `json:"machines"`
 	Inbox           []inboxItem          `json:"inbox"`
+	PullRequests    []pullRequest        `json:"pullRequests"`
 }
 
 type roomDetailResponse struct {
@@ -263,6 +283,12 @@ func main() {
 	mux.HandleFunc("/v1/inbox", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, store.Snapshot().Inbox)
 	})
+	mux.HandleFunc("/v1/pull-requests", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, store.Snapshot().PullRequests)
+	})
+	mux.HandleFunc("/v1/pull-requests/", func(w http.ResponseWriter, r *http.Request) {
+		handlePullRequestRoutes(w, r, store)
+	})
 	mux.HandleFunc("/v1/runtime", func(w http.ResponseWriter, _ *http.Request) {
 		forwardGetJSON(w, httpClient, daemonURL+"/v1/runtime")
 	})
@@ -334,6 +360,23 @@ func handleRoomRoutes(
 		return
 	}
 
+	if strings.HasSuffix(path, "/pull-request") {
+		roomID := strings.TrimSuffix(path, "/pull-request")
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+
+		nextState, pullRequestID, err := store.CreatePullRequest(roomID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"pullRequestId": pullRequestID, "state": nextState})
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -363,6 +406,45 @@ func handleRunRoutes(w http.ResponseWriter, r *http.Request, snapshot apiState) 
 	}
 
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+}
+
+func handlePullRequestRoutes(w http.ResponseWriter, r *http.Request, store *stateStore) {
+	pullRequestID := strings.TrimPrefix(r.URL.Path, "/v1/pull-requests/")
+	if pullRequestID == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		snapshot := store.Snapshot()
+		for _, item := range snapshot.PullRequests {
+			if item.ID == pullRequestID {
+				writeJSON(w, http.StatusOK, item)
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	var req updatePullRequestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	nextState, err := store.UpdatePullRequestStatus(pullRequestID, req.Status)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
 }
 
 func handleExecRoute(w http.ResponseWriter, r *http.Request, httpClient *http.Client, daemonURL string) {
@@ -397,6 +479,7 @@ func newStateStore(path string) (*stateStore, error) {
 		if err := json.Unmarshal(body, &store.state); err != nil {
 			return nil, err
 		}
+		store.hydrateMissingDefaults()
 		return store, nil
 	}
 
@@ -404,6 +487,19 @@ func newStateStore(path string) (*stateStore, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	return store, store.persistLocked()
+}
+
+func (s *stateStore) hydrateMissingDefaults() {
+	defaults := seedState()
+	if len(s.state.PullRequests) == 0 {
+		s.state.PullRequests = defaults.PullRequests
+	}
+	if s.state.ChannelMessages == nil {
+		s.state.ChannelMessages = defaults.ChannelMessages
+	}
+	if s.state.RoomMessages == nil {
+		s.state.RoomMessages = defaults.RoomMessages
+	}
 }
 
 func (s *stateStore) Snapshot() apiState {
@@ -552,6 +648,182 @@ func (s *stateStore) CreateIssue(req createIssueRequest) (apiState, string, erro
 	return cloneState(s.state), roomID, nil
 }
 
+func (s *stateStore) CreatePullRequest(roomID string) (apiState, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(roomID)
+	if !ok {
+		return apiState{}, "", fmt.Errorf("room not found")
+	}
+
+	if existingIndex := s.findPullRequestByRoomLocked(roomID); existingIndex != -1 {
+		existing := s.state.PullRequests[existingIndex]
+		return cloneState(s.state), existing.ID, nil
+	}
+
+	now := shortClock()
+	nextNumber := s.nextPullRequestNumberLocked()
+	label := fmt.Sprintf("PR #%d", nextNumber)
+	runItem := &s.state.Runs[runIndex]
+	issueItem := &s.state.Issues[issueIndex]
+	roomItem := &s.state.Rooms[roomIndex]
+
+	pr := pullRequest{
+		ID:            fmt.Sprintf("pr-%d", nextNumber),
+		Number:        nextNumber,
+		Label:         label,
+		Title:         issueItem.Title,
+		Status:        "in_review",
+		IssueKey:      issueItem.Key,
+		RoomID:        roomID,
+		RunID:         runItem.ID,
+		Branch:        runItem.Branch,
+		Author:        runItem.Owner,
+		ReviewSummary: "PR 已创建，等待人类进行 Review 或合并。",
+		UpdatedAt:     "刚刚",
+	}
+
+	s.state.PullRequests = append([]pullRequest{pr}, s.state.PullRequests...)
+	issueItem.PullRequest = label
+	issueItem.State = "review"
+	runItem.PullRequest = label
+	runItem.Status = "review"
+	runItem.ApprovalRequired = false
+	runItem.NextAction = "等待 Review 结果或合并。"
+	runItem.ToolCalls = append(runItem.ToolCalls, toolCall{
+		ID:      fmt.Sprintf("%s-tool-%d", runItem.ID, len(runItem.ToolCalls)+1),
+		Tool:    "github",
+		Summary: "从讨论间创建 PR 并进入 Review",
+		Result:  "成功",
+	})
+	runItem.Timeline = append(runItem.Timeline, runEvent{
+		ID:    fmt.Sprintf("%s-ev-%d", runItem.ID, len(runItem.Timeline)+1),
+		Label: "PR 已创建",
+		At:    now,
+		Tone:  "lime",
+	})
+	roomItem.Topic.Status = "review"
+	roomItem.Topic.Summary = "PR 已创建，讨论间进入评审模式。"
+	s.appendRoomMessageLocked(roomID, message{
+		ID:      fmt.Sprintf("%s-pr-%d", roomID, time.Now().UnixNano()),
+		Speaker: "System",
+		Role:    "system",
+		Tone:    "system",
+		Message: fmt.Sprintf("%s 已创建并绑定到当前讨论间，进入评审状态。", label),
+		Time:    now,
+	})
+	s.state.Inbox = append([]inboxItem{{
+		ID:      fmt.Sprintf("inbox-pr-review-%d", nextNumber),
+		Title:   fmt.Sprintf("%s 已准备评审", label),
+		Kind:    "review",
+		Room:    roomItem.Title,
+		Time:    "刚刚",
+		Summary: "代码修改已经收口到 PR，等待人类做最终判断。",
+		Action:  "打开评审",
+		Href:    fmt.Sprintf("/rooms/%s/runs/%s", roomID, runItem.ID),
+	}}, s.state.Inbox...)
+	s.updateAgentStateLocked(runItem.Owner, "idle", "等待 PR 评审")
+
+	if err := s.persistLocked(); err != nil {
+		return apiState{}, "", err
+	}
+
+	return cloneState(s.state), pr.ID, nil
+}
+
+func (s *stateStore) UpdatePullRequestStatus(pullRequestID, status string) (apiState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if status == "" {
+		return apiState{}, fmt.Errorf("status is required")
+	}
+
+	prIndex := s.findPullRequestLocked(pullRequestID)
+	if prIndex == -1 {
+		return apiState{}, fmt.Errorf("pull request not found")
+	}
+
+	pr := &s.state.PullRequests[prIndex]
+	now := shortClock()
+	pr.Status = status
+	pr.UpdatedAt = "刚刚"
+
+	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(pr.RoomID)
+	if !ok {
+		return apiState{}, fmt.Errorf("room not found for pull request")
+	}
+
+	roomItem := &s.state.Rooms[roomIndex]
+	runItem := &s.state.Runs[runIndex]
+	issueItem := &s.state.Issues[issueIndex]
+
+	switch status {
+	case "in_review", "open":
+		pr.ReviewSummary = "PR 正在等待 Review。"
+		roomItem.Topic.Status = "review"
+		runItem.Status = "review"
+		issueItem.State = "review"
+		runItem.NextAction = "等待人类 Review 或补充反馈。"
+	case "changes_requested":
+		pr.ReviewSummary = "评审要求补充修改，等待 follow-up run。"
+		roomItem.Topic.Status = "blocked"
+		runItem.Status = "blocked"
+		issueItem.State = "blocked"
+		runItem.NextAction = "根据 Review 意见启动 follow-up run。"
+		s.state.Inbox = append([]inboxItem{{
+			ID:      fmt.Sprintf("inbox-pr-change-%d", pr.Number),
+			Title:   fmt.Sprintf("%s 需要补充修改", pr.Label),
+			Kind:    "blocked",
+			Room:    roomItem.Title,
+			Time:    "刚刚",
+			Summary: "Review 已打回，当前需求需要 follow-up run。",
+			Action:  "恢复执行",
+			Href:    fmt.Sprintf("/rooms/%s", pr.RoomID),
+		}}, s.state.Inbox...)
+	case "merged":
+		pr.ReviewSummary = "PR 已合并，Issue 与讨论间进入完成状态。"
+		roomItem.Topic.Status = "done"
+		runItem.Status = "done"
+		issueItem.State = "done"
+		runItem.NextAction = "已完成，等待后续归档。"
+		s.state.Inbox = append([]inboxItem{{
+			ID:      fmt.Sprintf("inbox-pr-merged-%d", pr.Number),
+			Title:   fmt.Sprintf("%s 已合并", pr.Label),
+			Kind:    "status",
+			Room:    roomItem.Title,
+			Time:    "刚刚",
+			Summary: "需求已经完成，可以回到 Board 查看 Done 列。",
+			Action:  "打开房间",
+			Href:    fmt.Sprintf("/rooms/%s", pr.RoomID),
+		}}, s.state.Inbox...)
+	default:
+		return apiState{}, fmt.Errorf("unsupported pull request status")
+	}
+
+	runItem.Timeline = append(runItem.Timeline, runEvent{
+		ID:    fmt.Sprintf("%s-ev-%d", runItem.ID, len(runItem.Timeline)+1),
+		Label: fmt.Sprintf("PR 状态更新为 %s", status),
+		At:    now,
+		Tone:  "paper",
+	})
+	s.appendRoomMessageLocked(pr.RoomID, message{
+		ID:      fmt.Sprintf("%s-pr-status-%d", pr.RoomID, time.Now().UnixNano()),
+		Speaker: "System",
+		Role:    "system",
+		Tone:    "system",
+		Message: fmt.Sprintf("%s 状态已更新为 %s。", pr.Label, status),
+		Time:    now,
+	})
+
+	if err := s.persistLocked(); err != nil {
+		return apiState{}, err
+	}
+
+	return cloneState(s.state), nil
+}
+
 func (s *stateStore) AppendConversation(roomID, prompt, output string) (apiState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -678,6 +950,47 @@ func (s *stateStore) appendChannelMessageLocked(channelID string, msg message) {
 			return
 		}
 	}
+}
+
+func (s *stateStore) appendRoomMessageLocked(roomID string, msg message) {
+	if s.state.RoomMessages == nil {
+		s.state.RoomMessages = map[string][]message{}
+	}
+	s.state.RoomMessages[roomID] = append(s.state.RoomMessages[roomID], msg)
+	for index := range s.state.Rooms {
+		if s.state.Rooms[index].ID == roomID {
+			s.state.Rooms[index].MessageIDs = append(s.state.Rooms[index].MessageIDs, msg.ID)
+			return
+		}
+	}
+}
+
+func (s *stateStore) findPullRequestLocked(pullRequestID string) int {
+	for index, item := range s.state.PullRequests {
+		if item.ID == pullRequestID {
+			return index
+		}
+	}
+	return -1
+}
+
+func (s *stateStore) findPullRequestByRoomLocked(roomID string) int {
+	for index, item := range s.state.PullRequests {
+		if item.RoomID == roomID {
+			return index
+		}
+	}
+	return -1
+}
+
+func (s *stateStore) nextPullRequestNumberLocked() int {
+	max := 0
+	for _, item := range s.state.PullRequests {
+		if item.Number > max {
+			max = item.Number
+		}
+	}
+	return max + 1
 }
 
 func (s *stateStore) findRoomRunIssueLocked(roomID string) (int, int, int, bool) {
@@ -853,6 +1166,11 @@ func seedState() apiState {
 			{ID: "inbox-blocked-memory", Title: "Memory Clerk 被记忆优先级阻塞", Kind: "blocked", Room: "记忆写回讨论间", Time: "7 分钟前", Summary: "写回前需要先确定 topic、房间、工作区、用户和 agent 的优先级规则。", Action: "解除阻塞", Href: "/rooms/room-memory/runs/run_memory_01"},
 			{ID: "inbox-review-copy", Title: "Inbox 决策中心已经可以评审", Kind: "review", Room: "Inbox 讨论间", Time: "12 分钟前", Summary: "Agent 已经准备好最终卡片文案和路由跳转。", Action: "打开评审", Href: "/rooms/room-inbox/runs/run_inbox_01"},
 			{ID: "inbox-status-shell", Title: "Runtime lane 完成第一轮壳层接线", Kind: "status", Room: "Runtime 讨论间", Time: "18 分钟前", Summary: "机器状态和 Run 元数据已经在主壳里可见。", Action: "打开房间", Href: "/rooms/room-runtime"},
+		},
+		PullRequests: []pullRequest{
+			{ID: "pr-runtime-18", Number: 18, Label: "PR #18", Title: "runtime: surface heartbeat and lane state in discussion room", Status: "in_review", IssueKey: "OPS-12", RoomID: "room-runtime", RunID: "run_runtime_01", Branch: "feat/runtime-state-shell", Author: "Codex Dockmaster", ReviewSummary: "等待产品确认 destructive git cleanup 的审批边界。", UpdatedAt: "2 分钟前"},
+			{ID: "pr-inbox-22", Number: 22, Label: "PR #22", Title: "inbox: unify approval, blocked, and review cards", Status: "in_review", IssueKey: "OPS-19", RoomID: "room-inbox", RunID: "run_inbox_01", Branch: "feat/inbox-decision-cards", Author: "Claude Review Runner", ReviewSummary: "等待人类确认卡片语气和默认动作。", UpdatedAt: "12 分钟前"},
+			{ID: "pr-memory-draft", Number: 27, Label: "草稿 PR", Title: "memory: write run summary back to MEMORY.md", Status: "draft", IssueKey: "OPS-27", RoomID: "room-memory", RunID: "run_memory_01", Branch: "feat/memory-writeback", Author: "Memory Clerk", ReviewSummary: "等待记忆优先级规则敲定后再进入评审。", UpdatedAt: "7 分钟前"},
 		},
 	}
 }
