@@ -1,6 +1,7 @@
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { LiveBridgeConsole } from "@/components/live-bridge-console";
 import { DetailRail, SetupOverview } from "@/components/phase-zero-views";
+import { RepoBindingConsole } from "@/components/repo-binding-console";
 
 export default function SetupPage() {
   return (
@@ -25,6 +26,7 @@ export default function SetupPage() {
     >
       <div className="space-y-4">
         <SetupOverview />
+        <RepoBindingConsole />
         <LiveBridgeConsole />
       </div>
     </OpenShockShell>

@@ -145,6 +145,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/pull-requests/", s.handlePullRequestRoutes)
 	mux.HandleFunc("/v1/runtime", s.handleRuntime)
 	mux.HandleFunc("/v1/runtime/pairing", s.handleRuntimePairing)
+	mux.HandleFunc("/v1/repo/binding", s.handleRepoBinding)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
 	return withCORS(mux)
 }
@@ -752,7 +753,7 @@ func writeNDJSON(w http.ResponseWriter, flusher http.Flusher, payload any) error
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

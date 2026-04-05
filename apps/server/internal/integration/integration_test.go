@@ -65,6 +65,21 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		t.Fatalf("pairedRuntime should not be empty after pairing")
 	}
 
+	repoBinding := postJSON(t, serverURL+"/v1/repo/binding", map[string]any{}, http.StatusOK)
+	binding, ok := repoBinding["binding"].(map[string]any)
+	if !ok {
+		t.Fatalf("repo binding payload malformed: %#v", repoBinding["binding"])
+	}
+	if stringField(t, binding, "repo") != "example/integration-loop" {
+		t.Fatalf("bound repo = %q, want example/integration-loop", stringField(t, binding, "repo"))
+	}
+	if stringField(t, binding, "provider") != "github" {
+		t.Fatalf("bound provider = %q, want github", stringField(t, binding, "provider"))
+	}
+	if stringField(t, binding, "authMode") != "local-git-origin" {
+		t.Fatalf("bound auth mode = %q, want local-git-origin", stringField(t, binding, "authMode"))
+	}
+
 	createIssue := map[string]any{
 		"title":    "Integration Loop",
 		"summary":  "verify issue room run pr inbox memory",
@@ -196,6 +211,7 @@ func createTempGitRepo(t *testing.T) string {
 	}
 	runGit(t, root, "add", ".")
 	runGit(t, root, "commit", "-m", "init")
+	runGit(t, root, "remote", "add", "origin", "https://github.com/example/integration-loop.git")
 	return root
 }
 

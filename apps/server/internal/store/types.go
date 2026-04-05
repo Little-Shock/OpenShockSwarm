@@ -7,6 +7,9 @@ type WorkspaceSnapshot struct {
 	Repo             string `json:"repo"`
 	RepoURL          string `json:"repoUrl"`
 	Branch           string `json:"branch"`
+	RepoProvider     string `json:"repoProvider"`
+	RepoBindingStatus string `json:"repoBindingStatus"`
+	RepoAuthMode     string `json:"repoAuthMode"`
 	Plan             string `json:"plan"`
 	PairedRuntime    string `json:"pairedRuntime"`
 	PairedRuntimeURL string `json:"pairedRuntimeUrl"`
@@ -231,6 +234,15 @@ type RuntimePairingInput struct {
 	DetectedCLI []string
 	State       string
 	ReportedAt  string
+}
+
+type RepoBindingInput struct {
+	Repo         string
+	RepoURL      string
+	Branch       string
+	Provider     string
+	AuthMode     string
+	DetectedAt   string
 }
 
 type Store struct {

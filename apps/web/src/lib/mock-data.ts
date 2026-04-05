@@ -12,8 +12,15 @@ export type WorkspaceSnapshot = {
   repo: string;
   repoUrl: string;
   branch: string;
+  repoProvider: string;
+  repoBindingStatus: string;
+  repoAuthMode: string;
   plan: string;
   pairedRuntime: string;
+  pairedRuntimeUrl: string;
+  pairingStatus: string;
+  deviceAuth: string;
+  lastPairedAt: string;
   browserPush: string;
   memoryMode: string;
 };
@@ -190,8 +197,15 @@ export const workspace: WorkspaceSnapshot = {
   repo: "Larkspur-Wang/OpenShock",
   repoUrl: "https://github.com/Larkspur-Wang/OpenShock",
   branch: "main",
+  repoProvider: "github",
+  repoBindingStatus: "bound",
+  repoAuthMode: "local-git-origin",
   plan: "Builder P0",
   pairedRuntime: "shock-main",
+  pairedRuntimeUrl: "http://127.0.0.1:8090",
+  pairingStatus: "paired",
+  deviceAuth: "browser-approved",
+  lastPairedAt: "刚刚",
   browserPush: "只推高优先级",
   memoryMode: "MEMORY.md + notes/ + decisions/",
 };

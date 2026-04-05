@@ -293,6 +293,73 @@ func (s *Store) UpdateRuntimePairing(req RuntimePairingInput) (State, error) {
 	return cloneState(s.state), nil
 }
 
+func (s *Store) UpdateRepoBinding(req RepoBindingInput) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	repo := defaultString(strings.TrimSpace(req.Repo), s.state.Workspace.Repo)
+	repoURL := defaultString(strings.TrimSpace(req.RepoURL), s.state.Workspace.RepoURL)
+	branch := defaultString(strings.TrimSpace(req.Branch), s.state.Workspace.Branch)
+	provider := defaultString(strings.TrimSpace(req.Provider), "github")
+	authMode := defaultString(strings.TrimSpace(req.AuthMode), "local-git-origin")
+	detectedAt := defaultString(strings.TrimSpace(req.DetectedAt), time.Now().UTC().Format(time.RFC3339))
+	if repo == "" || repoURL == "" {
+		return State{}, fmt.Errorf("repo binding requires repo and repoUrl")
+	}
+
+	s.state.Workspace.Repo = repo
+	s.state.Workspace.RepoURL = repoURL
+	s.state.Workspace.Branch = branch
+	s.state.Workspace.RepoProvider = provider
+	s.state.Workspace.RepoBindingStatus = "bound"
+	s.state.Workspace.RepoAuthMode = authMode
+
+	now := shortClock()
+	s.appendChannelMessageLocked("announcements", Message{
+		ID:      fmt.Sprintf("ann-repo-binding-%d", time.Now().UnixNano()),
+		Speaker: "System",
+		Role:    "system",
+		Tone:    "system",
+		Message: fmt.Sprintf("工作区已绑定仓库：%s (%s)。", repo, authMode),
+		Time:    now,
+	})
+	s.state.Inbox = append([]InboxItem{{
+		ID:      fmt.Sprintf("inbox-repo-bound-%d", time.Now().UnixNano()),
+		Title:   "仓库绑定已更新",
+		Kind:    "status",
+		Room:    "Setup",
+		Time:    "刚刚",
+		Summary: fmt.Sprintf("当前绑定仓库为 %s，分支 %s。", repo, branch),
+		Action:  "打开配置",
+		Href:    "/setup",
+	}}, s.state.Inbox...)
+	repoArtifact := MemoryArtifact{
+		ID:        fmt.Sprintf("repo-binding-%d", time.Now().UnixNano()),
+		Scope:     "workspace",
+		Kind:      "integration",
+		Path:      "repo-binding",
+		Summary:   fmt.Sprintf("%s @ %s (%s)", repo, branch, detectedAt),
+		UpdatedAt: detectedAt,
+	}
+	replaced := false
+	for index := range s.state.Memory {
+		if s.state.Memory[index].Path == "repo-binding" {
+			repoArtifact.ID = s.state.Memory[index].ID
+			s.state.Memory[index] = repoArtifact
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		s.state.Memory = append([]MemoryArtifact{repoArtifact}, s.state.Memory...)
+	}
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
 func (s *Store) ClearRuntimePairing() (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
