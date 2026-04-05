@@ -1,0 +1,17 @@
+# Project-scoped Stitch MCP wiring for Codex.
+# Keep secrets in environment variables instead of this file.
+
+[mcp_servers.stitch]
+url = "https://stitch.googleapis.com/mcp"
+env_http_headers = { "X-Goog-Api-Key" = "STITCH_API_KEY" }
+startup_timeout_sec = 20
+required = false
+
+# OAuth alternative, if you prefer short-lived credentials over an API key:
+#
+# [mcp_servers.stitch]
+# url = "https://stitch.googleapis.com/mcp"
+# bearer_token_env_var = "STITCH_ACCESS_TOKEN"
+# http_headers = { "X-Goog-User-Project" = "YOUR_PROJECT_ID" }
+# startup_timeout_sec = 20
+# required = false
