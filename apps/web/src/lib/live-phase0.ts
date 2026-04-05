@@ -135,6 +135,7 @@ export function usePhaseZeroState() {
     const decoder = new TextDecoder();
     let buffer = "";
     let finalPayload: RoomStreamEvent | null = null;
+    let streamError: string | null = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -148,6 +149,9 @@ export function usePhaseZeroState() {
         const trimmed = line.trim();
         if (!trimmed) continue;
         const event = JSON.parse(trimmed) as RoomStreamEvent;
+        if (event.error && !streamError) {
+          streamError = event.error;
+        }
         if (event.state) {
           setState(event.state);
           finalPayload = event;
@@ -159,6 +163,9 @@ export function usePhaseZeroState() {
     const tail = buffer.trim();
     if (tail) {
       const event = JSON.parse(tail) as RoomStreamEvent;
+      if (event.error && !streamError) {
+        streamError = event.error;
+      }
       if (event.state) {
         setState(event.state);
         finalPayload = event;
@@ -166,8 +173,8 @@ export function usePhaseZeroState() {
       onEvent?.(event);
     }
 
-    if (finalPayload?.error) {
-      throw new Error(finalPayload.error);
+    if (finalPayload?.error || streamError) {
+      throw new Error(finalPayload?.error || streamError || "stream failed");
     }
     return finalPayload;
   }
