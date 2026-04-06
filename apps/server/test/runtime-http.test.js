@@ -3736,6 +3736,10 @@ test("v1 phase3 batch1 control-plane consumer contract keeps topic-state/merge-l
 });
 
 test("v1 stage2 runtime registration/pairing/liveness and worktree isolation stay single-human multi-agent", async () => {
+  const operatorId = "human_operator_stage2";
+  const channelId = "channel_open_shock";
+  const threadId = "thread_runtime_stage2";
+  const workitemId = "issue_runtime_001";
   await withRuntimeServer(
     {
       coordinatorOptions: {
@@ -3764,12 +3768,20 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         path: "/v1/runtime/agents/agent_alpha_stage2",
         body: {
           machine_id: "machine_local_stage2",
-          status: "idle"
+          status: "idle",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(agentAlpha.statusCode, 200);
       assert.equal(agentAlpha.body.agent.machine_id, "machine_local_stage2");
       assert.equal(agentAlpha.body.agent.runtime_id, "runtime_local_stage2");
+      assert.equal(agentAlpha.body.agent.owner_operator_id, operatorId);
+      assert.equal(agentAlpha.body.agent.assigned_channel_id, channelId);
+      assert.equal(agentAlpha.body.agent.assigned_thread_id, threadId);
+      assert.equal(agentAlpha.body.agent.assigned_workitem_id, workitemId);
       assert.equal(agentAlpha.body.agent.pairing_state, "paired");
       assert.equal(agentAlpha.body.agent.liveness, "online");
 
@@ -3779,7 +3791,11 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         path: "/v1/runtime/agents/agent_beta_stage2",
         body: {
           machine_id: "machine_local_stage2",
-          status: "idle"
+          status: "idle",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(agentBeta.statusCode, 200);
@@ -3790,7 +3806,11 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         path: "/v1/runtime/agents/agent_beta_stage2/pairing",
         body: {
           machine_id: "machine_local_stage2",
-          status: "ready"
+          status: "ready",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(pairBeta.statusCode, 200);
@@ -3803,7 +3823,11 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         method: "POST",
         path: "/v1/runtime/agents/agent_alpha_stage2/heartbeat",
         body: {
-          status: "running"
+          status: "running",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(heartbeatAlpha.statusCode, 200);
@@ -3819,12 +3843,19 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
           agent_id: "agent_alpha_stage2",
           repo_ref: "Little-Shock/OpenShockSwarm",
           branch: "feat/initial-implementation",
-          lane_id: "lane_stage2_alpha"
+          lane_id: "lane_stage2_alpha",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(firstClaim.statusCode, 200);
       assert.equal(firstClaim.body.claim.claim_key, "topic_stage2_main");
       assert.equal(firstClaim.body.claim.agent_id, "agent_alpha_stage2");
+      assert.equal(firstClaim.body.claim.owner_operator_id, operatorId);
+      assert.equal(firstClaim.body.claim.assigned_channel_id, channelId);
+      assert.equal(firstClaim.body.claim.assigned_thread_id, threadId);
       assert.equal(firstClaim.body.claim.reclaimed_from_agent_id, null);
       assert.equal(firstClaim.body.claim.claim_status, "active");
 
@@ -3836,11 +3867,30 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
           agent_id: "agent_beta_stage2",
           repo_ref: "Little-Shock/OpenShockSwarm",
           branch: "feat/initial-implementation",
-          lane_id: "lane_stage2_beta"
+          lane_id: "lane_stage2_beta",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(conflictClaim.statusCode, 409);
       assert.equal(conflictClaim.body.error.code, "worktree_isolation_conflict");
+
+      const ownershipMismatch = await requestJson({
+        port,
+        method: "POST",
+        path: "/v1/runtime/agents/agent_alpha_stage2/heartbeat",
+        body: {
+          status: "running",
+          operator_id: "human_operator_other",
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
+        }
+      });
+      assert.equal(ownershipMismatch.statusCode, 422);
+      assert.equal(ownershipMismatch.body.error.code, "agent_operator_mismatch");
 
       await new Promise((resolve) => setTimeout(resolve, 1100));
 
@@ -3860,11 +3910,33 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         method: "POST",
         path: "/v1/runtime/agents/agent_beta_stage2/heartbeat",
         body: {
-          status: "running"
+          status: "running",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(heartbeatBeta.statusCode, 200);
       assert.equal(heartbeatBeta.body.heartbeat.agent.liveness, "online");
+
+      const scopeMismatch = await requestJson({
+        port,
+        method: "PUT",
+        path: "/v1/runtime/worktree-claims/topic_stage2_scope_mismatch",
+        body: {
+          agent_id: "agent_beta_stage2",
+          repo_ref: "Little-Shock/OpenShockSwarm",
+          branch: "feat/initial-implementation",
+          lane_id: "lane_stage2_beta",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: "thread_runtime_stage2_other",
+          workitem_id: workitemId
+        }
+      });
+      assert.equal(scopeMismatch.statusCode, 422);
+      assert.equal(scopeMismatch.body.error.code, "agent_response_scope_mismatch");
 
       const reclaimedClaim = await requestJson({
         port,
@@ -3874,7 +3946,11 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
           agent_id: "agent_beta_stage2",
           repo_ref: "Little-Shock/OpenShockSwarm",
           branch: "feat/initial-implementation",
-          lane_id: "lane_stage2_beta"
+          lane_id: "lane_stage2_beta",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(reclaimedClaim.statusCode, 200);
@@ -3897,7 +3973,11 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         path: "/v1/runtime/worktree-claims/topic_stage2_invalid",
         body: {
           agent_id: "agent_beta_stage2",
-          branch: "feat/initial-implementation"
+          branch: "feat/initial-implementation",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(badClaim.statusCode, 400);
@@ -3920,7 +4000,11 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
         method: "POST",
         path: "/v1/runtime/agents/agent_unknown_stage2/heartbeat",
         body: {
-          status: "running"
+          status: "running",
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId
         }
       });
       assert.equal(unknownHeartbeat.statusCode, 404);
@@ -3936,6 +4020,16 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
       assert.equal(finalRegistry.body.summary.machine_count, 1);
       assert.equal(finalRegistry.body.summary.agent_count, 2);
       assert.equal(finalRegistry.body.summary.active_worktree_claim_count, 0);
+      assert.equal(
+        finalRegistry.body.agents.some(
+          (item) =>
+            item.agent_id === "agent_beta_stage2" &&
+            item.owner_operator_id === operatorId &&
+            item.assigned_channel_id === channelId &&
+            item.assigned_thread_id === threadId
+        ),
+        true
+      );
       assert.equal(finalRegistry.body.projection_meta.resource, "runtime_registry_projection");
       const registryPayload = JSON.stringify(finalRegistry.body);
       assert.equal(registryPayload.includes("worktree_path"), false);

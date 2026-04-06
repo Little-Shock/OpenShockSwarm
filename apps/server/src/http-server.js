@@ -655,6 +655,10 @@ function serializeRuntimeAgent(agent) {
     agent_id: agent.agentId,
     machine_id: agent.machineId,
     runtime_id: agent.runtimeId,
+    owner_operator_id: agent.ownerOperatorId ?? null,
+    assigned_channel_id: agent.assignedChannelId ?? null,
+    assigned_thread_id: agent.assignedThreadId ?? null,
+    assigned_workitem_id: agent.assignedWorkitemId ?? null,
     status: agent.status,
     pairing_state: agent.pairingState ?? "unknown",
     liveness: agent.liveness ?? "unknown",
@@ -669,6 +673,10 @@ function serializeRuntimeWorktreeClaim(claim) {
   return {
     claim_key: claim.claimKey,
     agent_id: claim.agentId,
+    owner_operator_id: claim.ownerOperatorId ?? null,
+    assigned_channel_id: claim.assignedChannelId ?? null,
+    assigned_thread_id: claim.assignedThreadId ?? null,
+    assigned_workitem_id: claim.assignedWorkitemId ?? null,
     machine_id: claim.machineId,
     runtime_id: claim.runtimeId,
     repo_ref: claim.repoRef,
@@ -3111,7 +3119,11 @@ export function createHttpServer(coordinator, options = {}) {
         assertObjectBody(body, "invalid_runtime_agent", "runtime agent payload must be object");
         const agent = coordinator.upsertRuntimeAgent(route.agentId, {
           machineId: body.machine_id,
-          status: body.status
+          status: body.status,
+          operatorId: body.operator_id,
+          channelId: body.channel_id,
+          threadId: body.thread_id,
+          workitemId: body.workitem_id
         });
         sendJson(response, 200, {
           agent: serializeRuntimeAgent(agent),
@@ -3125,7 +3137,11 @@ export function createHttpServer(coordinator, options = {}) {
         assertObjectBody(body, "invalid_runtime_pairing", "runtime pairing payload must be object");
         const agent = coordinator.pairRuntimeAgent(route.agentId, {
           machineId: body.machine_id,
-          status: body.status
+          status: body.status,
+          operatorId: body.operator_id,
+          channelId: body.channel_id,
+          threadId: body.thread_id,
+          workitemId: body.workitem_id
         });
         sendJson(response, 200, {
           pairing: {
@@ -3141,7 +3157,11 @@ export function createHttpServer(coordinator, options = {}) {
         const body = await readJsonBody(request);
         assertObjectBody(body, "invalid_runtime_heartbeat", "runtime heartbeat payload must be object");
         const agent = coordinator.heartbeatRuntimeAgent(route.agentId, {
-          status: body.status
+          status: body.status,
+          operatorId: body.operator_id,
+          channelId: body.channel_id,
+          threadId: body.thread_id,
+          workitemId: body.workitem_id
         });
         sendJson(response, 200, {
           heartbeat: {
@@ -3175,7 +3195,11 @@ export function createHttpServer(coordinator, options = {}) {
           agentId: body.agent_id,
           repoRef: body.repo_ref,
           branch: body.branch,
-          laneId: body.lane_id
+          laneId: body.lane_id,
+          operatorId: body.operator_id,
+          channelId: body.channel_id,
+          threadId: body.thread_id,
+          workitemId: body.workitem_id
         });
         sendJson(response, 200, {
           claim: serializeRuntimeWorktreeClaim(claim),

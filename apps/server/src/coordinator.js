@@ -167,6 +167,14 @@ function resolveLivenessState(lastSeenAt, nowMs, timeoutMs) {
   return nowMs - seenMs <= timeoutMs ? "online" : "offline";
 }
 
+function normalizeOptionalScopeId(input) {
+  if (typeof input !== "string") {
+    return null;
+  }
+  const trimmed = input.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function parseProviderRef(input, { requireRepoRef = true } = {}) {
   assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "provider_ref_required", "provider_ref must be an object");
   const provider = typeof input.provider === "string" ? input.provider.trim() : "";
@@ -1815,11 +1823,21 @@ export class ServerCoordinator {
           ? input.status.trim()
           : existing?.status ?? "idle",
       pairingState: "paired",
+      ownerOperatorId: existing?.ownerOperatorId ?? null,
+      assignedChannelId: existing?.assignedChannelId ?? null,
+      assignedThreadId: existing?.assignedThreadId ?? null,
+      assignedWorkitemId: existing?.assignedWorkitemId ?? null,
       registeredAt: existing?.registeredAt ?? now,
       pairedAt: now,
       lastSeenAt: now,
       updatedAt: now
     };
+    this.applyRuntimeOwnershipBoundary(agent, {
+      operatorId: input.operatorId,
+      channelId: input.channelId,
+      threadId: input.threadId,
+      workitemId: input.workitemId
+    });
     this.runtimeAgents.set(normalizedAgentId, agent);
     machine.lastSeenAt = now;
     machine.updatedAt = now;
@@ -1848,6 +1866,47 @@ export class ServerCoordinator {
     };
   }
 
+  applyRuntimeOwnershipBoundary(agent, input = {}) {
+    const incomingOperatorId = normalizeOptionalScopeId(input.operatorId);
+    if (agent.ownerOperatorId && incomingOperatorId && agent.ownerOperatorId !== incomingOperatorId) {
+      throw new CoordinatorError(
+        "agent_operator_mismatch",
+        `runtime agent ${agent.agentId} belongs to operator ${agent.ownerOperatorId}`,
+        {
+          expected_operator_id: agent.ownerOperatorId,
+          got_operator_id: incomingOperatorId
+        }
+      );
+    }
+    if (!agent.ownerOperatorId) {
+      agent.ownerOperatorId = incomingOperatorId ?? "single_operator_default";
+    }
+
+    const scopeBindings = [
+      { key: "assignedChannelId", value: normalizeOptionalScopeId(input.channelId), scope: "channel_id" },
+      { key: "assignedThreadId", value: normalizeOptionalScopeId(input.threadId), scope: "thread_id" },
+      { key: "assignedWorkitemId", value: normalizeOptionalScopeId(input.workitemId), scope: "workitem_id" }
+    ];
+    for (const binding of scopeBindings) {
+      if (!binding.value) {
+        continue;
+      }
+      const existing = agent[binding.key] ?? null;
+      if (existing && existing !== binding.value) {
+        throw new CoordinatorError(
+          "agent_response_scope_mismatch",
+          `runtime agent ${agent.agentId} is pinned to ${binding.scope} ${existing}`,
+          {
+            scope: binding.scope,
+            expected: existing,
+            got: binding.value
+          }
+        );
+      }
+      agent[binding.key] = binding.value;
+    }
+  }
+
   pairRuntimeAgent(agentId, input = {}) {
     assertOrThrow(typeof agentId === "string" && agentId.trim().length > 0, "invalid_runtime_agent_id", "agentId is required");
     assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "invalid_runtime_pairing", "runtime pairing payload must be object");
@@ -1860,6 +1919,12 @@ export class ServerCoordinator {
     const machine = this.runtimeMachines.get(machineId);
     assertOrThrow(machine, "runtime_machine_not_found", `runtime machine ${machineId} not found`);
     const now = nowIso();
+    this.applyRuntimeOwnershipBoundary(agent, {
+      operatorId: input.operatorId,
+      channelId: input.channelId,
+      threadId: input.threadId,
+      workitemId: input.workitemId
+    });
     agent.machineId = machineId;
     agent.runtimeId = machine.runtimeId;
     if (typeof input.status === "string" && input.status.trim().length > 0) {
@@ -1882,6 +1947,12 @@ export class ServerCoordinator {
     const agent = this.runtimeAgents.get(normalizedAgentId);
     assertOrThrow(agent, "runtime_agent_not_found", `runtime agent ${normalizedAgentId} not found`);
     const now = nowIso();
+    this.applyRuntimeOwnershipBoundary(agent, {
+      operatorId: input.operatorId,
+      channelId: input.channelId,
+      threadId: input.threadId,
+      workitemId: input.workitemId
+    });
     if (typeof input.status === "string" && input.status.trim().length > 0) {
       agent.status = input.status.trim();
     }
@@ -1911,6 +1982,12 @@ export class ServerCoordinator {
     assertOrThrow(branch, "invalid_repo_branch", "branch is required");
     const agent = this.runtimeAgents.get(agentId);
     assertOrThrow(agent, "runtime_agent_not_found", `runtime agent ${agentId} not found`);
+    this.applyRuntimeOwnershipBoundary(agent, {
+      operatorId: input.operatorId,
+      channelId: input.channelId,
+      threadId: input.threadId,
+      workitemId: input.workitemId
+    });
     const nowMs = Date.now();
     const agentLiveness = resolveLivenessState(agent.lastSeenAt, nowMs, this.runtimeLivenessMs);
     assertOrThrow(agentLiveness === "online", "runtime_agent_not_live", `runtime agent ${agentId} must be online`);
@@ -1936,6 +2013,10 @@ export class ServerCoordinator {
     const claim = {
       claimKey: normalizedClaimKey,
       agentId,
+      ownerOperatorId: agent.ownerOperatorId ?? null,
+      assignedChannelId: agent.assignedChannelId ?? null,
+      assignedThreadId: agent.assignedThreadId ?? null,
+      assignedWorkitemId: agent.assignedWorkitemId ?? null,
       machineId: agent.machineId,
       runtimeId: agent.runtimeId,
       repoRef,
