@@ -70,6 +70,11 @@ function matchRoute(method, pathName) {
     return { route: "GET_V1_RUN_REPLAY", runId: v1RunsReplayMatch[1] };
   }
 
+  const v1ExecutionRunDebugMatch = pathName.match(/^\/v1\/execution\/runs\/([^/]+)\/debug$/);
+  if (method === "GET" && v1ExecutionRunDebugMatch) {
+    return { route: "GET_V1_EXECUTION_RUN_DEBUG", runId: v1ExecutionRunDebugMatch[1] };
+  }
+
   const v1RunMatch = pathName.match(/^\/v1\/runs\/([^/]+)$/);
   if (method === "GET" && v1RunMatch) {
     return { route: "GET_V1_RUN", runId: v1RunMatch[1] };
@@ -403,6 +408,14 @@ export function createHttpServer(coordinator, options = {}) {
           topicId: parsedUrl.searchParams.get("topic_id"),
           cursor: parsedUrl.searchParams.get("cursor"),
           limit: parsedUrl.searchParams.get("limit")
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (match.route === "GET_V1_EXECUTION_RUN_DEBUG") {
+        const result = coordinator.getExecutionRunDebugEvidenceProjection(match.runId, {
+          topicId: parsedUrl.searchParams.get("topic_id")
         });
         sendJson(response, 200, result);
         return;

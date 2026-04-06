@@ -1886,3 +1886,229 @@ test("v1 batch6 integration replay/debug/run-history/compatibility surfaces expo
     }
   );
 });
+
+test("v1 batch6 execution debug evidence endpoint exposes failure anchor and replay contract", async () => {
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId: "topic_v1_batch6_execution_failure"
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const overview = await requestJson({
+        port,
+        method: "GET",
+        path: "/topics/topic_v1_batch6_execution_failure/overview"
+      });
+      assert.equal(overview.statusCode, 200);
+
+      const truthPatch = await requestJson({
+        port,
+        method: "POST",
+        path: "/topics/topic_v1_batch6_execution_failure/messages",
+        body: {
+          type: "shared_truth_proposal",
+          sourceAgentId: "lead_sample_01",
+          sourceRole: "lead",
+          truthRevision: overview.body.revision,
+          payload: {
+            patch: {
+              deliveryState: {
+                state: "awaiting_merge_gate",
+                run_id: "run_batch6_exec_failure_01"
+              },
+              delivery_closeout: {
+                run_id: "run_batch6_exec_failure_01",
+                checkpoint_refs: ["checkpoint://batch6-exec-failure"],
+                artifact_refs: ["artifact://batch6-exec-failure"]
+              },
+              replay_debug_evidence: {
+                run_id: "run_batch6_exec_failure_01",
+                failure_reason: "approval_waiting",
+                checkpoint_refs: ["checkpoint://batch6-exec-failure"],
+                artifact_refs: ["artifact://batch6-exec-failure"]
+              }
+            }
+          }
+        }
+      });
+      assert.equal(truthPatch.statusCode, 200);
+
+      const feedbackEvent = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/daemon/events",
+        body: {
+          topicId: "topic_v1_batch6_execution_failure",
+          type: "feedback_ingest",
+          runId: "run_batch6_exec_failure_01",
+          laneId: "lane_batch6_exec_failure_01",
+          payload: {
+            feedbackId: "feedback_batch6_exec_failure_01",
+            summary: "execution debug evidence for failure",
+            trace_id: "trace_batch6_exec_failure_01"
+          }
+        }
+      });
+      assert.equal(feedbackEvent.statusCode, 200);
+
+      const blockerEvent = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/daemon/events",
+        body: {
+          topicId: "topic_v1_batch6_execution_failure",
+          type: "blocker_escalation",
+          runId: "run_batch6_exec_failure_01",
+          laneId: "lane_batch6_exec_failure_01",
+          payload: {
+            reason: "approval hold unresolved"
+          }
+        }
+      });
+      assert.equal(blockerEvent.statusCode, 200);
+
+      const runDebug = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/execution/runs/run_batch6_exec_failure_01/debug?topic_id=topic_v1_batch6_execution_failure"
+      });
+      assert.equal(runDebug.statusCode, 200);
+      assert.equal(runDebug.body.projection, "execution_replay_debug_evidence");
+      assert.equal(runDebug.body.evidence_bundle.run.run_id, "run_batch6_exec_failure_01");
+      assert.equal(runDebug.body.evidence_bundle.recovery.outcome, "failure_or_blocked");
+      assert.equal(runDebug.body.evidence_bundle.recovery.failure_reason, "approval_waiting");
+      assert.equal(
+        runDebug.body.evidence_bundle.replay_contract.events_path,
+        "/v1/runs/run_batch6_exec_failure_01/replay?topic_id=topic_v1_batch6_execution_failure"
+      );
+      assert.ok(runDebug.body.evidence_bundle.replay_contract.latest_sequence >= 2);
+      assert.ok(runDebug.body.evidence_bundle.replay_contract.anchors.failure);
+      assert.ok(runDebug.body.evidence_bundle.replay_contract.anchors.failure.after_sequence >= 0);
+      assert.ok(
+        runDebug.body.evidence_bundle.replay_contract.anchors.closeout.checkpoint_refs.includes(
+          "checkpoint://batch6-exec-failure"
+        )
+      );
+      assert.ok(
+        runDebug.body.evidence_bundle.replay_contract.anchors.closeout.artifact_refs.includes(
+          "artifact://batch6-exec-failure"
+        )
+      );
+
+      const payload = JSON.stringify(runDebug.body);
+      assert.equal(payload.includes("worktree_path"), false);
+      assert.equal(payload.includes("lane_root_path"), false);
+      assert.equal(payload.includes("lane_worktree_path"), false);
+      assert.equal(payload.includes("run_path"), false);
+      assert.equal(payload.includes("acked_sequence"), false);
+      assert.equal(payload.includes("unacked_events"), false);
+    }
+  );
+});
+
+test("v1 batch6 execution debug evidence endpoint exposes closeout anchor for backend truth lineage", async () => {
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId: "topic_v1_batch6_execution_closeout"
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const overview = await requestJson({
+        port,
+        method: "GET",
+        path: "/topics/topic_v1_batch6_execution_closeout/overview"
+      });
+      assert.equal(overview.statusCode, 200);
+
+      const truthPatch = await requestJson({
+        port,
+        method: "POST",
+        path: "/topics/topic_v1_batch6_execution_closeout/messages",
+        body: {
+          type: "shared_truth_proposal",
+          sourceAgentId: "lead_sample_01",
+          sourceRole: "lead",
+          truthRevision: overview.body.revision,
+          payload: {
+            patch: {
+              deliveryState: {
+                state: "pr_ready",
+                run_id: "run_batch6_exec_closeout_01"
+              },
+              delivery_closeout: {
+                run_id: "run_batch6_exec_closeout_01",
+                checkpoint_refs: ["checkpoint://batch6-exec-closeout"],
+                artifact_refs: ["artifact://batch6-exec-closeout"]
+              }
+            }
+          }
+        }
+      });
+      assert.equal(truthPatch.statusCode, 200);
+
+      const statusEvent = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/daemon/events",
+        body: {
+          topicId: "topic_v1_batch6_execution_closeout",
+          type: "status_report",
+          runId: "run_batch6_exec_closeout_01",
+          laneId: "lane_batch6_exec_closeout_01",
+          payload: {
+            event: "delivery_writeback_completed",
+            checkpoint_refs: ["checkpoint://batch6-exec-closeout"],
+            artifact_refs: ["artifact://batch6-exec-closeout"]
+          }
+        }
+      });
+      assert.equal(statusEvent.statusCode, 200);
+
+      const runDebug = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/execution/runs/run_batch6_exec_closeout_01/debug?topic_id=topic_v1_batch6_execution_closeout"
+      });
+      assert.equal(runDebug.statusCode, 200);
+      assert.equal(runDebug.body.projection, "execution_replay_debug_evidence");
+      assert.equal(runDebug.body.evidence_bundle.recovery.outcome, "closeout_ready");
+      assert.equal(runDebug.body.evidence_bundle.recovery.failure_reason, null);
+      assert.ok(runDebug.body.evidence_bundle.replay_contract.anchors.closeout);
+      assert.equal(runDebug.body.evidence_bundle.replay_contract.anchors.failure, null);
+      assert.ok(
+        runDebug.body.evidence_bundle.replay_contract.anchors.closeout.checkpoint_refs.includes(
+          "checkpoint://batch6-exec-closeout"
+        )
+      );
+      assert.ok(
+        runDebug.body.evidence_bundle.replay_contract.anchors.closeout.artifact_refs.includes(
+          "artifact://batch6-exec-closeout"
+        )
+      );
+      assert.ok(runDebug.body.evidence_bundle.replay_contract.latest_sequence >= 1);
+      assert.ok(runDebug.body.evidence_bundle.replay_contract.anchors.closeout.after_sequence >= 0);
+      assert.ok(
+        runDebug.body.evidence_bundle.replay_contract.anchors.closeout.after_sequence <=
+          runDebug.body.evidence_bundle.replay_contract.latest_sequence
+      );
+    }
+  );
+});

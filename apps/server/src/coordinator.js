@@ -556,6 +556,123 @@ function buildRunCloseoutProjection(topic, runId, runMessages) {
   };
 }
 
+function buildRunReplayEvidenceTimeline(topic, topicId, runId) {
+  const runMessages = collectRunMessages(topic, runId, { includeControl: false });
+  return runMessages.map((message, index) => ({
+    sequence: index + 1,
+    message,
+    event: toProjectionEvent(topicId, message),
+    closeout_projection: buildMessageCloseoutProjection(topic, message)
+  }));
+}
+
+function eventNameLooksFailureLike(eventName) {
+  if (typeof eventName !== "string") {
+    return false;
+  }
+  const normalized = eventName.toLowerCase();
+  return (
+    normalized.includes("fail") ||
+    normalized.includes("block") ||
+    normalized.includes("reject") ||
+    normalized.includes("timeout") ||
+    normalized.includes("error") ||
+    normalized.includes("conflict")
+  );
+}
+
+function extractFailureReasonFromMessage(message) {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const payload = message.payload && typeof message.payload === "object" ? message.payload : {};
+  return pickFirstString(payload, [
+    "failure_reason",
+    "failureReason",
+    "error_reason",
+    "errorReason",
+    "status_reason",
+    "statusReason",
+    "reason",
+    "summary",
+    "message"
+  ]);
+}
+
+function buildFailureReplayAnchor(timeline, fallbackFailureReason = null) {
+  let matched = null;
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const entry = timeline[index];
+    const message = entry.message;
+    const statusEvent = message?.type === "status_report" ? message?.payload?.event : null;
+    const reason = extractFailureReasonFromMessage(message);
+    const failureLike =
+      message?.type === "blocker_escalation" ||
+      eventNameLooksFailureLike(statusEvent) ||
+      (reason !== null && reason.length > 0);
+    if (failureLike) {
+      matched = {
+        sequence: entry.sequence,
+        event: entry.event,
+        reason
+      };
+      break;
+    }
+  }
+
+  if (!matched && !fallbackFailureReason) {
+    return null;
+  }
+
+  const sequence = matched?.sequence ?? timeline.length;
+  return {
+    anchor_type: "failure",
+    after_sequence: sequence > 0 ? sequence - 1 : 0,
+    event_type: matched?.event?.event_type ?? null,
+    message_id: matched?.event?.message_id ?? null,
+    failure_reason: matched?.reason ?? fallbackFailureReason ?? null
+  };
+}
+
+function buildCloseoutReplayAnchor(timeline, checkpointRefs, artifactRefs) {
+  const targetCheckpointRefs = Array.isArray(checkpointRefs) ? checkpointRefs : [];
+  const targetArtifactRefs = Array.isArray(artifactRefs) ? artifactRefs : [];
+  if (targetCheckpointRefs.length === 0 && targetArtifactRefs.length === 0) {
+    return null;
+  }
+
+  const expectedCheckpoints = new Set(targetCheckpointRefs);
+  const expectedArtifacts = new Set(targetArtifactRefs);
+  const seenCheckpoints = new Set();
+  const seenArtifacts = new Set();
+  let matchedSequence = timeline.length;
+
+  for (const entry of timeline) {
+    const projection = entry.closeout_projection ?? {};
+    const projectionCheckpoints = Array.isArray(projection.checkpoint_refs) ? projection.checkpoint_refs : [];
+    const projectionArtifacts = Array.isArray(projection.artifact_refs) ? projection.artifact_refs : [];
+    for (const ref of projectionCheckpoints) {
+      seenCheckpoints.add(ref);
+    }
+    for (const ref of projectionArtifacts) {
+      seenArtifacts.add(ref);
+    }
+    const checkpointsReady = Array.from(expectedCheckpoints.values()).every((ref) => seenCheckpoints.has(ref));
+    const artifactsReady = Array.from(expectedArtifacts.values()).every((ref) => seenArtifacts.has(ref));
+    if (checkpointsReady && artifactsReady) {
+      matchedSequence = entry.sequence;
+      break;
+    }
+  }
+
+  return {
+    anchor_type: "closeout",
+    after_sequence: matchedSequence > 0 ? matchedSequence - 1 : 0,
+    checkpoint_refs: [...targetCheckpointRefs],
+    artifact_refs: [...targetArtifactRefs]
+  };
+}
+
 function collectRunMessages(topic, runId, { includeControl = true } = {}) {
   if (typeof runId !== "string" || runId.length === 0) {
     return [];
@@ -1726,6 +1843,63 @@ export class ServerCoordinator {
       explanation_projection: deepClone(explanationProjection),
       items,
       next_cursor: nextOffset < timeline.length ? `o:${nextOffset}` : null
+    };
+  }
+
+  getExecutionRunDebugEvidenceProjection(runId, input = {}) {
+    assertOrThrow(typeof runId === "string" && runId.length > 0, "run_id_required", "runId is required");
+    const topicId = typeof input.topicId === "string" && input.topicId.trim().length > 0 ? input.topicId.trim() : null;
+    const resolved = this.resolveTopicForRun(runId, topicId);
+    const summary = collectRunSummary(resolved.topic, resolved.topicId, runId);
+    const explanationProjection = buildRunExplanationProjection(resolved.topic, runId);
+    const timeline = buildRunReplayEvidenceTimeline(resolved.topic, resolved.topicId, runId);
+    const latestSequence = timeline.length;
+    const failureReason = explanationProjection.control_evidence?.failure_reason ?? null;
+    const lineage = {
+      topic_ref: deepClone(explanationProjection.topic_ref),
+      actor_refs: deepClone(explanationProjection.execution_evidence?.actor_refs ?? []),
+      checkpoint_refs: deepClone(explanationProjection.execution_evidence?.checkpoint_refs ?? []),
+      artifact_refs: deepClone(explanationProjection.execution_evidence?.artifact_refs ?? [])
+    };
+    const replayContract = {
+      events_path: `/v1/runs/${encodeURIComponent(runId)}/replay?topic_id=${encodeURIComponent(resolved.topicId)}`,
+      start_after_sequence: 0,
+      latest_sequence: latestSequence,
+      anchors: {
+        failure: buildFailureReplayAnchor(timeline, failureReason),
+        closeout: buildCloseoutReplayAnchor(timeline, lineage.checkpoint_refs, lineage.artifact_refs)
+      }
+    };
+
+    return {
+      projection: "execution_replay_debug_evidence",
+      topic_id: resolved.topicId,
+      run_id: runId,
+      evidence_bundle: {
+        run: {
+          run_id: summary.run_id,
+          topic_id: summary.topic_id,
+          lane_ids: deepClone(summary.lane_ids),
+          event_count: summary.event_count,
+          feedback_count: summary.feedback_count,
+          hold_count: summary.hold_count,
+          started_at: summary.started_at,
+          last_event_at: summary.last_event_at,
+          last_event_type: summary.last_event_type,
+          last_state: summary.last_state
+        },
+        recovery: {
+          outcome: explanationProjection.outcome,
+          merge_lifecycle_state: explanationProjection.control_evidence?.merge_lifecycle_state ?? "unknown",
+          recovery_needed: explanationProjection.outcome === "failure_or_blocked",
+          failure_reason: failureReason,
+          approval_hold_count: explanationProjection.control_evidence?.approval_hold_count ?? 0,
+          unresolved_conflict_count: explanationProjection.control_evidence?.unresolved_conflict_count ?? 0,
+          blocker_count: explanationProjection.control_evidence?.blocker_count ?? 0
+        },
+        lineage,
+        replay_contract: replayContract
+      }
     };
   }
 
