@@ -24,7 +24,6 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		t.Fatalf("LogoutAuthSession() error = %v", err)
 	}
 
-	baseline := s.Snapshot()
 	cases := []struct {
 		name       string
 		method     string
@@ -47,6 +46,8 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
+			// Snapshot carries time-derived runtime fields, so capture it per subtest.
+			baseline := s.Snapshot()
 			resp := doJSONRequest(t, http.DefaultClient, testCase.method, server.URL+testCase.path, testCase.body)
 			defer resp.Body.Close()
 
