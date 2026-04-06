@@ -23,6 +23,8 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	projectRoot := projectRoot(t)
 	repoRoot := createTempGitRepo(t)
 	prependCLIToPath(t, writeFakeClaudeCLI(t))
+	prependCLIToPath(t, writeFakeGitWrapper(t))
+	prependCLIToPath(t, writeFakeGitHubCLI(t))
 
 	daemonPort := freePort(t)
 	serverPort := freePort(t)
@@ -169,6 +171,25 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		t.Fatalf("room note missing PR lifecycle entries:\n%s", roomContent)
 	}
 
+	memoryPath := filepath.Join(repoRoot, "MEMORY.md")
+	memoryBody, err := os.ReadFile(memoryPath)
+	if err != nil {
+		t.Fatalf("read workspace memory: %v", err)
+	}
+	memoryContent := string(memoryBody)
+	if !strings.Contains(memoryContent, "Issue Created") || !strings.Contains(memoryContent, "Worktree Ready") || !strings.Contains(memoryContent, "Pull Request Created") || !strings.Contains(memoryContent, "Pull Request Status Updated") {
+		t.Fatalf("workspace memory missing lifecycle writeback:\n%s", memoryContent)
+	}
+
+	memoryArtifact := findByField(t, state["memory"], "path", "MEMORY.md")
+	if !strings.Contains(stringField(t, memoryArtifact, "summary"), "Pull Request Status Updated") {
+		t.Fatalf("workspace memory artifact summary = %q, want latest writeback", stringField(t, memoryArtifact, "summary"))
+	}
+	decisionArtifact := findByField(t, state["memory"], "path", filepath.ToSlash(filepath.Join("decisions", strings.ToLower(stringField(t, issue, "key"))+".md")))
+	if !strings.Contains(stringField(t, decisionArtifact, "summary"), "merged") {
+		t.Fatalf("decision artifact summary = %q, want merged writeback", stringField(t, decisionArtifact, "summary"))
+	}
+
 	deleteReq, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, serverURL+"/v1/runtime/pairing", nil)
 	if err != nil {
 		t.Fatalf("new delete pairing request: %v", err)
@@ -207,6 +228,83 @@ esac
 `
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake claude cli: %v", err)
+	}
+	return dir
+}
+
+func writeFakeGitHubCLI(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "gh-state")
+	if err := os.WriteFile(statePath, []byte("open"), 0o644); err != nil {
+		t.Fatalf("write fake gh state: %v", err)
+	}
+	t.Setenv("OPENSHOCK_FAKE_GH_STATE", statePath)
+
+	path := filepath.Join(dir, "gh")
+	script := `#!/bin/sh
+state_file="${OPENSHOCK_FAKE_GH_STATE:?}"
+command="$1"
+subcommand="$2"
+
+if [ "$command" = "auth" ] && [ "$subcommand" = "status" ]; then
+  printf 'github.com\n  ✓ Logged in\n'
+  exit 0
+fi
+
+if [ "$command" = "pr" ] && [ "$subcommand" = "create" ]; then
+  printf 'open' > "$state_file"
+  printf 'https://github.com/example/integration-loop/pull/101\n'
+  exit 0
+fi
+
+if [ "$command" = "pr" ] && [ "$subcommand" = "merge" ]; then
+  printf 'merged' > "$state_file"
+  printf 'merged\n'
+  exit 0
+fi
+
+if [ "$command" = "pr" ] && [ "$subcommand" = "view" ]; then
+  state="$(cat "$state_file" 2>/dev/null || printf 'open')"
+  if [ "$state" = "merged" ]; then
+    printf '{"number":101,"title":"Integration Loop","url":"https://github.com/example/integration-loop/pull/101","state":"MERGED","isDraft":false,"reviewDecision":"APPROVED","headRefName":"feat/integration-loop","baseRefName":"main","updatedAt":"2026-04-06T11:24:00Z","mergedAt":"2026-04-06T11:24:00Z","author":{"login":"ClaudeReviewRunner"}}\n'
+  else
+    printf '{"number":101,"title":"Integration Loop","url":"https://github.com/example/integration-loop/pull/101","state":"OPEN","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","headRefName":"feat/integration-loop","baseRefName":"main","updatedAt":"2026-04-06T11:20:00Z","mergedAt":"","author":{"login":"ClaudeReviewRunner"}}\n'
+  fi
+  exit 0
+fi
+
+printf 'unsupported gh invocation: %s\n' "$*" >&2
+exit 1
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake gh cli: %v", err)
+	}
+	return dir
+}
+
+func writeFakeGitWrapper(t *testing.T) string {
+	t.Helper()
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("LookPath(git): %v", err)
+	}
+	t.Setenv("OPENSHOCK_REAL_GIT", realGit)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "git")
+	script := `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "push" ]; then
+    exit 0
+  fi
+done
+exec "${OPENSHOCK_REAL_GIT:?}" "$@"
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake git wrapper: %v", err)
 	}
 	return dir
 }

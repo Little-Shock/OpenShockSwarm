@@ -18,7 +18,7 @@ import (
 type Config struct {
 	DaemonURL     string
 	WorkspaceRoot string
-	GitHub        githubsvc.Prober
+	GitHub        githubsvc.Client
 }
 
 type Server struct {
@@ -28,7 +28,7 @@ type Server struct {
 	daemonURL        string
 	daemonMu         sync.RWMutex
 	workspaceRoot    string
-	github           githubsvc.Prober
+	github           githubsvc.Client
 }
 
 type ExecRequest struct {
@@ -324,9 +324,43 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		nextState, pullRequestID, err := s.store.CreatePullRequest(roomID)
+		snapshot := s.store.Snapshot()
+		if existing, ok := findPullRequestByRoom(snapshot, roomID); ok {
+			nextState, err := s.syncStoredPullRequest(existing)
+			if err != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"pullRequestId": existing.ID, "state": nextState})
+			return
+		}
+
+		room, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "room not found"})
+			return
+		}
+
+		remotePullRequest, err := s.github.CreatePullRequest(s.workspaceRoot, githubsvc.CreatePullRequestInput{
+			Repo:       snapshot.Workspace.Repo,
+			BaseBranch: defaultString(snapshot.Workspace.Branch, "main"),
+			HeadBranch: run.Branch,
+			Title:      issue.Title,
+			Body:       buildPullRequestBody(issue, room, run),
+		})
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("GitHub PR 创建失败：%s", err.Error()), "blocked")
+			if appendErr != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "state": nextState})
+			return
+		}
+
+		nextState, pullRequestID, err := s.store.CreatePullRequestFromRemote(roomID, mapGitHubPullRequest(remotePullRequest))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"pullRequestId": pullRequestID, "state": nextState})
@@ -414,7 +448,13 @@ func (s *Server) handlePullRequests(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.store.Snapshot().PullRequests)
+	snapshot := s.store.Snapshot()
+	nextState, err := s.syncStoredPullRequests(snapshot.PullRequests)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, nextState.PullRequests)
 }
 
 func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request) {
@@ -425,13 +465,22 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 	}
 	if r.Method == http.MethodGet {
 		snapshot := s.store.Snapshot()
-		for _, item := range snapshot.PullRequests {
-			if item.ID == pullRequestID {
-				writeJSON(w, http.StatusOK, item)
-				return
-			}
+		item, ok := findPullRequest(snapshot, pullRequestID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+			return
 		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		nextState, err := s.syncStoredPullRequest(item)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		synced, ok := findPullRequest(nextState, pullRequestID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, synced)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -444,12 +493,165 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
-	nextState, err := s.store.UpdatePullRequestStatus(pullRequestID, req.Status)
+	snapshot := s.store.Snapshot()
+	item, ok := findPullRequest(snapshot, pullRequestID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+
+	var remotePullRequest githubsvc.PullRequest
+	var err error
+	if req.Status == "merged" {
+		remotePullRequest, err = s.github.MergePullRequest(s.workspaceRoot, githubsvc.MergePullRequestInput{
+			Repo:   snapshot.Workspace.Repo,
+			Number: item.Number,
+		})
+	} else {
+		remotePullRequest, err = s.github.SyncPullRequest(s.workspaceRoot, githubsvc.SyncPullRequestInput{
+			Repo:   snapshot.Workspace.Repo,
+			Number: item.Number,
+		})
+	}
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		nextState, appendErr := s.store.AppendSystemRoomMessage(item.RoomID, "System", fmt.Sprintf("GitHub PR 同步失败：%s", err.Error()), "blocked")
+		if appendErr != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "state": nextState})
+		return
+	}
+
+	nextState, err := s.store.SyncPullRequestFromRemote(pullRequestID, mapGitHubPullRequest(remotePullRequest))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
+}
+
+func (s *Server) syncStoredPullRequests(items []store.PullRequest) (store.State, error) {
+	finalState := s.store.Snapshot()
+	for _, item := range items {
+		nextState, err := s.syncStoredPullRequest(item)
+		if err != nil {
+			return store.State{}, err
+		}
+		finalState = nextState
+	}
+	return finalState, nil
+}
+
+func (s *Server) syncStoredPullRequest(item store.PullRequest) (store.State, error) {
+	snapshot := s.store.Snapshot()
+	if !shouldSyncGitHubPullRequest(snapshot.Workspace, item) {
+		return snapshot, nil
+	}
+
+	remotePullRequest, err := s.github.SyncPullRequest(s.workspaceRoot, githubsvc.SyncPullRequestInput{
+		Repo:   snapshot.Workspace.Repo,
+		Number: item.Number,
+	})
+	if err != nil {
+		return store.State{}, err
+	}
+	return s.store.SyncPullRequestFromRemote(item.ID, mapGitHubPullRequest(remotePullRequest))
+}
+
+func shouldSyncGitHubPullRequest(workspace store.WorkspaceSnapshot, item store.PullRequest) bool {
+	return item.Number > 0 && strings.TrimSpace(item.Provider) == "github" && strings.TrimSpace(workspace.Repo) != ""
+}
+
+func mapGitHubPullRequest(pullRequest githubsvc.PullRequest) store.PullRequestRemoteSnapshot {
+	status := "in_review"
+	switch {
+	case pullRequest.Merged || strings.EqualFold(pullRequest.State, "MERGED"):
+		status = "merged"
+	case pullRequest.IsDraft:
+		status = "draft"
+	case strings.EqualFold(pullRequest.ReviewDecision, "CHANGES_REQUESTED"):
+		status = "changes_requested"
+	case strings.EqualFold(pullRequest.State, "CLOSED"):
+		status = "changes_requested"
+	}
+
+	return store.PullRequestRemoteSnapshot{
+		Number:         pullRequest.Number,
+		Title:          pullRequest.Title,
+		Status:         status,
+		Branch:         pullRequest.HeadRefName,
+		BaseBranch:     pullRequest.BaseRefName,
+		Author:         pullRequest.Author,
+		Provider:       "github",
+		URL:            pullRequest.URL,
+		ReviewDecision: pullRequest.ReviewDecision,
+		UpdatedAt:      pullRequest.UpdatedAt,
+	}
+}
+
+func findRoomRunIssue(snapshot store.State, roomID string) (store.Room, store.Run, store.Issue, bool) {
+	var room store.Room
+	var run store.Run
+	var issue store.Issue
+	var roomFound, runFound, issueFound bool
+
+	for _, candidate := range snapshot.Rooms {
+		if candidate.ID == roomID {
+			room = candidate
+			roomFound = true
+			break
+		}
+	}
+	if !roomFound {
+		return store.Room{}, store.Run{}, store.Issue{}, false
+	}
+	for _, candidate := range snapshot.Runs {
+		if candidate.RoomID == roomID {
+			run = candidate
+			runFound = true
+			break
+		}
+	}
+	for _, candidate := range snapshot.Issues {
+		if candidate.RoomID == roomID {
+			issue = candidate
+			issueFound = true
+			break
+		}
+	}
+	return room, run, issue, runFound && issueFound
+}
+
+func findPullRequest(snapshot store.State, pullRequestID string) (store.PullRequest, bool) {
+	for _, item := range snapshot.PullRequests {
+		if item.ID == pullRequestID {
+			return item, true
+		}
+	}
+	return store.PullRequest{}, false
+}
+
+func findPullRequestByRoom(snapshot store.State, roomID string) (store.PullRequest, bool) {
+	for _, item := range snapshot.PullRequests {
+		if item.RoomID == roomID {
+			return item, true
+		}
+	}
+	return store.PullRequest{}, false
+}
+
+func buildPullRequestBody(issue store.Issue, room store.Room, run store.Run) string {
+	return strings.TrimSpace(fmt.Sprintf(
+		"## %s\n\n%s\n\n- issue: %s\n- room: %s\n- run: %s\n- head: %s\n- worktree: %s",
+		issue.Title,
+		defaultString(issue.Summary, "等待补充摘要。"),
+		issue.Key,
+		room.ID,
+		run.ID,
+		run.Branch,
+		defaultString(run.Worktree, "n/a"),
+	))
 }
 
 func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,8 @@ import Link from "next/link";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import {
+  AgentDetailView,
+  AgentsListView,
   DetailRail,
   IssueDetailView,
   IssuesListView,
@@ -11,7 +13,13 @@ import {
   RunDetailView,
 } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
-import { fallbackState, type Issue, type Room, type Run } from "@/lib/mock-data";
+import {
+  fallbackState,
+  type AgentStatus,
+  type Issue,
+  type Room,
+  type Run,
+} from "@/lib/mock-data";
 
 type PanelTone = "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
 
@@ -77,6 +85,21 @@ function cn(...parts: Array<string | false | null | undefined>) {
 
 function getResolvedState<T>(items: T[], fallbackItems: T[]) {
   return items.length > 0 ? items : fallbackItems;
+}
+
+function LiveStateNotice({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-6 py-6">
+      <p className="font-display text-2xl font-bold">{title}</p>
+      <p className="mt-3 max-w-2xl text-base leading-7 text-[color:rgba(24,20,14,0.76)]">{message}</p>
+    </div>
+  );
 }
 
 function FactTile({ label, value }: { label: string; value: string }) {
@@ -230,10 +253,10 @@ export function LiveIssuesListView() {
 }
 
 export function LiveRoomsPageContent() {
-  const { state } = usePhaseZeroState();
-  const rooms = getResolvedState(state.rooms, fallbackState.rooms);
-  const issues = getResolvedState(state.issues, fallbackState.issues);
-  const runs = getResolvedState(state.runs, fallbackState.runs);
+  const { state, loading, error } = usePhaseZeroState();
+  const rooms = loading || error ? [] : state.rooms;
+  const issues = loading || error ? [] : state.issues;
+  const runs = loading || error ? [] : state.runs;
   const activeRooms = rooms.filter((room) => room.topic.status === "running" || room.topic.status === "review").length;
   const blockedRooms = rooms.filter((room) => room.topic.status === "blocked").length;
   const unreadCount = rooms.reduce((total, room) => total + room.unread, 0);
@@ -258,16 +281,151 @@ export function LiveRoomsPageContent() {
         />
       }
     >
-      <div className="grid gap-4 xl:grid-cols-2">
-        {rooms.map((room) => (
-          <RoomSnapshotCard
-            key={room.id}
-            room={room}
-            issue={issues.find((candidate) => candidate.roomId === room.id)}
-            run={runs.find((candidate) => candidate.id === room.runId)}
-          />
-        ))}
-      </div>
+      {loading ? (
+        <LiveStateNotice
+          title="正在同步讨论间真值"
+          message="等待 server 返回最新的 room / run / issue 状态，前端不再先拿本地 mock 卡片顶上。"
+        />
+      ) : error ? (
+        <LiveStateNotice title="讨论间同步失败" message={error} />
+      ) : rooms.length === 0 ? (
+        <LiveStateNotice title="当前还没有讨论间" message="等第一条 Issue 创建后，这里会直接显示 live room surface。" />
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {rooms.map((room) => (
+            <RoomSnapshotCard
+              key={room.id}
+              room={room}
+              issue={issues.find((candidate) => candidate.roomId === room.id)}
+              run={runs.find((candidate) => candidate.id === room.runId)}
+            />
+          ))}
+        </div>
+      )}
+    </OpenShockShell>
+  );
+}
+
+function agentStateLabel(state: AgentStatus["state"]) {
+  switch (state) {
+    case "running":
+      return "执行中";
+    case "blocked":
+      return "阻塞";
+    default:
+      return "待命";
+  }
+}
+
+export function LiveAgentsPageContent() {
+  const { state, loading, error } = usePhaseZeroState();
+  const agents = loading || error ? [] : state.agents;
+
+  return (
+    <OpenShockShell
+      view="agents"
+      eyebrow="Agent 名录"
+      title="一等公民，不是隐藏工具"
+      description="Agent 必须是可见的行动者，带着 runtime 偏好、记忆绑定和可观察的最近 Run。"
+      contextTitle="Agent 契约"
+      contextDescription="Phase 1 开始这块不再读本地样例，而是直接看 server 当前 state 里的公民真值。"
+      contextBody={
+        <DetailRail
+          label="名录结构"
+          items={[
+            { label: "总数", value: `${agents.length} 个` },
+            { label: "执行中", value: `${agents.filter((agent) => agent.state === "running").length} 个` },
+            { label: "阻塞", value: `${agents.filter((agent) => agent.state === "blocked").length} 个` },
+            { label: "待命", value: `${agents.filter((agent) => agent.state === "idle").length} 个` },
+          ]}
+        />
+      }
+    >
+      {loading ? (
+        <LiveStateNotice title="正在同步 Agent 真值" message="等待 server 返回当前公民名录与最近 Run。" />
+      ) : error ? (
+        <LiveStateNotice title="Agent 同步失败" message={error} />
+      ) : agents.length === 0 ? (
+        <LiveStateNotice title="当前还没有 Agent" message="当 server state 里出现公民记录后，这里会直接展示 live agent surface。" />
+      ) : (
+        <AgentsListView agentsList={agents} />
+      )}
+    </OpenShockShell>
+  );
+}
+
+export function LiveAgentPageContent({ agentId }: { agentId: string }) {
+  const { state, loading, error } = usePhaseZeroState();
+  const agent = loading || error ? undefined : state.agents.find((candidate) => candidate.id === agentId);
+
+  if (loading) {
+    return (
+      <OpenShockShell
+        view="agents"
+        eyebrow="Agent 详情"
+        title="正在同步 Agent"
+        description="等待 server 返回当前公民详情。"
+        contextTitle="Agent Sync"
+        contextDescription="这页现在只读 live state，不再回退到本地 mock agent。"
+      >
+        <LiveStateNotice title="同步中" message="正在拉取 Agent 详情和最近 Run。" />
+      </OpenShockShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <OpenShockShell
+        view="agents"
+        eyebrow="Agent 详情"
+        title="Agent 同步失败"
+        description="当前没拿到 server truth。"
+        contextTitle="Agent Sync"
+        contextDescription="先检查 server 是否在线，再重新打开这页。"
+      >
+        <LiveStateNotice title="同步失败" message={error} />
+      </OpenShockShell>
+    );
+  }
+
+  if (!agent) {
+    return (
+      <OpenShockShell
+        view="agents"
+        eyebrow="Agent 详情"
+        title="未找到 Agent"
+        description="这个 Agent 可能已经不在当前 server state 里。"
+        contextTitle="Agent Sync"
+        contextDescription="从公民名录重新进入通常就能拿到最新对象。"
+      >
+        <LiveStateNotice title="未找到 Agent" message={`当前找不到 \`${agentId}\` 对应的 live agent 记录。`} />
+      </OpenShockShell>
+    );
+  }
+
+  const runsForAgent = state.runs.filter((run) => agent.recentRunIds.includes(run.id));
+
+  return (
+    <OpenShockShell
+      view="agents"
+      eyebrow="Agent 详情"
+      title={agent.name}
+      description={agent.description}
+      contextTitle={agent.lane}
+      contextDescription="这是当前 server state 里这位公民真实绑定的泳道，不再沿用本地样例。"
+      contextBody={
+        <DetailRail
+          label="绑定关系"
+          items={[
+            { label: "Provider", value: agent.provider },
+            { label: "Runtime", value: agent.runtimePreference },
+            { label: "状态语气", value: agent.mood },
+            { label: "运行状态", value: agentStateLabel(agent.state) },
+          ]}
+        />
+      }
+    >
+      <AgentDetailView agent={agent} runsForAgent={runsForAgent} />
     </OpenShockShell>
   );
 }

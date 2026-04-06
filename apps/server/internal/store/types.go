@@ -153,9 +153,27 @@ type PullRequest struct {
 	RoomID        string `json:"roomId"`
 	RunID         string `json:"runId"`
 	Branch        string `json:"branch"`
+	BaseBranch    string `json:"baseBranch"`
 	Author        string `json:"author"`
+	Provider      string `json:"provider"`
+	URL           string `json:"url"`
+	ReviewDecision string `json:"reviewDecision"`
 	ReviewSummary string `json:"reviewSummary"`
 	UpdatedAt     string `json:"updatedAt"`
+}
+
+type PullRequestRemoteSnapshot struct {
+	Number         int
+	Title          string
+	Status         string
+	Branch         string
+	BaseBranch     string
+	Author         string
+	Provider       string
+	URL            string
+	ReviewDecision string
+	ReviewSummary  string
+	UpdatedAt      string
 }
 
 type Session struct {

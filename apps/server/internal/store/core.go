@@ -239,6 +239,74 @@ func (s *Store) updateSessionByIDLocked(sessionID string, mutate func(*Session))
 	}
 }
 
+func (s *Store) markMemoryArtifactWriteLocked(path, latest string) {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	if path == "" {
+		return
+	}
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	for index := range s.state.Memory {
+		if s.state.Memory[index].Path != path {
+			continue
+		}
+		baseSummary := s.state.Memory[index].Summary
+		if marker := strings.Index(baseSummary, " 最近写回："); marker != -1 {
+			baseSummary = baseSummary[:marker]
+		}
+		if text := strings.TrimSpace(latest); text != "" {
+			s.state.Memory[index].Summary = fmt.Sprintf("%s 最近写回：%s", baseSummary, text)
+		}
+		s.state.Memory[index].UpdatedAt = timestamp
+		return
+	}
+
+	scope := "workspace"
+	kind := "notes"
+	baseSummary := "文件写回记录。"
+	switch {
+	case path == "MEMORY.md":
+		kind = "memory"
+		baseSummary = "工作区级长期记忆。"
+	case path == filepath.ToSlash(filepath.Join("notes", "work-log.md")):
+		baseSummary = "全局运行日志。"
+	case strings.HasPrefix(path, filepath.ToSlash(filepath.Join("notes", "rooms"))+"/"):
+		kind = "room-note"
+		roomID := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		scope = "room:" + roomID
+		baseSummary = "讨论间运行记录。"
+	case strings.HasPrefix(path, filepath.ToSlash("decisions")+"/"):
+		kind = "decision"
+		issueKey := strings.ToUpper(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+		scope = "issue:" + issueKey
+		baseSummary = "需求与审批决策记录。"
+	case strings.HasPrefix(path, filepath.ToSlash(filepath.Join(".openshock", "agents"))+"/") && strings.HasSuffix(path, filepath.ToSlash(filepath.Join("notes", "work-log.md"))):
+		segments := strings.Split(path, "/")
+		if len(segments) >= 3 {
+			scope = "agent:" + segments[2]
+		}
+		baseSummary = "Agent 运行日志。"
+	}
+
+	summary := baseSummary
+	if text := strings.TrimSpace(latest); text != "" {
+		summary = fmt.Sprintf("%s 最近写回：%s", baseSummary, text)
+	}
+	s.state.Memory = append(s.state.Memory, MemoryArtifact{
+		ID:        slugify(scope + "-" + kind + "-" + path),
+		Scope:     scope,
+		Kind:      kind,
+		Path:      path,
+		Summary:   summary,
+		UpdatedAt: timestamp,
+	})
+}
+
+func (s *Store) markMemoryArtifactWritesLocked(paths []string, latest string) {
+	for _, path := range paths {
+		s.markMemoryArtifactWriteLocked(path, latest)
+	}
+}
+
 func (s *Store) persistLocked() error {
 	body, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {

@@ -110,8 +110,26 @@ export function OpenShockShell({
   children,
 }: OpenShockShellProps) {
   const activeTab = activeFromView(view);
-  const { state } = usePhaseZeroState();
-  const resolvedState = state.channels.length > 0 ? state : fallbackState;
+  const { state, loading, error } = usePhaseZeroState();
+  const resolvedState =
+    loading || error
+      ? {
+          ...fallbackState,
+          workspace: state.workspace,
+          channels: [],
+          channelMessages: {},
+          issues: [],
+          rooms: [],
+          roomMessages: {},
+          runs: [],
+          agents: [],
+          machines: [],
+          inbox: [],
+          pullRequests: [],
+          sessions: [],
+          memory: [],
+        }
+      : state;
   const stats = buildGlobalStats(resolvedState);
 
   return (

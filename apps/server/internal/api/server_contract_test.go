@@ -6,10 +6,44 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	githubsvc "github.com/Larkspur-Wang/OpenShock/apps/server/internal/github"
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
+
+type fakeGitHubClient struct {
+	status      githubsvc.Status
+	createInput githubsvc.CreatePullRequestInput
+	syncInputs  []githubsvc.SyncPullRequestInput
+	mergeInputs []githubsvc.MergePullRequestInput
+	created     githubsvc.PullRequest
+	synced      map[int]githubsvc.PullRequest
+	merged      githubsvc.PullRequest
+}
+
+func (f *fakeGitHubClient) Probe(_ string) (githubsvc.Status, error) {
+	return f.status, nil
+}
+
+func (f *fakeGitHubClient) CreatePullRequest(_ string, input githubsvc.CreatePullRequestInput) (githubsvc.PullRequest, error) {
+	f.createInput = input
+	return f.created, nil
+}
+
+func (f *fakeGitHubClient) SyncPullRequest(_ string, input githubsvc.SyncPullRequestInput) (githubsvc.PullRequest, error) {
+	f.syncInputs = append(f.syncInputs, input)
+	if value, ok := f.synced[input.Number]; ok {
+		return value, nil
+	}
+	return githubsvc.PullRequest{}, nil
+}
+
+func (f *fakeGitHubClient) MergePullRequest(_ string, input githubsvc.MergePullRequestInput) (githubsvc.PullRequest, error) {
+	f.mergeInputs = append(f.mergeInputs, input)
+	return f.merged, nil
+}
 
 func TestReadOnlySurfaceEndpointsServeSnapshotAndRejectMutations(t *testing.T) {
 	root := t.TempDir()
@@ -354,6 +388,13 @@ func TestCreateIssueEndpointCreatesLinkedLaneState(t *testing.T) {
 	if createdSession.WorktreePath != expectedPath || createdSession.ActiveRunID != payload.RunID {
 		t.Fatalf("session lane not attached: %#v", createdSession)
 	}
+
+	roomNotePath := filepath.ToSlash(filepath.Join("notes", "rooms", payload.RoomID+".md"))
+	decisionPath := filepath.ToSlash(filepath.Join("decisions", "ops-28.md"))
+	assertMemoryArtifactSummary(t, payload.State.Memory, "MEMORY.md", "Worktree Ready")
+	assertMemoryArtifactSummary(t, payload.State.Memory, filepath.ToSlash(filepath.Join("notes", "work-log.md")), "Worktree Ready")
+	assertMemoryArtifactSummary(t, payload.State.Memory, roomNotePath, "Worktree Ready")
+	assertMemoryArtifactSummary(t, payload.State.Memory, decisionPath, "queued")
 }
 
 func TestExecRouteProxiesDaemonMetadata(t *testing.T) {
@@ -412,6 +453,203 @@ func TestExecRouteProxiesDaemonMetadata(t *testing.T) {
 	}
 }
 
+func TestCreatePullRequestRouteCreatesGitHubBackedPullRequest(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Ship Real PR Loop",
+		Summary:  "verify github-backed create",
+		Owner:    "Codex Dockmaster",
+		Priority: "critical",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{
+		created: githubsvc.PullRequest{
+			Number:         52,
+			URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/52",
+			Title:          "Ship Real PR Loop",
+			State:          "OPEN",
+			HeadRefName:    created.Branch,
+			BaseRefName:    "main",
+			Author:         "CodexDockmaster",
+			ReviewDecision: "REVIEW_REQUIRED",
+		},
+	}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/pull-request", "application/json", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatalf("POST create pull request error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create pull request status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		PullRequestID string      `json:"pullRequestId"`
+		State         store.State `json:"state"`
+	}
+	decodeJSON(t, resp, &payload)
+
+	if payload.PullRequestID != "pr-52" {
+		t.Fatalf("pullRequestId = %q, want pr-52", payload.PullRequestID)
+	}
+	if github.createInput.Repo != s.Snapshot().Workspace.Repo {
+		t.Fatalf("github create repo = %q, want %q", github.createInput.Repo, s.Snapshot().Workspace.Repo)
+	}
+	if github.createInput.BaseBranch != "main" || github.createInput.HeadBranch != created.Branch {
+		t.Fatalf("github create branches = %#v, want base main and head %q", github.createInput, created.Branch)
+	}
+
+	pr, ok := findPullRequestByID(payload.State, payload.PullRequestID)
+	if !ok {
+		t.Fatalf("pull request %q missing from response state", payload.PullRequestID)
+	}
+	if pr.Number != 52 || pr.Provider != "github" || pr.URL == "" || pr.BaseBranch != "main" {
+		t.Fatalf("pull request payload malformed: %#v", pr)
+	}
+	if pr.Status != "in_review" || pr.ReviewSummary == "" {
+		t.Fatalf("pull request status = %#v, want github-backed review state", pr)
+	}
+}
+
+func TestPullRequestRouteSyncsAndMergesRemoteState(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Sync Remote PR",
+		Summary:  "verify sync and merge",
+		Owner:    "Codex Dockmaster",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+	_, pullRequestID, err := s.CreatePullRequestFromRemote(created.RoomID, store.PullRequestRemoteSnapshot{
+		Number:         73,
+		Title:          "Sync Remote PR",
+		Status:         "in_review",
+		Branch:         created.Branch,
+		BaseBranch:     "main",
+		Author:         "CodexDockmaster",
+		Provider:       "github",
+		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/73",
+		ReviewDecision: "REVIEW_REQUIRED",
+	})
+	if err != nil {
+		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{
+		synced: map[int]githubsvc.PullRequest{
+			73: {
+				Number:         73,
+				URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/73",
+				Title:          "Sync Remote PR",
+				State:          "OPEN",
+				HeadRefName:    created.Branch,
+				BaseRefName:    "main",
+				Author:         "CodexDockmaster",
+				ReviewDecision: "CHANGES_REQUESTED",
+			},
+		},
+		merged: githubsvc.PullRequest{
+			Number:         73,
+			URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/73",
+			Title:          "Sync Remote PR",
+			State:          "MERGED",
+			HeadRefName:    created.Branch,
+			BaseRefName:    "main",
+			Author:         "CodexDockmaster",
+			ReviewDecision: "APPROVED",
+			Merged:         true,
+		},
+	}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	getResp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
+	if err != nil {
+		t.Fatalf("GET pull request error = %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET pull request status = %d, want %d", getResp.StatusCode, http.StatusOK)
+	}
+
+	var synced store.PullRequest
+	decodeJSON(t, getResp, &synced)
+	if synced.Status != "changes_requested" || synced.ReviewDecision != "CHANGES_REQUESTED" {
+		t.Fatalf("synced pull request = %#v, want changes_requested from remote review decision", synced)
+	}
+
+	body, err := json.Marshal(map[string]any{"status": "merged"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	mergeResp, err := http.Post(server.URL+"/v1/pull-requests/"+pullRequestID, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST merge pull request error = %v", err)
+	}
+	defer mergeResp.Body.Close()
+	if mergeResp.StatusCode != http.StatusOK {
+		t.Fatalf("merge pull request status = %d, want %d", mergeResp.StatusCode, http.StatusOK)
+	}
+
+	var mergedPayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, mergeResp, &mergedPayload)
+	mergedPR, ok := findPullRequestByID(mergedPayload.State, pullRequestID)
+	if !ok {
+		t.Fatalf("merged pull request %q missing from response state", pullRequestID)
+	}
+	if mergedPR.Status != "merged" {
+		t.Fatalf("merged pull request status = %q, want merged", mergedPR.Status)
+	}
+	issue := findIssueByRoomID(mergedPayload.State, created.RoomID)
+	if issue == nil || issue.State != "done" {
+		t.Fatalf("issue state after merge = %#v, want done", issue)
+	}
+}
+
 func newContractTestServer(t *testing.T, root, daemonURL string) (*store.Store, *httptest.Server) {
 	t.Helper()
 
@@ -436,4 +674,36 @@ func decodeJSON(t *testing.T, response *http.Response, target any) {
 	if err := json.NewDecoder(response.Body).Decode(target); err != nil {
 		t.Fatalf("decode json error = %v", err)
 	}
+}
+
+func assertMemoryArtifactSummary(t *testing.T, items []store.MemoryArtifact, path, want string) {
+	t.Helper()
+	for _, item := range items {
+		if item.Path != path {
+			continue
+		}
+		if item.UpdatedAt == "" || !strings.Contains(item.Summary, want) {
+			t.Fatalf("memory artifact %q = %#v, want UpdatedAt set and summary containing %q", path, item, want)
+		}
+		return
+	}
+	t.Fatalf("memory artifact %q missing", path)
+}
+
+func findPullRequestByID(state store.State, pullRequestID string) (store.PullRequest, bool) {
+	for _, item := range state.PullRequests {
+		if item.ID == pullRequestID {
+			return item, true
+		}
+	}
+	return store.PullRequest{}, false
+}
+
+func findIssueByRoomID(state store.State, roomID string) *store.Issue {
+	for index := range state.Issues {
+		if state.Issues[index].RoomID == roomID {
+			return &state.Issues[index]
+		}
+	}
+	return nil
 }

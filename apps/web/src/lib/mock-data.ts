@@ -101,6 +101,7 @@ export type Run = {
   provider: string;
   branch: string;
   worktree: string;
+  worktreePath?: string;
   owner: string;
   startedAt: string;
   duration: string;
@@ -162,6 +163,33 @@ export type PullRequest = {
   updatedAt: string;
 };
 
+export type Session = {
+  id: string;
+  issueKey: string;
+  roomId: string;
+  topicId: string;
+  activeRunId: string;
+  status: RunStatus;
+  runtime: string;
+  machine: string;
+  provider: string;
+  branch: string;
+  worktree: string;
+  worktreePath: string;
+  summary: string;
+  updatedAt: string;
+  memoryPaths: string[];
+};
+
+export type MemoryArtifact = {
+  id: string;
+  scope: string;
+  kind: string;
+  path: string;
+  summary: string;
+  updatedAt: string;
+};
+
 export type SetupStep = {
   id: string;
   title: string;
@@ -190,6 +218,8 @@ export type PhaseZeroState = {
   machines: MachineStatus[];
   inbox: InboxItem[];
   pullRequests: PullRequest[];
+  sessions: Session[];
+  memory: MemoryArtifact[];
 };
 
 export const workspace: WorkspaceSnapshot = {
@@ -837,4 +867,6 @@ export const fallbackState: PhaseZeroState = {
   machines,
   inbox: inboxItems,
   pullRequests,
+  sessions: [],
+  memory: [],
 };

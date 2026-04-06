@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { getRunById } from "@/lib/mock-data";
+import type { Run } from "@/lib/mock-data";
+import { readControlJSON } from "@/lib/server-api";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ runId: string }> }
 ) {
   const { runId } = await params;
-  const run = getRunById(runId);
-
-  if (!run) {
-    return NextResponse.json({ error: "Run not found" }, { status: 404 });
+  try {
+    const run = await readControlJSON<Run>(`/v1/runs/${runId}`);
+    return NextResponse.json(run);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "run fetch failed";
+    const status = message.includes("404") || message.includes("not found") ? 404 : 502;
+    return NextResponse.json({ error: message }, { status });
   }
-
-  return NextResponse.json(run);
 }

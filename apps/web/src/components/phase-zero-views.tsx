@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ClaudeAgentConsole } from "@/components/claude-agent-console";
 import {
   agents,
+  type AgentStatus,
   getBoardColumns,
   getIssueByRoomId,
   getRunById,
@@ -685,10 +686,10 @@ export function IssueDetailView({
   );
 }
 
-export function AgentsListView() {
+export function AgentsListView({ agentsList = agents }: { agentsList?: AgentStatus[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      {agents.map((agent) => (
+      {agentsList.map((agent) => (
         <Link key={agent.id} href={`/agents/${agent.id}`} className="block">
           <Panel tone={agent.state === "blocked" ? "pink" : agent.state === "running" ? "yellow" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -718,7 +719,7 @@ export function AgentDetailView({
   agent,
   runsForAgent,
 }: {
-  agent: (typeof agents)[number];
+  agent: AgentStatus;
   runsForAgent: Run[];
 }) {
   return (

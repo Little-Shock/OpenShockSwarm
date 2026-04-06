@@ -20,6 +20,18 @@ func (f fakeGitHubProber) Probe(_ string) (githubsvc.Status, error) {
 	return f.status, f.err
 }
 
+func (f fakeGitHubProber) CreatePullRequest(string, githubsvc.CreatePullRequestInput) (githubsvc.PullRequest, error) {
+	return githubsvc.PullRequest{}, nil
+}
+
+func (f fakeGitHubProber) SyncPullRequest(string, githubsvc.SyncPullRequestInput) (githubsvc.PullRequest, error) {
+	return githubsvc.PullRequest{}, nil
+}
+
+func (f fakeGitHubProber) MergePullRequest(string, githubsvc.MergePullRequestInput) (githubsvc.PullRequest, error) {
+	return githubsvc.PullRequest{}, nil
+}
+
 func TestGitHubConnectionEndpointReturnsProbeStatus(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

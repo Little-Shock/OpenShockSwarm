@@ -112,3 +112,68 @@ func TestParseRepoIdentitySupportsHTTPSAndSSH(t *testing.T) {
 		})
 	}
 }
+
+func TestCreatePullRequestPushesBranchAndLoadsRemoteSnapshot(t *testing.T) {
+	service := NewService(fakeRunner{
+		lookPaths: map[string]string{
+			"gh": "C:\\gh.exe",
+		},
+		outputs: map[string]fakeOutput{
+			"git -C E:\\repo push -u origin feat/runtime-shell": {text: "branch 'feat/runtime-shell' set up to track 'origin/feat/runtime-shell'."},
+			"gh pr create --repo Larkspur-Wang/OpenShock --base main --head feat/runtime-shell --title runtime: surface heartbeat and lane state --body issue: OPS-12": {
+				text: "https://github.com/Larkspur-Wang/OpenShock/pull/42",
+			},
+			"gh pr view https://github.com/Larkspur-Wang/OpenShock/pull/42 --repo Larkspur-Wang/OpenShock --json number,title,url,state,isDraft,reviewDecision,headRefName,baseRefName,author,updatedAt,mergedAt": {
+				text: `{"number":42,"title":"runtime: surface heartbeat and lane state","url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"OPEN","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","headRefName":"feat/runtime-shell","baseRefName":"main","updatedAt":"2026-04-06T11:20:00Z","mergedAt":"","author":{"login":"CodexDockmaster"}}`,
+			},
+		},
+	})
+
+	pullRequest, err := service.CreatePullRequest(`E:\repo`, CreatePullRequestInput{
+		Repo:       "Larkspur-Wang/OpenShock",
+		BaseBranch: "main",
+		HeadBranch: "feat/runtime-shell",
+		Title:      "runtime: surface heartbeat and lane state",
+		Body:       "issue: OPS-12",
+	})
+	if err != nil {
+		t.Fatalf("CreatePullRequest() error = %v", err)
+	}
+	if pullRequest.Number != 42 {
+		t.Fatalf("pullRequest.Number = %d, want 42", pullRequest.Number)
+	}
+	if pullRequest.HeadRefName != "feat/runtime-shell" || pullRequest.BaseRefName != "main" {
+		t.Fatalf("pullRequest branches = %#v, want head/base preserved", pullRequest)
+	}
+	if pullRequest.Author != "CodexDockmaster" {
+		t.Fatalf("pullRequest.Author = %q, want CodexDockmaster", pullRequest.Author)
+	}
+}
+
+func TestMergePullRequestReturnsMergedSnapshot(t *testing.T) {
+	service := NewService(fakeRunner{
+		lookPaths: map[string]string{
+			"gh": "C:\\gh.exe",
+		},
+		outputs: map[string]fakeOutput{
+			"gh pr merge 42 --repo Larkspur-Wang/OpenShock --merge --delete-branch=false": {text: "merged"},
+			"gh pr view 42 --repo Larkspur-Wang/OpenShock --json number,title,url,state,isDraft,reviewDecision,headRefName,baseRefName,author,updatedAt,mergedAt": {
+				text: `{"number":42,"title":"runtime: surface heartbeat and lane state","url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"MERGED","isDraft":false,"reviewDecision":"APPROVED","headRefName":"feat/runtime-shell","baseRefName":"main","updatedAt":"2026-04-06T11:24:00Z","mergedAt":"2026-04-06T11:24:00Z","author":{"login":"CodexDockmaster"}}`,
+			},
+		},
+	})
+
+	pullRequest, err := service.MergePullRequest(`E:\repo`, MergePullRequestInput{
+		Repo:   "Larkspur-Wang/OpenShock",
+		Number: 42,
+	})
+	if err != nil {
+		t.Fatalf("MergePullRequest() error = %v", err)
+	}
+	if !pullRequest.Merged {
+		t.Fatalf("pullRequest.Merged = false, want true")
+	}
+	if pullRequest.State != "MERGED" {
+		t.Fatalf("pullRequest.State = %q, want MERGED", pullRequest.State)
+	}
+}
