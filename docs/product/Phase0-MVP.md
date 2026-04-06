@@ -1,463 +1,259 @@
-# OpenShock Phase 0 MVP 骨架功能要求
+# OpenShock Phase 0 MVP
 
-**版本:** 0.2  
-**版本日期:** 2026 年 4 月 5 日  
-**关联文档:** [PRD.md](./PRD.md)
+**版本:** 0.3
+**版本日期:** 2026 年 4 月 6 日
+**关联文档:** [PRD](./PRD.md)
 
 ---
 
 ## 一、文档目标
 
-这份文档不是完整 PRD 的重复，而是把 OpenShock 的第一阶段落地成一份可执行的骨架需求。
+这份文档只锁 3 件事：
 
-Phase 0 的目标只有一个：
+1. 当前仓库里的 Phase 0 已经有哪些骨架
+2. 第一轮执行票应该围绕哪些真实能力推进
+3. Review / Merge 前最低要过哪些验收门
 
-**在一个真实本地仓库里，把 `聊天壳 + Agent 管理 + Topic / Run + worktree 隔离 + 基础记忆 + PR 闭环` 跑通成第一条可用主链路。**
-
-这阶段强调：
-
-- 先把骨架搭起来
-- 先把真实链路打通
-- 先让团队真的能用
-
-这阶段不强调：
-
-- 完整自治
-- 完整云沙盒
-- 复杂多 Agent 编排
-- 豪华权限中心
+它不是完整 PRD，也不是研究笔记。
 
 ---
 
-## 二、强制参考栈
+## 二、Phase 0 当前仓库真值
 
-Phase 0 后续所有实现都必须持续参考以下资料，而不是只参考当前代码：
+### 1. 已有骨架
 
-- [docs/research/Reference-Stack.md](../research/Reference-Stack.md)
-- [docs/research/Slock-Local-Notes.md](../research/Slock-Local-Notes.md)
-- [DESIGN.md](../../DESIGN.md)
-- [PRD.md](./PRD.md)
+当前仓库已经有：
 
-当前已接入的外部 / 本地参考包括：
+- Next.js 前端壳
+- Go server 控制面
+- Go daemon 本地 runtime bridge
+- 文件状态存储
+- 基础 worktree lane 创建
+- issue -> room -> run -> session 的对象主链
+- room message 同步 / 流式执行桥
+- repo binding / GitHub readiness / runtime pairing 控制面
+- PR 状态对象和 Inbox 卡片
+- 文件级记忆 scaffold
 
-- `Multica`
-  - 本地 clone: `E:\00.Lark_Projects\00_OpenShock\__external_multica`
-- `Slock`
-  - 公开站点与前端 bundle / CSS
-  - 本地 `slock` 参考：`\\wsl.localhost\Ubuntu-24.04\home\lark\.slock`
-  - 本地 `codex` 会话痕迹：`\\wsl.localhost\Ubuntu-24.04\home\lark\.codex\sessions\2026\04\04`
-- `Lody`
-  - 官方 workflow / worktree / quota 文档
+### 2. 当前还不是 Phase 0 真值的部分
 
-这意味着：
+- 真实登录 / 注册 / 完整 workspace 成员管理
+- 真实 GitHub PR 创建
+- GitHub App 安装流
+- 生产级通知
+- 完整审批中心
+- 多 Agent 自治编排
 
-- 前端默认抄 `Slock` 的壳和 Stitch 设计稿
-- 后台对象、daemon、runtime、Inbox、session continuity 默认参考 `Multica`
-- worktree / branch / PR 的隔离执行默认参考 `Lody`
-- 记忆、频道规则、团队规则默认参考本地 `slock` 的 `MEMORY.md + notes/*`
+所以当前 Phase 0 应该被读成：
+
+**“本地可运行控制基线”，不是“完整协作 SaaS”。**
 
 ---
 
 ## 三、Phase 0 一句话定义
 
-Phase 0 是 OpenShock 的第一个可用骨架版本：
+在一个真实本地仓库里，把：
 
-- 外面看起来像一个可协作的 Agent 工作台
-- 里面真的能连上本地机器、拉起本地 CLI、跑出 worktree 和 run
-- 最后能把结果收回到 Room、Inbox 和 PR
+- chat-first 协作壳
+- issue / room / run / session 控制面
+- 本地 runtime pairing
+- CLI 执行桥
+- worktree lane
+- 基础记忆 scaffold
+- PR / Inbox 收口面
 
----
-
-## 四、Phase 0 成功标准
-
-只要下面这条链路跑通，Phase 0 就算成功：
-
-1. 用户注册或登录，创建 Workspace
-2. 连接 GitHub，绑定一个真实 Repo
-3. 绑定一台本地 Runtime，检测到 Codex / Claude Code CLI
-4. 创建一个 Issue
-5. 系统自动生成对应 Issue Room 与默认 Topic
-6. 用户把 Issue 派给 Agent
-7. 系统在该 Topic 下创建内部 Session，并在 worktree 中拉起 run
-8. 前端实时显示 run 状态、日志、工具调用
-9. Agent 完成修改并生成 PR
-10. 人类在 Issue Room / Topic / Inbox 中完成纠偏和验收
+串成一条能实际运行、能被验证、能继续迭代的主链。
 
 ---
 
-## 五、Phase 0 范围
+## 四、第一轮必须成立的能力
 
-### 1. 必须真实工作的部分
+### 1. 协作壳入口成立
 
-- 账号与 Workspace
-- GitHub 连接与 Repo 绑定
-- 本地 daemon pairing
-- Runtime / Agent 管理
-- Issue / Room / Topic / Run 主链路
-- Git worktree 隔离
-- Local Trusted Sandbox
-- Workspace File Memory
+用户必须能看到：
+
+- 频道
+- 讨论间
+- Board
 - Inbox
-- Browser Push
-- PR 创建与状态回写
+- Issue 列表
+- Agent 列表
+- Setup
+- Settings
 
-### 2. 可以先做骨架或占位的部分
+### 2. Setup 脊柱成立
 
-- DM 的复杂体验
-- Agent Mailbox
-- 移动端适配
-- 邮件通知
-- 更强的 Sandbox 细粒度控制
-- 外部 Memory Provider 插件
+Setup 页必须能明确展示：
 
----
+- repo 当前绑定状态
+- GitHub readiness probe 结果
+- runtime pairing 状态
+- live bridge 执行入口
 
-## 六、用户与场景
+### 3. Issue lane 主链成立
 
-### 核心用户
+创建 issue 后，系统必须能继续落出：
 
-- 2 到 10 人的 AI 原生研发团队
-- 高频使用本地 CLI 代理的人
-- 需要让多个 Agent 在真实仓库里并行工作的人
+- issue
+- room
+- run
+- session
+- branch / worktree 命名
+- daemon worktree ensure
 
-### 核心场景
+### 4. Run 真相可见
 
-- 负责人创建任务，派给 Agent
-- Agent 在本地 worktree 中执行
-- 人类通过 Room 和 Inbox 做纠偏
-- 结果通过 PR 回收
+Run Detail 至少要能显示：
 
----
-
-## 七、功能骨架要求
-
-### 1. 账号、Workspace 与仓库接入
-
-必须支持：
-
-- 邮箱登录 / 注册 / 基础验证
-- 创建 Workspace
-- 连接 GitHub 身份
-- 以 GitHub App 方式绑定 Repo
-- GitHub App 失败时保留 PAT / SSH fallback 设计位
-
-Phase 0 约束：
-
-- 先支持单用户创建 Workspace
-- 支持基础成员模型，但不追求完整组织治理
-
-### 2. 本地 Runtime 与 daemon pairing
-
-必须支持：
-
-- 在浏览器中发起本地 daemon 配对
-- Runtime 心跳上报
-- 检测本地可用 CLI
-- 展示 Runtime 在线 / 离线 / 忙碌状态
-
-Runtime 能力模型：
-
-- Runtime 负责暴露机器上真实存在的 CLI 能力
-- Agent 只负责偏好与默认 provider 选择
-
-### 3. Agent 管理
-
-必须支持：
-
-- 创建 Agent
-- 配置 Agent 名称、说明、默认 provider 偏好
-- 配置 Agent 读写哪些基础 Memory Space
-- 查看 Agent 当前状态与最近 Runs
-
-Phase 0 不做：
-
-- 复杂人格系统
-- 多层技能市场
-
-### 4. 聊天壳首页
-
-首页必须默认呈现协作壳，而不是 Kanban。
-
-必须有：
-
-- 顶级入口：`Chat`、`Rooms`、`Inbox`、`Board`
-- 左侧：全局频道与 Issue Room 列表
-- 中间：当前 Channel 或 Issue Room 的消息流
-- 右侧：Issue / Topic / Agent / Runtime 上下文
-- 左下角：Machine 与 Agent 状态
-
-首页必须让用户一眼看到：
-
-- 我在哪个频道或 Room
-- 哪些 Agent 在工作
-- 哪些 Topic / Run 正在运行
-- 哪些任务卡住了
-
-### 5. Issue、Room、Topic、Run
-
-必须支持：
-
-- 创建 Issue
-- Issue 自动生成对应 Issue Room
-- 每个 Issue Room 默认有一个 Topic
-- Topic 列表
-- Run 列表
-- Run Detail 页面
-
-关键约束：
-
-- `Issue -> Room` 默认 `1:1`
-- `Room -> Topic` 在 Phase 0 默认 `1:1`，后续再扩展到 `1:N`
-- `Session` 由系统内部自动维护，不作为首页主导航对象
-- `PR` 不强制一对一绑定 `Topic` 或内部 `Session`
-- 更推荐以 `Issue Room` 聚合交付
-
-### 6. 执行详情页
-
-Run Detail 必须展示：
-
-- 当前状态
-- 当前 Runtime
-- 当前 worktree / branch
+- status
+- runtime / machine / provider
+- branch / worktree / path
 - stdout / stderr
-- tool call
-- 时间线
-- 错误信息
-- 是否进入 `approval_required`
+- tool calls
+- timeline
+- next action
+- PR 关联
 
-### 7. Local Trusted Sandbox
+### 5. 人类决策面成立
 
-Phase 0 沙盒不是完整云沙盒，而是本地可信沙盒。
+Inbox 必须能把：
 
-必须做到：
+- blocked
+- approval
+- review
+- status
 
-- 每个活跃 Topic 的执行 lane 独立 worktree
-- run 有超时
-- 可以定义高风险动作审批
-- 默认继承本地 Codex / Claude Code CLI 配置
+统一收成高信号卡片，并能跳回 room / run。
 
-默认进入 `approval_required` 的动作：
+### 6. 文件级记忆不再是口号
 
-- 强制删除
-- 破坏性 Git 操作
-- 越界写入
-- 敏感凭证注入
+工作区至少要能维护：
 
-### 8. Workspace File Memory
-
-Phase 0 默认只做文件级记忆。
-
-必须支持：
-
-- 在工作区中维护 `MEMORY.md`
-- 支持 `notes/`
-- 支持 `decisions/`
-- run 结束后把摘要自动写回
-
-不要求：
-
-- 向量数据库
-- 图谱记忆
-- 跨应用长期记忆
-
-补充约束：
-
-- 每个 Agent 后续默认应该有 `SOUL.md + MEMORY.md + notes/*`
-- `notes/*` 至少预留：
-  - `channels.md`
-  - `operating-rules.md`
-  - `skills.md`
-  - `work-log.md`
-- 这些文件既是运行时上下文，也应该逐步成为产品里可见的 Memory / Policy 表面
-
-### 9. Inbox 与通知
-
-必须支持：
-
-- Inbox 列表
-- `blocked`、`approval_required`、`review pending` 等事件入站
-- 基础 Browser Push
-
-默认通知策略：
-
-- Inbox 收全部系统事件
-- Browser Push 只推送高时效事件
-- Email 暂不进入 Phase 0 必做
-
-### 10. PR 闭环
-
-必须支持：
-
-- 从 Run / Room 进入 PR 创建
-- PR 与 Issue / Room 绑定
-- PR 状态回写
-- Review 状态回写到 Issue / Inbox
+- `MEMORY.md`
+- `notes/work-log.md`
+- `notes/rooms/*.md`
+- `decisions/*.md`
+- `.openshock/agents/*`
 
 ---
 
-## 八、前端实现要求
+## 五、第一轮执行票应该围绕什么拆
 
-### 1. 视觉参考顺序
+### 1. Web 壳层票
 
-前端实现时的参考优先级：
+优先围绕：
 
-1. **Slock**
-   - 主参考，负责气质、信息密度、Agent / Machine 主角感
-   - 公开 app + bundle + CSS，以及本地 `slock` 目录结构
-2. **Stitch 设计稿**
-   - 当前 OpenShock 的页面布局和视觉定稿源
-3. **awesome-design-md**
-   - 作为可复制的 `DESIGN.md` 参考库
-4. **现有 PRD 的前端体验原则**
+- Chat / Room / Board / Inbox / Run Detail 的信息层级
+- Setup 页的真实链路感
+- Machine / Agent / Run presence 的稳定可见性
 
-### 2. awesome-design-md 的使用方式
+### 2. Server 控制面票
 
-我已经把仓库 clone 到本地：
+优先围绕：
 
-- [__external_awesome_design_md](/E:/00.Lark_Projects/00_OpenShock/__external_awesome_design_md)
+- `v1/state` 和各对象路由的真值一致性
+- issue 创建后的 room / run / session / worktree lane 收口
+- PR / Inbox / Session / Memory 这些对象的状态一致性
 
-它不是一个标准 Codex `SKILL.md` 仓库，更像一个 `DESIGN.md` 语料库，所以当前不把它当成可直接安装的 Codex skill 使用。
+### 3. Daemon / Runtime 票
 
-Phase 0 前端建议优先参考这几套：
+优先围绕：
 
-- `voltagent`
-  - 开发者原生、终端感、强信号 UI
-- `posthog`
-  - 轻松、有玩心、反企业模板化
-- `lovable`
-  - 更有人味、柔和但不弱
+- CLI 探测
+- exec / exec stream 稳定性
+- worktree ensure
+- runtime heartbeat 真值
 
-不建议参考：
+### 4. Docs 票
 
-- `linear.app`
-  - 太容易把 OpenShock 做回传统任务工具
+优先围绕：
 
-### 3. 结构参考顺序
+- README
+- docs index
+- PRD
+- Phase 0 MVP
+- Runbook
 
-除了视觉，页面结构和对象模型也有默认参考顺序：
-
-1. `Slock`
-   - `频道 / 房间 / agent / machine / thread` 的协作壳
-2. `Multica`
-   - `Issue / Runtime / Inbox / daemon / session continuity`
-3. `Lody`
-   - `topic / worktree / branch / PR` 的隔离执行
-
-### 4. 本地参考痕迹的使用原则
-
-来自本地 `slock` 的会话日志和 agent 目录，不直接原样搬运进仓库，但可以提炼为：
-
-- 产品对象模型
-- 页面信息架构
-- agent 文件记忆结构
-- 频道规则 / 团队规则 / 技能规则
-- daemon / MCP / 协作协议设计
-
-### 5. 视觉约束
-
-必须遵守：
-
-- 默认首页不是传统看板
-- Agent 和 Machine 不是“配置项”，而是主角对象
-- 避免 Jira / Linear / Asana 气质
-- 避免大面积灰白企业卡片
-- 允许更强烈的边框、色块、角色感和轻松文案
+确保文档写的是“当前仓库真值”，不是“未来想法”。
 
 ---
 
-## 九、前端开发流程建议
+## 六、Phase 0 验收门
 
-### 1. 推荐流程
+### Gate 1: 启动门
 
-Phase 0 前端开发建议采用浏览器在环的快速迭代方式：
+至少要能实际启动：
 
-1. 先写页面骨架
-2. 本地跑起来
-3. 立即在浏览器里看真实页面
-4. 一边改代码，一边看布局、状态、空态、响应式
-5. 用真实数据或高保真假数据校验
+- web
+- server
+- daemon
 
-### 2. Carbonyl 的位置
+### Gate 2: 接口门
 
-可以参考：
+至少要能实际打通：
 
-- [Carbonyl](https://github.com/fathyb/carbonyl)
+- `GET /healthz`
+- `GET /v1/state`
+- `GET /v1/runtime`
+- `GET /v1/repo/binding`
+- `GET /v1/github/connection`
+- `POST /v1/runtime/pairing`
+- `POST /v1/issues`
+- `POST /v1/exec`
 
-它适合：
+### Gate 3: 壳层门
 
-- 远程 SSH 环境
-- 只有终端可用的开发场景
-- 快速看网页是否能正常打开
+前台至少要能真实显示：
 
-但它不是我们当前桌面开发环境的主工作流。当前更适合：
+- workspace / repo / runtime 基线
+- issue / room / run / agent / inbox
+- setup 链路状态
 
-- 常规桌面浏览器做主预览
-- Carbonyl 作为补充工具
+### Gate 4: 文档门
 
-说明：
+至少这 5 份文档必须和当前仓库真值一致：
 
-我没能直接可靠读取你给的那条 X 帖子原文，所以这里不引用它的具体话术，只吸收“前端开发要浏览器在环、快速验证”的方向。
-
----
-
-## 十、明确不做
-
-Phase 0 不做：
-
-- Cloud Sandbox
-- 外部记忆插件平台
-- 完整邮件通知体系
-- 复杂 Agent Mailbox 协议
-- 高级计费后台
-- 多租户企业权限中心
-- 三巨头委员会自动仲裁
+- `README.md`
+- `docs/README.md`
+- `docs/product/PRD.md`
+- `docs/product/Phase0-MVP.md`
+- `docs/engineering/Runbook.md`
 
 ---
 
-## 十一、页面清单
+## 七、Review / Merge 节奏
 
-Phase 0 至少需要这些页面或主视图：
+### 1. 每张票的最小收口顺序
 
-- 登录 / 注册 / Workspace 创建
-- Repo 连接页
-- Runtime / Machine 配对页
-- 聊天壳首页
-- Issue 列表页
-- Issue 详情页
-- Room 详情页
-- Topic / Run 列表页
-- Run Detail 页
-- Agent 列表 / Agent 详情
-- Inbox
-- 全局设置页
+1. owner 自测
+2. reviewer 只报 blocker / no-blocker
+3. scope 内 blocker 修掉后复核
+4. 证据够了就收口，不把票长期挂在 review
 
----
+### 2. Phase 0 合并前最小证据
 
-## 十二、验收要求
+至少应附：
 
-### 功能验收
+- 改动范围
+- 影响的页面 / 路由 / 接口
+- 实际跑过的命令
+- blocker 是否已清
 
-- 可以从浏览器完成账号进入、Repo 绑定、Runtime 配对
-- 可以创建 Issue 并看到自动生成的 Issue Room 与默认 Topic
-- 可以派发给 Agent 并跑出 Topic / Run
-- 可以看到 worktree、branch、日志、工具调用
-- 可以回收到 PR
-- 可以从 Inbox 完成一次纠偏
+### 3. 不允许的收口方式
 
-### 体验验收
-
-- 首页第一眼是 Agent 协作壳，不是传统看板
-- 用户能在 30 秒内定位一个失败 run
-- 用户知道当前哪个 Agent 在跑、跑在哪台机器上
+- 把“产品目标”当“当前仓库真值”
+- 把未落地的 GitHub / auth / notification 能力写成已完成
+- reviewer 已无 blocker 但票长期不点状态
 
 ---
 
-## 十三、Phase 0 之后
+## 八、当前明确不在 Phase 0 首轮强推范围里
 
-Phase 0 完成后，下一阶段优先顺序建议为：
+- 邮件系统
+- GitHub App 全链路
+- 真正的多用户协作 SaaS
+- 复杂 memory OS
+- 全自动多 Agent orchestrator
+- 云端沙盒
 
-1. 邮件通知
-2. Agent Mailbox
-3. Restricted Local Sandbox
-4. QMD 侧车
-5. 外部 Memory Provider 插件
+这些可以进入后续 phase，但不该混进当前第一轮交付口径。

@@ -320,7 +320,7 @@ export function RoomOverview({ room }: { room: Room }) {
           <p className="mt-5 max-w-3xl text-base leading-7 text-[color:rgba(24,20,14,0.8)]">{room.topic.summary}</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href={`/rooms/${room.id}/runs/${room.runId}`}
+              href={`/runs/${room.runId}`}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
             >
               查看 Run 详情
@@ -644,7 +644,7 @@ export function IssueDetailView({
               打开讨论间
               </Link>
               <Link
-                href={`/rooms/${issue.roomId}/runs/${issue.runId}`}
+                href={`/runs/${issue.runId}`}
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
               打开 Run 详情
@@ -777,7 +777,7 @@ export function AgentDetailView({
             {runsForAgent.map((run) => (
               <Link
                 key={run.id}
-                href={`/rooms/${run.roomId}/runs/${run.id}`}
+                href={`/runs/${run.id}`}
                 className="block rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-3">

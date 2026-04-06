@@ -24,7 +24,7 @@ export function StitchSidebar({
   const activeAgents = agents?.filter((agent) => agent.state === "running").length ?? 0;
   const nav = [
     { id: "channels", label: "频道", href: "/chat/all" },
-    { id: "rooms", label: "讨论间", href: "/rooms/room-runtime" },
+    { id: "rooms", label: "讨论间", href: "/rooms" },
     { id: "board", label: "任务板", href: "/board" },
     { id: "inbox", label: "收件箱", href: "/inbox" },
   ] as const;

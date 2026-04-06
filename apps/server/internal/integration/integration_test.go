@@ -22,6 +22,7 @@ import (
 func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	projectRoot := projectRoot(t)
 	repoRoot := createTempGitRepo(t)
+	prependCLIToPath(t, writeFakeClaudeCLI(t))
 
 	daemonPort := freePort(t)
 	serverPort := freePort(t)
@@ -186,6 +187,34 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	if stringField(t, runtimeAfterDelete, "state") != "offline" {
 		t.Fatalf("runtime state after delete = %q, want offline", stringField(t, runtimeAfterDelete, "state"))
 	}
+}
+
+func writeFakeClaudeCLI(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "claude")
+	script := `#!/bin/sh
+args="$*"
+case "$args" in
+  *stream-ready*)
+    printf 'stream-ready\ndone\n'
+    ;;
+  *)
+    printf 'integration-ready\n'
+    ;;
+esac
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake claude cli: %v", err)
+	}
+	return dir
+}
+
+func prependCLIToPath(t *testing.T, dir string) {
+	t.Helper()
+	current := os.Getenv("PATH")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+current)
 }
 
 type streamResponse struct {

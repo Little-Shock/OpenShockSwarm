@@ -348,7 +348,7 @@ func detectProviders() []Provider {
 			Transport: "http bridge",
 		})
 	}
-	if _, err := exec.LookPath("claude"); err == nil {
+	if _, ok := findClaudeCLI(); ok {
 		providers = append(providers, Provider{
 			ID:    "claude",
 			Label: "Claude Code CLI",
@@ -367,9 +367,10 @@ func detectProviders() []Provider {
 func buildCommand(req ExecRequest) (execPlan, error) {
 	switch strings.ToLower(strings.TrimSpace(req.Provider)) {
 	case "claude":
+		claudeCLI, _ := findClaudeCLI()
 		return execPlan{
 			command: []string{
-				"claude", "--bare", "-p", req.Prompt,
+				claudeCLI, "--print", req.Prompt,
 				"--output-format", "text",
 				"--permission-mode", "bypassPermissions",
 				"--no-session-persistence",
@@ -394,4 +395,13 @@ func buildCommand(req ExecRequest) (execPlan, error) {
 			cleanupFile: true,
 		}, nil
 	}
+}
+
+func findClaudeCLI() (string, bool) {
+	for _, candidate := range []string{"claude", "claude-code"} {
+		if _, err := exec.LookPath(candidate); err == nil {
+			return candidate, true
+		}
+	}
+	return "claude", false
 }

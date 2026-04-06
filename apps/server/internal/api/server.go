@@ -55,8 +55,11 @@ type UpdatePullRequestRequest struct {
 }
 
 type DaemonExecResponse struct {
-	Output string `json:"output"`
-	Error  string `json:"error"`
+	Provider string   `json:"provider,omitempty"`
+	Command  []string `json:"command,omitempty"`
+	Output   string   `json:"output"`
+	Error    string   `json:"error,omitempty"`
+	Duration string   `json:"duration,omitempty"`
 }
 
 type RuntimeSnapshotResponse struct {
@@ -163,15 +166,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})
 }
 
-func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot())
 }
 
-func (s *Server) handleWorkspace(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Workspace)
 }
 
-func (s *Server) handleChannels(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Channels)
 }
 
@@ -227,7 +239,10 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleRooms(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Rooms)
 }
 
@@ -333,7 +348,13 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.store.Snapshot()
 	if r.URL.Path == "/v1/runs" {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
 		writeJSON(w, http.StatusOK, snapshot.Runs)
+		return
+	}
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	runID := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
@@ -346,14 +367,23 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
 }
 
-func (s *Server) handleAgents(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Agents)
 }
 
 func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.store.Snapshot()
 	if r.URL.Path == "/v1/sessions" {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
 		writeJSON(w, http.StatusOK, snapshot.Sessions)
+		return
+	}
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	sessionID := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
@@ -366,15 +396,24 @@ func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 }
 
-func (s *Server) handleInbox(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Inbox)
 }
 
-func (s *Server) handleMemory(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Memory)
 }
 
-func (s *Server) handlePullRequests(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handlePullRequests(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().PullRequests)
 }
 
@@ -413,7 +452,10 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
 }
 
-func (s *Server) handleRuntime(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	workspace := s.store.Snapshot().Workspace
 	if workspace.PairingStatus != "paired" || strings.TrimSpace(s.daemonURLValue()) == "" {
 		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(workspace))
@@ -757,6 +799,17 @@ func writeNDJSON(w http.ResponseWriter, flusher http.Flusher, payload any) error
 	}
 	flusher.Flush()
 	return nil
+}
+
+func requireMethod(w http.ResponseWriter, r *http.Request, methods ...string) bool {
+	for _, method := range methods {
+		if r.Method == method {
+			return true
+		}
+	}
+	w.Header().Set("Allow", strings.Join(methods, ", "))
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	return false
 }
 
 func withCORS(next http.Handler) http.Handler {

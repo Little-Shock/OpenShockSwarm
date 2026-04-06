@@ -212,7 +212,7 @@ export const workspace: WorkspaceSnapshot = {
 
 export const tabs: Array<{ id: AppTab; label: string; href: string }> = [
   { id: "chat", label: "频道", href: "/chat/all" },
-  { id: "rooms", label: "讨论间", href: "/rooms/room-runtime" },
+  { id: "rooms", label: "讨论间", href: "/rooms" },
   { id: "inbox", label: "收件箱", href: "/inbox" },
   { id: "board", label: "任务板", href: "/board" },
 ];
@@ -220,6 +220,7 @@ export const tabs: Array<{ id: AppTab; label: string; href: string }> = [
 export const utilityLinks = [
   { id: "setup", label: "配置", href: "/setup" },
   { id: "issues", label: "需求", href: "/issues" },
+  { id: "runs", label: "执行", href: "/runs" },
   { id: "agents", label: "公民", href: "/agents" },
   { id: "settings", label: "设置", href: "/settings" },
 ];
@@ -638,7 +639,7 @@ export const inboxItems: InboxItem[] = [
     time: "2 分钟前",
     summary: "这个 Run 想在视觉核对通过后清理过时分支。",
     action: "查看批准",
-    href: "/rooms/room-runtime/runs/run_runtime_01",
+    href: "/runs/run_runtime_01",
   },
   {
     id: "inbox-blocked-memory",
@@ -648,7 +649,7 @@ export const inboxItems: InboxItem[] = [
     time: "7 分钟前",
     summary: "写回前需要先确定 topic、房间、工作区、用户和 agent 的优先级规则。",
     action: "解除阻塞",
-    href: "/rooms/room-memory/runs/run_memory_01",
+    href: "/runs/run_memory_01",
   },
   {
     id: "inbox-review-copy",
@@ -658,7 +659,7 @@ export const inboxItems: InboxItem[] = [
     time: "12 分钟前",
     summary: "Agent 已经准备好最终卡片文案和路由跳转。",
     action: "打开评审",
-    href: "/rooms/room-inbox/runs/run_inbox_01",
+    href: "/runs/run_inbox_01",
   },
   {
     id: "inbox-status-shell",

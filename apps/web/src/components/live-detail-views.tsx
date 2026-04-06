@@ -1,14 +1,19 @@
 "use client";
 
+import Link from "next/link";
+
 import { OpenShockShell } from "@/components/open-shock-shell";
 import {
   DetailRail,
   IssueDetailView,
   IssuesListView,
+  Panel,
   RunDetailView,
 } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
-import { fallbackState, type Issue } from "@/lib/mock-data";
+import { fallbackState, type Issue, type Room, type Run } from "@/lib/mock-data";
+
+type PanelTone = "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
 
 function priorityLabel(priority: Issue["priority"]) {
   switch (priority) {
@@ -21,8 +26,200 @@ function priorityLabel(priority: Issue["priority"]) {
   }
 }
 
+function runStatusLabel(status: Run["status"]) {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "执行中";
+    case "blocked":
+      return "阻塞";
+    case "review":
+      return "待评审";
+    case "done":
+      return "已完成";
+  }
+}
+
+function panelToneForStatus(status: Run["status"]): PanelTone {
+  switch (status) {
+    case "running":
+      return "yellow";
+    case "blocked":
+      return "pink";
+    case "review":
+      return "lime";
+    case "done":
+      return "ink";
+    default:
+      return "white";
+  }
+}
+
+function statusBadgeTone(status: Run["status"]) {
+  switch (status) {
+    case "running":
+      return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    case "review":
+      return "bg-[var(--shock-lime)] text-[var(--shock-ink)]";
+    case "done":
+      return "bg-[var(--shock-ink)] text-white";
+    default:
+      return "bg-white text-[var(--shock-ink)]";
+  }
+}
+
+function cn(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
 function getResolvedState<T>(items: T[], fallbackItems: T[]) {
   return items.length > 0 ? items : fallbackItems;
+}
+
+function FactTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
+      <p className="mt-2 font-display text-xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function RoomSnapshotCard({
+  room,
+  issue,
+  run,
+}: {
+  room: Room;
+  issue?: Issue;
+  run?: Run;
+}) {
+  return (
+    <Panel tone={panelToneForStatus(room.topic.status)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
+            {room.issueKey} / {issue ? priorityLabel(issue.priority) : "讨论间"}
+          </p>
+          <h3 className="mt-2 font-display text-3xl font-bold">{room.title}</h3>
+        </div>
+        <span
+          className={cn(
+            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            statusBadgeTone(room.topic.status)
+          )}
+        >
+          {runStatusLabel(room.topic.status)}
+        </span>
+      </div>
+      <p className="mt-3 text-base leading-7">{room.summary}</p>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <FactTile label="当前 Topic" value={room.topic.title} />
+        <FactTile label="负责人" value={room.topic.owner} />
+        <FactTile label="Run" value={run?.id ?? room.runId} />
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <FactTile label="任务卡" value={`${room.boardCount} 张`} />
+        <FactTile label="未读" value={`${room.unread} 条`} />
+        <FactTile label="分支" value={run?.branch ?? "待接入"} />
+      </div>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Link
+          href={`/rooms/${room.id}`}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+        >
+          打开讨论间
+        </Link>
+        {run ? (
+          <Link
+            href={`/runs/${run.id}`}
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+          >
+            查看 Run
+          </Link>
+        ) : null}
+        {issue ? (
+          <Link
+            href={`/issues/${issue.key}`}
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+          >
+            查看 Issue
+          </Link>
+        ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+function RunSnapshotCard({
+  run,
+  room,
+  issue,
+}: {
+  run: Run;
+  room?: Room;
+  issue?: Issue;
+}) {
+  return (
+    <Panel tone={panelToneForStatus(run.status)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
+            {run.issueKey} / {room?.title ?? run.roomId}
+          </p>
+          <h3 className="mt-2 font-display text-3xl font-bold">{run.id}</h3>
+        </div>
+        <span
+          className={cn(
+            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            statusBadgeTone(run.status)
+          )}
+        >
+          {runStatusLabel(run.status)}
+        </span>
+      </div>
+      <p className="mt-3 text-base leading-7">{run.summary}</p>
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <FactTile label="Runtime" value={run.runtime} />
+        <FactTile label="Provider" value={run.provider} />
+        <FactTile label="负责人" value={run.owner} />
+        <FactTile label="时长" value={run.duration} />
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <FactTile label="分支" value={run.branch} />
+        <FactTile label="Worktree" value={run.worktree} />
+        <FactTile label="下一步" value={run.nextAction} />
+      </div>
+      <p className="mt-5 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+        {run.approvalRequired
+          ? "这条 Run 当前需要人工批准后才能继续推进。"
+          : `当前已绑定 ${issue?.pullRequest ?? run.pullRequest}，可继续沿着 Room / Run / PR 同步收口。`}
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Link
+          href={`/runs/${run.id}`}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+        >
+          打开 Run
+        </Link>
+        <Link
+          href={`/rooms/${run.roomId}`}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+        >
+          回到讨论间
+        </Link>
+        <Link
+          href={`/issues/${run.issueKey}`}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+        >
+          查看 Issue
+        </Link>
+      </div>
+    </Panel>
+  );
 }
 
 export function LiveIssuesListView() {
@@ -30,6 +227,92 @@ export function LiveIssuesListView() {
   const issues = getResolvedState(state.issues, fallbackState.issues);
 
   return <IssuesListView issues={issues} />;
+}
+
+export function LiveRoomsPageContent() {
+  const { state } = usePhaseZeroState();
+  const rooms = getResolvedState(state.rooms, fallbackState.rooms);
+  const issues = getResolvedState(state.issues, fallbackState.issues);
+  const runs = getResolvedState(state.runs, fallbackState.runs);
+  const activeRooms = rooms.filter((room) => room.topic.status === "running" || room.topic.status === "review").length;
+  const blockedRooms = rooms.filter((room) => room.topic.status === "blocked").length;
+  const unreadCount = rooms.reduce((total, room) => total + room.unread, 0);
+
+  return (
+    <OpenShockShell
+      view="rooms"
+      eyebrow="讨论间总览"
+      title="严肃工作先进入讨论间"
+      description="频道负责聊天和对齐，一旦开始谈 owner、branch、run、PR 或 blocker，就该进入讨论间收拢执行上下文。"
+      contextTitle="Room 是协作主战场"
+      contextDescription="Phase 0 先把每个严肃需求都绑定到一个讨论间、一个当前 Topic 和一个可追踪的 Run，让前端壳层能直接承载真实协作。"
+      contextBody={
+        <DetailRail
+          label="讨论间基线"
+          items={[
+            { label: "总数", value: `${rooms.length} 个` },
+            { label: "活跃中", value: `${activeRooms} 个` },
+            { label: "阻塞", value: `${blockedRooms} 个` },
+            { label: "未读", value: `${unreadCount} 条` },
+          ]}
+        />
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-2">
+        {rooms.map((room) => (
+          <RoomSnapshotCard
+            key={room.id}
+            room={room}
+            issue={issues.find((candidate) => candidate.roomId === room.id)}
+            run={runs.find((candidate) => candidate.id === room.runId)}
+          />
+        ))}
+      </div>
+    </OpenShockShell>
+  );
+}
+
+export function LiveRunsPageContent() {
+  const { state } = usePhaseZeroState();
+  const rooms = getResolvedState(state.rooms, fallbackState.rooms);
+  const issues = getResolvedState(state.issues, fallbackState.issues);
+  const runs = getResolvedState(state.runs, fallbackState.runs);
+  const activeRuns = runs.filter((run) => run.status === "running" || run.status === "review").length;
+  const blockedRuns = runs.filter((run) => run.status === "blocked").length;
+  const approvalRuns = runs.filter((run) => run.approvalRequired).length;
+
+  return (
+    <OpenShockShell
+      view="runs"
+      eyebrow="Run 总览"
+      title="执行真相集中在 Run 面"
+      description="Run 不是附属日志，而是前台第一等公民。runtime、branch、worktree、审批状态和下一步动作都要在这里直接可见。"
+      contextTitle="Run 是执行收口面"
+      contextDescription="Phase 0 先保证每个活跃 Topic 都能落到可见的 Run，再让 Room、Inbox 和 PR 围绕同一个执行真相协作。"
+      contextBody={
+        <DetailRail
+          label="Run 基线"
+          items={[
+            { label: "总数", value: `${runs.length} 条` },
+            { label: "活跃中", value: `${activeRuns} 条` },
+            { label: "阻塞", value: `${blockedRuns} 条` },
+            { label: "需批准", value: `${approvalRuns} 条` },
+          ]}
+        />
+      }
+    >
+      <div className="grid gap-4">
+        {runs.map((run) => (
+          <RunSnapshotCard
+            key={run.id}
+            run={run}
+            room={rooms.find((candidate) => candidate.id === run.roomId)}
+            issue={issues.find((candidate) => candidate.key === run.issueKey)}
+          />
+        ))}
+      </div>
+    </OpenShockShell>
+  );
 }
 
 export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
@@ -91,19 +374,19 @@ export function LiveRunPageContent({
   roomId,
   runId,
 }: {
-  roomId: string;
+  roomId?: string;
   runId: string;
 }) {
   const { state } = usePhaseZeroState();
   const rooms = getResolvedState(state.rooms, fallbackState.rooms);
   const runs = getResolvedState(state.runs, fallbackState.runs);
-  const room = rooms.find((candidate) => candidate.id === roomId);
-  const run = runs.find((candidate) => candidate.id === runId && candidate.roomId === roomId);
+  const run = runs.find((candidate) => candidate.id === runId && (!roomId || candidate.roomId === roomId));
+  const room = rooms.find((candidate) => candidate.id === (roomId ?? run?.roomId));
 
   if (!room || !run) {
     return (
       <OpenShockShell
-        view="rooms"
+        view="runs"
         eyebrow="Run 详情"
         title="未找到 Run"
         description="这个 Run 可能还没同步，或者对应房间已经变化。"
@@ -120,7 +403,7 @@ export function LiveRunPageContent({
 
   return (
     <OpenShockShell
-      view="rooms"
+      view="runs"
       eyebrow="Run 详情"
       title={run.id}
       description="Run 详情就是执行真相面：runtime、分支、worktree、日志、工具调用、审批状态和收口目标都在这里。"

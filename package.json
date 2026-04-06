@@ -5,9 +5,18 @@
   "scripts": {
     "dev": "pnpm --dir apps/web dev",
     "dev:web": "pnpm --dir apps/web dev",
-    "dev:server": "powershell -NoLogo -NoProfile -Command \"Set-Location 'apps/server'; go run ./cmd/openshock-server\"",
-    "dev:daemon": "powershell -NoLogo -NoProfile -Command \"Set-Location 'apps/daemon'; go run ./cmd/openshock-daemon --workspace-root 'E:\\\\00.Lark_Projects\\\\00_OpenShock'\"",
-    "build": "pnpm --dir apps/web build",
-    "lint": "pnpm --dir apps/web lint"
+    "dev:server": "bash -lc 'root=$(pwd); cd apps/server && OPENSHOCK_WORKSPACE_ROOT=\"${OPENSHOCK_WORKSPACE_ROOT:-$root}\" \"$root/scripts/go.sh\" run ./cmd/openshock-server'",
+    "dev:daemon": "bash -lc 'root=$(pwd); cd apps/daemon && \"$root/scripts/go.sh\" run ./cmd/openshock-daemon --workspace-root \"${OPENSHOCK_WORKSPACE_ROOT:-$root}\"'",
+    "build": "pnpm build:web",
+    "build:web": "pnpm --dir apps/web build",
+    "lint": "pnpm lint:web",
+    "lint:web": "pnpm --dir apps/web lint",
+    "typecheck": "pnpm typecheck:web",
+    "typecheck:web": "pnpm --dir apps/web typecheck",
+    "verify": "pnpm verify:web && pnpm verify:go",
+    "verify:web": "pnpm lint:web && pnpm typecheck:web && pnpm build:web",
+    "verify:go": "pnpm verify:server && pnpm verify:daemon",
+    "verify:server": "bash -lc 'root=$(pwd); cd apps/server && OPENSHOCK_WORKSPACE_ROOT=\"${OPENSHOCK_WORKSPACE_ROOT:-$root}\" \"$root/scripts/go.sh\" test ./...'",
+    "verify:daemon": "bash -lc 'root=$(pwd); cd apps/daemon && \"$root/scripts/go.sh\" test ./...'"
   }
 }

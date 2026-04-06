@@ -14,7 +14,7 @@ import {
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 
-type ShellView = AppTab | "setup" | "issues" | "agents" | "settings";
+type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings";
 type Tone = "yellow" | "pink" | "lime";
 
 type OpenShockShellProps = {
@@ -35,7 +35,7 @@ function cn(...parts: Array<string | false | null | undefined>) {
 }
 
 function activeFromView(view: ShellView): AppTab | null {
-  if (view === "setup" || view === "issues" || view === "agents" || view === "settings") {
+  if (view === "setup" || view === "issues" || view === "runs" || view === "agents" || view === "settings") {
     return null;
   }
 
