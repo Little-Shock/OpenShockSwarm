@@ -2112,3 +2112,181 @@ test("v1 batch6 execution debug evidence endpoint exposes closeout anchor for ba
     }
   );
 });
+
+test("v1 batch7 integration projection closure keeps projection meta and backend-derived anchors aligned", async () => {
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId: "topic_v1_batch7_projection"
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const overview = await requestJson({
+        port,
+        method: "GET",
+        path: "/topics/topic_v1_batch7_projection/overview"
+      });
+      assert.equal(overview.statusCode, 200);
+
+      const truthPatch = await requestJson({
+        port,
+        method: "POST",
+        path: "/topics/topic_v1_batch7_projection/messages",
+        body: {
+          type: "shared_truth_proposal",
+          sourceAgentId: "lead_sample_01",
+          sourceRole: "lead",
+          truthRevision: overview.body.revision,
+          payload: {
+            patch: {
+              deliveryState: {
+                state: "awaiting_merge_gate",
+                run_id: "run_batch7_01"
+              },
+              delivery_closeout: {
+                run_id: "run_batch7_01",
+                checkpoint_refs: ["checkpoint://batch7-truth"],
+                artifact_refs: ["artifact://batch7-truth"]
+              },
+              replay_debug_evidence: {
+                run_id: "run_batch7_01",
+                failure_reason: "approval_waiting",
+                checkpoint_refs: ["checkpoint://batch7-truth"],
+                artifact_refs: ["artifact://batch7-truth"]
+              }
+            }
+          }
+        }
+      });
+      assert.equal(truthPatch.statusCode, 200);
+
+      const feedbackEvent = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/daemon/events",
+        body: {
+          topicId: "topic_v1_batch7_projection",
+          type: "feedback_ingest",
+          runId: "run_batch7_01",
+          laneId: "lane_batch7_01",
+          payload: {
+            feedbackId: "feedback_batch7_01",
+            summary: "batch7 projection edge evidence",
+            trace_id: "trace_batch7_01"
+          }
+        }
+      });
+      assert.equal(feedbackEvent.statusCode, 200);
+
+      const blockerEvent = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/daemon/events",
+        body: {
+          topicId: "topic_v1_batch7_projection",
+          type: "blocker_escalation",
+          runId: "run_batch7_01",
+          laneId: "lane_batch7_01",
+          payload: {
+            reason: "batch7 pending approval"
+          }
+        }
+      });
+      assert.equal(blockerEvent.statusCode, 200);
+
+      const runHistory = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/topics/topic_v1_batch7_projection/run-history?limit=20"
+      });
+      assert.equal(runHistory.statusCode, 200);
+      assert.equal(runHistory.body.projection_meta.resource, "run_history_projection");
+      assert.equal(runHistory.body.projection_meta.source_plane, "execution_plane_projection");
+      assert.equal(runHistory.body.projection_meta.topic_id, "topic_v1_batch7_projection");
+      assert.equal(runHistory.body.items[0].explanation_projection.run_id, "run_batch7_01");
+
+      const runReplay = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/runs/run_batch7_01/replay?topic_id=topic_v1_batch7_projection&limit=20"
+      });
+      assert.equal(runReplay.statusCode, 200);
+      assert.equal(runReplay.body.projection_meta.resource, "run_replay_projection");
+      assert.equal(runReplay.body.projection_meta.source_plane, "execution_plane_projection");
+      assert.equal(runReplay.body.projection_meta.topic_id, "topic_v1_batch7_projection");
+      assert.equal(runReplay.body.projection_meta.run_id, "run_batch7_01");
+
+      const debugEvents = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/debug/events?topic_id=topic_v1_batch7_projection&run_id=run_batch7_01&limit=20"
+      });
+      assert.equal(debugEvents.statusCode, 200);
+      assert.equal(debugEvents.body.projection_meta.resource, "debug_event_projection");
+      assert.equal(debugEvents.body.projection_meta.source_plane, "cross_plane_debug_join");
+      assert.equal(debugEvents.body.projection_meta.run_id, "run_batch7_01");
+
+      const debugHistory = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/debug/history?topic_id=topic_v1_batch7_projection&run_id=run_batch7_01&limit=20"
+      });
+      assert.equal(debugHistory.statusCode, 200);
+      assert.equal(debugHistory.body.projection_meta.resource, "debug_history_projection");
+      assert.equal(debugHistory.body.projection_meta.source_plane, "cross_plane_debug_history_aggregation");
+      assert.equal(debugHistory.body.projection_meta.run_id, "run_batch7_01");
+
+      const runDebug = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/execution/runs/run_batch7_01/debug?topic_id=topic_v1_batch7_projection"
+      });
+      assert.equal(runDebug.statusCode, 200);
+
+      const shellCompatibility = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/compatibility/shell-adapter?topic_id=topic_v1_batch7_projection"
+      });
+      assert.equal(shellCompatibility.statusCode, 200);
+      assert.equal(shellCompatibility.body.projection_meta.resource, "shell_adapter_compatibility_projection");
+      assert.equal(shellCompatibility.body.projection_meta.topic_id, "topic_v1_batch7_projection");
+      assert.equal(shellCompatibility.body.backend_derived_projection.explanation_projection.run_id, "run_batch7_01");
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes("/v1/topics/:topicId/run-history")
+      );
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/runs/:runId/replay?topic_id=:topicId"
+        )
+      );
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/debug/events?topic_id=:topicId&run_id=:runId"
+        )
+      );
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/debug/history?topic_id=:topicId&run_id=:runId"
+        )
+      );
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/execution/runs/:runId/debug?topic_id=:topicId"
+        )
+      );
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.lineage_anchors.execution_debug,
+        "/v1/execution/runs/:runId/debug?topic_id=:topicId"
+      );
+    }
+  );
+});

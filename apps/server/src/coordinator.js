@@ -2234,13 +2234,20 @@ export class ServerCoordinator {
       projection_surfaces: [
         "/v1/topics/:topicId/repo-binding",
         "/v1/topics/:topicId/prs",
-        "/v1/topics/:topicId/notifications"
+        "/v1/topics/:topicId/notifications",
+        "/v1/topics/:topicId/run-history",
+        "/v1/runs/:runId/replay?topic_id=:topicId",
+        "/v1/debug/events?topic_id=:topicId&run_id=:runId",
+        "/v1/debug/history?topic_id=:topicId&run_id=:runId",
+        "/v1/execution/runs/:runId/debug?topic_id=:topicId",
+        "/v1/compatibility/shell-adapter?topic_id=:topicId"
       ],
       lineage_anchors: {
         run_history: "/v1/topics/:topicId/run-history",
         run_replay: "/v1/runs/:runId/replay?topic_id=:topicId",
         debug_events: "/v1/debug/events?topic_id=:topicId",
-        debug_history: "/v1/debug/history?topic_id=:topicId&run_id=:runId"
+        debug_history: "/v1/debug/history?topic_id=:topicId&run_id=:runId",
+        execution_debug: "/v1/execution/runs/:runId/debug?topic_id=:topicId"
       }
     };
     if (!topicId) {
