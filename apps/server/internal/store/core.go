@@ -44,6 +44,15 @@ func (s *Store) Snapshot() State {
 	return cloneState(s.state)
 }
 
+func (s *Store) RuntimeSnapshot(now time.Time) State {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	snapshot := cloneState(s.state)
+	applyRuntimeDerivedTruth(&snapshot, now)
+	return snapshot
+}
+
 func (s *Store) RoomDetail(roomID string) (RoomDetail, bool) {
 	snapshot := s.Snapshot()
 	for _, item := range snapshot.Rooms {

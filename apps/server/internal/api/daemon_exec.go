@@ -100,7 +100,7 @@ func (s *Server) ensureWorktreeLane(daemonURL string, req WorktreeRequest) (Work
 }
 
 func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
-	return s.runDaemonExecAgainst(s.daemonURLValue(), req)
+	return s.runDaemonExecAgainst(s.currentWorkspaceDaemonURL(), req)
 }
 
 func (s *Server) runRoomDaemonExec(roomID string, req ExecRequest) (DaemonExecResponse, error) {
@@ -151,7 +151,7 @@ func (s *Server) runDaemonExecAgainst(daemonURL string, req ExecRequest) (Daemon
 }
 
 func (s *Server) streamDaemonExec(r *http.Request, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
-	return s.streamDaemonExecAgainst(r, s.daemonURLValue(), req, emit)
+	return s.streamDaemonExecAgainst(r, s.currentWorkspaceDaemonURL(), req, emit)
 }
 
 func (s *Server) streamRoomDaemonExec(r *http.Request, roomID string, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {

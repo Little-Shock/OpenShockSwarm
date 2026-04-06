@@ -540,6 +540,177 @@ func TestExecRouteProxiesDaemonMetadata(t *testing.T) {
 	}
 }
 
+func TestRuntimePairingColdStartPrefersCurrentDaemonTruth(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		RuntimeID:  "shock-main",
+		DaemonURL:  "http://127.0.0.1:8090",
+		Machine:    "shock-main",
+		State:      "online",
+		ReportedAt: time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	var execHits int
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec":
+			execHits++
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "bridge online",
+				Duration: "120ms",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	pairingResp, err := http.Get(server.URL + "/v1/runtime/pairing")
+	if err != nil {
+		t.Fatalf("GET /v1/runtime/pairing error = %v", err)
+	}
+	defer pairingResp.Body.Close()
+	if pairingResp.StatusCode != http.StatusOK {
+		t.Fatalf("pairing status = %d, want %d", pairingResp.StatusCode, http.StatusOK)
+	}
+	var pairing PairingStatusResponse
+	decodeJSON(t, pairingResp, &pairing)
+	if pairing.DaemonURL != daemon.URL {
+		t.Fatalf("pairing daemon url = %q, want %q", pairing.DaemonURL, daemon.URL)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"provider": "codex",
+		"prompt":   "cold start bridge",
+		"cwd":      root,
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	execResp, err := http.Post(server.URL+"/v1/exec", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/exec error = %v", err)
+	}
+	defer execResp.Body.Close()
+	if execResp.StatusCode != http.StatusOK {
+		t.Fatalf("exec status = %d, want %d", execResp.StatusCode, http.StatusOK)
+	}
+	if execHits != 1 {
+		t.Fatalf("exec hits = %d, want 1", execHits)
+	}
+}
+
+func TestRuntimeHeartbeatsKeepPairingAndExecAligned(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		RuntimeID:  "shock-main",
+		DaemonURL:  "http://127.0.0.1:8090",
+		Machine:    "shock-main",
+		State:      "online",
+		ReportedAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	var execHits int
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec":
+			execHits++
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "bridge online",
+				Duration: "98ms",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:8090",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	heartbeatBody, err := json.Marshal(RuntimeSnapshotResponse{
+		RuntimeID:  "shock-main",
+		DaemonURL:  daemon.URL,
+		Machine:    "shock-main",
+		State:      "online",
+		ReportedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("Marshal() heartbeat error = %v", err)
+	}
+	heartbeatResp, err := http.Post(server.URL+"/v1/runtime/heartbeats", "application/json", bytes.NewReader(heartbeatBody))
+	if err != nil {
+		t.Fatalf("POST /v1/runtime/heartbeats error = %v", err)
+	}
+	defer heartbeatResp.Body.Close()
+	if heartbeatResp.StatusCode != http.StatusOK {
+		t.Fatalf("heartbeat status = %d, want %d", heartbeatResp.StatusCode, http.StatusOK)
+	}
+
+	pairingResp, err := http.Get(server.URL + "/v1/runtime/pairing")
+	if err != nil {
+		t.Fatalf("GET /v1/runtime/pairing error = %v", err)
+	}
+	defer pairingResp.Body.Close()
+	if pairingResp.StatusCode != http.StatusOK {
+		t.Fatalf("pairing status = %d, want %d", pairingResp.StatusCode, http.StatusOK)
+	}
+	var pairing PairingStatusResponse
+	decodeJSON(t, pairingResp, &pairing)
+	if pairing.DaemonURL != daemon.URL {
+		t.Fatalf("pairing daemon url = %q, want %q", pairing.DaemonURL, daemon.URL)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"provider": "codex",
+		"prompt":   "heartbeat bridge",
+		"cwd":      root,
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	execResp, err := http.Post(server.URL+"/v1/exec", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/exec error = %v", err)
+	}
+	defer execResp.Body.Close()
+	if execResp.StatusCode != http.StatusOK {
+		t.Fatalf("exec status = %d, want %d", execResp.StatusCode, http.StatusOK)
+	}
+	if execHits != 1 {
+		t.Fatalf("exec hits = %d, want 1", execHits)
+	}
+}
+
 func TestCreatePullRequestRouteCreatesGitHubBackedPullRequest(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

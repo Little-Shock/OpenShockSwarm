@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	githubsvc "github.com/Larkspur-Wang/OpenShock/apps/server/internal/github"
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
@@ -114,9 +115,11 @@ type RuntimeSelectionResponse struct {
 }
 
 func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
-	daemonURL := strings.TrimRight(cfg.DaemonURL, "/")
-	if workspace := s.Snapshot().Workspace; strings.TrimSpace(workspace.PairedRuntimeURL) != "" {
-		daemonURL = strings.TrimRight(workspace.PairedRuntimeURL, "/")
+	daemonURL := strings.TrimRight(strings.TrimSpace(cfg.DaemonURL), "/")
+	if daemonURL == "" {
+		if workspace := s.RuntimeSnapshot(time.Now()).Workspace; strings.TrimSpace(workspace.PairedRuntimeURL) != "" {
+			daemonURL = strings.TrimRight(workspace.PairedRuntimeURL, "/")
+		}
 	}
 	githubService := cfg.GitHub
 	if githubService == nil {
@@ -737,15 +740,22 @@ func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	snapshot := s.store.Snapshot()
+	snapshot := s.store.RuntimeSnapshot(time.Now())
 	runtimeName := strings.TrimSpace(r.URL.Query().Get("machine"))
 	if runtimeName == "" {
 		runtimeName = snapshot.Workspace.PairedRuntime
 	}
 	daemonURL, err := daemonURLForRuntime(snapshot, runtimeName)
 	if err != nil {
-		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
-		return
+		if runtimeName == "" || runtimeName != strings.TrimSpace(snapshot.Workspace.PairedRuntime) {
+			writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+			return
+		}
+		daemonURL = resolveWorkspaceDaemonURL(snapshot, s.daemonURLValue())
+		if strings.TrimSpace(daemonURL) == "" {
+			writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+			return
+		}
 	}
 
 	runtimeSnapshot, err := s.fetchRuntimeSnapshot(daemonURL)
@@ -774,9 +784,10 @@ func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		workspace := s.store.Snapshot().Workspace
+		snapshot := s.store.RuntimeSnapshot(time.Now())
+		workspace := snapshot.Workspace
 		writeJSON(w, http.StatusOK, PairingStatusResponse{
-			DaemonURL:     defaultString(workspace.PairedRuntimeURL, s.daemonURLValue()),
+			DaemonURL:     resolveWorkspaceDaemonURL(snapshot, s.daemonURLValue()),
 			PairedRuntime: workspace.PairedRuntime,
 			PairingStatus: workspace.PairingStatus,
 			DeviceAuth:    workspace.DeviceAuth,
@@ -870,7 +881,7 @@ func (s *Server) handleRuntimeRegistry(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, runtimeRegistryResponse(s.store.Snapshot()))
+	writeJSON(w, http.StatusOK, runtimeRegistryResponse(s.store.RuntimeSnapshot(time.Now())))
 }
 
 func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request) {
@@ -893,6 +904,9 @@ func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(nextState.Workspace.PairedRuntimeURL) != "" {
+		s.setDaemonURL(nextState.Workspace.PairedRuntimeURL)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"runtimeId": defaultString(req.RuntimeID, req.Machine),
 		"state":     nextState,
@@ -902,7 +916,7 @@ func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleRuntimeSelection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, buildRuntimeSelectionResponse(s.store.Snapshot()))
+		writeJSON(w, http.StatusOK, buildRuntimeSelectionResponse(s.store.RuntimeSnapshot(time.Now()), s.daemonURLValue()))
 	case http.MethodPost:
 		if !runtimeManageGuard(s, w) {
 			return
@@ -920,15 +934,15 @@ func (s *Server) handleRuntimeSelection(w http.ResponseWriter, r *http.Request) 
 			}
 			writeJSON(w, status, map[string]any{
 				"error":     err.Error(),
-				"state":     s.store.Snapshot(),
-				"selection": buildRuntimeSelectionResponse(s.store.Snapshot()),
+				"state":     s.store.RuntimeSnapshot(time.Now()),
+				"selection": buildRuntimeSelectionResponse(s.store.RuntimeSnapshot(time.Now()), s.daemonURLValue()),
 			})
 			return
 		}
 		s.setDaemonURL(nextState.Workspace.PairedRuntimeURL)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"state":     nextState,
-			"selection": buildRuntimeSelectionResponse(nextState),
+			"selection": buildRuntimeSelectionResponse(nextState, s.daemonURLValue()),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -1110,17 +1124,17 @@ func runtimeSnapshotMatchesRequested(snapshot RuntimeSnapshotResponse, runtimeID
 	return strings.TrimSpace(snapshot.RuntimeID) == runtimeID || strings.TrimSpace(snapshot.Machine) == runtimeID
 }
 
-func buildRuntimeSelectionResponse(snapshot store.State) RuntimeSelectionResponse {
+func buildRuntimeSelectionResponse(snapshot store.State, fallbackDaemonURL string) RuntimeSelectionResponse {
 	return RuntimeSelectionResponse{
 		SelectedRuntime:   snapshot.Workspace.PairedRuntime,
-		SelectedDaemonURL: snapshot.Workspace.PairedRuntimeURL,
+		SelectedDaemonURL: resolveWorkspaceDaemonURL(snapshot, fallbackDaemonURL),
 		PairingStatus:     snapshot.Workspace.PairingStatus,
 		Runtimes:          snapshot.Machines,
 	}
 }
 
 func (s *Server) daemonURLForRoom(roomID string) (string, error) {
-	snapshot := s.store.Snapshot()
+	snapshot := s.store.RuntimeSnapshot(time.Now())
 	_, run, _, ok := findRoomRunIssue(snapshot, roomID)
 	if !ok {
 		return "", fmt.Errorf("room not found")
@@ -1129,7 +1143,7 @@ func (s *Server) daemonURLForRoom(roomID string) (string, error) {
 }
 
 func (s *Server) daemonURLForRunID(runID string) (string, error) {
-	snapshot := s.store.Snapshot()
+	snapshot := s.store.RuntimeSnapshot(time.Now())
 	for _, run := range snapshot.Runs {
 		if run.ID == runID {
 			return daemonURLForRuntime(snapshot, run.Runtime)
@@ -1170,6 +1184,18 @@ func daemonURLForRuntime(snapshot store.State, runtimeName string) (string, erro
 	return "", fmt.Errorf("runtime %s not found", runtimeName)
 }
 
+func resolveWorkspaceDaemonURL(snapshot store.State, fallback string) string {
+	if runtimeName := strings.TrimSpace(snapshot.Workspace.PairedRuntime); runtimeName != "" {
+		if daemonURL, err := daemonURLForRuntime(snapshot, runtimeName); err == nil && strings.TrimSpace(daemonURL) != "" {
+			return daemonURL
+		}
+	}
+	if fallback = strings.TrimRight(strings.TrimSpace(fallback), "/"); fallback != "" {
+		return fallback
+	}
+	return strings.TrimRight(strings.TrimSpace(snapshot.Workspace.PairedRuntimeURL), "/")
+}
+
 func snapshotMachineFromWorkspace(workspace store.WorkspaceSnapshot) store.Machine {
 	return store.Machine{
 		Name:      workspace.PairedRuntime,
@@ -1184,6 +1210,10 @@ func runtimeMachineMatches(machine store.Machine, runtimeName string) bool {
 		return false
 	}
 	return machine.Name == runtimeName || machine.ID == runtimeName
+}
+
+func (s *Server) currentWorkspaceDaemonURL() string {
+	return resolveWorkspaceDaemonURL(s.store.RuntimeSnapshot(time.Now()), s.daemonURLValue())
 }
 
 func (s *Server) daemonURLValue() string {
