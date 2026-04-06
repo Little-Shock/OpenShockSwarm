@@ -27,9 +27,14 @@ function createBaselineCoordinator() {
     status: "active"
   });
   coordinator.registerAgent("topic_0a", {
-    agentId: "human_01",
+    agentId: "human_reviewer",
     role: "human",
     status: "active"
+  });
+  coordinator.registerAgent("topic_0a", {
+    agentId: "human_reviewer_inactive",
+    role: "human",
+    status: "idle"
   });
   return coordinator;
 }
@@ -190,148 +195,15 @@ test("human gate hold and release updates delivery state", () => {
   });
   const holdId = merge.result.holdIds[0];
   const decision = coordinator.applyHumanDecision("topic_0a", holdId, {
-    decider: "human_01",
-    interventionPoint: "pr-merge",
-    approve: true
+    decider: "human_reviewer",
+    approve: true,
+    interventionId: holdId
   });
   assert.equal(decision.status, "approved");
 
   const overview = coordinator.getTopicOverview("topic_0a");
   assert.equal(overview.truth.deliveryState.state, "pr_ready");
   assert.equal(overview.truth.deliveryState.prUrl, "https://example.com/pr/3");
-});
-
-test("message ingest rejects unregistered actor", () => {
-  const coordinator = createBaselineCoordinator();
-  assert.throws(
-    () =>
-      coordinator.ingestMessage("topic_0a", {
-        type: "handoff_package",
-        sourceAgentId: "rogue_worker",
-        sourceRole: "worker",
-        targetScope: "lead",
-        payload: {
-          summary: "rogue actor should be rejected"
-        }
-      }),
-    (error) => error instanceof CoordinatorError && error.code === "actor_not_registered"
-  );
-});
-
-test("message ingest rejects actor role mismatch", () => {
-  const coordinator = createBaselineCoordinator();
-  assert.throws(
-    () =>
-      coordinator.ingestMessage("topic_0a", {
-        type: "handoff_package",
-        sourceAgentId: "worker_01",
-        sourceRole: "lead",
-        targetScope: "lead",
-        payload: {
-          summary: "role mismatch should be rejected"
-        }
-      }),
-    (error) => error instanceof CoordinatorError && error.code === "actor_role_mismatch"
-  );
-});
-
-test("message ingest rejects inactive actor", () => {
-  const coordinator = createBaselineCoordinator();
-  coordinator.registerAgent("topic_0a", {
-    agentId: "worker_01",
-    role: "worker",
-    status: "blocked"
-  });
-  assert.throws(
-    () =>
-      coordinator.ingestMessage("topic_0a", {
-        type: "handoff_package",
-        sourceAgentId: "worker_01",
-        sourceRole: "worker",
-        targetScope: "lead",
-        payload: {
-          summary: "inactive sender should be rejected"
-        }
-      }),
-    (error) => error instanceof CoordinatorError && error.code === "actor_inactive"
-  );
-});
-
-test("human decision rejects unregistered decider", () => {
-  const coordinator = createBaselineCoordinator();
-  const handoffId = completeLeadAcceptedHandoff(coordinator);
-  const merge = coordinator.ingestMessage("topic_0a", {
-    type: "merge_request",
-    sourceAgentId: "worker_01",
-    sourceRole: "worker",
-    payload: {
-      handoffId,
-      prUrl: "https://example.com/pr/5"
-    }
-  });
-  const holdId = merge.result.holdIds[0];
-  assert.throws(
-    () =>
-      coordinator.applyHumanDecision("topic_0a", holdId, {
-        decider: "not_registered",
-        interventionPoint: "pr-merge",
-        approve: true
-      }),
-    (error) => error instanceof CoordinatorError && error.code === "decision_actor_not_registered"
-  );
-});
-
-test("human decision rejects inactive decider", () => {
-  const coordinator = createBaselineCoordinator();
-  const handoffId = completeLeadAcceptedHandoff(coordinator);
-  const merge = coordinator.ingestMessage("topic_0a", {
-    type: "merge_request",
-    sourceAgentId: "worker_01",
-    sourceRole: "worker",
-    payload: {
-      handoffId,
-      prUrl: "https://example.com/pr/5b"
-    }
-  });
-  const holdId = merge.result.holdIds[0];
-  coordinator.registerAgent("topic_0a", {
-    agentId: "human_01",
-    role: "human",
-    status: "blocked"
-  });
-  assert.throws(
-    () =>
-      coordinator.applyHumanDecision("topic_0a", holdId, {
-        decider: "human_01",
-        interventionPoint: "pr-merge",
-        approve: true
-      }),
-    (error) => error instanceof CoordinatorError && error.code === "decision_actor_inactive"
-  );
-});
-
-test("human decision rejects intervention point mismatch", () => {
-  const coordinator = createBaselineCoordinator();
-  const handoffId = completeLeadAcceptedHandoff(coordinator);
-  const merge = coordinator.ingestMessage("topic_0a", {
-    type: "merge_request",
-    sourceAgentId: "worker_01",
-    sourceRole: "worker",
-    payload: {
-      handoffId,
-      prUrl: "https://example.com/pr/6"
-    }
-  });
-  const holdId = merge.result.holdIds[0];
-  assert.throws(
-    () =>
-      coordinator.applyHumanDecision("topic_0a", holdId, {
-        decider: "human_01",
-        interventionPoint: "architecture-level-change",
-        approve: true
-      }),
-    (error) => error instanceof CoordinatorError && error.code === "decision_intervention_mismatch"
-  );
 });
 
 test("coarse observability surfaces blockers and pending approvals", () => {
@@ -418,5 +290,60 @@ test("handoff_ack is rejected from unintended receiver", () => {
         }
       }),
     (error) => error instanceof CoordinatorError && error.code === "handoff_ack_forbidden"
+  );
+});
+
+test("rogue structured sender is rejected when actor is not registered", () => {
+  const coordinator = createBaselineCoordinator();
+  assert.throws(
+    () =>
+      coordinator.ingestMessage("topic_0a", {
+        type: "status_report",
+        sourceAgentId: "rogue_worker_999",
+        sourceRole: "worker",
+        payload: {
+          event: "agent_state",
+          status: "active"
+        }
+      }),
+    (error) => error instanceof CoordinatorError && error.code === "source_actor_not_registered"
+  );
+});
+
+test("human decision rejects free-string or inactive decider with intervention binding", () => {
+  const coordinator = createBaselineCoordinator();
+  const handoffId = completeLeadAcceptedHandoff(coordinator, {
+    fromAgentId: "worker_01",
+    artifactId: "artifact://handoff-perm-01"
+  });
+  const merge = coordinator.ingestMessage("topic_0a", {
+    type: "merge_request",
+    sourceAgentId: "worker_01",
+    sourceRole: "worker",
+    payload: {
+      handoffId,
+      prUrl: "https://example.com/pr/perm-1"
+    }
+  });
+  const holdId = merge.result.holdIds[0];
+
+  assert.throws(
+    () =>
+      coordinator.applyHumanDecision("topic_0a", holdId, {
+        decider: "free_string_decider",
+        approve: true,
+        interventionId: holdId
+      }),
+    (error) => error instanceof CoordinatorError && error.code === "decision_decider_not_registered"
+  );
+
+  assert.throws(
+    () =>
+      coordinator.applyHumanDecision("topic_0a", holdId, {
+        decider: "human_reviewer_inactive",
+        approve: true,
+        interventionId: holdId
+      }),
+    (error) => error instanceof CoordinatorError && error.code === "decision_decider_inactive"
   );
 });

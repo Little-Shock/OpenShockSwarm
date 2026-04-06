@@ -287,6 +287,180 @@ function buildActorCloseoutRef(topic, actorId, fallbackRole = null) {
   };
 }
 
+function collectApprovalIds(topic, status = null) {
+  const ids = [];
+  for (const hold of topic.approvals.values()) {
+    if (status && hold.status !== status) {
+      continue;
+    }
+    if (typeof hold.holdId === "string" && hold.holdId.length > 0) {
+      ids.push(hold.holdId);
+    }
+  }
+  return ids.sort();
+}
+
+function collectConflictIds(topic, status = null) {
+  const ids = [];
+  for (const conflict of topic.conflicts.values()) {
+    if (status && conflict.status !== status) {
+      continue;
+    }
+    if (typeof conflict.conflictId === "string" && conflict.conflictId.length > 0) {
+      ids.push(conflict.conflictId);
+    }
+  }
+  return ids.sort();
+}
+
+function collectBlockerIds(topic) {
+  const ids = [];
+  for (const blocker of topic.blockers.values()) {
+    if (typeof blocker.blockerId === "string" && blocker.blockerId.length > 0) {
+      ids.push(blocker.blockerId);
+    }
+  }
+  return ids.sort();
+}
+
+function buildMergeLifecycleEvidenceAnchor(topic, input = {}) {
+  return {
+    source: "server_owned",
+    topic_ref: deepClone(input.topicRef ?? buildTopicCloseoutRef(topic)),
+    merge_lifecycle_state: input.mergeLifecycleState ?? topic.truth?.deliveryState?.state ?? "unknown",
+    run_id: input.runId ?? null,
+    lane_id: input.laneId ?? null,
+    checkpoint_refs: deepClone(input.checkpointRefs ?? []),
+    artifact_refs: deepClone(input.artifactRefs ?? []),
+    pending_approval_ids: deepClone(input.pendingApprovalIds ?? collectApprovalIds(topic, "pending")),
+    open_conflict_ids: deepClone(input.openConflictIds ?? collectConflictIds(topic, "unresolved")),
+    blocker_ids: deepClone(input.blockerIds ?? collectBlockerIds(topic))
+  };
+}
+
+function readControlFailureReason(topic) {
+  const truth = topic.truth && typeof topic.truth === "object" ? topic.truth : {};
+  const nodes = [
+    truth,
+    truth.replay_debug_evidence,
+    truth.replayDebugEvidence,
+    truth.execution_evidence,
+    truth.executionEvidence,
+    truth.control_evidence,
+    truth.controlEvidence,
+    truth.closeout_evidence,
+    truth.closeoutEvidence,
+    truth.failure_evidence,
+    truth.failureEvidence,
+    truth.delivery_closeout,
+    truth.deliveryCloseout,
+    truth.mergeIntent
+  ].filter((node) => node && typeof node === "object" && !Array.isArray(node));
+  return pickFirstStringFromNodes(nodes, [
+    "failure_reason",
+    "failureReason",
+    "error_reason",
+    "errorReason",
+    "status_reason",
+    "statusReason",
+    "reason"
+  ]);
+}
+
+function buildCloseoutExplanationFromTopic(topic, evidenceAnchor = null) {
+  const anchor = evidenceAnchor ?? buildMergeLifecycleEvidenceAnchor(topic);
+  const mergeLifecycleState = anchor.merge_lifecycle_state ?? "unknown";
+  const blockerIds = Array.isArray(anchor.blocker_ids) ? anchor.blocker_ids : [];
+  const pendingApprovalIds = Array.isArray(anchor.pending_approval_ids) ? anchor.pending_approval_ids : [];
+  const openConflictIds = Array.isArray(anchor.open_conflict_ids) ? anchor.open_conflict_ids : [];
+  const failureReason = readControlFailureReason(topic);
+
+  let status = "in_progress";
+  let reasonCode = "in_progress";
+  let reasonDetail = "closeout is still progressing";
+
+  if (failureReason || mergeLifecycleState === "failed") {
+    status = "failed";
+    reasonCode = failureReason ? "truth_failure_reason" : "delivery_failed";
+    reasonDetail = failureReason ? `failure reason from server truth: ${failureReason}` : "delivery state is failed";
+  } else if (blockerIds.some((item) => item.startsWith("approval_rejected:"))) {
+    status = "failed";
+    reasonCode = "approval_rejected";
+    reasonDetail = "approval gate was rejected";
+  } else if (openConflictIds.length > 0) {
+    status = "waiting_gate";
+    reasonCode = "unresolved_conflict";
+    reasonDetail = "closeout is blocked by unresolved conflict";
+  } else if (pendingApprovalIds.length > 0 || mergeLifecycleState === "awaiting_merge_gate") {
+    status = "waiting_gate";
+    reasonCode = "pending_approval_gate";
+    reasonDetail = "closeout is waiting for approval gate";
+  } else if (["pr_ready", "merged", "delivered"].includes(mergeLifecycleState)) {
+    status = "closeout_ready";
+    reasonCode = "closeout_ready";
+    reasonDetail = "closeout has enough server-owned evidence for downstream surfaces";
+  }
+
+  return {
+    status,
+    reason_code: reasonCode,
+    reason_detail: reasonDetail,
+    evidence_anchor: deepClone(anchor)
+  };
+}
+
+function toConflictEvidenceResource(topic, conflict) {
+  const resource = deepClone(conflict);
+  const resolutionNode = resource.resolution && typeof resource.resolution === "object" ? resource.resolution : null;
+  resource.failure_reason = resource.status === "unresolved" ? "unresolved_conflict" : null;
+  resource.evidence_anchor = {
+    source: "server_owned",
+    conflict_id: resource.conflictId ?? null,
+    opened_by_message_id: resource.challengeMessageId ?? null,
+    resolution_message_id: resolutionNode?.messageId ?? null,
+    resolution_outcome: resolutionNode?.outcome ?? null,
+    resolved_at: resolutionNode?.at ?? null
+  };
+  return resource;
+}
+
+function toApprovalEvidenceResource(topic, hold) {
+  const resource = deepClone(hold);
+  resource.failure_reason = resource.status === "rejected" ? "approval_rejected" : null;
+  resource.evidence_anchor = {
+    source: "server_owned",
+    hold_id: resource.holdId ?? null,
+    gate: resource.gate ?? null,
+    related_message_id: resource.messageId ?? null,
+    decision_status: resource.status ?? null,
+    decider_actor_id: resource.decider ?? null,
+    decided_at: resource.decidedAt ?? null
+  };
+  return resource;
+}
+
+function toDecisionEvidenceResource(topic, hold) {
+  const resource = {
+    decisionId: `${hold.holdId}:${hold.decidedAt ?? "pending"}`,
+    holdId: hold.holdId,
+    status: hold.status,
+    decider: hold.decider ?? null,
+    gate: hold.gate,
+    decidedAt: hold.decidedAt,
+    failure_reason: hold.status === "rejected" ? "approval_rejected" : null,
+    evidence_anchor: {
+      source: "server_owned",
+      hold_id: hold.holdId,
+      gate: hold.gate,
+      related_message_id: hold.messageId ?? null,
+      decision_status: hold.status,
+      decider_actor_id: hold.decider ?? null,
+      decided_at: hold.decidedAt ?? null
+    }
+  };
+  return resource;
+}
+
 function pushStringRef(out, value) {
   if (typeof value !== "string") {
     return;
@@ -771,10 +945,26 @@ function buildTopicDeliveryProjection(topic) {
     serverOwnedTruth.checkpoint_refs.length > 0 ? serverOwnedTruth.checkpoint_refs : runCloseout.checkpoint_refs;
   const artifactRefs =
     serverOwnedTruth.artifact_refs.length > 0 ? serverOwnedTruth.artifact_refs : runCloseout.artifact_refs;
+  const mergeLifecycleState = typeof deliveryState.state === "string" ? deliveryState.state : "unknown";
+  const pendingApprovalIds = collectApprovalIds(topic, "pending");
+  const openConflictIds = collectConflictIds(topic, "unresolved");
+  const blockerIds = collectBlockerIds(topic);
+  const evidenceAnchor = buildMergeLifecycleEvidenceAnchor(topic, {
+    topicRef,
+    mergeLifecycleState,
+    runId,
+    laneId: serverOwnedTruth.lane_id ?? latestWriteback?.laneId ?? null,
+    checkpointRefs,
+    artifactRefs,
+    pendingApprovalIds,
+    openConflictIds,
+    blockerIds
+  });
+  const closeoutExplanation = buildCloseoutExplanationFromTopic(topic, evidenceAnchor);
 
   return {
     topic_ref: topicRef,
-    merge_lifecycle_state: typeof deliveryState.state === "string" ? deliveryState.state : "unknown",
+    merge_lifecycle_state: mergeLifecycleState,
     branch_ref: {
       default_branch: topic.integration.repoBinding?.default_branch ?? null,
       base_branch: baseBranch
@@ -791,7 +981,9 @@ function buildTopicDeliveryProjection(topic) {
       actor_refs: actorRefs,
       checkpoint_refs: checkpointRefs,
       artifact_refs: artifactRefs
-    }
+    },
+    evidence_anchor: evidenceAnchor,
+    closeout_explanation: closeoutExplanation
   };
 }
 
@@ -1142,13 +1334,16 @@ export class ServerCoordinator {
       }
     }
     topic.updatedAt = nowIso();
+    const holdEvidence = toApprovalEvidenceResource(topic, hold);
     return {
       holdId,
       interventionId: holdId,
       status: hold.status,
       messageId: hold.messageId,
       messageState: message?.state ?? null,
-      revision: topic.revision
+      revision: topic.revision,
+      failure_reason: holdEvidence.failure_reason,
+      evidence_anchor: holdEvidence.evidence_anchor
     };
   }
 
@@ -1157,17 +1352,30 @@ export class ServerCoordinator {
     if (this.conflictSweepOnRead) {
       this.sweepConflictEscalations(topic);
     }
+    const deliveryProjection = buildTopicDeliveryProjection(topic);
+    const openConflicts = Array.from(topic.conflicts.values())
+      .filter((conflict) => conflict.status === "unresolved")
+      .map((conflict) => toConflictEvidenceResource(topic, conflict));
+    const pendingApprovals = Array.from(topic.approvals.values())
+      .filter((hold) => hold.status === "pending")
+      .map((hold) => toApprovalEvidenceResource(topic, hold));
+    const approvalDecisions = Array.from(topic.approvals.values())
+      .filter((hold) => hold.status === "approved" || hold.status === "rejected")
+      .map((hold) => toDecisionEvidenceResource(topic, hold));
     return {
       topicId: topic.topicId,
       revision: topic.revision,
       truth: deepClone(topic.truth),
       agents: Array.from(topic.agents.values()).map((agent) => deepClone(agent)),
-      openConflicts: Array.from(topic.conflicts.values())
-        .filter((conflict) => conflict.status === "unresolved")
-        .map((conflict) => deepClone(conflict)),
-      pendingApprovals: Array.from(topic.approvals.values())
-        .filter((hold) => hold.status === "pending")
-        .map((hold) => deepClone(hold)),
+      openConflicts: openConflicts.map((conflict) => deepClone(conflict)),
+      pendingApprovals: pendingApprovals.map((hold) => deepClone(hold)),
+      approvalDecisions: approvalDecisions.map((decision) => deepClone(decision)),
+      mergeLifecycle: {
+        state: deliveryProjection.merge_lifecycle_state,
+        evidence_anchor: deepClone(deliveryProjection.evidence_anchor),
+        closeout_explanation: deepClone(deliveryProjection.closeout_explanation)
+      },
+      deliveryProjection: deepClone(deliveryProjection),
       blockers: Array.from(topic.blockers.values()).map((blocker) => deepClone(blocker)),
       updatedAt: topic.updatedAt
     };
@@ -2105,6 +2313,7 @@ export class ServerCoordinator {
       outcome: message.payload.outcome,
       by: message.sourceAgentId,
       at: message.createdAt,
+      messageId: message.messageId,
       notes: message.payload?.notes ?? null
     };
     topic.blockers.delete(`conflict:${conflictId}`);
