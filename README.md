@@ -110,6 +110,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - 完整产品基线: [docs/product/PRD.md](./docs/product/PRD.md)
 - 当前实现切片: [docs/product/Phase0-MVP.md](./docs/product/Phase0-MVP.md)
 - 能力合同与 GAP: [docs/product/Checklist.md](./docs/product/Checklist.md)
+- 未完成功能拆票: [docs/product/Execution-Tickets.md](./docs/product/Execution-Tickets.md)
 - 全量测试用例: [docs/testing/Test-Cases.md](./docs/testing/Test-Cases.md)
 - 本轮测试报告: [docs/testing/Test-Report-2026-04-06-main.md](./docs/testing/Test-Report-2026-04-06-main.md)
 

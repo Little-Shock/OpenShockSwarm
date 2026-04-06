@@ -2,7 +2,7 @@
 
 **版本:** 1.0
 **更新日期:** 2026 年 4 月 6 日
-**关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Test Cases](../testing/Test-Cases.md)
+**关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
 
@@ -257,3 +257,16 @@
 2. 再把 `CHK-15` 的 smoke gate 补到能识别 pairing 漂移。
 3. 然后按 `CHK-07/CHK-13/CHK-11` 推进 GitHub 授权、成员权限、通知链。
 4. 最后再做 `CHK-09/CHK-10` 这类 stop/resume、skill promotion、长期记忆增强。
+
+---
+
+## 五、拆票映射
+
+- `CHK-04` `CHK-14` `CHK-15` -> `TKT-01` `TKT-02` `TKT-03`
+- `CHK-07` -> `TKT-04` `TKT-05` `TKT-06`
+- `CHK-13` `CHK-12` -> `TKT-07` `TKT-08` `TKT-09`
+- `CHK-08` `CHK-11` -> `TKT-10` `TKT-11`
+- `CHK-10` -> `TKT-12`
+- `CHK-09` -> `TKT-13`
+- `CHK-14` -> `TKT-14`
+- `CHK-12` -> `TKT-15`

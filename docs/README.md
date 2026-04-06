@@ -21,8 +21,12 @@
   - 当前仓库实现切片、第一轮执行范围、验收门
 - [Product Checklist](./product/Checklist.md)
   - 按 PRD 拆开的合同项、当前状态与 GAP
+- [Execution Tickets](./product/Execution-Tickets.md)
+  - 未完成功能的 canonical ticket backlog，按落地顺序和测试用例对齐
 - [To Do List](./product/TODO-List.md)
   - 基于 Checklist 收敛出来的近期推进顺序和开票规则
+- [Team Execution Directive](./product/Team-Execution-Directive.md)
+  - 后续团队继续推进时的统一执行指令、交付格式与 merge gate
 
 ### 测试与验证
 

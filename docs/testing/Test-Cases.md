@@ -309,3 +309,52 @@
   3. 重启 store 并模拟外部文件修改。
 - 预期结果: memory artifact 版本递增，带 governance 元数据，并能把外部编辑同步成新版本。
 - 业务结论: memory version / governance contract 已有后端基线。
+
+## TC-024 Role / Permission Action Matrix
+
+- 业务目标: 确认不同角色对 issue、room、run、repo binding、PR、inbox 的动作边界清楚。
+- 当前执行状态: Not Run
+- 对应 Checklist: `CHK-12` `CHK-13`
+- 前置条件: 存在 admin / reviewer / viewer 三种角色。
+- 测试步骤:
+  1. 分别以三种角色访问关键写接口和对应前端入口。
+  2. 检查允许、拒绝、禁用状态是否一致。
+- 预期结果: 权限矩阵在 UI 和 API 两侧一致，不存在越权写入。
+- 业务结论: 作为 `TKT-08/TKT-09` 的 gate，当前还未执行。
+
+## TC-025 GitHub Webhook Replay / Review Sync
+
+- 业务目标: 确认 webhook 事件可以把 review / comment / merge 状态同步回 OpenShock。
+- 当前执行状态: Not Run
+- 对应 Checklist: `CHK-07`
+- 前置条件: 存在 webhook fixture 或可控 replay 环境。
+- 测试步骤:
+  1. 回放 pull request、review、comment、merge 事件。
+  2. 检查 state / inbox / room / pull request 是否更新。
+- 预期结果: webhook 事件被规范化、验签、写回，且失败态可见。
+- 业务结论: 作为 `TKT-05/TKT-06` 的 gate，当前还未执行实机验证。
+
+## TC-026 Headed Setup 到 PR Journey
+
+- 业务目标: 在非无头浏览器里串起 Setup 主链、Issue lane 和 PR 前置链。
+- 当前执行状态: Not Run
+- 对应 Checklist: `CHK-04` `CHK-05` `CHK-07` `CHK-15`
+- 前置条件: headed browser automation harness 已存在，server / daemon / web 可启动。
+- 测试步骤:
+  1. 打开 `/setup`，完成 repo binding、GitHub readiness、runtime pairing、bridge prompt。
+  2. 创建一条 issue，进入 room / run。
+  3. 验证 PR 入口处于可继续推进状态。
+- 预期结果: Setup 到执行 lane 的用户旅程可稳定自动化回放。
+- 业务结论: 作为 `TKT-03/TKT-04/TKT-06` 的总链路 gate，当前还未实现。
+
+## TC-027 Sandbox / Destructive Approval Guard
+
+- 业务目标: 确认 destructive git、越界写入、敏感凭证使用会进入审批保护，而不是默认执行。
+- 当前执行状态: Not Run
+- 对应 Checklist: `CHK-12`
+- 前置条件: 存在 sandbox mode 与 approval-required contract。
+- 测试步骤:
+  1. 触发 destructive git 或越界写入动作。
+  2. 检查系统是否拦截并生成 approval item。
+- 预期结果: 高风险动作不会直接执行，系统产生显式审批记录。
+- 业务结论: 作为 `TKT-09/TKT-15` 的安全 gate，当前还未建立。
