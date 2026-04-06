@@ -1380,6 +1380,7 @@ export class ServerCoordinator {
   constructor(options = {}) {
     this.topics = new Map();
     this.prIndex = new Map();
+    this.channelContexts = new Map();
     this.runtimeMachines = new Map();
     this.runtimeAgents = new Map();
     this.runtimeWorktreeClaims = new Map();
@@ -2090,6 +2091,254 @@ export class ServerCoordinator {
       machines,
       agents,
       worktreeClaims
+    };
+  }
+
+  requireChannelContext(channelId) {
+    assertOrThrow(typeof channelId === "string" && channelId.trim().length > 0, "invalid_channel_id", "channelId is required");
+    const normalizedChannelId = channelId.trim();
+    const context = this.channelContexts.get(normalizedChannelId);
+    assertOrThrow(context, "channel_not_found", `channel ${normalizedChannelId} not found`);
+    return context;
+  }
+
+  appendChannelAuditEntry(channel, input = {}) {
+    const now = nowIso();
+    const entry = {
+      auditId: generateId("audit"),
+      channelId: channel.channelId,
+      actorId: input.actorId ?? null,
+      action: input.action ?? "unknown_action",
+      target: input.target ?? `channel:${channel.channelId}`,
+      at: now,
+      policySnapshot:
+        input.policySnapshot !== undefined
+          ? deepClone(input.policySnapshot)
+          : {
+              mode: "single_human_multi_agent"
+            },
+      details: input.details !== undefined ? deepClone(input.details) : {}
+    };
+    channel.auditTrail.push(entry);
+    if (channel.auditTrail.length > 500) {
+      channel.auditTrail.shift();
+    }
+    channel.updatedAt = now;
+    return entry;
+  }
+
+  assertChannelOwner(channel, operatorId) {
+    const normalizedOperatorId = normalizeOptionalScopeId(operatorId);
+    assertOrThrow(normalizedOperatorId, "invalid_operator_id", "operator_id is required");
+    if (channel.ownerOperatorId && channel.ownerOperatorId !== normalizedOperatorId) {
+      throw new CoordinatorError("channel_operator_mismatch", `channel ${channel.channelId} belongs to ${channel.ownerOperatorId}`, {
+        expected_operator_id: channel.ownerOperatorId,
+        got_operator_id: normalizedOperatorId
+      });
+    }
+    if (!channel.ownerOperatorId) {
+      channel.ownerOperatorId = normalizedOperatorId;
+    }
+    return normalizedOperatorId;
+  }
+
+  getChannelContextContract(channelId) {
+    const channel = this.requireChannelContext(channelId);
+    return deepClone({
+      channelId: channel.channelId,
+      ownerOperatorId: channel.ownerOperatorId,
+      projectAlignedEntry: true,
+      workspace: channel.workspace ?? {
+        workspaceId: "workspace_default",
+        rootPath: null
+      },
+      context: channel.context ?? {
+        baselineRef: null,
+        fixedDirectory: null,
+        docPaths: [],
+        runtimeEntries: [],
+        ruleEntries: []
+      },
+      repoBinding: channel.repoBinding ?? null,
+      updatedAt: channel.updatedAt
+    });
+  }
+
+  upsertChannelContextContract(channelId, input = {}) {
+    assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "invalid_channel_context", "channel context payload must be object");
+    const allowedKeys = new Set([
+      "operatorId",
+      "workspaceId",
+      "workspaceRoot",
+      "baselineRef",
+      "fixedDirectory",
+      "docPaths",
+      "runtimeEntries",
+      "ruleEntries",
+      "policySnapshot"
+    ]);
+    for (const key of Object.keys(input)) {
+      assertOrThrow(allowedKeys.has(key), "invalid_channel_context_field", `unsupported channel context field: ${key}`);
+    }
+
+    const normalizedChannelId = channelId.trim();
+    const existing = this.channelContexts.get(normalizedChannelId);
+    const channel =
+      existing ??
+      {
+        channelId: normalizedChannelId,
+        ownerOperatorId: null,
+        workspace: {
+          workspaceId: "workspace_default",
+          rootPath: null
+        },
+        context: {
+          baselineRef: null,
+          fixedDirectory: null,
+          docPaths: [],
+          runtimeEntries: [],
+          ruleEntries: []
+        },
+        repoBinding: null,
+        auditTrail: [],
+        updatedAt: nowIso()
+      };
+    const operatorId = this.assertChannelOwner(channel, input.operatorId);
+    const workspaceRoot = normalizeOptionalScopeId(input.workspaceRoot);
+    assertOrThrow(
+      workspaceRoot || normalizeOptionalScopeId(channel.workspace.rootPath),
+      "invalid_workspace_root",
+      "workspace_root is required for first channel context setup"
+    );
+    if (workspaceRoot) {
+      channel.workspace.rootPath = workspaceRoot;
+    }
+    const workspaceId = normalizeOptionalScopeId(input.workspaceId);
+    if (workspaceId) {
+      channel.workspace.workspaceId = workspaceId;
+    }
+
+    const baselineRef = normalizeOptionalScopeId(input.baselineRef);
+    if (baselineRef !== null) {
+      channel.context.baselineRef = baselineRef;
+    }
+    const fixedDirectory = normalizeOptionalScopeId(input.fixedDirectory);
+    if (fixedDirectory !== null) {
+      channel.context.fixedDirectory = fixedDirectory;
+    }
+    if (input.docPaths !== undefined) {
+      assertOrThrow(Array.isArray(input.docPaths), "invalid_doc_paths", "doc_paths must be string[]");
+      channel.context.docPaths = input.docPaths
+        .filter((item) => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim());
+    }
+    if (input.runtimeEntries !== undefined) {
+      assertOrThrow(Array.isArray(input.runtimeEntries), "invalid_runtime_entries", "runtime_entries must be string[]");
+      channel.context.runtimeEntries = input.runtimeEntries
+        .filter((item) => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim());
+    }
+    if (input.ruleEntries !== undefined) {
+      assertOrThrow(Array.isArray(input.ruleEntries), "invalid_rule_entries", "rule_entries must be string[]");
+      channel.context.ruleEntries = input.ruleEntries
+        .filter((item) => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim());
+    }
+
+    this.appendChannelAuditEntry(channel, {
+      actorId: operatorId,
+      action: "channel_context_upsert",
+      target: `channel:${normalizedChannelId}`,
+      policySnapshot: input.policySnapshot,
+      details: {
+        workspace_id: channel.workspace.workspaceId,
+        workspace_root: channel.workspace.rootPath,
+        baseline_ref: channel.context.baselineRef,
+        fixed_directory: channel.context.fixedDirectory,
+        doc_path_count: channel.context.docPaths.length,
+        runtime_entry_count: channel.context.runtimeEntries.length,
+        rule_entry_count: channel.context.ruleEntries.length
+      }
+    });
+    this.channelContexts.set(normalizedChannelId, channel);
+    return this.getChannelContextContract(normalizedChannelId);
+  }
+
+  getChannelRepoBindingConfig(channelId) {
+    const channel = this.requireChannelContext(channelId);
+    return deepClone({
+      channelId: channel.channelId,
+      ownerOperatorId: channel.ownerOperatorId,
+      repoBinding: channel.repoBinding,
+      updatedAt: channel.updatedAt
+    });
+  }
+
+  upsertChannelRepoBindingConfig(channelId, input = {}) {
+    assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "invalid_repo_binding_config", "repo binding config payload must be object");
+    const allowedKeys = new Set([
+      "operatorId",
+      "topicId",
+      "providerRef",
+      "defaultBranch",
+      "fixedDirectory",
+      "policySnapshot"
+    ]);
+    for (const key of Object.keys(input)) {
+      assertOrThrow(allowedKeys.has(key), "invalid_repo_binding_config_field", `unsupported repo binding config field: ${key}`);
+    }
+    const channel = this.requireChannelContext(channelId);
+    const operatorId = this.assertChannelOwner(channel, input.operatorId);
+    const topicId = normalizeOptionalScopeId(input.topicId) ?? channel.repoBinding?.topicId ?? null;
+    const existingProviderRef = channel.repoBinding?.providerRef ?? null;
+    const providerRef = input.providerRef !== undefined ? parseProviderRef(input.providerRef, { requireRepoRef: true }) : existingProviderRef;
+    assertOrThrow(providerRef, "repo_binding_provider_required", "provider_ref is required");
+    const defaultBranch = normalizeOptionalScopeId(input.defaultBranch) ?? channel.repoBinding?.defaultBranch ?? null;
+    const fixedDirectory = normalizeOptionalScopeId(input.fixedDirectory) ?? channel.repoBinding?.fixedDirectory ?? channel.context.fixedDirectory ?? null;
+    channel.repoBinding = {
+      topicId,
+      providerRef,
+      defaultBranch,
+      fixedDirectory,
+      updatedAt: nowIso(),
+      updatedBy: operatorId
+    };
+    if (topicId) {
+      this.upsertTopicRepoBindingProjection(topicId, {
+        provider_ref: providerRef,
+        default_branch: defaultBranch,
+        bound_by: operatorId
+      });
+    }
+    this.appendChannelAuditEntry(channel, {
+      actorId: operatorId,
+      action: "channel_repo_binding_upsert",
+      target: `channel:${channel.channelId}:repo_binding`,
+      policySnapshot: input.policySnapshot,
+      details: {
+        topic_id: topicId,
+        provider: providerRef.provider,
+        repo_ref: providerRef.repo_ref,
+        default_branch: defaultBranch,
+        fixed_directory: fixedDirectory
+      }
+    });
+    this.channelContexts.set(channel.channelId, channel);
+    return this.getChannelRepoBindingConfig(channel.channelId);
+  }
+
+  listChannelAuditTrail(channelId, input = {}) {
+    const channel = this.requireChannelContext(channelId);
+    const limit = parseLimit(input.limit, { codePrefix: "channel_audit", defaultLimit: 50, maxLimit: 500 });
+    const offset = parseOffsetCursor(input.cursor, { codePrefix: "channel_audit" });
+    const entries = [...channel.auditTrail].sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+    const items = entries.slice(offset, offset + limit).map((entry) => deepClone(entry));
+    const nextOffset = offset + items.length;
+    return {
+      channelId: channel.channelId,
+      ownerOperatorId: channel.ownerOperatorId,
+      items,
+      nextCursor: nextOffset < entries.length ? `o:${nextOffset}` : null
     };
   }
 

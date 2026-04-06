@@ -4038,3 +4038,176 @@ test("v1 stage2 runtime registration/pairing/liveness and worktree isolation sta
     }
   );
 });
+
+test("v1 stage2 control-plane channel context contract keeps single-operator repo binding and audit trail", async () => {
+  const channelId = "channel_open_shock_stage2";
+  const topicId = "topic_stage2_control_plane_contract";
+  const operatorId = "human_operator_stage2";
+
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const missingContext = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+      });
+      assert.equal(missingContext.statusCode, 404);
+      assert.equal(missingContext.body.error.code, "channel_not_found");
+
+      const upsertContext = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: operatorId,
+          workspace_id: "workspace_default",
+          workspace_root: "/Users/atou/.slock/agents",
+          baseline_ref: "feat/initial-implementation@3058687",
+          fixed_directory: "/Users/atou/OpenShockSwarm",
+          doc_paths: [
+            "/Users/atou/OpenShockSwarm/docs/open-shock-roadmap.md",
+            "/Users/atou/OpenShockSwarm/docs/open-shock-test-cases.md"
+          ],
+          runtime_entries: ["/runtime/config", "/v1/runtime/registry"],
+          rule_entries: ["/Users/atou/.slock/agents/AGENTS.md"],
+          policy_snapshot: {
+            mode: "single_human_multi_agent",
+            boundary: "channel_aligned_entry"
+          }
+        }
+      });
+      assert.equal(upsertContext.statusCode, 200);
+      assert.equal(upsertContext.body.context.channel_id, channelId);
+      assert.equal(upsertContext.body.context.owner_operator_id, operatorId);
+      assert.equal(upsertContext.body.context.project_aligned_entry, true);
+      assert.equal(upsertContext.body.context.workspace.root_path, "/Users/atou/.slock/agents");
+      assert.equal(upsertContext.body.context.context.fixed_directory, "/Users/atou/OpenShockSwarm");
+      assert.equal(upsertContext.body.context.context.doc_paths.length, 2);
+      assert.equal(
+        upsertContext.body.context.write_anchors.repo_binding_upsert,
+        `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`
+      );
+
+      const upsertRepoBinding = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
+        body: {
+          operator_id: operatorId,
+          topic_id: topicId,
+          provider_ref: {
+            provider: "github",
+            repo_ref: "Little-Shock/OpenShockSwarm"
+          },
+          default_branch: "feat/initial-implementation",
+          fixed_directory: "/Users/atou/OpenShockSwarm",
+          policy_snapshot: {
+            mode: "single_human_multi_agent",
+            action: "repo_binding_upsert"
+          }
+        }
+      });
+      assert.equal(upsertRepoBinding.statusCode, 200);
+      assert.equal(upsertRepoBinding.body.repo_binding.channel_id, channelId);
+      assert.equal(upsertRepoBinding.body.repo_binding.owner_operator_id, operatorId);
+      assert.equal(upsertRepoBinding.body.repo_binding.repo_binding.topic_id, topicId);
+      assert.equal(upsertRepoBinding.body.repo_binding.repo_binding.provider_ref.repo_ref, "Little-Shock/OpenShockSwarm");
+      assert.equal(upsertRepoBinding.body.repo_binding.repo_binding.default_branch, "feat/initial-implementation");
+
+      const topicRepoBinding = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/topics/${encodeURIComponent(topicId)}/repo-binding`
+      });
+      assert.equal(topicRepoBinding.statusCode, 200);
+      assert.equal(topicRepoBinding.body.repo_binding.topic_id, topicId);
+      assert.equal(topicRepoBinding.body.repo_binding.provider_ref.repo_ref, "Little-Shock/OpenShockSwarm");
+
+      const channelContext = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+      });
+      assert.equal(channelContext.statusCode, 200);
+      assert.equal(channelContext.body.context.repo_binding.topic_id, topicId);
+      assert.equal(channelContext.body.context.context.baseline_ref, "feat/initial-implementation@3058687");
+      assert.equal(channelContext.body.context.context.runtime_entries.includes("/v1/runtime/registry"), true);
+      assert.equal(channelContext.body.context.context.rule_entries.includes("/Users/atou/.slock/agents/AGENTS.md"), true);
+
+      const auditTrail = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/audit-trail?limit=20`
+      });
+      assert.equal(auditTrail.statusCode, 200);
+      assert.equal(auditTrail.body.projection, "control_plane_audit_projection");
+      assert.equal(auditTrail.body.channel_id, channelId);
+      assert.equal(
+        auditTrail.body.items.some(
+          (item) => item.action === "channel_context_upsert" && item.actor_id === operatorId
+        ),
+        true
+      );
+      assert.equal(
+        auditTrail.body.items.some(
+          (item) => item.action === "channel_repo_binding_upsert" && item.actor_id === operatorId
+        ),
+        true
+      );
+      assert.equal(
+        auditTrail.body.items.every(
+          (item) =>
+            Object.prototype.hasOwnProperty.call(item, "policy_snapshot") &&
+            Object.prototype.hasOwnProperty.call(item, "target")
+        ),
+        true
+      );
+
+      const wrongOperator = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: "human_operator_other",
+          workspace_root: "/Users/atou/.slock/agents"
+        }
+      });
+      assert.equal(wrongOperator.statusCode, 422);
+      assert.equal(wrongOperator.body.error.code, "channel_operator_mismatch");
+
+      const invalidField = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: operatorId,
+          workspace_root: "/Users/atou/.slock/agents",
+          project_id: "project_should_not_exist"
+        }
+      });
+      assert.equal(invalidField.statusCode, 400);
+      assert.equal(invalidField.body.error.code, "invalid_channel_context_field");
+
+      const payload = JSON.stringify({
+        context: channelContext.body.context,
+        repoBinding: upsertRepoBinding.body.repo_binding,
+        auditTrail: auditTrail.body
+      });
+      assert.equal(payload.includes("\"project_id\""), false);
+      assert.equal(payload.includes("\"workspace_invite\""), false);
+    }
+  );
+});

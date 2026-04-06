@@ -129,6 +129,42 @@ function matchRoute(method, pathName) {
     };
   }
 
+  const v1ChannelContextMatch = pathName.match(/^\/v1\/channels\/([^/]+)\/context$/);
+  if (method === "GET" && v1ChannelContextMatch) {
+    return {
+      route: "V1_GET_CHANNEL_CONTEXT",
+      channelId: v1ChannelContextMatch[1]
+    };
+  }
+  if (method === "PUT" && v1ChannelContextMatch) {
+    return {
+      route: "V1_PUT_CHANNEL_CONTEXT",
+      channelId: v1ChannelContextMatch[1]
+    };
+  }
+
+  const v1ChannelRepoBindingMatch = pathName.match(/^\/v1\/channels\/([^/]+)\/repo-binding$/);
+  if (method === "GET" && v1ChannelRepoBindingMatch) {
+    return {
+      route: "V1_GET_CHANNEL_REPO_BINDING",
+      channelId: v1ChannelRepoBindingMatch[1]
+    };
+  }
+  if (method === "PUT" && v1ChannelRepoBindingMatch) {
+    return {
+      route: "V1_PUT_CHANNEL_REPO_BINDING",
+      channelId: v1ChannelRepoBindingMatch[1]
+    };
+  }
+
+  const v1ChannelAuditTrailMatch = pathName.match(/^\/v1\/channels\/([^/]+)\/audit-trail$/);
+  if (method === "GET" && v1ChannelAuditTrailMatch) {
+    return {
+      route: "V1_GET_CHANNEL_AUDIT_TRAIL",
+      channelId: v1ChannelAuditTrailMatch[1]
+    };
+  }
+
   const v1TopicCommandsMatch = pathName.match(/^\/v1\/topics\/([^/]+)\/commands$/);
   if (method === "POST" && v1TopicCommandsMatch) {
     return { route: "V1_POST_TOPIC_COMMAND", topicId: v1TopicCommandsMatch[1] };
@@ -688,6 +724,79 @@ function serializeRuntimeWorktreeClaim(claim) {
     claimed_at: claim.claimedAt ?? null,
     last_heartbeat_at: claim.lastHeartbeatAt ?? null,
     updated_at: claim.updatedAt ?? null
+  };
+}
+
+function serializeChannelContextContract(input = {}) {
+  const channelId = input.channelId;
+  return {
+    projection: "channel_context_contract",
+    contract_version: "v1.stage2",
+    channel_id: channelId,
+    project_aligned_entry: true,
+    owner_operator_id: input.ownerOperatorId ?? null,
+    workspace: {
+      workspace_id: input.workspace?.workspaceId ?? "workspace_default",
+      root_path: input.workspace?.rootPath ?? null,
+      model: "folder_root_under_channel"
+    },
+    context: {
+      baseline_ref: input.context?.baselineRef ?? null,
+      fixed_directory: input.context?.fixedDirectory ?? null,
+      doc_paths: deepClone(input.context?.docPaths ?? []),
+      runtime_entries: deepClone(input.context?.runtimeEntries ?? []),
+      rule_entries: deepClone(input.context?.ruleEntries ?? [])
+    },
+    repo_binding: input.repoBinding
+      ? {
+          topic_id: input.repoBinding.topicId ?? null,
+          provider_ref: deepClone(input.repoBinding.providerRef ?? null),
+          default_branch: input.repoBinding.defaultBranch ?? null,
+          fixed_directory: input.repoBinding.fixedDirectory ?? null,
+          updated_at: input.repoBinding.updatedAt ?? null,
+          updated_by: input.repoBinding.updatedBy ?? null
+        }
+      : null,
+    write_anchors: {
+      context_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      repo_binding_upsert: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
+      topic_repo_binding: "/v1/topics/:topicId/repo-binding",
+      audit_trail: `/v1/channels/${encodeURIComponent(channelId)}/audit-trail`
+    },
+    updated_at: input.updatedAt ?? null
+  };
+}
+
+function serializeChannelRepoBindingConfig(input = {}) {
+  return {
+    projection: "channel_repo_binding_config",
+    contract_version: "v1.stage2",
+    channel_id: input.channelId,
+    owner_operator_id: input.ownerOperatorId ?? null,
+    repo_binding: input.repoBinding
+      ? {
+          topic_id: input.repoBinding.topicId ?? null,
+          provider_ref: deepClone(input.repoBinding.providerRef ?? null),
+          default_branch: input.repoBinding.defaultBranch ?? null,
+          fixed_directory: input.repoBinding.fixedDirectory ?? null,
+          updated_at: input.repoBinding.updatedAt ?? null,
+          updated_by: input.repoBinding.updatedBy ?? null
+        }
+      : null,
+    updated_at: input.updatedAt ?? null
+  };
+}
+
+function serializeChannelAuditEntry(entry) {
+  return {
+    audit_id: entry.auditId,
+    channel_id: entry.channelId,
+    actor_id: entry.actorId,
+    action: entry.action,
+    target: entry.target,
+    at: entry.at,
+    policy_snapshot: deepClone(entry.policySnapshot ?? {}),
+    details: deepClone(entry.details ?? {})
   };
 }
 
@@ -1697,6 +1806,108 @@ export function createHttpServer(coordinator, options = {}) {
         const overview = coordinator.getTopicOverview(route.topicId);
         sendJson(response, 200, {
           topic: serializeTopicOverview(overview),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_GET_CHANNEL_CONTEXT") {
+        const context = coordinator.getChannelContextContract(route.channelId);
+        sendJson(response, 200, {
+          context: serializeChannelContextContract(context),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_PUT_CHANNEL_CONTEXT") {
+        const body = await readJsonBody(request);
+        assertObjectBody(body, "invalid_channel_context", "channel context payload must be object");
+        const allowedFields = new Set([
+          "operator_id",
+          "workspace_id",
+          "workspace_root",
+          "baseline_ref",
+          "fixed_directory",
+          "doc_paths",
+          "runtime_entries",
+          "rule_entries",
+          "policy_snapshot"
+        ]);
+        for (const key of Object.keys(body)) {
+          if (!allowedFields.has(key)) {
+            throw new CoordinatorError("invalid_channel_context_field", `unsupported channel context field: ${key}`);
+          }
+        }
+        const context = coordinator.upsertChannelContextContract(route.channelId, {
+          operatorId: body.operator_id,
+          workspaceId: body.workspace_id,
+          workspaceRoot: body.workspace_root,
+          baselineRef: body.baseline_ref,
+          fixedDirectory: body.fixed_directory,
+          docPaths: body.doc_paths,
+          runtimeEntries: body.runtime_entries,
+          ruleEntries: body.rule_entries,
+          policySnapshot: body.policy_snapshot
+        });
+        sendJson(response, 200, {
+          context: serializeChannelContextContract(context),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_GET_CHANNEL_REPO_BINDING") {
+        const config = coordinator.getChannelRepoBindingConfig(route.channelId);
+        sendJson(response, 200, {
+          repo_binding: serializeChannelRepoBindingConfig(config),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_PUT_CHANNEL_REPO_BINDING") {
+        const body = await readJsonBody(request);
+        assertObjectBody(body, "invalid_repo_binding_config", "repo binding config payload must be object");
+        const allowedFields = new Set([
+          "operator_id",
+          "topic_id",
+          "provider_ref",
+          "default_branch",
+          "fixed_directory",
+          "policy_snapshot"
+        ]);
+        for (const key of Object.keys(body)) {
+          if (!allowedFields.has(key)) {
+            throw new CoordinatorError("invalid_repo_binding_config_field", `unsupported repo binding config field: ${key}`);
+          }
+        }
+        const config = coordinator.upsertChannelRepoBindingConfig(route.channelId, {
+          operatorId: body.operator_id,
+          topicId: body.topic_id,
+          providerRef: body.provider_ref,
+          defaultBranch: body.default_branch,
+          fixedDirectory: body.fixed_directory,
+          policySnapshot: body.policy_snapshot
+        });
+        sendJson(response, 200, {
+          repo_binding: serializeChannelRepoBindingConfig(config),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_GET_CHANNEL_AUDIT_TRAIL") {
+        const auditTrail = coordinator.listChannelAuditTrail(route.channelId, {
+          cursor: parsedUrl.searchParams.get("cursor"),
+          limit: parsedUrl.searchParams.get("limit")
+        });
+        sendJson(response, 200, {
+          projection: "control_plane_audit_projection",
+          channel_id: auditTrail.channelId,
+          owner_operator_id: auditTrail.ownerOperatorId,
+          items: auditTrail.items.map((item) => serializeChannelAuditEntry(item)),
+          next_cursor: auditTrail.nextCursor,
           request_id: requestId
         });
         return;
