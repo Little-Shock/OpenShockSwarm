@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Inter, Space_Grotesk } from "next/font/google";
+
+import { LivePhaseZeroProvider } from "@/lib/live-phase0";
+
 import "./globals.css";
 
 const display = Space_Grotesk({
@@ -33,7 +36,9 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <LivePhaseZeroProvider>{children}</LivePhaseZeroProvider>
+      </body>
     </html>
   );
 }

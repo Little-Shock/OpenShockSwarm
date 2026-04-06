@@ -20,11 +20,11 @@ export function StitchSidebar({
   agents?: AgentStatus[];
 }) {
   const navChannels = channels ?? [];
-  const machine = machines?.[0];
+  const machineList = machines ?? [];
   const activeAgents = agents?.filter((agent) => agent.state === "running").length ?? 0;
   const nav = [
     { id: "channels", label: "频道", href: "/chat/all" },
-    { id: "rooms", label: "讨论间", href: "/rooms/room-runtime" },
+    { id: "rooms", label: "讨论间", href: "/rooms" },
     { id: "board", label: "任务板", href: "/board" },
     { id: "inbox", label: "收件箱", href: "/inbox" },
   ] as const;
@@ -95,13 +95,26 @@ export function StitchSidebar({
         <div className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[2px_2px_0_0_var(--shock-ink)]">
           <p className="font-mono text-[10px] tracking-[0.12em] text-[color:rgba(24,20,14,0.52)]">机器 / Agent</p>
           <div className="mt-3 space-y-2">
-            <div className="flex items-center justify-between font-mono text-[11px]">
-              <span>{machine?.name ?? "shock-main"}</span>
-              <span className="text-[color:rgba(24,20,14,0.56)]">{machine?.state ?? "busy"}</span>
-            </div>
+            {machineList.length === 0 ? (
+              <div className="flex items-center justify-between font-mono text-[11px]">
+                <span>未注册 runtime</span>
+                <span className="text-[color:rgba(24,20,14,0.56)]">pending</span>
+              </div>
+            ) : (
+              machineList.slice(0, 3).map((machine) => (
+                <div key={machine.id} className="flex items-center justify-between font-mono text-[11px]">
+                  <span>{machine.name}</span>
+                  <span className="text-[color:rgba(24,20,14,0.56)]">{machine.state}</span>
+                </div>
+              ))
+            )}
             <div className="flex items-center justify-between font-mono text-[11px]">
               <span>活跃公民</span>
               <span className="text-[color:rgba(24,20,14,0.56)]">{activeAgents}</span>
+            </div>
+            <div className="flex items-center justify-between font-mono text-[11px]">
+              <span>runtime 总数</span>
+              <span className="text-[color:rgba(24,20,14,0.56)]">{machineList.length}</span>
             </div>
           </div>
         </div>

@@ -62,15 +62,31 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 		},
 	}
 
+	scheduledMachine, provider, err := s.scheduleRuntimeLocked(owner)
+	if err != nil {
+		return IssueCreationResult{}, err
+	}
+	runtimeName := strings.TrimSpace(scheduledMachine.Name)
+	if runtimeName == "" {
+		runtimeName = strings.TrimSpace(s.state.Workspace.PairedRuntime)
+	}
+	if runtimeName == "" {
+		runtimeName = "unassigned"
+	}
+	machineName := runtimeName
+	if strings.TrimSpace(scheduledMachine.Name) == "" && strings.TrimSpace(scheduledMachine.ID) != "" {
+		machineName = strings.TrimSpace(scheduledMachine.ID)
+	}
+
 	newRun := Run{
 		ID:           runID,
 		IssueKey:     issueKey,
 		RoomID:       roomID,
 		TopicID:      topicID,
 		Status:       "queued",
-		Runtime:      s.state.Workspace.PairedRuntime,
-		Machine:      "shock-main",
-		Provider:     "Claude Code CLI",
+		Runtime:      runtimeName,
+		Machine:      machineName,
+		Provider:     provider,
 		Branch:       fmt.Sprintf("feat/%s", slug),
 		Worktree:     fmt.Sprintf("wt-%s", slug),
 		WorktreePath: "",
@@ -146,9 +162,11 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 	if err := appendRunArtifacts(s.workspaceRoot, roomID, issueKey, owner, "Issue Created", fmt.Sprintf("- title: %s\n- summary: %s\n- branch: %s\n- worktree: %s", title, summary, newRun.Branch, newRun.Worktree)); err != nil {
 		return IssueCreationResult{}, err
 	}
+	s.markMemoryArtifactWritesLocked(runArtifactPaths(roomID, owner), "Issue Created")
 	if err := updateDecisionRecord(s.workspaceRoot, issueKey, "queued", "Issue 已创建，等待 worktree lane 与第一次指令。"); err != nil {
 		return IssueCreationResult{}, err
 	}
+	s.markMemoryArtifactWriteLocked(decisionArtifactPath(issueKey), "Decision status queued")
 	if err := s.persistLocked(); err != nil {
 		return IssueCreationResult{}, err
 	}
@@ -218,6 +236,7 @@ func (s *Store) AttachLane(runID, sessionID string, payload LaneBinding) (State,
 	if err := appendRunArtifacts(s.workspaceRoot, s.state.Runs[runIndex].RoomID, s.state.Issues[issueIndex].Key, s.state.Runs[runIndex].Owner, "Worktree Ready", fmt.Sprintf("- branch: %s\n- worktree: %s\n- path: %s", payload.Branch, payload.WorktreeName, payload.Path)); err != nil {
 		return State{}, err
 	}
+	s.markMemoryArtifactWritesLocked(runArtifactPaths(s.state.Runs[runIndex].RoomID, s.state.Runs[runIndex].Owner), "Worktree Ready")
 	if err := s.persistLocked(); err != nil {
 		return State{}, err
 	}
@@ -228,46 +247,43 @@ func (s *Store) UpdateRuntimePairing(req RuntimePairingInput) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.ensureRuntimeRegistryStateLocked()
+
 	daemonURL := defaultString(strings.TrimSpace(req.DaemonURL), s.state.Workspace.PairedRuntimeURL)
-	machine := defaultString(strings.TrimSpace(req.Machine), "shock-main")
-	runtimeState := defaultString(strings.TrimSpace(req.State), "online")
+	machine := defaultString(strings.TrimSpace(req.Machine), s.state.Workspace.PairedRuntime)
+	runtimeState := defaultString(strings.TrimSpace(req.State), runtimeStateOnline)
 	reportedAt := defaultString(strings.TrimSpace(req.ReportedAt), time.Now().UTC().Format(time.RFC3339))
-	cliLabel := "none-detected"
-	if len(req.DetectedCLI) > 0 {
-		cliLabel = strings.Join(req.DetectedCLI, " + ")
+	record := upsertRuntimeHeartbeatLocked(&s.state, RuntimeHeartbeatInput{
+		RuntimeID:          req.RuntimeID,
+		DaemonURL:          daemonURL,
+		Machine:            machine,
+		DetectedCLI:        req.DetectedCLI,
+		Providers:          req.Providers,
+		State:              runtimeState,
+		WorkspaceRoot:      req.WorkspaceRoot,
+		ReportedAt:         reportedAt,
+		HeartbeatIntervalS: int(defaultRuntimeHeartbeatInterval / time.Second),
+		HeartbeatTimeoutS:  int(defaultRuntimeHeartbeatTimeout / time.Second),
+	})
+	if strings.TrimSpace(record.ID) != "" {
+		machine = record.ID
 	}
 
 	s.state.Workspace.PairedRuntime = machine
-	s.state.Workspace.PairedRuntimeURL = daemonURL
-	s.state.Workspace.PairingStatus = "paired"
+	s.state.Workspace.PairedRuntimeURL = defaultString(strings.TrimSpace(record.DaemonURL), daemonURL)
+	s.state.Workspace.PairingStatus = workspacePairingPaired
 	s.state.Workspace.DeviceAuth = "browser-approved"
 	s.state.Workspace.LastPairedAt = reportedAt
 
-	machineIndex := -1
-	for index := range s.state.Machines {
-		if s.state.Machines[index].Name == machine || s.state.Machines[index].ID == machine {
-			machineIndex = index
-			break
+	for index := range s.state.Runtimes {
+		s.state.Runtimes[index].PairingState = runtimePairingAvailable
+		if matchesPairedRuntime(s.state.Workspace, s.state.Runtimes[index]) {
+			s.state.Runtimes[index].PairingState = runtimePairingPaired
 		}
-	}
-	if machineIndex == -1 {
-		s.state.Machines = append([]Machine{{
-			ID:            machine,
-			Name:          machine,
-			State:         runtimeState,
-			CLI:           cliLabel,
-			OS:            "Local",
-			LastHeartbeat: "刚刚",
-		}}, s.state.Machines...)
-	} else {
-		s.state.Machines[machineIndex].Name = machine
-		s.state.Machines[machineIndex].State = runtimeState
-		s.state.Machines[machineIndex].CLI = cliLabel
-		s.state.Machines[machineIndex].LastHeartbeat = "刚刚"
 	}
 
 	now := shortClock()
-	message := fmt.Sprintf("浏览器已完成本地 runtime 配对：%s -> %s", machine, daemonURL)
+	message := fmt.Sprintf("浏览器已完成本地 runtime 配对：%s -> %s", machine, s.state.Workspace.PairedRuntimeURL)
 	s.appendChannelMessageLocked("announcements", Message{
 		ID:      fmt.Sprintf("ann-pairing-%d", time.Now().UnixNano()),
 		Speaker: "System",
@@ -364,6 +380,8 @@ func (s *Store) ClearRuntimePairing() (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.ensureRuntimeRegistryStateLocked()
+
 	now := shortClock()
 	previousRuntime := s.state.Workspace.PairedRuntime
 	if previousRuntime == "" {
@@ -372,15 +390,12 @@ func (s *Store) ClearRuntimePairing() (State, error) {
 
 	s.state.Workspace.PairedRuntime = ""
 	s.state.Workspace.PairedRuntimeURL = ""
-	s.state.Workspace.PairingStatus = "unpaired"
+	s.state.Workspace.PairingStatus = workspacePairingUnpaired
 	s.state.Workspace.DeviceAuth = "revoked"
 	s.state.Workspace.LastPairedAt = time.Now().UTC().Format(time.RFC3339)
 
-	for index := range s.state.Machines {
-		if s.state.Machines[index].Name == previousRuntime || s.state.Machines[index].ID == previousRuntime {
-			s.state.Machines[index].State = "offline"
-			s.state.Machines[index].LastHeartbeat = "已撤销"
-		}
+	for index := range s.state.Runtimes {
+		s.state.Runtimes[index].PairingState = runtimePairingAvailable
 	}
 
 	s.appendChannelMessageLocked("announcements", Message{
@@ -408,7 +423,138 @@ func (s *Store) ClearRuntimePairing() (State, error) {
 	return cloneState(s.state), nil
 }
 
+func (s *Store) SelectRuntime(machine string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ensureRuntimeRegistryStateLocked()
+	applyRuntimeDerivedTruth(&s.state, time.Now())
+
+	machine = strings.TrimSpace(machine)
+	if machine == "" {
+		return State{}, fmt.Errorf("machine is required")
+	}
+
+	machineIndex := s.findMachineIndexLocked(machine)
+	if machineIndex == -1 {
+		return State{}, fmt.Errorf("runtime %s not found", machine)
+	}
+
+	selected := s.state.Machines[machineIndex]
+	if strings.EqualFold(strings.TrimSpace(selected.State), runtimeStateOffline) || strings.EqualFold(strings.TrimSpace(selected.State), runtimeStateStale) {
+		return State{}, fmt.Errorf("runtime %s is offline", selected.Name)
+	}
+	if strings.TrimSpace(selected.DaemonURL) == "" {
+		return State{}, fmt.Errorf("runtime %s is not paired to a daemon", selected.Name)
+	}
+
+	s.state.Workspace.PairedRuntime = selected.Name
+	s.state.Workspace.PairedRuntimeURL = strings.TrimSpace(selected.DaemonURL)
+	s.state.Workspace.PairingStatus = workspacePairingPaired
+	s.state.Workspace.DeviceAuth = "browser-approved"
+	s.state.Workspace.LastPairedAt = time.Now().UTC().Format(time.RFC3339)
+	for index := range s.state.Runtimes {
+		s.state.Runtimes[index].PairingState = runtimePairingAvailable
+		if matchesPairedRuntime(s.state.Workspace, s.state.Runtimes[index]) {
+			s.state.Runtimes[index].PairingState = runtimePairingPaired
+		}
+	}
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
 func (s *Store) CreatePullRequest(roomID string) (State, string, error) {
+	return s.CreatePullRequestFromRemote(roomID, PullRequestRemoteSnapshot{})
+}
+
+func (s *Store) scheduleRuntimeLocked(owner string) (Machine, string, error) {
+	applyRuntimeDerivedTruth(&s.state, time.Now())
+
+	provider := "Claude Code CLI"
+	if agentIndex := s.findAgentIndexLocked(owner); agentIndex != -1 {
+		agent := s.state.Agents[agentIndex]
+		if text := strings.TrimSpace(agent.Provider); text != "" {
+			provider = text
+		}
+		if machineIndex := s.findSchedulableMachineIndexLocked(agent.RuntimePreference); machineIndex != -1 {
+			return s.state.Machines[machineIndex], provider, nil
+		}
+	}
+
+	if machineIndex := s.findSchedulableMachineIndexLocked(s.state.Workspace.PairedRuntime); machineIndex != -1 {
+		return s.state.Machines[machineIndex], provider, nil
+	}
+	if machineIndex := s.firstSchedulableMachineIndexLocked(); machineIndex != -1 {
+		return s.state.Machines[machineIndex], provider, nil
+	}
+	return Machine{}, provider, ErrNoSchedulableRuntime
+}
+
+func (s *Store) findAgentIndexLocked(owner string) int {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return -1
+	}
+	for index := range s.state.Agents {
+		if s.state.Agents[index].Name == owner {
+			return index
+		}
+	}
+	return -1
+}
+
+func (s *Store) findMachineIndexLocked(machine string) int {
+	machine = strings.TrimSpace(machine)
+	if machine == "" {
+		return -1
+	}
+	for index := range s.state.Machines {
+		if machineMatches(s.state.Machines[index], machine) {
+			return index
+		}
+	}
+	return -1
+}
+
+func (s *Store) findSchedulableMachineIndexLocked(machine string) int {
+	machineIndex := s.findMachineIndexLocked(machine)
+	if machineIndex == -1 {
+		return -1
+	}
+	if !machineSchedulable(s.state.Machines[machineIndex]) {
+		return -1
+	}
+	return machineIndex
+}
+
+func (s *Store) firstSchedulableMachineIndexLocked() int {
+	for _, state := range []string{"online", "busy"} {
+		for index := range s.state.Machines {
+			if strings.EqualFold(strings.TrimSpace(s.state.Machines[index].State), state) && machineSchedulable(s.state.Machines[index]) {
+				return index
+			}
+		}
+	}
+	return -1
+}
+
+func machineSchedulable(machine Machine) bool {
+	state := strings.TrimSpace(machine.State)
+	return strings.TrimSpace(machine.DaemonURL) != "" && (strings.EqualFold(state, runtimeStateOnline) || strings.EqualFold(state, runtimeStateBusy))
+}
+
+func machineMatches(machine Machine, name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	return machine.Name == name || machine.ID == name
+}
+
+func (s *Store) CreatePullRequestFromRemote(roomID string, remote PullRequestRemoteSnapshot) (State, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -422,93 +568,85 @@ func (s *Store) CreatePullRequest(roomID string) (State, string, error) {
 	}
 
 	now := shortClock()
-	nextNumber := s.nextPullRequestNumberLocked()
-	label := fmt.Sprintf("PR #%d", nextNumber)
+	roomItem := &s.state.Rooms[roomIndex]
 	runItem := &s.state.Runs[runIndex]
 	issueItem := &s.state.Issues[issueIndex]
-	roomItem := &s.state.Rooms[roomIndex]
+
+	status := defaultString(strings.TrimSpace(remote.Status), "in_review")
+	number := remote.Number
+	if number <= 0 {
+		number = s.nextPullRequestNumberLocked()
+	}
 
 	pr := PullRequest{
-		ID:            fmt.Sprintf("pr-%d", nextNumber),
-		Number:        nextNumber,
-		Label:         label,
-		Title:         issueItem.Title,
-		Status:        "in_review",
-		IssueKey:      issueItem.Key,
-		RoomID:        roomID,
-		RunID:         runItem.ID,
-		Branch:        runItem.Branch,
-		Author:        runItem.Owner,
-		ReviewSummary: "PR 已创建，等待人类进行 Review 或合并。",
-		UpdatedAt:     "刚刚",
+		ID:             fmt.Sprintf("pr-%d", number),
+		Number:         number,
+		Label:          pullRequestLabel(number, status),
+		Title:          defaultString(strings.TrimSpace(remote.Title), issueItem.Title),
+		Status:         status,
+		IssueKey:       issueItem.Key,
+		RoomID:         roomID,
+		RunID:          runItem.ID,
+		Branch:         defaultString(strings.TrimSpace(remote.Branch), runItem.Branch),
+		BaseBranch:     defaultString(strings.TrimSpace(remote.BaseBranch), s.state.Workspace.Branch),
+		Author:         defaultString(strings.TrimSpace(remote.Author), runItem.Owner),
+		Provider:       defaultString(strings.TrimSpace(remote.Provider), s.state.Workspace.RepoProvider),
+		URL:            strings.TrimSpace(remote.URL),
+		ReviewDecision: strings.TrimSpace(remote.ReviewDecision),
+		ReviewSummary:  defaultString(strings.TrimSpace(remote.ReviewSummary), summarizePullRequestStatus(status, strings.TrimSpace(remote.ReviewDecision))),
+		UpdatedAt:      defaultString(strings.TrimSpace(remote.UpdatedAt), "刚刚"),
 	}
 
 	s.state.PullRequests = append([]PullRequest{pr}, s.state.PullRequests...)
-	issueItem.PullRequest = label
-	issueItem.State = "review"
-	runItem.PullRequest = label
-	runItem.Status = "review"
-	runItem.Summary = pr.ReviewSummary
-	runItem.ApprovalRequired = false
-	runItem.NextAction = "等待 Review 结果或合并。"
-	runItem.ToolCalls = append(runItem.ToolCalls, ToolCall{ID: fmt.Sprintf("%s-tool-%d", runItem.ID, len(runItem.ToolCalls)+1), Tool: "github", Summary: "从讨论间创建 PR 并进入 Review", Result: "成功"})
-	runItem.Timeline = append(runItem.Timeline, RunEvent{ID: fmt.Sprintf("%s-ev-%d", runItem.ID, len(runItem.Timeline)+1), Label: "PR 已创建", At: now, Tone: "lime"})
-	roomItem.Topic.Status = "review"
-	roomItem.Topic.Summary = "PR 已创建，讨论间进入评审模式。"
-	s.updateSessionLocked(runItem.ID, func(item *Session) {
-		item.Status = "review"
-		item.Summary = "PR 已创建，等待评审。"
-		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	s.applyPullRequestLifecycleLocked(&s.state.PullRequests[0], roomItem, runItem, issueItem)
+
+	runItem.ToolCalls = append(runItem.ToolCalls, ToolCall{
+		ID:      fmt.Sprintf("%s-tool-%d", runItem.ID, len(runItem.ToolCalls)+1),
+		Tool:    "github",
+		Summary: "从讨论间创建远端 PR 并同步回控制面",
+		Result:  "成功",
+	})
+	runItem.Timeline = append(runItem.Timeline, RunEvent{
+		ID:    fmt.Sprintf("%s-ev-%d", runItem.ID, len(runItem.Timeline)+1),
+		Label: "远端 PR 已创建",
+		At:    now,
+		Tone:  "lime",
 	})
 	s.appendRoomMessageLocked(roomID, Message{
 		ID:      fmt.Sprintf("%s-pr-%d", roomID, time.Now().UnixNano()),
 		Speaker: "System",
 		Role:    "system",
 		Tone:    "system",
-		Message: fmt.Sprintf("%s 已创建并绑定到当前讨论间，进入评审状态。", label),
+		Message: fmt.Sprintf("%s 已在 GitHub 创建并绑定到当前讨论间。", s.state.PullRequests[0].Label),
 		Time:    now,
 	})
-	s.state.Inbox = append([]InboxItem{{
-		ID:      fmt.Sprintf("inbox-pr-review-%d", nextNumber),
-		Title:   fmt.Sprintf("%s 已准备评审", label),
-		Kind:    "review",
-		Room:    roomItem.Title,
-		Time:    "刚刚",
-		Summary: "代码修改已经收口到 PR，等待人类做最终判断。",
-		Action:  "打开评审",
-		Href:    fmt.Sprintf("/rooms/%s/runs/%s", roomID, runItem.ID),
-	}}, s.state.Inbox...)
-	s.updateAgentStateLocked(runItem.Owner, "idle", "等待 PR 评审")
+	s.prependPullRequestInboxLocked(s.state.PullRequests[0], roomItem.Title)
+	s.updateAgentStateLocked(runItem.Owner, "idle", "等待 GitHub PR 评审")
 
-	if err := appendRunArtifacts(s.workspaceRoot, roomID, issueItem.Key, runItem.Owner, "Pull Request Created", fmt.Sprintf("- pr: %s\n- branch: %s\n- run: %s", label, runItem.Branch, runItem.ID)); err != nil {
+	if err := appendRunArtifacts(s.workspaceRoot, roomID, issueItem.Key, runItem.Owner, "Pull Request Created", fmt.Sprintf("- pr: %s\n- url: %s\n- head: %s\n- base: %s\n- run: %s", s.state.PullRequests[0].Label, defaultString(s.state.PullRequests[0].URL, "n/a"), s.state.PullRequests[0].Branch, defaultString(s.state.PullRequests[0].BaseBranch, "n/a"), runItem.ID)); err != nil {
 		return State{}, "", err
 	}
-	if err := updateDecisionRecord(s.workspaceRoot, issueItem.Key, "review", fmt.Sprintf("%s 已创建，等待评审。", label)); err != nil {
+	s.markMemoryArtifactWritesLocked(runArtifactPaths(roomID, runItem.Owner), "Pull Request Created")
+	if err := updateDecisionRecord(s.workspaceRoot, issueItem.Key, decisionStateForPullRequestStatus(s.state.PullRequests[0].Status), s.state.PullRequests[0].ReviewSummary); err != nil {
 		return State{}, "", err
 	}
+	s.markMemoryArtifactWriteLocked(decisionArtifactPath(issueItem.Key), fmt.Sprintf("Decision status %s", decisionStateForPullRequestStatus(s.state.PullRequests[0].Status)))
 	if err := s.persistLocked(); err != nil {
 		return State{}, "", err
 	}
-	return cloneState(s.state), pr.ID, nil
+	return cloneState(s.state), s.state.PullRequests[0].ID, nil
 }
 
-func (s *Store) UpdatePullRequestStatus(pullRequestID, status string) (State, error) {
+func (s *Store) SyncPullRequestFromRemote(pullRequestID string, remote PullRequestRemoteSnapshot) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if status == "" {
-		return State{}, fmt.Errorf("status is required")
-	}
 	prIndex := s.findPullRequestLocked(pullRequestID)
 	if prIndex == -1 {
 		return State{}, fmt.Errorf("pull request not found")
 	}
 
 	pr := &s.state.PullRequests[prIndex]
-	now := shortClock()
-	pr.Status = status
-	pr.UpdatedAt = "刚刚"
-
 	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(pr.RoomID)
 	if !ok {
 		return State{}, fmt.Errorf("room not found for pull request")
@@ -517,35 +655,112 @@ func (s *Store) UpdatePullRequestStatus(pullRequestID, status string) (State, er
 	runItem := &s.state.Runs[runIndex]
 	issueItem := &s.state.Issues[issueIndex]
 
-	switch status {
-	case "in_review", "open":
-		pr.ReviewSummary = "PR 正在等待 Review。"
-		roomItem.Topic.Status = "review"
-		roomItem.Topic.Summary = pr.ReviewSummary
-		runItem.Status = "review"
-		issueItem.State = "review"
-		runItem.Summary = pr.ReviewSummary
-		runItem.NextAction = "等待人类 Review 或补充反馈。"
-	case "changes_requested":
-		pr.ReviewSummary = "评审要求补充修改，等待 follow-up run。"
-		roomItem.Topic.Status = "blocked"
-		roomItem.Topic.Summary = pr.ReviewSummary
-		runItem.Status = "blocked"
-		issueItem.State = "blocked"
-		runItem.Summary = pr.ReviewSummary
-		runItem.NextAction = "根据 Review 意见启动 follow-up run。"
-		s.state.Inbox = append([]InboxItem{{ID: fmt.Sprintf("inbox-pr-change-%d", pr.Number), Title: fmt.Sprintf("%s 需要补充修改", pr.Label), Kind: "blocked", Room: roomItem.Title, Time: "刚刚", Summary: "Review 已打回，当前需求需要 follow-up run。", Action: "恢复执行", Href: fmt.Sprintf("/rooms/%s", pr.RoomID)}}, s.state.Inbox...)
+	oldStatus := pr.Status
+	oldSummary := pr.ReviewSummary
+	oldTitle := pr.Title
+	oldURL := pr.URL
+	oldReviewDecision := pr.ReviewDecision
+
+	if remote.Number > 0 {
+		pr.Number = remote.Number
+	}
+	if text := strings.TrimSpace(remote.Title); text != "" {
+		pr.Title = text
+	}
+	if text := strings.TrimSpace(remote.Status); text != "" {
+		pr.Status = text
+	}
+	if text := strings.TrimSpace(remote.Branch); text != "" {
+		pr.Branch = text
+	}
+	if text := strings.TrimSpace(remote.BaseBranch); text != "" {
+		pr.BaseBranch = text
+	}
+	if text := strings.TrimSpace(remote.Author); text != "" {
+		pr.Author = text
+	}
+	if text := strings.TrimSpace(remote.Provider); text != "" {
+		pr.Provider = text
+	}
+	if text := strings.TrimSpace(remote.URL); text != "" {
+		pr.URL = text
+	}
+	if strings.TrimSpace(remote.ReviewDecision) != "" || pr.ReviewDecision != "" {
+		pr.ReviewDecision = strings.TrimSpace(remote.ReviewDecision)
+	}
+	pr.Label = pullRequestLabel(pr.Number, pr.Status)
+	pr.ReviewSummary = defaultString(strings.TrimSpace(remote.ReviewSummary), summarizePullRequestStatus(pr.Status, pr.ReviewDecision))
+	pr.UpdatedAt = defaultString(strings.TrimSpace(remote.UpdatedAt), "刚刚")
+	s.applyPullRequestLifecycleLocked(pr, roomItem, runItem, issueItem)
+
+	changed := oldStatus != pr.Status || oldSummary != pr.ReviewSummary || oldTitle != pr.Title || oldURL != pr.URL || oldReviewDecision != pr.ReviewDecision
+	if changed {
+		now := shortClock()
+		runItem.Timeline = append(runItem.Timeline, RunEvent{
+			ID:    fmt.Sprintf("%s-ev-%d", runItem.ID, len(runItem.Timeline)+1),
+			Label: fmt.Sprintf("PR 状态同步为 %s", pr.Status),
+			At:    now,
+			Tone:  "paper",
+		})
+		s.appendRoomMessageLocked(pr.RoomID, Message{
+			ID:      fmt.Sprintf("%s-pr-status-%d", pr.RoomID, time.Now().UnixNano()),
+			Speaker: "System",
+			Role:    "system",
+			Tone:    "system",
+			Message: fmt.Sprintf("%s 已同步到 GitHub 当前状态：%s。", pr.Label, pr.Status),
+			Time:    now,
+		})
+		s.prependPullRequestInboxLocked(*pr, roomItem.Title)
+
+		if err := appendRunArtifacts(s.workspaceRoot, pr.RoomID, issueItem.Key, runItem.Owner, "Pull Request Status Updated", fmt.Sprintf("- pr: %s\n- status: %s\n- url: %s\n- summary: %s", pr.Label, pr.Status, defaultString(pr.URL, "n/a"), pr.ReviewSummary)); err != nil {
+			return State{}, err
+		}
+		s.markMemoryArtifactWritesLocked(runArtifactPaths(pr.RoomID, runItem.Owner), "Pull Request Status Updated")
+		if err := updateDecisionRecord(s.workspaceRoot, issueItem.Key, decisionStateForPullRequestStatus(pr.Status), pr.ReviewSummary); err != nil {
+			return State{}, err
+		}
+		s.markMemoryArtifactWriteLocked(decisionArtifactPath(issueItem.Key), fmt.Sprintf("Decision status %s", decisionStateForPullRequestStatus(pr.Status)))
+	}
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
+func (s *Store) UpdatePullRequestStatus(pullRequestID, status string) (State, error) {
+	if strings.TrimSpace(status) == "" {
+		return State{}, fmt.Errorf("status is required")
+	}
+	return s.SyncPullRequestFromRemote(pullRequestID, PullRequestRemoteSnapshot{
+		Status:        status,
+		ReviewSummary: summarizePullRequestStatus(status, ""),
+	})
+}
+
+func (s *Store) applyPullRequestLifecycleLocked(pr *PullRequest, roomItem *Room, runItem *Run, issueItem *Issue) {
+	issueItem.PullRequest = pr.Label
+	runItem.PullRequest = pr.Label
+	roomItem.Topic.Summary = pr.ReviewSummary
+	runItem.Summary = pr.ReviewSummary
+	runItem.ApprovalRequired = false
+
+	switch pr.Status {
 	case "merged":
-		pr.ReviewSummary = "PR 已合并，Issue 与讨论间进入完成状态。"
 		roomItem.Topic.Status = "done"
-		roomItem.Topic.Summary = pr.ReviewSummary
 		runItem.Status = "done"
 		issueItem.State = "done"
-		runItem.Summary = pr.ReviewSummary
 		runItem.NextAction = "已完成，等待后续归档。"
-		s.state.Inbox = append([]InboxItem{{ID: fmt.Sprintf("inbox-pr-merged-%d", pr.Number), Title: fmt.Sprintf("%s 已合并", pr.Label), Kind: "status", Room: roomItem.Title, Time: "刚刚", Summary: "需求已经完成，可以回到 Board 查看 Done 列。", Action: "打开房间", Href: fmt.Sprintf("/rooms/%s", pr.RoomID)}}, s.state.Inbox...)
+	case "changes_requested":
+		roomItem.Topic.Status = "blocked"
+		runItem.Status = "blocked"
+		issueItem.State = "blocked"
+		runItem.NextAction = "根据 GitHub Review 意见启动 follow-up run。"
 	default:
-		return State{}, fmt.Errorf("unsupported pull request status")
+		roomItem.Topic.Status = "review"
+		runItem.Status = "review"
+		issueItem.State = "review"
+		runItem.NextAction = "等待 GitHub Review、同步结果或继续合并。"
 	}
 
 	s.updateSessionLocked(runItem.ID, func(item *Session) {
@@ -553,26 +768,77 @@ func (s *Store) UpdatePullRequestStatus(pullRequestID, status string) (State, er
 		item.Summary = pr.ReviewSummary
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	})
-	runItem.Timeline = append(runItem.Timeline, RunEvent{ID: fmt.Sprintf("%s-ev-%d", runItem.ID, len(runItem.Timeline)+1), Label: fmt.Sprintf("PR 状态更新为 %s", status), At: now, Tone: "paper"})
-	s.appendRoomMessageLocked(pr.RoomID, Message{
-		ID:      fmt.Sprintf("%s-pr-status-%d", pr.RoomID, time.Now().UnixNano()),
-		Speaker: "System",
-		Role:    "system",
-		Tone:    "system",
-		Message: fmt.Sprintf("%s 状态已更新为 %s。", pr.Label, status),
-		Time:    now,
-	})
+}
 
-	if err := appendRunArtifacts(s.workspaceRoot, pr.RoomID, issueItem.Key, runItem.Owner, "Pull Request Status Updated", fmt.Sprintf("- pr: %s\n- status: %s\n- summary: %s", pr.Label, status, pr.ReviewSummary)); err != nil {
-		return State{}, err
+func (s *Store) prependPullRequestInboxLocked(pr PullRequest, roomTitle string) {
+	item := InboxItem{
+		ID:   fmt.Sprintf("inbox-pr-%s-%d", pr.Status, time.Now().UnixNano()),
+		Room: roomTitle,
+		Time: "刚刚",
+		Href: fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID),
 	}
-	if err := updateDecisionRecord(s.workspaceRoot, issueItem.Key, status, pr.ReviewSummary); err != nil {
-		return State{}, err
+
+	switch pr.Status {
+	case "merged":
+		item.Title = fmt.Sprintf("%s 已合并", pr.Label)
+		item.Kind = "status"
+		item.Summary = "远端 PR 已完成合并，可以回到 Board 查看 Done 列。"
+		item.Action = "打开房间"
+	case "changes_requested":
+		item.Title = fmt.Sprintf("%s 需要补充修改", pr.Label)
+		item.Kind = "blocked"
+		item.Summary = "GitHub Review 已要求补充修改，当前需求需要 follow-up run。"
+		item.Action = "恢复执行"
+		item.Href = fmt.Sprintf("/rooms/%s", pr.RoomID)
+	default:
+		item.Title = fmt.Sprintf("%s 已准备评审", pr.Label)
+		item.Kind = "review"
+		item.Summary = "远端 PR 已创建并同步回控制面，等待人类做最终判断。"
+		item.Action = "打开评审"
 	}
-	if err := s.persistLocked(); err != nil {
-		return State{}, err
+
+	s.state.Inbox = append([]InboxItem{item}, s.state.Inbox...)
+}
+
+func summarizePullRequestStatus(status, reviewDecision string) string {
+	switch strings.TrimSpace(status) {
+	case "merged":
+		return "PR 已在 GitHub 合并，Issue 与讨论间进入完成状态。"
+	case "changes_requested":
+		return "GitHub Review 要求补充修改，等待 follow-up run。"
+	case "draft":
+		return "远端草稿 PR 已创建，等待进入正式评审。"
+	default:
+		switch strings.TrimSpace(reviewDecision) {
+		case "APPROVED":
+			return "GitHub Review 已批准，等待最终合并。"
+		case "CHANGES_REQUESTED":
+			return "GitHub Review 要求补充修改，等待 follow-up run。"
+		default:
+			return "远端 PR 已创建，等待 GitHub Review 或合并。"
+		}
 	}
-	return cloneState(s.state), nil
+}
+
+func decisionStateForPullRequestStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case "merged":
+		return "merged"
+	case "changes_requested":
+		return "blocked"
+	default:
+		return "review"
+	}
+}
+
+func pullRequestLabel(number int, status string) string {
+	if number > 0 {
+		return fmt.Sprintf("PR #%d", number)
+	}
+	if strings.TrimSpace(status) == "draft" {
+		return "草稿 PR"
+	}
+	return "PR"
 }
 
 func (s *Store) AppendConversation(roomID, prompt, output string) (State, error) {
@@ -613,6 +879,7 @@ func (s *Store) AppendConversation(roomID, prompt, output string) (State, error)
 	if err := appendRunArtifacts(s.workspaceRoot, roomID, s.state.Issues[issueIndex].Key, s.state.Issues[issueIndex].Owner, "Room Conversation", fmt.Sprintf("- prompt: %s\n- output: %s", prompt, agentText)); err != nil {
 		return State{}, err
 	}
+	s.markMemoryArtifactWritesLocked(runArtifactPaths(roomID, s.state.Issues[issueIndex].Owner), "Room Conversation")
 	if err := s.persistLocked(); err != nil {
 		return State{}, err
 	}
@@ -653,11 +920,163 @@ func (s *Store) AppendSystemRoomMessage(roomID, speaker, text, tone string) (Sta
 	if err := appendRunArtifacts(s.workspaceRoot, roomID, s.state.Issues[issueIndex].Key, s.state.Issues[issueIndex].Owner, "System Escalation", fmt.Sprintf("- tone: %s\n- message: %s", tone, text)); err != nil {
 		return State{}, err
 	}
+	s.markMemoryArtifactWritesLocked(runArtifactPaths(roomID, s.state.Issues[issueIndex].Owner), "System Escalation")
 	if err := updateDecisionRecord(s.workspaceRoot, s.state.Issues[issueIndex].Key, "blocked", text); err != nil {
 		return State{}, err
+	}
+	s.markMemoryArtifactWriteLocked(decisionArtifactPath(s.state.Issues[issueIndex].Key), "Decision status blocked")
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
+func (s *Store) AppendGitHubPullRequestFailure(roomID, operation, pullRequestLabel, detail string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(roomID)
+	if !ok {
+		return State{}, fmt.Errorf("room not found")
+	}
+
+	title := gitHubPullRequestFailureTitle(operation, pullRequestLabel)
+	message := fmt.Sprintf("%s：%s", title, strings.TrimSpace(detail))
+	nextAction := gitHubPullRequestFailureNextAction(operation)
+	now := shortClock()
+	failureHref := fmt.Sprintf("/rooms/%s/runs/%s", roomID, s.state.Runs[runIndex].ID)
+	s.state.Rooms[roomIndex].Topic.Status = "blocked"
+	s.state.Rooms[roomIndex].Topic.Summary = message
+	s.state.Issues[issueIndex].State = "blocked"
+	s.state.Runs[runIndex].Status = "blocked"
+	s.state.Runs[runIndex].Summary = message
+	s.state.Runs[runIndex].NextAction = nextAction
+	s.syncPullRequestFailureSurfaceLocked(roomID, message)
+	alreadyEscalated := s.hasGitHubPullRequestFailureEvidenceLocked(roomID, title, message, failureHref)
+	if !alreadyEscalated {
+		msg := Message{
+			ID:      fmt.Sprintf("%s-system-%d", roomID, time.Now().UnixNano()),
+			Speaker: "System",
+			Role:    "system",
+			Tone:    "blocked",
+			Message: message,
+			Time:    now,
+		}
+		s.state.RoomMessages[roomID] = append(s.state.RoomMessages[roomID], msg)
+		s.state.Rooms[roomIndex].MessageIDs = append(s.state.Rooms[roomIndex].MessageIDs, msg.ID)
+		s.state.Rooms[roomIndex].Unread++
+		s.state.Runs[runIndex].Stderr = append(s.state.Runs[runIndex].Stderr, fmt.Sprintf("[%s] %s", now, message))
+		s.state.Runs[runIndex].Timeline = append(s.state.Runs[runIndex].Timeline, RunEvent{
+			ID:    fmt.Sprintf("%s-ev-%d", s.state.Runs[runIndex].ID, len(s.state.Runs[runIndex].Timeline)+1),
+			Label: title,
+			At:    now,
+			Tone:  "pink",
+		})
+		s.state.Inbox = append([]InboxItem{{
+			ID:      fmt.Sprintf("inbox-github-blocked-%d", time.Now().UnixNano()),
+			Title:   title,
+			Kind:    "blocked",
+			Room:    s.state.Rooms[roomIndex].Title,
+			Time:    "刚刚",
+			Summary: message,
+			Action:  "处理 GitHub 阻塞",
+			Href:    failureHref,
+		}}, s.state.Inbox...)
+	}
+	s.updateAgentStateLocked(s.state.Runs[runIndex].Owner, "blocked", title)
+	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
+		item.Status = "blocked"
+		item.Summary = message
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if len(item.MemoryPaths) == 0 {
+			item.MemoryPaths = defaultSessionMemoryPaths(item.RoomID, item.IssueKey)
+		}
+	})
+
+	if !alreadyEscalated {
+		if err := appendRunArtifacts(s.workspaceRoot, roomID, s.state.Issues[issueIndex].Key, s.state.Runs[runIndex].Owner, "System Escalation", fmt.Sprintf("- tone: blocked\n- message: %s", message)); err != nil {
+			return State{}, err
+		}
+		s.markMemoryArtifactWritesLocked(runArtifactPaths(roomID, s.state.Issues[issueIndex].Owner), "System Escalation")
+		if err := updateDecisionRecord(s.workspaceRoot, s.state.Issues[issueIndex].Key, "blocked", message); err != nil {
+			return State{}, err
+		}
+		s.markMemoryArtifactWriteLocked(decisionArtifactPath(s.state.Issues[issueIndex].Key), "Decision status blocked")
 	}
 	if err := s.persistLocked(); err != nil {
 		return State{}, err
 	}
 	return cloneState(s.state), nil
+}
+
+func (s *Store) syncPullRequestFailureSurfaceLocked(roomID, message string) {
+	prIndex := s.findPullRequestByRoomLocked(roomID)
+	if prIndex == -1 {
+		return
+	}
+
+	pr := &s.state.PullRequests[prIndex]
+	pr.Status = "changes_requested"
+	pr.Label = pullRequestLabel(pr.Number, pr.Status)
+	pr.ReviewDecision = ""
+	pr.ReviewSummary = message
+	pr.UpdatedAt = "刚刚"
+
+	reviewHref := fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID)
+	filtered := s.state.Inbox[:0]
+	for _, item := range s.state.Inbox {
+		if item.Kind == "review" && item.Href == reviewHref {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	s.state.Inbox = filtered
+}
+
+func (s *Store) hasGitHubPullRequestFailureEvidenceLocked(roomID, title, message, href string) bool {
+	hasRoomMessage := false
+	for _, item := range s.state.RoomMessages[roomID] {
+		if item.Tone == "blocked" && item.Message == message {
+			hasRoomMessage = true
+			break
+		}
+	}
+	if !hasRoomMessage {
+		return false
+	}
+	for _, item := range s.state.Inbox {
+		if item.Kind == "blocked" && item.Title == title && item.Summary == message && item.Href == href {
+			return true
+		}
+	}
+	return false
+}
+
+func gitHubPullRequestFailureTitle(operation, pullRequestLabel string) string {
+	label := strings.TrimSpace(pullRequestLabel)
+	switch strings.TrimSpace(operation) {
+	case "create":
+		return "GitHub PR 创建失败"
+	case "merge":
+		if label != "" {
+			return fmt.Sprintf("%s 合并失败", label)
+		}
+		return "GitHub PR 合并失败"
+	default:
+		if label != "" {
+			return fmt.Sprintf("%s 同步失败", label)
+		}
+		return "GitHub PR 同步失败"
+	}
+}
+
+func gitHubPullRequestFailureNextAction(operation string) string {
+	switch strings.TrimSpace(operation) {
+	case "create":
+		return "检查 GitHub 认证、origin 与分支推送状态后重试 PR 创建。"
+	case "merge":
+		return "检查 GitHub Review/权限状态后重试合并，或回到讨论间继续处理。"
+	default:
+		return "检查 GitHub 认证、远端 PR 状态与网络后重试同步。"
+	}
 }

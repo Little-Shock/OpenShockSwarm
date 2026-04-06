@@ -22,13 +22,19 @@ type RepoBindingRequest struct {
 }
 
 type RepoBindingResponse struct {
-	Repo          string `json:"repo"`
-	RepoURL       string `json:"repoUrl"`
-	Branch        string `json:"branch"`
-	Provider      string `json:"provider"`
-	BindingStatus string `json:"bindingStatus"`
-	AuthMode      string `json:"authMode"`
-	DetectedAt    string `json:"detectedAt"`
+	Repo              string `json:"repo"`
+	RepoURL           string `json:"repoUrl"`
+	Branch            string `json:"branch"`
+	Provider          string `json:"provider"`
+	BindingStatus     string `json:"bindingStatus"`
+	AuthMode          string `json:"authMode"`
+	DetectedAt        string `json:"detectedAt"`
+	ConnectionReady   bool   `json:"connectionReady"`
+	AppConfigured     bool   `json:"appConfigured"`
+	AppInstalled      bool   `json:"appInstalled"`
+	InstallationID    string `json:"installationId"`
+	InstallationURL   string `json:"installationUrl"`
+	ConnectionMessage string `json:"connectionMessage"`
 }
 
 func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +42,9 @@ func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, s.currentRepoBinding())
 	case http.MethodPost:
+		if !s.requireSessionPermission(w, "repo.admin") {
+			return
+		}
 		var req RepoBindingRequest
 		if r.Body != nil {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
@@ -49,23 +58,26 @@ func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
+		connection, probeErr := s.github.Probe(s.workspaceRoot)
 		binding := mergeRepoBindingInput(detected, req)
+		binding = alignRepoBindingWithConnection(binding, req, probeErr, connection)
+		if failure := validateRepoBindingConnection(binding, probeErr, connection); failure != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{
+				"error":      failure.Error(),
+				"binding":    bindingResponseFromInput(binding, "blocked", &connection),
+				"connection": connection,
+			})
+			return
+		}
 		nextState, updateErr := s.store.UpdateRepoBinding(binding)
 		if updateErr != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": updateErr.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"binding": RepoBindingResponse{
-				Repo:          nextState.Workspace.Repo,
-				RepoURL:       nextState.Workspace.RepoURL,
-				Branch:        nextState.Workspace.Branch,
-				Provider:      nextState.Workspace.RepoProvider,
-				BindingStatus: nextState.Workspace.RepoBindingStatus,
-				AuthMode:      nextState.Workspace.RepoAuthMode,
-				DetectedAt:    binding.DetectedAt,
-			},
-			"state": nextState,
+			"binding":    bindingResponseFromWorkspace(nextState.Workspace, binding.DetectedAt, &connection),
+			"connection": connection,
+			"state":      nextState,
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -73,18 +85,51 @@ func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) currentRepoBinding() RepoBindingResponse {
-	return bindingResponseFromWorkspace(s.store.Snapshot().Workspace)
+	connection, err := s.github.Probe(s.workspaceRoot)
+	if err != nil {
+		return bindingResponseFromWorkspace(s.store.Snapshot().Workspace, "", nil)
+	}
+	return bindingResponseFromWorkspace(s.store.Snapshot().Workspace, "", &connection)
 }
 
-func bindingResponseFromWorkspace(workspace store.WorkspaceSnapshot) RepoBindingResponse {
-	return RepoBindingResponse{
+func bindingResponseFromWorkspace(workspace store.WorkspaceSnapshot, detectedAt string, connection *githubsvc.Status) RepoBindingResponse {
+	return enrichRepoBindingResponse(RepoBindingResponse{
 		Repo:          workspace.Repo,
 		RepoURL:       workspace.RepoURL,
 		Branch:        workspace.Branch,
 		Provider:      workspace.RepoProvider,
 		BindingStatus: workspace.RepoBindingStatus,
 		AuthMode:      workspace.RepoAuthMode,
+		DetectedAt:    detectedAt,
+	}, connection)
+}
+
+func bindingResponseFromInput(binding store.RepoBindingInput, bindingStatus string, connection *githubsvc.Status) RepoBindingResponse {
+	return enrichRepoBindingResponse(RepoBindingResponse{
+		Repo:          binding.Repo,
+		RepoURL:       binding.RepoURL,
+		Branch:        binding.Branch,
+		Provider:      binding.Provider,
+		BindingStatus: bindingStatus,
+		AuthMode:      binding.AuthMode,
+		DetectedAt:    binding.DetectedAt,
+	}, connection)
+}
+
+func enrichRepoBindingResponse(response RepoBindingResponse, connection *githubsvc.Status) RepoBindingResponse {
+	if connection == nil {
+		return response
 	}
+	response.ConnectionReady = connection.Ready
+	response.AppConfigured = connection.AppConfigured
+	response.AppInstalled = connection.AppInstalled
+	response.InstallationID = connection.InstallationID
+	response.InstallationURL = connection.InstallationURL
+	response.ConnectionMessage = connection.Message
+	if strings.TrimSpace(response.Provider) == "" {
+		response.Provider = connection.Provider
+	}
+	return response
 }
 
 func mergeRepoBindingInput(detected store.RepoBindingInput, req RepoBindingRequest) store.RepoBindingInput {
@@ -108,6 +153,38 @@ func mergeRepoBindingInput(detected store.RepoBindingInput, req RepoBindingReque
 		merged.DetectedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	return merged
+}
+
+func alignRepoBindingWithConnection(binding store.RepoBindingInput, req RepoBindingRequest, probeErr error, connection githubsvc.Status) store.RepoBindingInput {
+	if strings.TrimSpace(req.AuthMode) != "" || probeErr != nil {
+		return binding
+	}
+	if connection.RemoteConfigured && connection.AppConfigured && connection.AppInstalled && strings.EqualFold(connection.Provider, "github") {
+		binding.AuthMode = "github-app"
+	}
+	return binding
+}
+
+func validateRepoBindingConnection(binding store.RepoBindingInput, probeErr error, connection githubsvc.Status) error {
+	if strings.TrimSpace(binding.AuthMode) != "github-app" {
+		return nil
+	}
+	if probeErr != nil {
+		return fmt.Errorf("probe github app readiness: %w", probeErr)
+	}
+	if !connection.RemoteConfigured {
+		return fmt.Errorf("github-app repo binding requires an origin remote")
+	}
+	if !strings.EqualFold(defaultString(strings.TrimSpace(connection.Provider), "github"), "github") {
+		return fmt.Errorf("github-app repo binding only supports GitHub remotes")
+	}
+	if !connection.AppConfigured {
+		return fmt.Errorf("github-app auth is not configured")
+	}
+	if !connection.AppInstalled {
+		return fmt.Errorf("github-app installation is not ready")
+	}
+	return nil
 }
 
 func detectLocalRepoBinding(workspaceRoot string) (store.RepoBindingInput, error) {

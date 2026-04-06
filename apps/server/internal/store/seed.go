@@ -77,8 +77,34 @@ func seedState() State {
 			{ID: "agent-memory-clerk", Name: "Memory Clerk", Description: "维护文件级记忆的可追踪、可检查和可恢复。", Mood: "等待策略输入", State: "blocked", Lane: "OPS-27", Provider: "Codex CLI", RuntimePreference: "shock-main", MemorySpaces: []string{"workspace", "user", "room-notes"}, RecentRunIDs: []string{"run_memory_01"}},
 		},
 		Machines: []Machine{
-			{ID: "machine-main", Name: "shock-main", State: "busy", CLI: "Codex + Claude Code", OS: "Windows 11", LastHeartbeat: "8 秒前"},
-			{ID: "machine-sidecar", Name: "shock-sidecar", State: "online", CLI: "Codex", OS: "macOS", LastHeartbeat: "21 秒前"},
+			{ID: "machine-main", Name: "shock-main", State: "busy", DaemonURL: "http://127.0.0.1:8090", CLI: "Codex + Claude Code", OS: "Windows 11", LastHeartbeat: "8 秒前"},
+			{ID: "machine-sidecar", Name: "shock-sidecar", State: "online", DaemonURL: "", CLI: "Codex", OS: "macOS", LastHeartbeat: "21 秒前"},
+		},
+		Runtimes: []RuntimeRecord{
+			{
+				ID:              "shock-main",
+				Machine:         "shock-main",
+				DaemonURL:       "http://127.0.0.1:8090",
+				DetectedCLI:     []string{"codex", "claude"},
+				Providers:       []RuntimeProvider{{ID: "codex", Label: "Codex CLI", Mode: "direct-cli", Capabilities: []string{"conversation", "stream"}, Transport: "http bridge"}, {ID: "claude", Label: "Claude Code CLI", Mode: "direct-cli", Capabilities: []string{"conversation", "stream"}, Transport: "http bridge"}},
+				State:           "busy",
+				PairingState:    "paired",
+				WorkspaceRoot:   "",
+				ReportedAt:      now,
+				LastHeartbeatAt: now,
+			},
+			{
+				ID:              "shock-sidecar",
+				Machine:         "shock-sidecar",
+				DaemonURL:       "",
+				DetectedCLI:     []string{"codex"},
+				Providers:       []RuntimeProvider{{ID: "codex", Label: "Codex CLI", Mode: "direct-cli", Capabilities: []string{"conversation", "stream"}, Transport: "http bridge"}},
+				State:           "online",
+				PairingState:    "available",
+				WorkspaceRoot:   "",
+				ReportedAt:      now,
+				LastHeartbeatAt: now,
+			},
 		},
 		Inbox: []InboxItem{
 			{ID: "inbox-approval-runtime", Title: "破坏性 Git 清理需要批准", Kind: "approval", Room: "Runtime 讨论间", Time: "2 分钟前", Summary: "这个 Run 想在视觉核对通过后清理过时分支。", Action: "查看批准", Href: "/rooms/room-runtime/runs/run_runtime_01"},
@@ -96,6 +122,7 @@ func seedState() State {
 			{ID: "session-inbox", IssueKey: "OPS-19", RoomID: "room-inbox", TopicID: "topic-inbox", ActiveRunID: "run_inbox_01", Status: "review", Runtime: "shock-sidecar", Machine: "shock-sidecar", Provider: "Claude Code CLI", Branch: "feat/inbox-decision-cards", Worktree: "wt-inbox-cards", WorktreePath: "", Summary: "Inbox 讨论间的评审上下文。", UpdatedAt: now, MemoryPaths: []string{"MEMORY.md", "notes/work-log.md", "notes/rooms/room-inbox.md"}},
 			{ID: "session-memory", IssueKey: "OPS-27", RoomID: "room-memory", TopicID: "topic-memory", ActiveRunID: "run_memory_01", Status: "blocked", Runtime: "shock-main", Machine: "shock-main", Provider: "Codex CLI", Branch: "feat/memory-writeback", Worktree: "wt-memory-writeback", WorktreePath: "", Summary: "记忆写回冲突上下文。", UpdatedAt: now, MemoryPaths: []string{"MEMORY.md", "notes/work-log.md", "notes/rooms/room-memory.md"}},
 		},
+		Auth:   defaultAuthSnapshot(now),
 		Memory: []MemoryArtifact{},
 	}
 }

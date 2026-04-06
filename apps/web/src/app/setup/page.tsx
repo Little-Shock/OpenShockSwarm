@@ -1,36 +1,29 @@
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { GitHubConnectionConsole } from "@/components/github-connection-console";
 import { LiveBridgeConsole } from "@/components/live-bridge-console";
-import { DetailRail, SetupOverview } from "@/components/phase-zero-views";
+import { LiveSetupContextRail, LiveSetupOverview } from "@/components/live-setup-views";
 import { RepoBindingConsole } from "@/components/repo-binding-console";
+import { LiveRuntimeProvider } from "@/lib/live-runtime";
 
 export default function SetupPage() {
   return (
-    <OpenShockShell
-      view="setup"
-      eyebrow="Phase 0 配置"
-      title="接通真实执行链"
-      description="这里是 Phase 0 的操作脊柱：身份、仓库绑定、runtime 配对，以及第一条 PR 收口链。"
-      contextTitle="工作区在线"
-      contextDescription="当真实本地 runtime 能从创建讨论间一路走到 Run 真相和 PR 收口时，Phase 0 才算成立。"
-      contextBody={
-        <DetailRail
-          label="配置检查点"
-          items={[
-            { label: "身份", value: "邮箱优先" },
-            { label: "仓库", value: "GitHub 已连接" },
-            { label: "Runtime", value: "shock-main 在线" },
-            { label: "PR 链路", value: "mock / 下一步" },
-          ]}
-        />
-      }
-    >
-      <div className="space-y-4">
-        <SetupOverview />
-        <RepoBindingConsole />
-        <GitHubConnectionConsole />
-        <LiveBridgeConsole />
-      </div>
-    </OpenShockShell>
+    <LiveRuntimeProvider>
+      <OpenShockShell
+        view="setup"
+        eyebrow="Phase 4 配置"
+        title="把 GitHub 安装态与 Runtime 真值收进前台"
+        description="这里不再只摆 Phase 0 静态步骤卡，而是直接显示 GitHub effective auth path、repo binding contract、runtime bridge 与选择真值。"
+        contextTitle="安装与配对在线"
+        contextDescription="当 GitHub App install/auth、repo binding 和 runtime selection 都能直接从 live contract 读清时，Setup 才算真正站住。"
+        contextBody={<LiveSetupContextRail />}
+      >
+        <div className="space-y-4">
+          <LiveSetupOverview />
+          <RepoBindingConsole />
+          <GitHubConnectionConsole />
+          <LiveBridgeConsole />
+        </div>
+      </OpenShockShell>
+    </LiveRuntimeProvider>
   );
 }

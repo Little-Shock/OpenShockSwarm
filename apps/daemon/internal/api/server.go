@@ -13,10 +13,11 @@ import (
 type Server struct {
 	service *runtime.Service
 	root    string
+	leases  *leaseGuard
 }
 
 func New(service *runtime.Service, root string) *Server {
-	return &Server{service: service, root: root}
+	return &Server{service: service, root: root, leases: newLeaseGuard()}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -43,6 +44,12 @@ func (s *Server) handleEnsureWorktree(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
+	release, conflict := s.leases.acquireWorktree(req, s.root)
+	if conflict != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": formatLeaseConflictError(*conflict), "conflict": conflict})
+		return
+	}
+	defer release()
 	payload, err := worktree.Ensure(req, s.root)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -68,6 +75,12 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Cwd) == "" {
 		req.Cwd = s.root
 	}
+	release, conflict := s.leases.acquireExec(req, s.root)
+	if conflict != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": formatLeaseConflictError(*conflict), "conflict": conflict})
+		return
+	}
+	defer release()
 	resp, err := s.service.RunPrompt(req)
 	if err != nil {
 		resp.Error = err.Error()
@@ -94,6 +107,12 @@ func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Cwd) == "" {
 		req.Cwd = s.root
 	}
+	release, conflict := s.leases.acquireExec(req, s.root)
+	if conflict != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": formatLeaseConflictError(*conflict), "conflict": conflict})
+		return
+	}
+	defer release()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

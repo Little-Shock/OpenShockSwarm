@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { fallbackState, type Message, type PhaseZeroState, type Room } from "@/lib/mock-data";
+import {
+  type Message,
+  type PhaseZeroState,
+  type Room,
+} from "@/lib/mock-data";
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
 import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
 
@@ -36,6 +40,36 @@ function pullRequestStatusLabel(status?: string) {
     default:
       return "未创建";
   }
+}
+
+function runStatusLabel(status?: string) {
+  switch (status) {
+    case "running":
+      return "执行中";
+    case "review":
+      return "评审中";
+    case "blocked":
+      return "阻塞";
+    case "done":
+      return "已完成";
+    default:
+      return "待同步";
+  }
+}
+
+function DiscussionStateMessage({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[3px_3px_0_0_var(--shock-ink)]">
+      <p className="font-display text-2xl font-bold">{title}</p>
+      <p className="mt-3 max-w-xl text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{message}</p>
+    </section>
+  );
 }
 
 function ClaudeCompactComposer({
@@ -180,60 +214,115 @@ function ClaudeCompactComposer({
 }
 
 export function StitchChannelsView({ channelId }: { channelId: string }) {
-  const { state } = usePhaseZeroState();
-  const channel = state.channels.find((item) => item.id === channelId) ?? fallbackState.channels[0];
-  const messages = state.channelMessages[channel.id] ?? fallbackState.channelMessages[channel.id] ?? [];
+  const { state, loading, error } = usePhaseZeroState();
+  const channel = loading || error ? undefined : state.channels.find((item) => item.id === channelId);
+  const messages = channel ? state.channelMessages[channel.id] ?? [] : [];
+  const sidebarChannels = loading || error ? [] : state.channels;
+  const sidebarMachines = loading || error ? [] : state.machines;
+  const sidebarAgents = loading || error ? [] : state.agents;
+  const runningAgents = sidebarAgents.filter((agent) => agent.state === "running").length;
+  const blockedAgents = sidebarAgents.filter((agent) => agent.state === "blocked").length;
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
       <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[256px_minmax(0,1fr)]">
-        <StitchSidebar active="channels" channels={state.channels} machines={state.machines} agents={state.agents} />
+        <StitchSidebar active="channels" channels={sidebarChannels} machines={sidebarMachines} agents={sidebarAgents} />
         <section className="flex min-h-0 flex-col bg-white">
-          <StitchTopBar searchPlaceholder="搜索系统日志..." />
+          <StitchTopBar
+            title={
+              loading
+                ? "频道同步中"
+                : error
+                  ? "频道同步失败"
+                  : channel
+                    ? `频道：${channel.name}`
+                    : `频道：${channelId}`
+            }
+            searchPlaceholder="搜索频道消息..."
+          />
           <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_260px]">
             <div className="flex min-h-0 flex-col border-r-2 border-[var(--shock-ink)]">
               <div className="flex-1 overflow-y-auto bg-[radial-gradient(var(--shock-grid)_1px,transparent_1px)] [background-size:20px_20px] p-8">
-                <div className="mb-8 flex items-center gap-4">
-                  <div className="h-[2px] flex-1 bg-[var(--shock-ink)]" />
-                  <span className="rounded-full bg-black px-3 py-1 font-mono text-[10px] text-white">系统纪元 1715423</span>
-                  <div className="h-[2px] flex-1 bg-[var(--shock-ink)]" />
-                </div>
-
                 <div className="mx-auto max-w-4xl space-y-8">
-                  {messages.map((message, index) => (
-                    <article key={message.id} className={cn("flex items-start gap-4", index === 1 && "flex-row-reverse")}>
-                      <div
-                        className={cn(
-                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] shadow-[2px_2px_0_0_var(--shock-ink)]",
-                          index === 1 ? "bg-[var(--shock-purple)] text-white" : "bg-[var(--shock-yellow)]"
-                        )}
-                      >
-                        {index === 1 ? "🤖" : "⚙"}
-                      </div>
-                      <div className={cn("flex-1", index === 1 && "text-right")}>
-                        <div className={cn("mb-2 flex items-center gap-3", index === 1 && "justify-end")}>
-                          <span className={cn("font-display text-lg font-bold", index === 1 && "text-[var(--shock-purple)]")}>{message.speaker}</span>
-                          <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">{message.time}</span>
-                        </div>
-                        <div className={cn("relative rounded-[12px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[4px_4px_0_0_var(--shock-ink)]", index === 1 && "ml-auto max-w-[90%] bg-[#ead7ff] text-left")}>
-                          <p className="text-sm leading-7">{message.message}</p>
-                          {index === 1 ? (
-                            <div className="mt-4 rounded-[8px] border-2 border-[var(--shock-ink)] bg-black px-4 py-4 font-mono text-[11px] leading-5 text-[var(--shock-lime)]">
-                              <p>{">"} ping 127.0.0.1 --cluster=tokyo</p>
-                              <p>[STATUS] 正在分析 shard health...</p>
-                              <p>[WARN] shard 03 latency spike detected</p>
-                              <p>[OK] garbage collection stabilized</p>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                  {loading ? (
+                    <DiscussionStateMessage
+                      title="正在同步频道真值"
+                      message="等待 server 返回当前频道对象和消息列表，前端不再自动退回到另一条 mock 频道。"
+                    />
+                  ) : error ? (
+                    <DiscussionStateMessage title="频道同步失败" message={error} />
+                  ) : !channel ? (
+                    <DiscussionStateMessage
+                      title="未找到频道"
+                      message={`当前找不到 \`${channelId}\` 对应的 live channel 记录。`}
+                    />
+                  ) : messages.length === 0 ? (
+                    <DiscussionStateMessage
+                      title="这个频道当前还没有消息"
+                      message="等第一条 live channel message 出现后，这里会直接显示真实频道流。"
+                    />
+                  ) : (
+                    messages.map((message) => {
+                      const isHuman = message.role === "human";
+                      const isAgent = message.role === "agent";
+                      const blockedTone = message.tone === "blocked";
 
-                  <article className="max-w-[70%] rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-5 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                    <p className="font-display text-lg font-bold">QUICK ACTION REQUIRED</p>
-                    <p className="mt-2 text-sm leading-7">自动恢复策略建议对 Tokyo-03 重新部署。要不要先授权执行？</p>
-                  </article>
+                      return (
+                        <article
+                          key={message.id}
+                          className={cn("flex items-start gap-4", isHuman && "flex-row-reverse")}
+                        >
+                          <div
+                            className={cn(
+                              "flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] shadow-[2px_2px_0_0_var(--shock-ink)]",
+                              blockedTone
+                                ? "bg-[var(--shock-pink)] text-white"
+                                : isAgent
+                                  ? "bg-[var(--shock-purple)] text-white"
+                                  : isHuman
+                                    ? "bg-[var(--shock-yellow)]"
+                                    : "bg-white"
+                            )}
+                          >
+                            {message.role === "human" ? "人" : message.role === "agent" ? "A" : "S"}
+                          </div>
+                          <div className={cn("flex-1", isHuman && "text-right")}>
+                            <div className={cn("mb-2 flex items-center gap-3", isHuman && "justify-end")}>
+                              <span
+                                className={cn(
+                                  "font-display text-lg font-bold",
+                                  blockedTone
+                                    ? "text-[var(--shock-pink)]"
+                                    : isAgent
+                                      ? "text-[var(--shock-purple)]"
+                                      : undefined
+                                )}
+                              >
+                                {message.speaker}
+                              </span>
+                              <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">
+                                {message.time}
+                              </span>
+                            </div>
+                            <div
+                              className={cn(
+                                "relative rounded-[12px] border-2 border-[var(--shock-ink)] p-5 shadow-[4px_4px_0_0_var(--shock-ink)]",
+                                blockedTone
+                                  ? "bg-[var(--shock-pink)] text-white"
+                                  : isAgent
+                                    ? "bg-[#ead7ff]"
+                                    : isHuman
+                                      ? "ml-auto max-w-[90%] bg-white text-left"
+                                      : "bg-[var(--shock-paper)]"
+                              )}
+                            >
+                              <p className="whitespace-pre-wrap text-sm leading-7">{message.message}</p>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -241,10 +330,15 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                 <div className="mx-auto flex max-w-4xl items-center gap-3">
                   <button className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white text-xl">+</button>
                   <div className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-4 py-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.48)]">
-                    发送消息到 {channel.name}...
+                    {channel ? `发送消息到 ${channel.name}...` : "等待频道同步..."}
                   </div>
                   <button className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white">☺</button>
-                  <button className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-3 font-mono text-[11px] tracking-[0.14em]">发送 ↗</button>
+                  <button
+                    disabled={!channel || loading || Boolean(error)}
+                    className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-3 font-mono text-[11px] tracking-[0.14em] disabled:opacity-60"
+                  >
+                    发送 ↗
+                  </button>
                 </div>
               </div>
             </div>
@@ -252,18 +346,37 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             <aside className="hidden overflow-y-auto bg-[#f6f6f6] p-4 xl:block">
               <div className="space-y-4">
                 <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">活动内存</p>
-                  <p className="mt-2 font-display text-4xl font-bold">14.8 GB</p>
-                  <div className="mt-4 h-3 rounded-full border-2 border-[var(--shock-ink)] bg-[#f1f1f1]"><div className="h-full w-[72%] bg-[var(--shock-yellow)]" /></div>
+                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">频道定位</p>
+                  <p className="mt-2 font-display text-2xl font-bold">{channel?.name ?? "等待同步"}</p>
+                  <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                    {channel?.purpose ?? "当前还没有拿到这条频道的 live purpose。"}
+                  </p>
                 </div>
                 <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Thread Health</p>
-                  <div className="mt-4 flex gap-1">{["#22c55e", "#22c55e", "#facc15", "#22c55e", "#ef4444"].map((color, index) => <span key={`${color}-${index}`} className="h-4 flex-1 rounded-[2px] border border-[var(--shock-ink)]" style={{ backgroundColor: color }} />)}</div>
+                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">频道基线</p>
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>消息数</span>
+                      <span className="font-mono text-[11px]">{messages.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>未读</span>
+                      <span className="font-mono text-[11px]">{channel?.unread ?? 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>活跃公民</span>
+                      <span className="font-mono text-[11px]">{runningAgents}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>阻塞公民</span>
+                      <span className="font-mono text-[11px]">{blockedAgents}</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-4">
                   <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">在线公民</p>
                   <div className="mt-4 space-y-3">
-                    {state.agents.map((agent) => (
+                    {sidebarAgents.map((agent) => (
                       <div key={agent.id} className="flex items-start gap-3">
                         <span className={cn("mt-1 h-3 w-3 rounded-full border border-[var(--shock-ink)]", agent.state === "blocked" ? "bg-[var(--shock-pink)]" : "bg-[var(--shock-lime)]")} />
                         <div>
@@ -284,16 +397,31 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 }
 
 export function StitchDiscussionView({ roomId }: { roomId: string }) {
-  const { state, streamRoomMessage, createPullRequest, updatePullRequest } = usePhaseZeroState();
-  const room = state.rooms.find((item) => item.id === roomId) ?? fallbackState.rooms[0];
-  const run = state.runs.find((item) => item.id === room.runId) ?? fallbackState.runs[0];
-  const messages = state.roomMessages[room.id] ?? fallbackState.roomMessages[room.id] ?? [];
-  const pullRequest = state.pullRequests.find((item) => item.roomId === room.id);
+  const { state, loading, error, streamRoomMessage, createPullRequest, updatePullRequest } = usePhaseZeroState();
+  const room = state.rooms.find((item) => item.id === roomId);
+  const run = room ? state.runs.find((item) => item.id === room.runId) : undefined;
+  const session = room ? state.sessions.find((item) => item.roomId === room.id) : undefined;
+  const messages = room ? state.roomMessages[room.id] ?? [] : [];
+  const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
   const [prLoading, setPrLoading] = useState(false);
   const canMerge = pullRequest && pullRequest.status !== "merged";
+  const activeAgents =
+    room && run
+      ? state.agents.filter(
+          (agent) => agent.lane === room.issueKey || agent.recentRunIds.includes(run.id)
+        )
+      : [];
+  const sessionMemoryPaths =
+    session && session.memoryPaths.length > 0
+      ? session.memoryPaths
+      : ["当前 session 还没有暴露 memory paths"];
+  const latestTimelineEvent = run ? run.timeline[run.timeline.length - 1] : undefined;
+  const sidebarChannels = loading || error ? [] : state.channels;
+  const sidebarMachines = loading || error ? [] : state.machines;
+  const sidebarAgents = loading || error ? [] : state.agents;
 
   async function handleCreatePullRequest() {
-    if (prLoading) return;
+    if (!room || prLoading) return;
     setPrLoading(true);
     try {
       await createPullRequest(room.id);
@@ -315,25 +443,39 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
       <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[256px_minmax(0,1fr)]">
-        <StitchSidebar active="rooms" channels={state.channels} machines={state.machines} agents={state.agents} />
+        <StitchSidebar active="rooms" channels={sidebarChannels} machines={sidebarMachines} agents={sidebarAgents} />
         <section className="flex min-h-0 flex-col bg-white">
-          <StitchTopBar title={`讨论间：${room.title}`} searchPlaceholder="搜索工作区..." />
+          <StitchTopBar title={`讨论间：${room?.title ?? roomId}`} searchPlaceholder="搜索工作区..." />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <div className="flex min-h-0 w-full flex-col border-r-2 border-[var(--shock-ink)] xl:w-1/2">
               <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-mono text-[11px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">实时协作流</p>
-                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">1 active agents</p>
+                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">{activeAgents.length} active agents</p>
                 </div>
               </div>
-              <ClaudeCompactComposer room={room} initialMessages={messages} onSend={streamRoomMessage} />
+              {loading ? (
+                <div className="p-4">
+                  <DiscussionStateMessage title="正在同步讨论间真值" message="等待 server 返回当前 room / run / message 状态，前端不再自动退回另一间 mock room。" />
+                </div>
+              ) : error ? (
+                <div className="p-4">
+                  <DiscussionStateMessage title="讨论间同步失败" message={error} />
+                </div>
+              ) : !room || !run ? (
+                <div className="p-4">
+                  <DiscussionStateMessage title="未找到讨论间" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
+                </div>
+              ) : (
+                <ClaudeCompactComposer room={room} initialMessages={messages} onSend={streamRoomMessage} />
+              )}
             </div>
 
             <aside className="hidden min-h-0 flex-1 overflow-y-auto bg-[#f5f5f5] p-4 xl:block">
               <div className="mb-3 flex gap-2">
                 <button className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] text-white">注入 Guidance</button>
                 <button
-                  disabled={prLoading || (pullRequest?.status === "merged")}
+                  disabled={!room || prLoading || (pullRequest?.status === "merged")}
                   onClick={pullRequest ? handleMergePullRequest : handleCreatePullRequest}
                   className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] disabled:opacity-60"
                 >
@@ -342,68 +484,81 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
               </div>
 
               <div className="space-y-3">
-                <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <p className="font-mono text-[10px] tracking-[0.16em]">Execution Context</p>
-                  <div className="mt-3 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] px-3 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Room State</p>
-                        <p className="mt-2 font-display text-2xl font-bold">{run.branch}</p>
+                {loading ? (
+                  <DiscussionStateMessage title="等待房间上下文" message="右侧 context rail 会在 live room / run / session 真值返回后展开。" />
+                ) : error ? (
+                  <DiscussionStateMessage title="上下文同步失败" message={error} />
+                ) : !room || !run ? (
+                  <DiscussionStateMessage title="缺少讨论间上下文" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
+                ) : (
+                  <>
+                    <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
+                      <p className="font-mono text-[10px] tracking-[0.16em]">Execution Context</p>
+                      <div className="mt-3 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] px-3 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Current Branch</p>
+                            <p className="mt-2 font-display text-2xl font-bold">{session?.branch ?? run.branch}</p>
+                          </div>
+                          <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]">
+                            {runStatusLabel(session?.status ?? run.status)}
+                          </span>
+                        </div>
+                        <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Worktree {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}</p>
+                        <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Last Sync {session?.updatedAt || run.startedAt}</p>
                       </div>
-                      <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]">Dirty State</span>
+                    </section>
+
+                    <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
+                          <p className="mt-2 font-display text-2xl font-bold">{pullRequest?.label ?? run.pullRequest ?? "未创建"}</p>
+                        </div>
+                        <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[#ececec] px-2 py-1 font-mono text-[10px]">
+                          {pullRequestStatusLabel(pullRequest?.status)}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.64)]">
+                        {pullRequest?.reviewSummary ?? run.nextAction}
+                      </p>
+                    </section>
+
+                    <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#111827] p-4 text-white">
+                      <p className="font-mono text-[10px] tracking-[0.16em] text-white/70">Session Memory</p>
+                      <div className="mt-3 space-y-2 font-mono text-[11px] leading-5 text-[#8bff9e]">
+                        {sessionMemoryPaths.map((item) => (
+                          <p key={item}>{item}</p>
+                        ))}
+                      </div>
+                    </section>
+
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#ead7ff] p-4">
+                        <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Tool Calls</p>
+                        <p className="mt-2 font-display text-4xl font-bold">{run.toolCalls.length}</p>
+                        <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.tool ?? "当前还没有工具调用"}</p>
+                        <p className="mt-1 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.summary ?? "等待下一条执行事件"}</p>
+                      </section>
+                      <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
+                        <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Timeline</p>
+                        <p className="mt-2 font-display text-4xl font-bold">{run.timeline.length}</p>
+                        <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.label ?? "暂无事件"}</p>
+                        <p className="mt-1 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.at ?? "等待同步"}</p>
+                      </section>
                     </div>
-                    <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Active Path /core/session_mgr.ts</p>
-                    <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Last Sync 2s ago</p>
-                  </div>
-                </section>
 
-                <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
-                      <p className="mt-2 font-display text-2xl font-bold">{pullRequest?.label ?? "未创建"}</p>
-                    </div>
-                    <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[#ececec] px-2 py-1 font-mono text-[10px]">
-                      {pullRequestStatusLabel(pullRequest?.status)}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.64)]">
-                    {pullRequest?.reviewSummary ?? "当前房间还没有进入 PR 收口。准备好后可以直接从这里发起。"}
-                  </p>
-                </section>
-
-                <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#111827] p-4 text-white">
-                  <p className="font-mono text-[10px] tracking-[0.16em] text-white/70">Hotfile</p>
-                  <div className="mt-3 font-mono text-[11px] leading-5 text-[#8bff9e]">
-                    <p>pub observers: Vec&lt;Box&lt;dyn Observer&gt;&gt;</p>
-                    <p>pub fn register(&amp;mut self, observer: Observer)</p>
-                    <p>let weak_ob = Arc::downgrade(&amp;obj)</p>
-                    <p>self.observers.push(Box::new(obs));</p>
-                  </div>
-                </section>
-
-                <div className="grid gap-3 xl:grid-cols-2">
-                  <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#ead7ff] p-4">
-                    <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR Readiness</p>
-                    <p className="mt-2 font-display text-4xl font-bold">88%</p>
-                    <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">Unit tests passed 21/24</p>
-                    <p className="mt-1 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">还剩 2 个 warning 待清理</p>
-                  </section>
-                  <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                    <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Memory Delta</p>
-                    <div className="mt-6 flex items-end gap-2">{[36, 54, 32, 70].map((height) => <span key={height} className="w-8 border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)]" style={{ height }} />)}</div>
-                  </section>
-                </div>
-
-                <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] text-[10px] text-white">AI</span>
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-[10px]">{state.agents.length}</span>
-                    </div>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">{run.runtime}: active</p>
-                  </div>
-                </section>
+                    <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] text-[10px] text-white">AI</span>
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-[10px]">{activeAgents.length}</span>
+                        </div>
+                        <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">{run.runtime} / {run.provider}</p>
+                      </div>
+                    </section>
+                  </>
+                )}
               </div>
             </aside>
           </div>

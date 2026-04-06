@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, createElement, startTransition, useContext, useEffect, useState, type ReactNode } from "react";
 
-import { fallbackState, type PhaseZeroState } from "@/lib/mock-data";
+import type { PhaseZeroState } from "@/lib/mock-data";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
+const STATE_STREAM_PATH = "/v1/state/stream";
 
 type CreateIssueInput = {
   title: string;
@@ -16,10 +17,23 @@ type CreateIssueInput = {
 type StateMutationResponse = {
   state?: PhaseZeroState;
   error?: string;
+  operation?: string;
   roomId?: string;
   output?: string;
   pullRequestId?: string;
 };
+
+class StateMutationError extends Error {
+  payload: StateMutationResponse;
+  status: number;
+
+  constructor(message: string, status: number, payload: StateMutationResponse) {
+    super(message);
+    this.name = "StateMutationError";
+    this.payload = payload;
+    this.status = status;
+  }
+}
 
 export type RoomStreamEvent = {
   type: "start" | "stdout" | "stderr" | "done" | "state" | "error";
@@ -37,6 +51,83 @@ type UpdatePullRequestInput = {
   status: "draft" | "open" | "in_review" | "changes_requested" | "merged";
 };
 
+type InboxDecision =
+  | "approved"
+  | "deferred"
+  | "resolved"
+  | "merged"
+  | "changes_requested";
+
+type PhaseZeroStreamPresence = {
+  onlineMachines: number;
+  busyMachines: number;
+  runningAgents: number;
+  blockedAgents: number;
+  activeRuns: number;
+  unread: number;
+};
+
+type PhaseZeroStreamEvent = {
+  type: "snapshot";
+  sequence: number;
+  sentAt: string;
+  presence: PhaseZeroStreamPresence;
+  state: PhaseZeroState;
+};
+
+type PhaseZeroContextValue = {
+  state: PhaseZeroState;
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
+  postRoomMessage: (roomId: string, prompt: string, provider?: string) => Promise<StateMutationResponse>;
+  streamRoomMessage: (
+    roomId: string,
+    prompt: string,
+    provider?: string,
+    onEvent?: (event: RoomStreamEvent) => void
+  ) => Promise<RoomStreamEvent | null>;
+  createPullRequest: (roomId: string) => Promise<StateMutationResponse>;
+  updatePullRequest: (pullRequestId: string, input: UpdatePullRequestInput) => Promise<StateMutationResponse>;
+  applyInboxDecision: (inboxItemId: string, decision: InboxDecision) => Promise<StateMutationResponse>;
+};
+
+const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
+  workspace: {
+    name: "",
+    repo: "",
+    repoUrl: "",
+    branch: "",
+    repoProvider: "",
+    repoBindingStatus: "",
+    repoAuthMode: "",
+    plan: "",
+    pairedRuntime: "",
+    pairedRuntimeUrl: "",
+    pairingStatus: "",
+    deviceAuth: "",
+    lastPairedAt: "",
+    browserPush: "",
+    memoryMode: "",
+  },
+  channels: [],
+  channelMessages: {},
+  issues: [],
+  rooms: [],
+  roomMessages: {},
+  runs: [],
+  agents: [],
+  machines: [],
+  runtimes: [],
+  inbox: [],
+  pullRequests: [],
+  sessions: [],
+  memory: [],
+};
+
+const PhaseZeroContext = createContext<PhaseZeroContextValue | null>(null);
+
 async function readJSON<T>(path: string, init?: RequestInit) {
   const response = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
@@ -49,36 +140,90 @@ async function readJSON<T>(path: string, init?: RequestInit) {
 
   const payload = (await response.json()) as T & { error?: string };
   if (!response.ok) {
-    throw new Error(payload.error || `request failed: ${response.status}`);
+    throw new StateMutationError(payload.error || `request failed: ${response.status}`, response.status, payload as StateMutationResponse);
   }
 
   return payload;
 }
 
-export function usePhaseZeroState() {
-  const [state, setState] = useState<PhaseZeroState>(fallbackState);
+function useProvidePhaseZeroState(): PhaseZeroContextValue {
+  const [state, setState] = useState<PhaseZeroState>(EMPTY_PHASE_ZERO_STATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  function commitState(next: PhaseZeroState) {
+    startTransition(() => {
+      setState(next);
+      setError(null);
+      setLoading(false);
+    });
+  }
+
+  function commitRequestError(nextError: unknown) {
+    setError(nextError instanceof Error ? nextError.message : "state fetch failed");
+    setLoading(false);
+  }
 
   async function refresh() {
     try {
       const next = await readJSON<PhaseZeroState>("/v1/state");
-      setState(next);
-      setError(null);
+      commitState(next);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "state fetch failed");
-    } finally {
-      setLoading(false);
+      commitRequestError(fetchError);
+      throw fetchError;
     }
   }
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => {
-      void refresh();
-    }, 15000);
+    let cancelled = false;
+    let source: EventSource | null = null;
 
-    return () => window.clearInterval(timer);
+    async function hydrateInitialState() {
+      try {
+        const next = await readJSON<PhaseZeroState>("/v1/state");
+        if (cancelled) {
+          return;
+        }
+        commitState(next);
+      } catch (fetchError) {
+        if (cancelled) {
+          return;
+        }
+        commitRequestError(fetchError);
+      }
+    }
+
+    void hydrateInitialState();
+
+    if (typeof EventSource === "undefined") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    source = new EventSource(`${API_BASE}${STATE_STREAM_PATH}`);
+    source.addEventListener("snapshot", (event) => {
+      if (cancelled) {
+        return;
+      }
+      try {
+        const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroStreamEvent;
+        commitState(payload.state);
+      } catch {
+        // Ignore malformed stream payloads and wait for the next reconnect/update.
+      }
+    });
+    source.onerror = () => {
+      if (cancelled) {
+        return;
+      }
+      setLoading(false);
+    };
+
+    return () => {
+      cancelled = true;
+      source?.close();
+    };
   }, []);
 
   async function createIssue(input: CreateIssueInput) {
@@ -87,7 +232,9 @@ export function usePhaseZeroState() {
       body: JSON.stringify(input),
     });
 
-    if (payload.state) setState(payload.state);
+    if (payload.state) {
+      commitState(payload.state);
+    }
     return payload;
   }
 
@@ -97,7 +244,9 @@ export function usePhaseZeroState() {
       body: JSON.stringify({ prompt, provider }),
     });
 
-    if (payload.state) setState(payload.state);
+    if (payload.state) {
+      commitState(payload.state);
+    }
     return payload;
   }
 
@@ -120,9 +269,11 @@ export function usePhaseZeroState() {
       let message = `request failed: ${response.status}`;
       try {
         const payload = (await response.json()) as { error?: string };
-        if (payload.error) message = payload.error;
+        if (payload.error) {
+          message = payload.error;
+        }
       } catch {
-        // ignore json parse failure
+        // Ignore json parse failures and keep the status-derived message.
       }
       throw new Error(message);
     }
@@ -139,7 +290,9 @@ export function usePhaseZeroState() {
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split("\n");
@@ -147,13 +300,15 @@ export function usePhaseZeroState() {
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (!trimmed) {
+          continue;
+        }
         const event = JSON.parse(trimmed) as RoomStreamEvent;
         if (event.error && !streamError) {
           streamError = event.error;
         }
         if (event.state) {
-          setState(event.state);
+          commitState(event.state);
           finalPayload = event;
         }
         onEvent?.(event);
@@ -167,7 +322,7 @@ export function usePhaseZeroState() {
         streamError = event.error;
       }
       if (event.state) {
-        setState(event.state);
+        commitState(event.state);
         finalPayload = event;
       }
       onEvent?.(event);
@@ -184,7 +339,9 @@ export function usePhaseZeroState() {
       method: "POST",
     });
 
-    if (payload.state) setState(payload.state);
+    if (payload.state) {
+      commitState(payload.state);
+    }
     return payload;
   }
 
@@ -194,8 +351,29 @@ export function usePhaseZeroState() {
       body: JSON.stringify(input),
     });
 
-    if (payload.state) setState(payload.state);
+    if (payload.state) {
+      commitState(payload.state);
+    }
     return payload;
+  }
+
+  async function applyInboxDecision(inboxItemId: string, decision: InboxDecision) {
+    try {
+      const payload = await readJSON<StateMutationResponse>(`/v1/inbox/${inboxItemId}`, {
+        method: "POST",
+        body: JSON.stringify({ decision }),
+      });
+
+      if (payload.state) {
+        commitState(payload.state);
+      }
+      return payload;
+    } catch (mutationError) {
+      if (mutationError instanceof StateMutationError && mutationError.payload.state) {
+        commitState(mutationError.payload.state);
+      }
+      throw mutationError;
+    }
   }
 
   return {
@@ -208,5 +386,19 @@ export function usePhaseZeroState() {
     streamRoomMessage,
     createPullRequest,
     updatePullRequest,
+    applyInboxDecision,
   };
+}
+
+export function LivePhaseZeroProvider({ children }: { children: ReactNode }) {
+  const value = useProvidePhaseZeroState();
+  return createElement(PhaseZeroContext.Provider, { value }, children);
+}
+
+export function usePhaseZeroState() {
+  const value = useContext(PhaseZeroContext);
+  if (!value) {
+    throw new Error("usePhaseZeroState must be used within LivePhaseZeroProvider");
+  }
+  return value;
 }

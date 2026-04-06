@@ -101,6 +101,7 @@ export type Run = {
   provider: string;
   branch: string;
   worktree: string;
+  worktreePath?: string;
   owner: string;
   startedAt: string;
   duration: string;
@@ -136,6 +137,29 @@ export type MachineStatus = {
   lastHeartbeat: string;
 };
 
+export type RuntimeProviderStatus = {
+  id: string;
+  label: string;
+  mode: string;
+  capabilities: string[];
+  transport: string;
+};
+
+export type RuntimeRegistryRecord = {
+  id: string;
+  machine: string;
+  daemonUrl: string;
+  detectedCli: string[];
+  providers: RuntimeProviderStatus[];
+  state: string;
+  pairingState: string;
+  workspaceRoot: string;
+  reportedAt: string;
+  lastHeartbeatAt: string;
+  heartbeatIntervalSeconds?: number;
+  heartbeatTimeoutSeconds?: number;
+};
+
 export type InboxItem = {
   id: string;
   title: string;
@@ -160,6 +184,46 @@ export type PullRequest = {
   author: string;
   reviewSummary: string;
   updatedAt: string;
+};
+
+export type Session = {
+  id: string;
+  issueKey: string;
+  roomId: string;
+  topicId: string;
+  activeRunId: string;
+  status: RunStatus;
+  runtime: string;
+  machine: string;
+  provider: string;
+  branch: string;
+  worktree: string;
+  worktreePath: string;
+  summary: string;
+  updatedAt: string;
+  memoryPaths: string[];
+};
+
+export type MemoryGovernance = {
+  mode?: string;
+  requiresReview?: boolean;
+  escalation?: string;
+};
+
+export type MemoryArtifact = {
+  id: string;
+  scope: string;
+  kind: string;
+  path: string;
+  summary: string;
+  updatedAt: string;
+  version?: number;
+  latestWrite?: string;
+  latestSource?: string;
+  latestActor?: string;
+  digest?: string;
+  sizeBytes?: number;
+  governance?: MemoryGovernance;
 };
 
 export type SetupStep = {
@@ -188,8 +252,11 @@ export type PhaseZeroState = {
   runs: Run[];
   agents: AgentStatus[];
   machines: MachineStatus[];
+  runtimes: RuntimeRegistryRecord[];
   inbox: InboxItem[];
   pullRequests: PullRequest[];
+  sessions: Session[];
+  memory: MemoryArtifact[];
 };
 
 export const workspace: WorkspaceSnapshot = {
@@ -212,7 +279,7 @@ export const workspace: WorkspaceSnapshot = {
 
 export const tabs: Array<{ id: AppTab; label: string; href: string }> = [
   { id: "chat", label: "频道", href: "/chat/all" },
-  { id: "rooms", label: "讨论间", href: "/rooms/room-runtime" },
+  { id: "rooms", label: "讨论间", href: "/rooms" },
   { id: "inbox", label: "收件箱", href: "/inbox" },
   { id: "board", label: "任务板", href: "/board" },
 ];
@@ -220,7 +287,10 @@ export const tabs: Array<{ id: AppTab; label: string; href: string }> = [
 export const utilityLinks = [
   { id: "setup", label: "配置", href: "/setup" },
   { id: "issues", label: "需求", href: "/issues" },
+  { id: "runs", label: "执行", href: "/runs" },
   { id: "agents", label: "公民", href: "/agents" },
+  { id: "memory", label: "记忆", href: "/memory" },
+  { id: "access", label: "身份", href: "/access" },
   { id: "settings", label: "设置", href: "/settings" },
 ];
 
@@ -629,6 +699,60 @@ export const machines: MachineStatus[] = [
   { id: "machine-sidecar", name: "shock-sidecar", state: "online", cli: "Codex", os: "macOS", lastHeartbeat: "21 秒前" },
 ];
 
+export const runtimes: RuntimeRegistryRecord[] = [
+  {
+    id: "runtime-shock-main",
+    machine: "shock-main",
+    daemonUrl: "http://127.0.0.1:8090",
+    detectedCli: ["codex", "claude"],
+    providers: [
+      {
+        id: "codex",
+        label: "Codex CLI",
+        mode: "native",
+        capabilities: ["exec", "review", "apply-patch"],
+        transport: "stdio",
+      },
+      {
+        id: "claude",
+        label: "Claude Code",
+        mode: "native",
+        capabilities: ["exec", "review"],
+        transport: "stdio",
+      },
+    ],
+    state: "busy",
+    pairingState: "paired",
+    workspaceRoot: "/home/lark/OpenShock",
+    reportedAt: "8 秒前",
+    lastHeartbeatAt: "8 秒前",
+    heartbeatIntervalSeconds: 15,
+    heartbeatTimeoutSeconds: 45,
+  },
+  {
+    id: "runtime-shock-sidecar",
+    machine: "shock-sidecar",
+    daemonUrl: "http://127.0.0.1:8091",
+    detectedCli: ["codex"],
+    providers: [
+      {
+        id: "codex",
+        label: "Codex CLI",
+        mode: "native",
+        capabilities: ["exec", "review"],
+        transport: "stdio",
+      },
+    ],
+    state: "online",
+    pairingState: "available",
+    workspaceRoot: "/home/lark/OpenShock",
+    reportedAt: "21 秒前",
+    lastHeartbeatAt: "21 秒前",
+    heartbeatIntervalSeconds: 15,
+    heartbeatTimeoutSeconds: 45,
+  },
+];
+
 export const inboxItems: InboxItem[] = [
   {
     id: "inbox-approval-runtime",
@@ -638,7 +762,7 @@ export const inboxItems: InboxItem[] = [
     time: "2 分钟前",
     summary: "这个 Run 想在视觉核对通过后清理过时分支。",
     action: "查看批准",
-    href: "/rooms/room-runtime/runs/run_runtime_01",
+    href: "/runs/run_runtime_01",
   },
   {
     id: "inbox-blocked-memory",
@@ -648,7 +772,7 @@ export const inboxItems: InboxItem[] = [
     time: "7 分钟前",
     summary: "写回前需要先确定 topic、房间、工作区、用户和 agent 的优先级规则。",
     action: "解除阻塞",
-    href: "/rooms/room-memory/runs/run_memory_01",
+    href: "/runs/run_memory_01",
   },
   {
     id: "inbox-review-copy",
@@ -658,7 +782,7 @@ export const inboxItems: InboxItem[] = [
     time: "12 分钟前",
     summary: "Agent 已经准备好最终卡片文案和路由跳转。",
     action: "打开评审",
-    href: "/rooms/room-inbox/runs/run_inbox_01",
+    href: "/runs/run_inbox_01",
   },
   {
     id: "inbox-status-shell",
@@ -834,6 +958,9 @@ export const fallbackState: PhaseZeroState = {
   runs,
   agents,
   machines,
+  runtimes,
   inbox: inboxItems,
   pullRequests,
+  sessions: [],
+  memory: [],
 };

@@ -1,8 +1,6 @@
 package api
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,25 +14,49 @@ import (
 )
 
 type Config struct {
-	DaemonURL     string
-	WorkspaceRoot string
-	GitHub        githubsvc.Prober
+	DaemonURL           string
+	WorkspaceRoot       string
+	GitHub              githubsvc.Client
+	GitHubWebhookSecret string
 }
 
 type Server struct {
-	store            *store.Store
-	httpClient       *http.Client
-	defaultDaemonURL string
-	daemonURL        string
-	daemonMu         sync.RWMutex
-	workspaceRoot    string
-	github           githubsvc.Prober
+	store               *store.Store
+	httpClient          *http.Client
+	defaultDaemonURL    string
+	daemonURL           string
+	daemonMu            sync.RWMutex
+	workspaceRoot       string
+	github              githubsvc.Client
+	githubWebhookSecret string
 }
 
-type ExecRequest struct {
-	Provider string `json:"provider"`
-	Prompt   string `json:"prompt"`
-	Cwd      string `json:"cwd"`
+type serverRouteRegistrar func(*Server, *http.ServeMux)
+
+var serverRouteRegistrars []serverRouteRegistrar
+
+func registerServerRoutes(fn serverRouteRegistrar) {
+	serverRouteRegistrars = append(serverRouteRegistrars, fn)
+}
+
+type requestGuard func(*Server, http.ResponseWriter) bool
+type pullRequestStatusGuard func(*Server, http.ResponseWriter, string) bool
+
+var (
+	issueCreateGuard      requestGuard           = allowRequest
+	roomReplyGuard        requestGuard           = allowRequest
+	roomPullRequestGuard  requestGuard           = allowRequest
+	runtimeManageGuard    requestGuard           = allowRequest
+	runExecuteGuard       requestGuard           = allowRequest
+	pullRequestRouteGuard pullRequestStatusGuard = allowPullRequestRoute
+)
+
+func allowRequest(_ *Server, _ http.ResponseWriter) bool {
+	return true
+}
+
+func allowPullRequestRoute(_ *Server, _ http.ResponseWriter, _ string) bool {
+	return true
 }
 
 type CreateIssueRequest struct {
@@ -54,27 +76,21 @@ type UpdatePullRequestRequest struct {
 	Status string `json:"status"`
 }
 
-type DaemonExecResponse struct {
-	Output string `json:"output"`
-	Error  string `json:"error"`
-}
-
 type RuntimeSnapshotResponse struct {
-	Machine     string   `json:"machine"`
-	DetectedCLI []string `json:"detectedCli"`
-	Providers   []struct {
-		ID           string   `json:"id"`
-		Label        string   `json:"label"`
-		Mode         string   `json:"mode"`
-		Capabilities []string `json:"capabilities"`
-		Transport    string   `json:"transport"`
-	} `json:"providers"`
-	State         string `json:"state"`
-	WorkspaceRoot string `json:"workspaceRoot"`
-	ReportedAt    string `json:"reportedAt"`
+	RuntimeID          string                  `json:"runtimeId,omitempty"`
+	DaemonURL          string                  `json:"daemonUrl,omitempty"`
+	Machine            string                  `json:"machine"`
+	DetectedCLI        []string                `json:"detectedCli"`
+	Providers          []store.RuntimeProvider `json:"providers"`
+	State              string                  `json:"state"`
+	WorkspaceRoot      string                  `json:"workspaceRoot"`
+	ReportedAt         string                  `json:"reportedAt"`
+	HeartbeatIntervalS int                     `json:"heartbeatIntervalSeconds,omitempty"`
+	HeartbeatTimeoutS  int                     `json:"heartbeatTimeoutSeconds,omitempty"`
 }
 
 type PairRuntimeRequest struct {
+	RuntimeID string `json:"runtimeId"`
 	DaemonURL string `json:"daemonUrl"`
 }
 
@@ -86,32 +102,15 @@ type PairingStatusResponse struct {
 	LastPairedAt  string `json:"lastPairedAt"`
 }
 
-type DaemonStreamEvent struct {
-	Type      string       `json:"type"`
-	Provider  string       `json:"provider,omitempty"`
-	Command   []string     `json:"command,omitempty"`
-	Delta     string       `json:"delta,omitempty"`
-	Output    string       `json:"output,omitempty"`
-	Error     string       `json:"error,omitempty"`
-	Duration  string       `json:"duration,omitempty"`
-	Timestamp string       `json:"timestamp,omitempty"`
-	State     *store.State `json:"state,omitempty"`
+type SelectRuntimeRequest struct {
+	Machine string `json:"machine"`
 }
 
-type WorktreeRequest struct {
-	WorkspaceRoot string `json:"workspaceRoot"`
-	Branch        string `json:"branch"`
-	WorktreeName  string `json:"worktreeName"`
-	BaseRef       string `json:"baseRef"`
-}
-
-type WorktreeResponse struct {
-	WorkspaceRoot string `json:"workspaceRoot"`
-	Branch        string `json:"branch"`
-	WorktreeName  string `json:"worktreeName"`
-	Path          string `json:"path"`
-	Created       bool   `json:"created"`
-	BaseRef       string `json:"baseRef"`
+type RuntimeSelectionResponse struct {
+	SelectedRuntime   string          `json:"selectedRuntime"`
+	SelectedDaemonURL string          `json:"selectedDaemonUrl"`
+	PairingStatus     string          `json:"pairingStatus"`
+	Runtimes          []store.Machine `json:"runtimes"`
 }
 
 func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
@@ -124,12 +123,13 @@ func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 		githubService = githubsvc.NewService(nil)
 	}
 	return &Server{
-		store:            s,
-		httpClient:       httpClient,
-		defaultDaemonURL: strings.TrimRight(cfg.DaemonURL, "/"),
-		daemonURL:        daemonURL,
-		workspaceRoot:    cfg.WorkspaceRoot,
-		github:           githubService,
+		store:               s,
+		httpClient:          httpClient,
+		defaultDaemonURL:    strings.TrimRight(cfg.DaemonURL, "/"),
+		daemonURL:           daemonURL,
+		workspaceRoot:       cfg.WorkspaceRoot,
+		github:              githubService,
+		githubWebhookSecret: strings.TrimSpace(cfg.GitHubWebhookSecret),
 	}
 }
 
@@ -148,14 +148,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/sessions", s.handleSessionRoutes)
 	mux.HandleFunc("/v1/sessions/", s.handleSessionRoutes)
 	mux.HandleFunc("/v1/inbox", s.handleInbox)
-	mux.HandleFunc("/v1/memory", s.handleMemory)
+	mux.HandleFunc("/v1/inbox/", s.handleInboxRoutes)
 	mux.HandleFunc("/v1/pull-requests", s.handlePullRequests)
 	mux.HandleFunc("/v1/pull-requests/", s.handlePullRequestRoutes)
+	mux.HandleFunc("/v1/runtime/registry", s.handleRuntimeRegistry)
+	mux.HandleFunc("/v1/runtime/heartbeats", s.handleRuntimeHeartbeats)
 	mux.HandleFunc("/v1/runtime", s.handleRuntime)
 	mux.HandleFunc("/v1/runtime/pairing", s.handleRuntimePairing)
+	mux.HandleFunc("/v1/runtime/selection", s.handleRuntimeSelection)
 	mux.HandleFunc("/v1/repo/binding", s.handleRepoBinding)
 	mux.HandleFunc("/v1/github/connection", s.handleGitHubConnection)
+	mux.HandleFunc("/v1/github/webhook", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
+	for _, register := range serverRouteRegistrars {
+		register(s, mux)
+	}
 	return withCORS(mux)
 }
 
@@ -163,15 +170,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})
 }
 
-func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot())
 }
 
-func (s *Server) handleWorkspace(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Workspace)
 }
 
-func (s *Server) handleChannels(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Channels)
 }
 
@@ -180,6 +196,9 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, s.store.Snapshot().Issues)
 	case http.MethodPost:
+		if !issueCreateGuard(s, w) {
+			return
+		}
 		var req CreateIssueRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -192,23 +211,56 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 			Priority: req.Priority,
 		})
 		if err != nil {
+			if errors.Is(err, store.ErrNoSchedulableRuntime) {
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"error": err.Error(),
+					"state": s.store.Snapshot(),
+				})
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 
-		worktreePayload, ensureErr := s.ensureWorktreeLane(WorktreeRequest{
+		daemonURL, daemonErr := s.daemonURLForRunID(result.RunID)
+		if daemonErr != nil {
+			nextState, appendErr := s.store.AppendSystemRoomMessage(result.RoomID, "System", fmt.Sprintf("worktree 创建失败：%s", daemonErr.Error()), "blocked")
+			if appendErr != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": daemonErr.Error()})
+				return
+			}
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": daemonErr.Error(), "state": nextState, "roomId": result.RoomID})
+			return
+		}
+
+		worktreePayload, ensureErr := s.ensureWorktreeLane(daemonURL, WorktreeRequest{
 			WorkspaceRoot: s.workspaceRoot,
 			Branch:        result.Branch,
 			WorktreeName:  result.WorktreeName,
 			BaseRef:       "HEAD",
+			LeaseID:       defaultString(result.SessionID, result.RunID),
+			RunID:         result.RunID,
+			SessionID:     result.SessionID,
+			RoomID:        result.RoomID,
 		})
 		if ensureErr != nil {
-			nextState, appendErr := s.store.AppendSystemRoomMessage(result.RoomID, "System", fmt.Sprintf("worktree 创建失败：%s", ensureErr.Error()), "blocked")
+			status := http.StatusBadGateway
+			message := fmt.Sprintf("worktree 创建失败：%s", ensureErr.Error())
+			var daemonErr *daemonHTTPError
+			if errors.As(ensureErr, &daemonErr) && daemonErr.Status == http.StatusConflict {
+				status = http.StatusConflict
+				message = buildConflictRoomMessage("runtime lease 冲突", ensureErr)
+			}
+			nextState, appendErr := s.store.AppendSystemRoomMessage(result.RoomID, "System", message, "blocked")
 			if appendErr != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": ensureErr.Error()})
+				writeJSON(w, status, map[string]string{"error": ensureErr.Error()})
 				return
 			}
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": ensureErr.Error(), "state": nextState, "roomId": result.RoomID})
+			payload := map[string]any{"error": ensureErr.Error(), "state": nextState, "roomId": result.RoomID}
+			if daemonErr != nil && daemonErr.Conflict != nil {
+				payload["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, status, payload)
 			return
 		}
 
@@ -227,7 +279,10 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleRooms(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Rooms)
 }
 
@@ -244,6 +299,9 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
+		if !roomReplyGuard(s, w) {
+			return
+		}
 		var req RoomMessageRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -257,7 +315,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		s.handleRoomMessageStream(w, r, roomID, ExecRequest{
 			Provider: defaultString(req.Provider, "claude"),
 			Prompt:   prompt,
-			Cwd:      defaultString(req.Cwd, s.workspaceRoot),
+			Cwd:      req.Cwd,
 		}, prompt)
 		return
 	}
@@ -266,6 +324,9 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		roomID := strings.TrimSuffix(path, "/messages")
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if !roomReplyGuard(s, w) {
 			return
 		}
 		var req RoomMessageRequest
@@ -279,18 +340,29 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		payload, err := s.runDaemonExec(ExecRequest{
+		payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
 			Provider: defaultString(req.Provider, "claude"),
 			Prompt:   prompt,
-			Cwd:      defaultString(req.Cwd, s.workspaceRoot),
+			Cwd:      req.Cwd,
 		})
 		if err != nil {
-			nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("CLI 连接失败：%s", err.Error()), "blocked")
+			status := http.StatusBadGateway
+			message := fmt.Sprintf("CLI 连接失败：%s", err.Error())
+			var daemonErr *daemonHTTPError
+			if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
+				status = http.StatusConflict
+				message = buildConflictRoomMessage("runtime lease 冲突", err)
+			}
+			nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
 			if appendErr != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				writeJSON(w, status, map[string]string{"error": err.Error()})
 				return
 			}
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "state": nextState})
+			payload := map[string]any{"error": err.Error(), "state": nextState}
+			if daemonErr != nil && daemonErr.Conflict != nil {
+				payload["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, status, payload)
 			return
 		}
 
@@ -309,9 +381,46 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		nextState, pullRequestID, err := s.store.CreatePullRequest(roomID)
+		if !roomPullRequestGuard(s, w) {
+			return
+		}
+		snapshot := s.store.Snapshot()
+		if existing, ok := findPullRequestByRoom(snapshot, roomID); ok {
+			nextState, err := s.syncStoredPullRequest(existing)
+			if err != nil {
+				writePullRequestFailure(w, "sync", roomID, existing.ID, err, nextState)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"pullRequestId": existing.ID, "state": nextState})
+			return
+		}
+
+		room, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "room not found"})
+			return
+		}
+
+		remotePullRequest, err := s.github.CreatePullRequest(s.workspaceRoot, githubsvc.CreatePullRequestInput{
+			Repo:       snapshot.Workspace.Repo,
+			BaseBranch: defaultString(snapshot.Workspace.Branch, "main"),
+			HeadBranch: run.Branch,
+			Title:      issue.Title,
+			Body:       buildPullRequestBody(issue, room, run),
+		})
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			nextState, appendErr := s.store.AppendGitHubPullRequestFailure(roomID, "create", "", err.Error())
+			if appendErr != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				return
+			}
+			writePullRequestFailure(w, "create", roomID, "", err, nextState)
+			return
+		}
+
+		nextState, pullRequestID, err := s.store.CreatePullRequestFromRemote(roomID, mapGitHubPullRequest(remotePullRequest))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"pullRequestId": pullRequestID, "state": nextState})
@@ -333,7 +442,13 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.store.Snapshot()
 	if r.URL.Path == "/v1/runs" {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
 		writeJSON(w, http.StatusOK, snapshot.Runs)
+		return
+	}
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	runID := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
@@ -346,14 +461,23 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
 }
 
-func (s *Server) handleAgents(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Agents)
 }
 
 func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.store.Snapshot()
 	if r.URL.Path == "/v1/sessions" {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
 		writeJSON(w, http.StatusOK, snapshot.Sessions)
+		return
+	}
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	sessionID := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
@@ -366,16 +490,24 @@ func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 }
 
-func (s *Server) handleInbox(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Inbox)
 }
 
-func (s *Server) handleMemory(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.store.Snapshot().Memory)
-}
-
-func (s *Server) handlePullRequests(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.store.Snapshot().PullRequests)
+func (s *Server) handlePullRequests(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	snapshot := s.store.Snapshot()
+	nextState, err := s.syncStoredPullRequests(snapshot.PullRequests)
+	if err != nil {
+		writePullRequestFailure(w, "sync", "", "", err, nextState)
+		return
+	}
+	writeJSON(w, http.StatusOK, nextState.PullRequests)
 }
 
 func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request) {
@@ -386,13 +518,22 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 	}
 	if r.Method == http.MethodGet {
 		snapshot := s.store.Snapshot()
-		for _, item := range snapshot.PullRequests {
-			if item.ID == pullRequestID {
-				writeJSON(w, http.StatusOK, item)
-				return
-			}
+		item, ok := findPullRequest(snapshot, pullRequestID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+			return
 		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		nextState, err := s.syncStoredPullRequest(item)
+		if err != nil {
+			writePullRequestFailure(w, "sync", item.RoomID, pullRequestID, err, nextState)
+			return
+		}
+		synced, ok := findPullRequest(nextState, pullRequestID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, synced)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -405,21 +546,229 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
-	nextState, err := s.store.UpdatePullRequestStatus(pullRequestID, req.Status)
+	if !pullRequestRouteGuard(s, w, req.Status) {
+		return
+	}
+	snapshot := s.store.Snapshot()
+	item, ok := findPullRequest(snapshot, pullRequestID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+
+	var remotePullRequest githubsvc.PullRequest
+	var err error
+	if req.Status == "merged" {
+		remotePullRequest, err = s.github.MergePullRequest(s.workspaceRoot, githubsvc.MergePullRequestInput{
+			Repo:   snapshot.Workspace.Repo,
+			Number: item.Number,
+		})
+	} else {
+		remotePullRequest, err = s.github.SyncPullRequest(s.workspaceRoot, githubsvc.SyncPullRequestInput{
+			Repo:   snapshot.Workspace.Repo,
+			Number: item.Number,
+		})
+	}
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		operation := "sync"
+		if req.Status == "merged" {
+			operation = "merge"
+		}
+		nextState, appendErr := s.store.AppendGitHubPullRequestFailure(item.RoomID, operation, item.Label, err.Error())
+		if appendErr != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		writePullRequestFailure(w, operation, item.RoomID, pullRequestID, err, nextState)
+		return
+	}
+
+	nextState, err := s.store.SyncPullRequestFromRemote(pullRequestID, mapGitHubPullRequest(remotePullRequest))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
 }
 
-func (s *Server) handleRuntime(w http.ResponseWriter, _ *http.Request) {
-	workspace := s.store.Snapshot().Workspace
-	if workspace.PairingStatus != "paired" || strings.TrimSpace(s.daemonURLValue()) == "" {
-		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(workspace))
+func (s *Server) syncStoredPullRequests(items []store.PullRequest) (store.State, error) {
+	finalState := s.store.Snapshot()
+	for _, item := range items {
+		nextState, err := s.syncStoredPullRequest(item)
+		if err != nil {
+			return nextState, err
+		}
+		finalState = nextState
+	}
+	return finalState, nil
+}
+
+func (s *Server) syncStoredPullRequest(item store.PullRequest) (store.State, error) {
+	snapshot := s.store.Snapshot()
+	if !shouldSyncGitHubPullRequest(snapshot.Workspace, item) {
+		return snapshot, nil
+	}
+
+	remotePullRequest, err := s.github.SyncPullRequest(s.workspaceRoot, githubsvc.SyncPullRequestInput{
+		Repo:   snapshot.Workspace.Repo,
+		Number: item.Number,
+	})
+	if err != nil {
+		nextState, appendErr := s.store.AppendGitHubPullRequestFailure(item.RoomID, "sync", item.Label, err.Error())
+		if appendErr != nil {
+			return store.State{}, err
+		}
+		return nextState, err
+	}
+	return s.store.SyncPullRequestFromRemote(item.ID, mapGitHubPullRequest(remotePullRequest))
+}
+
+func writePullRequestFailure(w http.ResponseWriter, operation, roomID, pullRequestID string, err error, nextState store.State) {
+	payload := map[string]any{
+		"error":     err.Error(),
+		"operation": operation,
+		"state":     nextState,
+	}
+	if roomID != "" {
+		payload["roomId"] = roomID
+	}
+	if pullRequestID != "" {
+		payload["pullRequestId"] = pullRequestID
+	}
+	writeJSON(w, http.StatusBadGateway, payload)
+}
+
+func shouldSyncGitHubPullRequest(workspace store.WorkspaceSnapshot, item store.PullRequest) bool {
+	return item.Number > 0 && strings.TrimSpace(item.Provider) == "github" && strings.TrimSpace(workspace.Repo) != ""
+}
+
+func mapGitHubPullRequest(pullRequest githubsvc.PullRequest) store.PullRequestRemoteSnapshot {
+	status := "in_review"
+	switch {
+	case pullRequest.Merged || strings.EqualFold(pullRequest.State, "MERGED"):
+		status = "merged"
+	case pullRequest.IsDraft:
+		status = "draft"
+	case strings.EqualFold(pullRequest.ReviewDecision, "CHANGES_REQUESTED"):
+		status = "changes_requested"
+	case strings.EqualFold(pullRequest.State, "CLOSED"):
+		status = "changes_requested"
+	}
+
+	return store.PullRequestRemoteSnapshot{
+		Number:         pullRequest.Number,
+		Title:          pullRequest.Title,
+		Status:         status,
+		Branch:         pullRequest.HeadRefName,
+		BaseBranch:     pullRequest.BaseRefName,
+		Author:         pullRequest.Author,
+		Provider:       "github",
+		URL:            pullRequest.URL,
+		ReviewDecision: pullRequest.ReviewDecision,
+		UpdatedAt:      pullRequest.UpdatedAt,
+	}
+}
+
+func findRoomRunIssue(snapshot store.State, roomID string) (store.Room, store.Run, store.Issue, bool) {
+	var room store.Room
+	var run store.Run
+	var issue store.Issue
+	var roomFound, runFound, issueFound bool
+
+	for _, candidate := range snapshot.Rooms {
+		if candidate.ID == roomID {
+			room = candidate
+			roomFound = true
+			break
+		}
+	}
+	if !roomFound {
+		return store.Room{}, store.Run{}, store.Issue{}, false
+	}
+	for _, candidate := range snapshot.Runs {
+		if candidate.RoomID == roomID {
+			run = candidate
+			runFound = true
+			break
+		}
+	}
+	for _, candidate := range snapshot.Issues {
+		if candidate.RoomID == roomID {
+			issue = candidate
+			issueFound = true
+			break
+		}
+	}
+	return room, run, issue, runFound && issueFound
+}
+
+func findPullRequest(snapshot store.State, pullRequestID string) (store.PullRequest, bool) {
+	for _, item := range snapshot.PullRequests {
+		if item.ID == pullRequestID {
+			return item, true
+		}
+	}
+	return store.PullRequest{}, false
+}
+
+func findPullRequestByRoom(snapshot store.State, roomID string) (store.PullRequest, bool) {
+	for _, item := range snapshot.PullRequests {
+		if item.RoomID == roomID {
+			return item, true
+		}
+	}
+	return store.PullRequest{}, false
+}
+
+func buildPullRequestBody(issue store.Issue, room store.Room, run store.Run) string {
+	return strings.TrimSpace(fmt.Sprintf(
+		"## %s\n\n%s\n\n- issue: %s\n- room: %s\n- run: %s\n- head: %s\n- worktree: %s",
+		issue.Title,
+		defaultString(issue.Summary, "等待补充摘要。"),
+		issue.Key,
+		room.ID,
+		run.ID,
+		run.Branch,
+		defaultString(run.Worktree, "n/a"),
+	))
+}
+
+func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	s.forwardGetJSON(w, s.daemonURLValue()+"/v1/runtime")
+	snapshot := s.store.Snapshot()
+	runtimeName := strings.TrimSpace(r.URL.Query().Get("machine"))
+	if runtimeName == "" {
+		runtimeName = snapshot.Workspace.PairedRuntime
+	}
+	daemonURL, err := daemonURLForRuntime(snapshot, runtimeName)
+	if err != nil {
+		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+		return
+	}
+
+	runtimeSnapshot, err := s.fetchRuntimeSnapshot(daemonURL)
+	if err != nil {
+		if record, ok := findRuntimeRecord(snapshot, runtimeName); ok {
+			writeJSON(w, http.StatusOK, runtimeSnapshotFromRecord(record))
+			return
+		}
+		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+		return
+	}
+
+	if runtimeSnapshot.DaemonURL == "" {
+		runtimeSnapshot.DaemonURL = daemonURL
+	}
+	if runtimeSnapshot.RuntimeID == "" {
+		runtimeSnapshot.RuntimeID = defaultString(runtimeSnapshot.Machine, runtimeName)
+	}
+	if _, upsertErr := s.store.UpsertRuntimeHeartbeat(runtimeHeartbeatInputFromSnapshot(runtimeSnapshot)); upsertErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": upsertErr.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, runtimeSnapshot)
 }
 
 func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
@@ -434,12 +783,29 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			LastPairedAt:  workspace.LastPairedAt,
 		})
 	case http.MethodPost:
+		if !runtimeManageGuard(s, w) {
+			return
+		}
 		var req PairRuntimeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
+		snapshot := s.store.Snapshot()
 		daemonURL := strings.TrimRight(strings.TrimSpace(req.DaemonURL), "/")
+		runtimeID := strings.TrimSpace(req.RuntimeID)
+		if runtimeID != "" && daemonURL == "" {
+			record, ok := findRuntimeRecord(snapshot, runtimeID)
+			if !ok {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime not found"})
+				return
+			}
+			daemonURL = strings.TrimRight(strings.TrimSpace(record.DaemonURL), "/")
+			if daemonURL == "" {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("runtime %s is not paired to a daemon", runtimeID)})
+				return
+			}
+		}
 		if daemonURL == "" {
 			daemonURL = s.daemonURLValue()
 		}
@@ -448,24 +814,42 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
-		s.setDaemonURL(daemonURL)
+		if runtimeSnapshot.DaemonURL == "" {
+			runtimeSnapshot.DaemonURL = daemonURL
+		}
+		if runtimeSnapshot.RuntimeID == "" {
+			runtimeSnapshot.RuntimeID = defaultString(runtimeID, runtimeSnapshot.Machine)
+		}
+		if runtimeID != "" && !runtimeSnapshotMatchesRequested(runtimeSnapshot, runtimeID) {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"error": fmt.Sprintf("runtime %s resolved to %s", runtimeID, defaultString(strings.TrimSpace(runtimeSnapshot.RuntimeID), runtimeSnapshot.Machine)),
+			})
+			return
+		}
+		s.setDaemonURL(runtimeSnapshot.DaemonURL)
 		nextState, err := s.store.UpdateRuntimePairing(store.RuntimePairingInput{
-			DaemonURL:   daemonURL,
-			Machine:     runtimeSnapshot.Machine,
-			DetectedCLI: runtimeSnapshot.DetectedCLI,
-			State:       runtimeSnapshot.State,
-			ReportedAt:  runtimeSnapshot.ReportedAt,
+			RuntimeID:     runtimeSnapshot.RuntimeID,
+			DaemonURL:     runtimeSnapshot.DaemonURL,
+			Machine:       runtimeSnapshot.Machine,
+			DetectedCLI:   runtimeSnapshot.DetectedCLI,
+			Providers:     runtimeSnapshot.Providers,
+			State:         runtimeSnapshot.State,
+			WorkspaceRoot: runtimeSnapshot.WorkspaceRoot,
+			ReportedAt:    runtimeSnapshot.ReportedAt,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"daemonUrl": daemonURL,
+			"daemonUrl": runtimeSnapshot.DaemonURL,
 			"runtime":   runtimeSnapshot,
 			"state":     nextState,
 		})
 	case http.MethodDelete:
+		if !runtimeManageGuard(s, w) {
+			return
+		}
 		nextState, err := s.store.ClearRuntimePairing()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -474,8 +858,77 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 		s.setDaemonURL("")
 		writeJSON(w, http.StatusOK, map[string]any{
 			"daemonUrl": "",
-			"runtime":   offlineRuntimeSnapshot(nextState.Workspace),
+			"runtime":   offlineRuntimeSnapshot("", nextState.Workspace.LastPairedAt),
 			"state":     nextState,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) handleRuntimeRegistry(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	writeJSON(w, http.StatusOK, runtimeRegistryResponse(s.store.Snapshot()))
+}
+
+func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req RuntimeSnapshotResponse
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.RuntimeID) == "" && strings.TrimSpace(req.Machine) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "runtimeId or machine is required"})
+		return
+	}
+
+	nextState, err := s.store.UpsertRuntimeHeartbeat(runtimeHeartbeatInputFromSnapshot(req))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"runtimeId": defaultString(req.RuntimeID, req.Machine),
+		"state":     nextState,
+	})
+}
+
+func (s *Server) handleRuntimeSelection(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, buildRuntimeSelectionResponse(s.store.Snapshot()))
+	case http.MethodPost:
+		if !runtimeManageGuard(s, w) {
+			return
+		}
+		var req SelectRuntimeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		nextState, err := s.store.SelectRuntime(req.Machine)
+		if err != nil {
+			status := http.StatusConflict
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				status = http.StatusNotFound
+			}
+			writeJSON(w, status, map[string]any{
+				"error":     err.Error(),
+				"state":     s.store.Snapshot(),
+				"selection": buildRuntimeSelectionResponse(s.store.Snapshot()),
+			})
+			return
+		}
+		s.setDaemonURL(nextState.Workspace.PairedRuntimeURL)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"state":     nextState,
+			"selection": buildRuntimeSelectionResponse(nextState),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -487,6 +940,9 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	if !runExecuteGuard(s, w) {
+		return
+	}
 	var req ExecRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -494,6 +950,15 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, err := s.runDaemonExec(req)
 	if err != nil {
+		var daemonErr *daemonHTTPError
+		if errors.As(err, &daemonErr) {
+			response := map[string]any{"error": daemonErr.Error()}
+			if daemonErr.Conflict != nil {
+				response["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, daemonErr.Status, response)
+			return
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -515,7 +980,7 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 	var outputBuilder strings.Builder
 	var stderrBuilder strings.Builder
 
-	resp, err := s.streamDaemonExec(r, req, func(event DaemonStreamEvent) error {
+	resp, err := s.streamRoomDaemonExec(r, roomID, req, func(event DaemonStreamEvent) error {
 		switch event.Type {
 		case "stdout":
 			outputBuilder.WriteString(event.Delta)
@@ -530,7 +995,12 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		return writeNDJSON(w, flusher, event)
 	})
 	if err != nil {
-		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("CLI 连接失败：%s", err.Error()), "blocked")
+		message := fmt.Sprintf("CLI 连接失败：%s", err.Error())
+		var daemonErr *daemonHTTPError
+		if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
+			message = buildConflictRoomMessage("runtime lease 冲突", err)
+		}
+		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
 		if appendErr != nil {
 			_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: err.Error()})
 			return
@@ -553,132 +1023,6 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: finalOutput, State: &nextState})
-}
-
-func (s *Server) ensureWorktreeLane(req WorktreeRequest) (WorktreeResponse, error) {
-	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, s.daemonURLValue()+"/v1/worktrees/ensure", bytes.NewReader(body))
-	if err != nil {
-		return WorktreeResponse{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return WorktreeResponse{}, err
-	}
-	defer response.Body.Close()
-
-	payloadBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return WorktreeResponse{}, err
-	}
-
-	var payload WorktreeResponse
-	if err := json.Unmarshal(payloadBody, &payload); err != nil {
-		return WorktreeResponse{}, err
-	}
-	if response.StatusCode >= 400 {
-		if payload.Path != "" {
-			return WorktreeResponse{}, errors.New(payload.Path)
-		}
-		var daemonErr map[string]string
-		if err := json.Unmarshal(payloadBody, &daemonErr); err == nil && daemonErr["error"] != "" {
-			return WorktreeResponse{}, errors.New(daemonErr["error"])
-		}
-		return WorktreeResponse{}, fmt.Errorf("worktree error: %s", response.Status)
-	}
-	return payload, nil
-}
-
-func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
-	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, s.daemonURLValue()+"/v1/exec", bytes.NewReader(body))
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	defer response.Body.Close()
-
-	payloadBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	var payload DaemonExecResponse
-	if err := json.Unmarshal(payloadBody, &payload); err != nil {
-		return DaemonExecResponse{}, err
-	}
-	if response.StatusCode >= 400 {
-		if payload.Error != "" {
-			return DaemonExecResponse{}, fmt.Errorf("%s", payload.Error)
-		}
-		return DaemonExecResponse{}, fmt.Errorf("daemon error: %s", response.Status)
-	}
-	return payload, nil
-}
-
-func (s *Server) streamDaemonExec(r *http.Request, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
-	body, _ := json.Marshal(req)
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.daemonURLValue()+"/v1/exec/stream", bytes.NewReader(body))
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= 400 {
-		payloadBody, readErr := io.ReadAll(response.Body)
-		if readErr != nil {
-			return DaemonExecResponse{}, readErr
-		}
-		var payload DaemonExecResponse
-		if err := json.Unmarshal(payloadBody, &payload); err == nil && payload.Error != "" {
-			return payload, errors.New(payload.Error)
-		}
-		return DaemonExecResponse{}, fmt.Errorf("daemon error: %s", response.Status)
-	}
-
-	var resp DaemonExecResponse
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		var event DaemonStreamEvent
-		if err := json.Unmarshal(line, &event); err != nil {
-			return resp, err
-		}
-		if event.Type == "done" {
-			resp.Output = event.Output
-		}
-		if event.Type == "error" && strings.TrimSpace(event.Error) != "" {
-			resp.Error = event.Error
-		}
-		if emit != nil {
-			if err := emit(event); err != nil {
-				return resp, err
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return resp, err
-	}
-	if strings.TrimSpace(resp.Error) != "" {
-		return resp, errors.New(resp.Error)
-	}
-	return resp, nil
 }
 
 func (s *Server) forwardGetJSON(w http.ResponseWriter, url string) {
@@ -718,6 +1062,130 @@ func (s *Server) fetchRuntimeSnapshot(daemonURL string) (RuntimeSnapshotResponse
 	return payload, nil
 }
 
+func runtimeHeartbeatInputFromSnapshot(snapshot RuntimeSnapshotResponse) store.RuntimeHeartbeatInput {
+	return store.RuntimeHeartbeatInput{
+		RuntimeID:          strings.TrimSpace(snapshot.RuntimeID),
+		DaemonURL:          strings.TrimRight(strings.TrimSpace(snapshot.DaemonURL), "/"),
+		Machine:            strings.TrimSpace(snapshot.Machine),
+		DetectedCLI:        snapshot.DetectedCLI,
+		Providers:          snapshot.Providers,
+		State:              strings.TrimSpace(snapshot.State),
+		WorkspaceRoot:      strings.TrimSpace(snapshot.WorkspaceRoot),
+		ReportedAt:         strings.TrimSpace(snapshot.ReportedAt),
+		HeartbeatIntervalS: snapshot.HeartbeatIntervalS,
+		HeartbeatTimeoutS:  snapshot.HeartbeatTimeoutS,
+	}
+}
+
+func runtimeSnapshotFromRecord(record store.RuntimeRecord) RuntimeSnapshotResponse {
+	return RuntimeSnapshotResponse{
+		RuntimeID:          record.ID,
+		DaemonURL:          record.DaemonURL,
+		Machine:            record.Machine,
+		DetectedCLI:        record.DetectedCLI,
+		Providers:          record.Providers,
+		State:              record.State,
+		WorkspaceRoot:      record.WorkspaceRoot,
+		ReportedAt:         record.ReportedAt,
+		HeartbeatIntervalS: record.HeartbeatIntervalS,
+		HeartbeatTimeoutS:  record.HeartbeatTimeoutS,
+	}
+}
+
+func findRuntimeRecord(snapshot store.State, runtimeName string) (store.RuntimeRecord, bool) {
+	runtimeName = strings.TrimSpace(runtimeName)
+	for _, item := range snapshot.Runtimes {
+		if item.ID == runtimeName || item.Machine == runtimeName {
+			return item, true
+		}
+	}
+	return store.RuntimeRecord{}, false
+}
+
+func runtimeSnapshotMatchesRequested(snapshot RuntimeSnapshotResponse, runtimeID string) bool {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if runtimeID == "" {
+		return true
+	}
+	return strings.TrimSpace(snapshot.RuntimeID) == runtimeID || strings.TrimSpace(snapshot.Machine) == runtimeID
+}
+
+func buildRuntimeSelectionResponse(snapshot store.State) RuntimeSelectionResponse {
+	return RuntimeSelectionResponse{
+		SelectedRuntime:   snapshot.Workspace.PairedRuntime,
+		SelectedDaemonURL: snapshot.Workspace.PairedRuntimeURL,
+		PairingStatus:     snapshot.Workspace.PairingStatus,
+		Runtimes:          snapshot.Machines,
+	}
+}
+
+func (s *Server) daemonURLForRoom(roomID string) (string, error) {
+	snapshot := s.store.Snapshot()
+	_, run, _, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return "", fmt.Errorf("room not found")
+	}
+	return daemonURLForRuntime(snapshot, run.Runtime)
+}
+
+func (s *Server) daemonURLForRunID(runID string) (string, error) {
+	snapshot := s.store.Snapshot()
+	for _, run := range snapshot.Runs {
+		if run.ID == runID {
+			return daemonURLForRuntime(snapshot, run.Runtime)
+		}
+	}
+	return "", fmt.Errorf("run not found")
+}
+
+func daemonURLForRuntime(snapshot store.State, runtimeName string) (string, error) {
+	runtimeName = strings.TrimSpace(runtimeName)
+	if runtimeName == "" {
+		if strings.TrimSpace(snapshot.Workspace.PairedRuntimeURL) == "" {
+			return "", fmt.Errorf("no runtime is selected")
+		}
+		return strings.TrimRight(snapshot.Workspace.PairedRuntimeURL, "/"), nil
+	}
+
+	for _, machine := range snapshot.Machines {
+		if !runtimeMachineMatches(machine, runtimeName) {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(machine.State), "offline") {
+			return "", fmt.Errorf("runtime %s is offline", machine.Name)
+		}
+		daemonURL := strings.TrimSpace(machine.DaemonURL)
+		if daemonURL == "" && runtimeMachineMatches(snapshotMachineFromWorkspace(snapshot.Workspace), runtimeName) {
+			daemonURL = snapshot.Workspace.PairedRuntimeURL
+		}
+		if strings.TrimSpace(daemonURL) == "" {
+			return "", fmt.Errorf("runtime %s is not paired to a daemon", machine.Name)
+		}
+		return strings.TrimRight(daemonURL, "/"), nil
+	}
+
+	if runtimeMachineMatches(snapshotMachineFromWorkspace(snapshot.Workspace), runtimeName) && strings.TrimSpace(snapshot.Workspace.PairedRuntimeURL) != "" {
+		return strings.TrimRight(snapshot.Workspace.PairedRuntimeURL, "/"), nil
+	}
+	return "", fmt.Errorf("runtime %s not found", runtimeName)
+}
+
+func snapshotMachineFromWorkspace(workspace store.WorkspaceSnapshot) store.Machine {
+	return store.Machine{
+		Name:      workspace.PairedRuntime,
+		DaemonURL: workspace.PairedRuntimeURL,
+		State:     workspace.PairingStatus,
+	}
+}
+
+func runtimeMachineMatches(machine store.Machine, runtimeName string) bool {
+	runtimeName = strings.TrimSpace(runtimeName)
+	if runtimeName == "" {
+		return false
+	}
+	return machine.Name == runtimeName || machine.ID == runtimeName
+}
+
 func (s *Server) daemonURLValue() string {
 	s.daemonMu.RLock()
 	defer s.daemonMu.RUnlock()
@@ -730,18 +1198,18 @@ func (s *Server) setDaemonURL(url string) {
 	s.daemonURL = strings.TrimRight(url, "/")
 }
 
-func offlineRuntimeSnapshot(workspace store.WorkspaceSnapshot) RuntimeSnapshotResponse {
-	machine := workspace.PairedRuntime
+func offlineRuntimeSnapshot(machine, reportedAt string) RuntimeSnapshotResponse {
 	if strings.TrimSpace(machine) == "" {
 		machine = "未配对"
 	}
 	return RuntimeSnapshotResponse{
+		RuntimeID:     machine,
 		Machine:       machine,
 		DetectedCLI:   []string{},
 		Providers:     nil,
 		State:         "offline",
 		WorkspaceRoot: "",
-		ReportedAt:    workspace.LastPairedAt,
+		ReportedAt:    reportedAt,
 	}
 }
 
@@ -757,6 +1225,17 @@ func writeNDJSON(w http.ResponseWriter, flusher http.Flusher, payload any) error
 	}
 	flusher.Flush()
 	return nil
+}
+
+func requireMethod(w http.ResponseWriter, r *http.Request, methods ...string) bool {
+	for _, method := range methods {
+		if r.Method == method {
+			return true
+		}
+	}
+	w.Header().Set("Allow", strings.Join(methods, ", "))
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	return false
 }
 
 func withCORS(next http.Handler) http.Handler {

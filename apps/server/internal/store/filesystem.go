@@ -100,6 +100,9 @@ func appendRunArtifacts(root, roomID, issueKey, owner, heading, body string) err
 	timestamp := time.Now().Format(time.RFC3339)
 	agentSlug := slugify(owner)
 	entry := fmt.Sprintf("\n## %s\n\n- time: %s\n- room: %s\n- issue: %s\n\n%s\n", heading, timestamp, roomID, issueKey, body)
+	if err := appendMarkdown(filepath.Join(root, "MEMORY.md"), entry); err != nil {
+		return err
+	}
 	if err := appendMarkdown(filepath.Join(root, "notes", "work-log.md"), entry); err != nil {
 		return err
 	}
@@ -221,4 +224,25 @@ func defaultSessionMemoryPaths(roomID, issueKey string) []string {
 		paths = append(paths, filepath.ToSlash(filepath.Join("decisions", strings.ToLower(issueKey)+".md")))
 	}
 	return paths
+}
+
+func runArtifactPaths(roomID, owner string) []string {
+	paths := []string{
+		"MEMORY.md",
+		filepath.ToSlash(filepath.Join("notes", "work-log.md")),
+	}
+	if strings.TrimSpace(roomID) != "" {
+		paths = append(paths, filepath.ToSlash(filepath.Join("notes", "rooms", roomID+".md")))
+	}
+	if agentSlug := slugify(owner); agentSlug != "" {
+		paths = append(paths, filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "notes", "work-log.md")))
+	}
+	return paths
+}
+
+func decisionArtifactPath(issueKey string) string {
+	if strings.TrimSpace(issueKey) == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join("decisions", strings.ToLower(issueKey)+".md"))
 }

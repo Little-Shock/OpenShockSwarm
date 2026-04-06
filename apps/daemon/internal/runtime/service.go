@@ -13,12 +13,16 @@ import (
 )
 
 type Heartbeat struct {
-	Machine       string     `json:"machine"`
-	DetectedCLI   []string   `json:"detectedCli"`
-	Providers     []Provider `json:"providers"`
-	State         string     `json:"state"`
-	WorkspaceRoot string     `json:"workspaceRoot"`
-	ReportedAt    string     `json:"reportedAt"`
+	RuntimeID          string     `json:"runtimeId"`
+	DaemonURL          string     `json:"daemonUrl,omitempty"`
+	Machine            string     `json:"machine"`
+	DetectedCLI        []string   `json:"detectedCli"`
+	Providers          []Provider `json:"providers"`
+	State              string     `json:"state"`
+	WorkspaceRoot      string     `json:"workspaceRoot"`
+	ReportedAt         string     `json:"reportedAt"`
+	HeartbeatIntervalS int        `json:"heartbeatIntervalSeconds,omitempty"`
+	HeartbeatTimeoutS  int        `json:"heartbeatTimeoutSeconds,omitempty"`
 }
 
 type Provider struct {
@@ -30,9 +34,13 @@ type Provider struct {
 }
 
 type ExecRequest struct {
-	Provider string `json:"provider"`
-	Prompt   string `json:"prompt"`
-	Cwd      string `json:"cwd"`
+	Provider  string `json:"provider"`
+	Prompt    string `json:"prompt"`
+	Cwd       string `json:"cwd"`
+	LeaseID   string `json:"leaseId,omitempty"`
+	RunID     string `json:"runId,omitempty"`
+	SessionID string `json:"sessionId,omitempty"`
+	RoomID    string `json:"roomId,omitempty"`
 }
 
 type ExecResponse struct {
@@ -55,9 +63,15 @@ type StreamEvent struct {
 }
 
 type Service struct {
-	machine string
-	root    string
+	runtimeID          string
+	machine            string
+	root               string
+	daemonURL          string
+	heartbeatIntervalS int
+	heartbeatTimeoutS  int
 }
+
+type Option func(*Service)
 
 type execPlan struct {
 	command     []string
@@ -71,18 +85,71 @@ type streamChunk struct {
 	err    error
 }
 
-func NewService(machine, root string) *Service {
-	return &Service{machine: machine, root: root}
+func NewService(machine, root string, options ...Option) *Service {
+	service := &Service{
+		runtimeID:          strings.TrimSpace(machine),
+		machine:            machine,
+		root:               root,
+		heartbeatIntervalS: int((10 * time.Second) / time.Second),
+		heartbeatTimeoutS:  int((45 * time.Second) / time.Second),
+	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	if strings.TrimSpace(service.runtimeID) == "" {
+		service.runtimeID = strings.TrimSpace(service.machine)
+	}
+	return service
+}
+
+func WithRuntimeID(runtimeID string) Option {
+	return func(service *Service) {
+		if strings.TrimSpace(runtimeID) != "" {
+			service.runtimeID = strings.TrimSpace(runtimeID)
+		}
+	}
+}
+
+func WithDaemonURL(daemonURL string) Option {
+	return func(service *Service) {
+		service.daemonURL = strings.TrimRight(strings.TrimSpace(daemonURL), "/")
+	}
+}
+
+func WithHeartbeatInterval(interval time.Duration) Option {
+	return func(service *Service) {
+		if interval > 0 {
+			service.heartbeatIntervalS = int(interval / time.Second)
+		}
+	}
+}
+
+func WithHeartbeatTimeout(timeout time.Duration) Option {
+	return func(service *Service) {
+		if timeout > 0 {
+			service.heartbeatTimeoutS = int(timeout / time.Second)
+		}
+	}
 }
 
 func (s *Service) Snapshot() Heartbeat {
+	runtimeID := strings.TrimSpace(s.runtimeID)
+	if runtimeID == "" {
+		runtimeID = strings.TrimSpace(s.machine)
+	}
 	return Heartbeat{
-		Machine:       s.machine,
-		DetectedCLI:   detectCLI(),
-		Providers:     detectProviders(),
-		State:         "online",
-		WorkspaceRoot: s.root,
-		ReportedAt:    time.Now().UTC().Format(time.RFC3339),
+		RuntimeID:          runtimeID,
+		DaemonURL:          strings.TrimRight(strings.TrimSpace(s.daemonURL), "/"),
+		Machine:            s.machine,
+		DetectedCLI:        detectCLI(),
+		Providers:          detectProviders(),
+		State:              "online",
+		WorkspaceRoot:      s.root,
+		ReportedAt:         time.Now().UTC().Format(time.RFC3339),
+		HeartbeatIntervalS: s.heartbeatIntervalS,
+		HeartbeatTimeoutS:  s.heartbeatTimeoutS,
 	}
 }
 
@@ -348,7 +415,7 @@ func detectProviders() []Provider {
 			Transport: "http bridge",
 		})
 	}
-	if _, err := exec.LookPath("claude"); err == nil {
+	if _, ok := findClaudeCLI(); ok {
 		providers = append(providers, Provider{
 			ID:    "claude",
 			Label: "Claude Code CLI",
@@ -367,9 +434,10 @@ func detectProviders() []Provider {
 func buildCommand(req ExecRequest) (execPlan, error) {
 	switch strings.ToLower(strings.TrimSpace(req.Provider)) {
 	case "claude":
+		claudeCLI, _ := findClaudeCLI()
 		return execPlan{
 			command: []string{
-				"claude", "--bare", "-p", req.Prompt,
+				claudeCLI, "--print", req.Prompt,
 				"--output-format", "text",
 				"--permission-mode", "bypassPermissions",
 				"--no-session-persistence",
@@ -394,4 +462,13 @@ func buildCommand(req ExecRequest) (execPlan, error) {
 			cleanupFile: true,
 		}, nil
 	}
+}
+
+func findClaudeCLI() (string, bool) {
+	for _, candidate := range []string{"claude", "claude-code"} {
+		if _, err := exec.LookPath(candidate); err == nil {
+			return candidate, true
+		}
+	}
+	return "claude", false
 }

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 
 import {
   buildGlobalStats,
-  fallbackState,
   tabs,
   utilityLinks,
   type AppTab,
@@ -14,8 +13,9 @@ import {
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 
-type ShellView = AppTab | "setup" | "issues" | "agents" | "settings";
+type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access";
 type Tone = "yellow" | "pink" | "lime";
+const ACCESS_UTILITY_LINK = { id: "access", label: "身份", href: "/access" } as const;
 
 type OpenShockShellProps = {
   view: ShellView;
@@ -35,7 +35,15 @@ function cn(...parts: Array<string | false | null | undefined>) {
 }
 
 function activeFromView(view: ShellView): AppTab | null {
-  if (view === "setup" || view === "issues" || view === "agents" || view === "settings") {
+  if (
+    view === "setup" ||
+    view === "issues" ||
+    view === "runs" ||
+    view === "agents" ||
+    view === "settings" ||
+    view === "memory" ||
+    view === "access"
+  ) {
     return null;
   }
 
@@ -110,8 +118,56 @@ export function OpenShockShell({
   children,
 }: OpenShockShellProps) {
   const activeTab = activeFromView(view);
-  const { state } = usePhaseZeroState();
-  const resolvedState = state.channels.length > 0 ? state : fallbackState;
+  const { state, loading, error } = usePhaseZeroState();
+  const shellUtilityLinks = utilityLinks.some((link) => link.id === ACCESS_UTILITY_LINK.id)
+    ? utilityLinks
+    : [...utilityLinks, ACCESS_UTILITY_LINK];
+  const hasWorkspaceTruth = Boolean(state.workspace.name || state.workspace.repo || state.workspace.branch);
+  const hasCollectionTruth =
+    state.channels.length > 0 ||
+    state.issues.length > 0 ||
+    state.rooms.length > 0 ||
+    state.runs.length > 0 ||
+    state.agents.length > 0 ||
+    state.machines.length > 0 ||
+    state.inbox.length > 0 ||
+    state.pullRequests.length > 0 ||
+    state.sessions.length > 0 ||
+    state.memory.length > 0 ||
+    Object.keys(state.channelMessages).length > 0 ||
+    Object.keys(state.roomMessages).length > 0;
+  const resolvedState =
+    loading || (!hasCollectionTruth && Boolean(error))
+      ? {
+          ...state,
+          channels: [],
+          channelMessages: {},
+          issues: [],
+          rooms: [],
+          roomMessages: {},
+          runs: [],
+          agents: [],
+          machines: [],
+          inbox: [],
+          pullRequests: [],
+          sessions: [],
+          memory: [],
+        }
+      : state;
+  const workspaceTitle = hasWorkspaceTruth
+    ? resolvedState.workspace.name
+    : loading
+      ? "同步工作区"
+      : error
+        ? "工作区未同步"
+        : "OpenShock";
+  const workspaceSubtitle = hasWorkspaceTruth
+    ? `${resolvedState.workspace.repoProvider || "local"} / ${resolvedState.workspace.branch || "unknown branch"}`
+    : loading
+      ? "等待 server 返回 workspace truth"
+      : error
+        ? "server workspace truth unavailable"
+        : "local-first os";
   const stats = buildGlobalStats(resolvedState);
 
   return (
@@ -125,9 +181,9 @@ export function OpenShockShell({
                   OS
                 </div>
                 <div>
-                  <p className="font-display text-lg font-bold leading-none">{resolvedState.workspace.name}</p>
+                  <p className="font-display text-lg font-bold leading-none">{workspaceTitle}</p>
                   <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                    local-first os
+                    {workspaceSubtitle}
                   </p>
                 </div>
               </div>
@@ -160,7 +216,7 @@ export function OpenShockShell({
                 ))}
               </nav>
               <div className="mt-3 space-y-2">
-                {utilityLinks.map((link) => (
+                {shellUtilityLinks.map((link) => (
                   <Link
                     key={link.id}
                     href={link.href}
@@ -277,10 +333,28 @@ export function OpenShockShell({
 
               <div className="px-1">
                 <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                  docs
+                  repo
                 </p>
-                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                  system status
+                <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.68)]">
+                  {hasWorkspaceTruth
+                    ? resolvedState.workspace.repo || "当前 workspace 还没绑定 repo"
+                    : loading
+                      ? "等待同步当前仓库..."
+                      : error
+                        ? "当前拿不到 workspace repo 真值"
+                        : "当前 workspace 尚未返回 repo 信息"}
+                </p>
+                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
+                  runtime
+                </p>
+                <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.68)]">
+                  {hasWorkspaceTruth
+                    ? `${resolvedState.workspace.pairedRuntime || "未选择"} / ${resolvedState.workspace.pairingStatus || "待同步"} / ${resolvedState.machines.length} runtimes`
+                    : loading
+                      ? "等待同步当前 runtime..."
+                      : error
+                        ? "当前拿不到 runtime pairing 真值"
+                        : "当前 workspace 尚未返回 runtime 信息"}
                 </p>
               </div>
 

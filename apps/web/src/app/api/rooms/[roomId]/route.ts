@@ -1,22 +1,43 @@
 import { NextResponse } from "next/server";
 
-import { getIssueByRoomId, getMessagesForRoom, getRoomById, getRunById } from "@/lib/mock-data";
+import type { Issue, Message, PhaseZeroState, Room, Run, Session, PullRequest } from "@/lib/mock-data";
+import { readControlJSON } from "@/lib/server-api";
+
+type RoomDetailResponse = {
+  room: Room;
+  messages: Message[];
+};
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
-  const room = getRoomById(roomId);
+  try {
+    const [state, detail] = await Promise.all([
+      readControlJSON<PhaseZeroState>("/v1/state"),
+      readControlJSON<RoomDetailResponse>(`/v1/rooms/${roomId}`),
+    ]);
 
-  if (!room) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    const room = detail.room;
+    const issue = state.issues.find((candidate: Issue) => candidate.roomId === roomId) ?? null;
+    const run = state.runs.find((candidate: Run) => candidate.id === room.runId) ?? null;
+    const pullRequest =
+      state.pullRequests.find((candidate: PullRequest) => candidate.roomId === roomId) ?? null;
+    const session =
+      state.sessions.find((candidate: Session) => candidate.roomId === roomId) ?? null;
+
+    return NextResponse.json({
+      room,
+      issue,
+      run,
+      messages: detail.messages,
+      pullRequest,
+      session,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "room fetch failed";
+    const status = message.includes("404") || message.includes("not found") ? 404 : 502;
+    return NextResponse.json({ error: message }, { status });
   }
-
-  return NextResponse.json({
-    room,
-    issue: getIssueByRoomId(roomId),
-    run: getRunById(room.runId),
-    messages: getMessagesForRoom(roomId),
-  });
 }

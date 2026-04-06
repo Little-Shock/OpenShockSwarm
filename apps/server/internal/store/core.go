@@ -77,6 +77,14 @@ func (s *Store) hydrateMissingDefaults() {
 	if strings.TrimSpace(s.state.Workspace.LastPairedAt) == "" {
 		s.state.Workspace.LastPairedAt = defaults.Workspace.LastPairedAt
 	}
+	if len(s.state.Machines) == 0 {
+		s.state.Machines = defaults.Machines
+	}
+	for index := range s.state.Machines {
+		if strings.TrimSpace(s.state.Machines[index].DaemonURL) == "" && machineMatches(s.state.Machines[index], s.state.Workspace.PairedRuntime) {
+			s.state.Machines[index].DaemonURL = s.state.Workspace.PairedRuntimeURL
+		}
+	}
 	if len(s.state.PullRequests) == 0 {
 		s.state.PullRequests = defaults.PullRequests
 	}
@@ -86,13 +94,18 @@ func (s *Store) hydrateMissingDefaults() {
 	if len(s.state.Memory) == 0 {
 		s.state.Memory = defaults.Memory
 	}
+	if s.state.MemoryVersions == nil {
+		s.state.MemoryVersions = defaults.MemoryVersions
+	}
 	if s.state.ChannelMessages == nil {
 		s.state.ChannelMessages = defaults.ChannelMessages
 	}
 	if s.state.RoomMessages == nil {
 		s.state.RoomMessages = defaults.RoomMessages
 	}
+	s.ensureRuntimeRegistryState()
 	s.ensureSessionConsistency()
+	s.ensureAuthConsistency()
 }
 
 func (s *Store) ensureFilesystemArtifacts() error {
@@ -110,6 +123,7 @@ func (s *Store) ensureFilesystemArtifactsLocked() error {
 		return err
 	}
 	s.state.Memory = artifacts
+	s.ensureMemorySubsystemLocked()
 	return nil
 }
 
@@ -239,12 +253,24 @@ func (s *Store) updateSessionByIDLocked(sessionID string, mutate func(*Session))
 	}
 }
 
+func (s *Store) markMemoryArtifactWriteLocked(path, latest string) {
+	s.recordMemoryArtifactWriteLocked(path, latest, "system", "System")
+}
+
+func (s *Store) markMemoryArtifactWritesLocked(paths []string, latest string) {
+	s.recordMemoryArtifactWritesLocked(paths, latest, "system", "System")
+}
+
 func (s *Store) persistLocked() error {
 	body, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, body, 0o644)
+	if err := os.WriteFile(s.path, body, 0o644); err != nil {
+		return err
+	}
+	s.publishSnapshotLocked()
+	return nil
 }
 
 func cloneState(state State) State {
@@ -256,6 +282,7 @@ func cloneState(state State) State {
 	if err := json.Unmarshal(body, &clone); err != nil {
 		return state
 	}
+	applyRuntimeDerivedTruth(&clone, time.Now())
 	return clone
 }
 

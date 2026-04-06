@@ -20,12 +20,13 @@ import (
 
 func TestDaemonRuntimeAndWorktreeLoop(t *testing.T) {
 	repoRoot := createTempGitRepo(t)
+	prependCLIToPath(t, writeFakeClaudeCLI(t))
 	server := httptest.NewServer(api.New(runtime.NewService("daemon-test", repoRoot), repoRoot).Handler())
 	defer server.Close()
 
-	resp := getJSON(t, server.URL+"/healthz")
-	if ok, _ := resp["ok"].(bool); !ok {
-		t.Fatalf("healthz ok = %#v, want true", resp["ok"])
+	healthz := getJSON(t, server.URL+"/healthz")
+	if ok, _ := healthz["ok"].(bool); !ok {
+		t.Fatalf("healthz ok = %#v, want true", healthz["ok"])
 	}
 
 	runtimePayload := getJSON(t, server.URL+"/v1/runtime")
@@ -60,60 +61,58 @@ func TestDaemonRuntimeAndWorktreeLoop(t *testing.T) {
 		t.Fatalf("second ensure should reuse existing worktree")
 	}
 
-	if _, err := exec.LookPath("claude"); err == nil {
-		execBody := map[string]any{
-			"provider": "claude",
-			"prompt":   "Reply exactly: daemon-ready",
-			"cwd":      repoRoot,
-		}
-		payload := postJSON(t, server.URL+"/v1/exec", execBody, http.StatusOK)
-		output, _ := payload["output"].(string)
-		if !strings.Contains(strings.ToLower(output), "daemon-ready") {
-			t.Fatalf("daemon exec output = %q, want substring daemon-ready", output)
-		}
+	execBody := map[string]any{
+		"provider": "claude",
+		"prompt":   "Reply exactly: daemon-ready",
+		"cwd":      repoRoot,
+	}
+	payload := postJSON(t, server.URL+"/v1/exec", execBody, http.StatusOK)
+	output, _ := payload["output"].(string)
+	if !strings.Contains(strings.ToLower(output), "daemon-ready") {
+		t.Fatalf("daemon exec output = %q, want substring daemon-ready", output)
+	}
 
-		streamBody := map[string]any{
-			"provider": "claude",
-			"prompt":   "Reply exactly with two lines: daemon-stream then ok",
-			"cwd":      repoRoot,
-		}
-		streamData, err := json.Marshal(streamBody)
-		if err != nil {
-			t.Fatalf("marshal stream body: %v", err)
-		}
-		resp, err := http.Post(server.URL+"/v1/exec/stream", "application/json", bytes.NewReader(streamData))
-		if err != nil {
-			t.Fatalf("POST /v1/exec/stream: %v", err)
-		}
-		defer resp.Body.Close()
+	streamBody := map[string]any{
+		"provider": "claude",
+		"prompt":   "Reply exactly with two lines: daemon-stream then ok",
+		"cwd":      repoRoot,
+	}
+	streamData, err := json.Marshal(streamBody)
+	if err != nil {
+		t.Fatalf("marshal stream body: %v", err)
+	}
+	resp, err := http.Post(server.URL+"/v1/exec/stream", "application/json", bytes.NewReader(streamData))
+	if err != nil {
+		t.Fatalf("POST /v1/exec/stream: %v", err)
+	}
+	defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("stream status = %d, want %d", resp.StatusCode, http.StatusOK)
-		}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
 
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		var chunks []string
-		var doneOutput string
-		for scanner.Scan() {
-			var payload map[string]any
-			if err := json.Unmarshal(scanner.Bytes(), &payload); err != nil {
-				t.Fatalf("decode stream payload: %v", err)
-			}
-			if delta, _ := payload["delta"].(string); delta != "" {
-				chunks = append(chunks, delta)
-			}
-			if payloadType, _ := payload["type"].(string); payloadType == "done" {
-				doneOutput, _ = payload["output"].(string)
-			}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var chunks []string
+	var doneOutput string
+	for scanner.Scan() {
+		var payload map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &payload); err != nil {
+			t.Fatalf("decode stream payload: %v", err)
 		}
-		if err := scanner.Err(); err != nil {
-			t.Fatalf("scanner.Err() = %v", err)
+		if delta, _ := payload["delta"].(string); delta != "" {
+			chunks = append(chunks, delta)
 		}
-		streamOutput := strings.ToLower(strings.Join(chunks, " ") + " " + doneOutput)
-		if !strings.Contains(streamOutput, "daemon-stream") {
-			t.Fatalf("daemon stream output = %q, want substring daemon-stream", streamOutput)
+		if payloadType, _ := payload["type"].(string); payloadType == "done" {
+			doneOutput, _ = payload["output"].(string)
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanner.Err() = %v", err)
+	}
+	streamOutput := strings.ToLower(strings.Join(chunks, " ") + " " + doneOutput)
+	if !strings.Contains(streamOutput, "daemon-stream") {
+		t.Fatalf("daemon stream output = %q, want substring daemon-stream", streamOutput)
 	}
 }
 
@@ -148,6 +147,34 @@ func runGit(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s failed: %v\nstderr: %s", strings.Join(args, " "), err, stderr.String())
 	}
 	return strings.TrimSpace(stdout.String())
+}
+
+func writeFakeClaudeCLI(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "claude")
+	script := `#!/bin/sh
+args="$*"
+case "$args" in
+  *daemon-stream*)
+    printf 'daemon-stream\nok\n'
+    ;;
+  *)
+    printf 'daemon-ready\n'
+    ;;
+esac
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake claude cli: %v", err)
+	}
+	return dir
+}
+
+func prependCLIToPath(t *testing.T, dir string) {
+	t.Helper()
+	current := os.Getenv("PATH")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+current)
 }
 
 func getJSON(t *testing.T, url string) map[string]any {

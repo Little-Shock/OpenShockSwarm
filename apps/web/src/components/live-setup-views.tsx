@@ -1,0 +1,341 @@
+"use client";
+
+import { DetailRail, Panel } from "@/components/phase-zero-views";
+import { usePhaseZeroState } from "@/lib/live-phase0";
+import { useLiveRuntimeTruth } from "@/lib/live-runtime";
+
+function cn(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function valueOrPlaceholder(value: string | undefined, fallback: string) {
+  return value && value.trim() ? value : fallback;
+}
+
+function formatHeartbeatCadence(interval?: number, timeout?: number) {
+  if (!interval && !timeout) {
+    return "未返回 cadence";
+  }
+  const intervalLabel = interval ? `${interval}s interval` : "interval 未返回";
+  const timeoutLabel = timeout ? `${timeout}s timeout` : "timeout 未返回";
+  return `${intervalLabel} / ${timeoutLabel}`;
+}
+
+function statusTone(active: boolean) {
+  return active ? "lime" : "paper";
+}
+
+function runtimeStatusLabel(state: string) {
+  switch (state) {
+    case "online":
+      return "在线";
+    case "busy":
+      return "忙碌";
+    case "stale":
+      return "心跳陈旧";
+    case "offline":
+      return "离线";
+    default:
+      return state || "未知";
+  }
+}
+
+function pairingStatusLabel(state: string) {
+  switch (state) {
+    case "paired":
+      return "已配对";
+    case "degraded":
+      return "配对降级";
+    case "unpaired":
+      return "未配对";
+    default:
+      return state || "待同步";
+  }
+}
+
+function pairingStateLabel(state: string) {
+  switch (state) {
+    case "paired":
+      return "当前所选";
+    case "available":
+      return "可切换";
+    default:
+      return state || "待确认";
+  }
+}
+
+function WorkspaceMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
+      <p className="mt-2 font-display text-xl font-semibold break-all">{value}</p>
+    </div>
+  );
+}
+
+function SetupStateNotice({
+  title,
+  message,
+  tone = "white",
+}: {
+  title: string;
+  message: string;
+  tone?: "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
+}) {
+  return (
+    <Panel tone={tone}>
+      <p className="font-display text-3xl font-bold">{title}</p>
+      <p className="mt-3 max-w-2xl text-base leading-7 text-[color:rgba(24,20,14,0.76)]">{message}</p>
+    </Panel>
+  );
+}
+
+function SetupCheckpointCard({
+  title,
+  summary,
+  active,
+}: {
+  title: string;
+  summary: string;
+  active: boolean;
+}) {
+  return (
+    <Panel tone={statusTone(active)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+            {active ? "已接通" : "待补全"}
+          </p>
+          <h3 className="mt-2 font-display text-3xl font-bold">{title}</h3>
+        </div>
+        <span
+          className={cn(
+            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            active ? "bg-[var(--shock-lime)]" : "bg-white"
+          )}
+        >
+          {active ? "live" : "pending"}
+        </span>
+      </div>
+      <p className="mt-3 text-base leading-7">{summary}</p>
+    </Panel>
+  );
+}
+
+export function LiveSetupContextRail() {
+  const { state, loading, error } = usePhaseZeroState();
+  const {
+    loading: runtimeLoading,
+    error: runtimeError,
+    pairing,
+    runtimes,
+    selectedRuntimeName,
+  } = useLiveRuntimeTruth();
+  const workspace = state.workspace;
+  const registryRuntimes = state.runtimes.length > 0 ? state.runtimes : runtimes;
+  const onlineRuntimes = registryRuntimes.filter((item) => item.state === "online").length;
+  const staleRuntimes = registryRuntimes.filter((item) => item.state === "stale").length;
+
+  return (
+    <DetailRail
+      label="配置检查点"
+      items={[
+        {
+          label: "身份",
+          value: loading
+            ? "同步中"
+            : error
+              ? "未同步"
+              : valueOrPlaceholder(workspace.deviceAuth, "待确认"),
+        },
+        {
+          label: "仓库",
+          value: loading
+            ? "同步中"
+            : error
+              ? "未同步"
+              : valueOrPlaceholder(workspace.repoBindingStatus, "待绑定"),
+        },
+        {
+          label: "Runtime",
+          value: loading || runtimeLoading
+            ? "同步中"
+            : error || runtimeError
+              ? "未同步"
+              : `${valueOrPlaceholder(selectedRuntimeName, "未选择")} / ${pairingStatusLabel(pairing?.pairingStatus || "")} / ${onlineRuntimes} 在线${staleRuntimes > 0 ? ` · ${staleRuntimes} 陈旧` : ""} / ${registryRuntimes.length} 台`,
+        },
+        {
+          label: "PR 链路",
+          value: loading
+            ? "同步中"
+            : error
+              ? "未同步"
+              : state.pullRequests.length > 0
+                ? `${state.pullRequests.length} 条 live PR`
+                : "待产生",
+        },
+      ]}
+    />
+  );
+}
+
+export function LiveSetupOverview() {
+  const { state, loading, error } = usePhaseZeroState();
+  const {
+    loading: runtimeLoading,
+    error: runtimeError,
+    pairing,
+    selection,
+    runtimes,
+    selectedRuntimeName,
+    selectedRuntimeRecord,
+  } = useLiveRuntimeTruth();
+  const workspace = state.workspace;
+  const registryRuntimes = state.runtimes.length > 0 ? state.runtimes : runtimes;
+  const onlineRuntimes = registryRuntimes.filter((item) => item.state === "online").length;
+  const staleRuntimes = registryRuntimes.filter((item) => item.state === "stale").length;
+  const selectableRuntimes = registryRuntimes.filter((item) => item.state !== "offline" && item.daemonUrl).length;
+  const runtimeMachines = selection?.runtimes ?? [];
+  const pairingStatus = pairing?.pairingStatus || selection?.pairingStatus || workspace.pairingStatus;
+  const selectedRuntimeLabel = valueOrPlaceholder(selectedRuntimeName, "未选择");
+  const selectedRuntimeStateRecord =
+    registryRuntimes.find((item) => item.machine === selectedRuntimeName || item.id === selectedRuntimeName) ?? null;
+  const selectedRuntimeTruth = selectedRuntimeRecord ?? selectedRuntimeStateRecord;
+  const selectedRuntimeCLI =
+    selectedRuntimeTruth?.detectedCli.join(" + ") || selectedRuntimeTruth?.providers.map((item) => item.label).join(" / ");
+  const selectedHeartbeatCadence = formatHeartbeatCadence(
+    selectedRuntimeTruth?.heartbeatIntervalSeconds,
+    selectedRuntimeTruth?.heartbeatTimeoutSeconds
+  );
+
+  if (loading || runtimeLoading) {
+    return (
+      <SetupStateNotice
+        title="正在同步工作区真值"
+        message="等待 server 返回当前 repo binding、runtime registry、heartbeat 与 selection；这页不再先摆一套本地 mock workspace。"
+        tone="yellow"
+      />
+    );
+  }
+
+  if (error || runtimeError) {
+    return (
+      <SetupStateNotice
+        title="工作区同步失败"
+        message={error || runtimeError || "runtime truth fetch failed"}
+        tone="pink"
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_0.85fr]">
+      <div className="grid gap-4 md:grid-cols-2">
+        <SetupCheckpointCard
+          title="仓库绑定"
+          summary={
+            workspace.repoBindingStatus === "bound"
+              ? `当前仓库已绑定到 ${valueOrPlaceholder(workspace.repoProvider, "代码平台")}，可继续沿 live repo truth 推进。`
+              : "当前工作区还没有把本地仓库真绑定到 OpenShock。"
+          }
+          active={workspace.repoBindingStatus === "bound"}
+        />
+        <SetupCheckpointCard
+          title="Runtime 配对"
+          summary={
+            registryRuntimes.length > 0
+              ? `runtime registry 当前已登记 ${registryRuntimes.length} 台，其中 ${onlineRuntimes} 台在线${staleRuntimes > 0 ? `、${staleRuntimes} 台心跳陈旧` : ""}；当前 selection 是 ${selectedRuntimeLabel}，配对状态为 ${pairingStatusLabel(pairingStatus)}，心跳节奏为 ${selectedHeartbeatCadence}。`
+              : "当前还没有已登记的 runtime registry；先完成 daemon pairing，再继续验证 selection 与 bridge。"
+          }
+          active={registryRuntimes.length > 0 && pairingStatus !== "unpaired"}
+        />
+        <SetupCheckpointCard
+          title="讨论间闭环"
+          summary={
+            state.rooms.length > 0
+              ? `当前已有 ${state.rooms.length} 个 live room，Issue / Room / Run 链路已经可见。`
+              : "当前还没有 live room，讨论间链路尚未显现。"
+          }
+          active={state.rooms.length > 0}
+        />
+        <SetupCheckpointCard
+          title="PR 收口"
+          summary={
+            state.pullRequests.length > 0
+              ? `当前已有 ${state.pullRequests.length} 个 live PR 对象，收口面不再停留在静态文案。`
+              : "当前还没有 live PR 对象，收口链路仍待产生。"
+          }
+          active={state.pullRequests.length > 0}
+        />
+      </div>
+
+      <div className="space-y-4">
+        <Panel tone="yellow">
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">工作区在线状态</p>
+          <dl className="mt-4 grid gap-3">
+            <WorkspaceMetric label="仓库" value={valueOrPlaceholder(workspace.repo, "当前未返回 repo")} />
+            <WorkspaceMetric label="分支" value={valueOrPlaceholder(workspace.branch, "当前未返回 branch")} />
+            <WorkspaceMetric label="Runtime" value={`${selectedRuntimeLabel} / ${pairingStatusLabel(pairingStatus)}`} />
+            <WorkspaceMetric label="心跳节奏" value={selectedHeartbeatCadence} />
+            <WorkspaceMetric label="记忆" value={valueOrPlaceholder(workspace.memoryMode, "当前未返回 memory mode")} />
+          </dl>
+          <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+            当前 runtime control plane 已把 registry、selection 与 pairing 拆开：主状态里已收下 {state.runtimes.length} 条 runtime truth，
+            当前有 {selectableRuntimes} 台可调度，默认指向 {selectedRuntimeLabel}
+            {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}。
+          </p>
+        </Panel>
+        <Panel tone="paper">
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">多 Runtime 真值</p>
+          <div className="mt-4 space-y-3">
+            {registryRuntimes.length === 0 ? (
+              <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                当前还没有已注册 runtime。先完成 daemon 配对，再继续做 selection 和调度验证。
+              </p>
+            ) : (
+              registryRuntimes.map((runtime) => {
+                const selected = runtime.machine === selectedRuntimeName || runtime.id === selectedRuntimeName;
+                const machine = runtimeMachines.find((item) => item.name === runtime.machine || item.id === runtime.id);
+                return (
+                  <div
+                    key={runtime.id}
+                    className={cn(
+                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-3",
+                      selected ? "bg-[var(--shock-yellow)]" : "bg-white"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-display text-xl font-semibold">{runtime.machine}</p>
+                        <p className="mt-1 text-sm text-[color:rgba(24,20,14,0.72)]">
+                          {runtime.detectedCli.join(" + ") || machine?.cli || "未返回 CLI 标签"}
+                        </p>
+                      </div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                        {selected ? "selected" : runtimeStatusLabel(runtime.state)}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                      <p>{machine?.os || "Local"} / {machine?.lastHeartbeat || runtime.lastHeartbeatAt || "未返回心跳"}</p>
+                      <p>{runtime.daemonUrl || "未配对 daemon"} / {pairingStateLabel(runtime.pairingState)}</p>
+                      <p>{formatHeartbeatCadence(runtime.heartbeatIntervalSeconds, runtime.heartbeatTimeoutSeconds)}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </Panel>
+        <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前协作基线</p>
+          <ol className="mt-4 space-y-3 text-sm leading-6 text-white/78">
+            <li>1. Workspace 直接显示 live repo / branch / runtime selection 真值。</li>
+            <li>2. Setup 不再把静态步骤卡当成当前环境状态。</li>
+            <li>3. 当前工作区已有 {state.issues.length} 条 live issue、{state.runs.length} 条 live run。</li>
+            <li>4. 当前已注册 {registryRuntimes.length} 台 runtime，selection 为 {selectedRuntimeLabel}，配对状态为 {pairingStatusLabel(pairingStatus)}，心跳节奏为 {selectedHeartbeatCadence}。</li>
+          </ol>
+        </Panel>
+      </div>
+    </div>
+  );
+}

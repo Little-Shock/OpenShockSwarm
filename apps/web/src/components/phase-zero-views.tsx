@@ -4,10 +4,10 @@ import type { ReactNode } from "react";
 import { ClaudeAgentConsole } from "@/components/claude-agent-console";
 import {
   agents,
+  type AgentStatus,
   getBoardColumns,
   getIssueByRoomId,
   getRunById,
-  issues,
   roomMessages,
   settingsSections,
   setupSteps,
@@ -320,7 +320,7 @@ export function RoomOverview({ room }: { room: Room }) {
           <p className="mt-5 max-w-3xl text-base leading-7 text-[color:rgba(24,20,14,0.8)]">{room.topic.summary}</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href={`/rooms/${room.id}/runs/${room.runId}`}
+              href={`/runs/${room.runId}`}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
             >
               查看 Run 详情
@@ -581,7 +581,7 @@ export function BoardView() {
   );
 }
 
-export function IssuesListView({ issues: issueList = issues }: { issues?: Issue[] }) {
+export function IssuesListView({ issues: issueList }: { issues: Issue[] }) {
   return (
     <div className="grid gap-4">
       {issueList.map((issue) => (
@@ -613,7 +613,7 @@ export function IssuesListView({ issues: issueList = issues }: { issues?: Issue[
 
 export function IssueDetailView({
   issue,
-  run = getRunById(issue.runId),
+  run,
   roomTitle,
 }: {
   issue: Issue;
@@ -644,7 +644,7 @@ export function IssueDetailView({
               打开讨论间
               </Link>
               <Link
-                href={`/rooms/${issue.roomId}/runs/${issue.runId}`}
+                href={`/runs/${issue.runId}`}
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
               打开 Run 详情
@@ -685,10 +685,10 @@ export function IssueDetailView({
   );
 }
 
-export function AgentsListView() {
+export function AgentsListView({ agentsList = agents }: { agentsList?: AgentStatus[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      {agents.map((agent) => (
+      {agentsList.map((agent) => (
         <Link key={agent.id} href={`/agents/${agent.id}`} className="block">
           <Panel tone={agent.state === "blocked" ? "pink" : agent.state === "running" ? "yellow" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -718,7 +718,7 @@ export function AgentDetailView({
   agent,
   runsForAgent,
 }: {
-  agent: (typeof agents)[number];
+  agent: AgentStatus;
   runsForAgent: Run[];
 }) {
   return (
@@ -777,7 +777,7 @@ export function AgentDetailView({
             {runsForAgent.map((run) => (
               <Link
                 key={run.id}
-                href={`/rooms/${run.roomId}/runs/${run.id}`}
+                href={`/runs/${run.id}`}
                 className="block rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-3">
