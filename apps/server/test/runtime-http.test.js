@@ -2262,3 +2262,142 @@ test("v1 batch6 control-plane closeout debug truth exposes server-owned evidence
     assert.ok(typeof deliveryRejection.request_id === "string" && deliveryRejection.request_id.length > 0);
   });
 });
+test("v1 batch6 integration replay/debug/run-history/compatibility surfaces expose one backend-derived explanation", async () => {
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId: "topic_v1_batch6_surface"
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const topicOverview = await requestJson({
+        port,
+        method: "GET",
+        path: "/topics/topic_v1_batch6_surface/overview"
+      });
+      assert.equal(topicOverview.statusCode, 200);
+
+      const evidenceTruth = await requestJson({
+        port,
+        method: "POST",
+        path: "/topics/topic_v1_batch6_surface/messages",
+        body: {
+          type: "shared_truth_proposal",
+          sourceAgentId: "lead_sample_01",
+          sourceRole: "lead",
+          truthRevision: topicOverview.body.revision,
+          payload: {
+            patch: {
+              deliveryState: {
+                state: "awaiting_merge_gate",
+                run_id: "run_batch6_01"
+              },
+              delivery_closeout: {
+                run_id: "run_batch6_01",
+                checkpoint_refs: ["checkpoint://batch6-truth"],
+                artifact_refs: ["artifact://batch6-truth"],
+                base_branch: "release/batch6",
+                pr_writeback: {
+                  message_id: "writeback_batch6_01",
+                  pr_url: "https://github.com/little-shock/openshockswarm/pull/406",
+                  provider_ref: {
+                    provider: "github",
+                    repo_ref: "little-shock/openshockswarm",
+                    pr_number: 406
+                  }
+                }
+              },
+              replay_debug_evidence: {
+                run_id: "run_batch6_01",
+                failure_reason: "approval_waiting",
+                checkpoint_refs: ["checkpoint://batch6-truth"],
+                artifact_refs: ["artifact://batch6-truth"]
+              }
+            }
+          }
+        }
+      });
+      assert.equal(evidenceTruth.statusCode, 200);
+
+      const daemonFeedback = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/daemon/events",
+        body: {
+          topicId: "topic_v1_batch6_surface",
+          type: "feedback_ingest",
+          runId: "run_batch6_01",
+          laneId: "lane_batch6_01",
+          payload: {
+            feedbackId: "feedback_batch6_01",
+            summary: "batch6 execution evidence",
+            trace_id: "trace_batch6_01"
+          }
+        }
+      });
+      assert.equal(daemonFeedback.statusCode, 200);
+
+      const runHistory = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/topics/topic_v1_batch6_surface/run-history?limit=20"
+      });
+      assert.equal(runHistory.statusCode, 200);
+      const batch6Run = runHistory.body.items.find((item) => item.run_id === "run_batch6_01");
+      assert.ok(batch6Run);
+      assert.equal(batch6Run.explanation_projection.outcome, "failure_or_blocked");
+      assert.ok(batch6Run.explanation_projection.execution_evidence.checkpoint_refs.includes("checkpoint://batch6-truth"));
+
+      const runReplay = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/runs/run_batch6_01/replay?topic_id=topic_v1_batch6_surface&limit=20"
+      });
+      assert.equal(runReplay.statusCode, 200);
+      assert.equal(runReplay.body.explanation_projection.outcome, "failure_or_blocked");
+      assert.ok(runReplay.body.items.length >= 1);
+      assert.equal(runReplay.body.items[0].explanation_projection.run_id, "run_batch6_01");
+
+      const debugEvents = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/debug/events?topic_id=topic_v1_batch6_surface&run_id=run_batch6_01&limit=20"
+      });
+      assert.equal(debugEvents.statusCode, 200);
+      assert.equal(debugEvents.body.explanation_projection.outcome, "failure_or_blocked");
+      assert.ok(debugEvents.body.items.length >= 1);
+
+      const debugHistory = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/debug/history?topic_id=topic_v1_batch6_surface&run_id=run_batch6_01&limit=20"
+      });
+      assert.equal(debugHistory.statusCode, 200);
+      assert.ok(debugHistory.body.explanation_projection.execution_evidence.artifact_refs.includes("artifact://batch6-truth"));
+
+      const shellCompatibility = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/compatibility/shell-adapter?topic_id=topic_v1_batch6_surface"
+      });
+      assert.equal(shellCompatibility.statusCode, 200);
+      assert.equal(shellCompatibility.body.backend_derived_projection.explanation_projection.outcome, "failure_or_blocked");
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.lineage_anchors.debug_events,
+        "/v1/debug/events?topic_id=:topicId"
+      );
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.lineage_anchors.debug_history,
+        "/v1/debug/history?topic_id=:topicId&run_id=:runId"
+      );
+    }
+  );
+});
