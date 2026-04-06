@@ -42,6 +42,9 @@ func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, s.currentRepoBinding())
 	case http.MethodPost:
+		if !s.requireSessionPermission(w, "repo.admin") {
+			return
+		}
 		var req RepoBindingRequest
 		if r.Body != nil {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {

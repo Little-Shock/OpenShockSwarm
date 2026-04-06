@@ -137,6 +137,29 @@ export type MachineStatus = {
   lastHeartbeat: string;
 };
 
+export type RuntimeProviderStatus = {
+  id: string;
+  label: string;
+  mode: string;
+  capabilities: string[];
+  transport: string;
+};
+
+export type RuntimeRegistryRecord = {
+  id: string;
+  machine: string;
+  daemonUrl: string;
+  detectedCli: string[];
+  providers: RuntimeProviderStatus[];
+  state: string;
+  pairingState: string;
+  workspaceRoot: string;
+  reportedAt: string;
+  lastHeartbeatAt: string;
+  heartbeatIntervalSeconds?: number;
+  heartbeatTimeoutSeconds?: number;
+};
+
 export type InboxItem = {
   id: string;
   title: string;
@@ -181,6 +204,12 @@ export type Session = {
   memoryPaths: string[];
 };
 
+export type MemoryGovernance = {
+  mode?: string;
+  requiresReview?: boolean;
+  escalation?: string;
+};
+
 export type MemoryArtifact = {
   id: string;
   scope: string;
@@ -188,6 +217,13 @@ export type MemoryArtifact = {
   path: string;
   summary: string;
   updatedAt: string;
+  version?: number;
+  latestWrite?: string;
+  latestSource?: string;
+  latestActor?: string;
+  digest?: string;
+  sizeBytes?: number;
+  governance?: MemoryGovernance;
 };
 
 export type SetupStep = {
@@ -216,6 +252,7 @@ export type PhaseZeroState = {
   runs: Run[];
   agents: AgentStatus[];
   machines: MachineStatus[];
+  runtimes: RuntimeRegistryRecord[];
   inbox: InboxItem[];
   pullRequests: PullRequest[];
   sessions: Session[];
@@ -252,6 +289,8 @@ export const utilityLinks = [
   { id: "issues", label: "需求", href: "/issues" },
   { id: "runs", label: "执行", href: "/runs" },
   { id: "agents", label: "公民", href: "/agents" },
+  { id: "memory", label: "记忆", href: "/memory" },
+  { id: "access", label: "身份", href: "/access" },
   { id: "settings", label: "设置", href: "/settings" },
 ];
 
@@ -660,6 +699,60 @@ export const machines: MachineStatus[] = [
   { id: "machine-sidecar", name: "shock-sidecar", state: "online", cli: "Codex", os: "macOS", lastHeartbeat: "21 秒前" },
 ];
 
+export const runtimes: RuntimeRegistryRecord[] = [
+  {
+    id: "runtime-shock-main",
+    machine: "shock-main",
+    daemonUrl: "http://127.0.0.1:8090",
+    detectedCli: ["codex", "claude"],
+    providers: [
+      {
+        id: "codex",
+        label: "Codex CLI",
+        mode: "native",
+        capabilities: ["exec", "review", "apply-patch"],
+        transport: "stdio",
+      },
+      {
+        id: "claude",
+        label: "Claude Code",
+        mode: "native",
+        capabilities: ["exec", "review"],
+        transport: "stdio",
+      },
+    ],
+    state: "busy",
+    pairingState: "paired",
+    workspaceRoot: "/home/lark/OpenShock",
+    reportedAt: "8 秒前",
+    lastHeartbeatAt: "8 秒前",
+    heartbeatIntervalSeconds: 15,
+    heartbeatTimeoutSeconds: 45,
+  },
+  {
+    id: "runtime-shock-sidecar",
+    machine: "shock-sidecar",
+    daemonUrl: "http://127.0.0.1:8091",
+    detectedCli: ["codex"],
+    providers: [
+      {
+        id: "codex",
+        label: "Codex CLI",
+        mode: "native",
+        capabilities: ["exec", "review"],
+        transport: "stdio",
+      },
+    ],
+    state: "online",
+    pairingState: "available",
+    workspaceRoot: "/home/lark/OpenShock",
+    reportedAt: "21 秒前",
+    lastHeartbeatAt: "21 秒前",
+    heartbeatIntervalSeconds: 15,
+    heartbeatTimeoutSeconds: 45,
+  },
+];
+
 export const inboxItems: InboxItem[] = [
   {
     id: "inbox-approval-runtime",
@@ -865,6 +958,7 @@ export const fallbackState: PhaseZeroState = {
   runs,
   agents,
   machines,
+  runtimes,
   inbox: inboxItems,
   pullRequests,
   sessions: [],

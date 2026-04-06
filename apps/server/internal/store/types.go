@@ -218,30 +218,100 @@ type Session struct {
 	MemoryPaths  []string `json:"memoryPaths"`
 }
 
-type MemoryArtifact struct {
-	ID        string `json:"id"`
-	Scope     string `json:"scope"`
-	Kind      string `json:"kind"`
-	Path      string `json:"path"`
+type AuthSession struct {
+	ID          string   `json:"id"`
+	MemberID    string   `json:"memberId,omitempty"`
+	Email       string   `json:"email,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	Role        string   `json:"role,omitempty"`
+	Status      string   `json:"status"`
+	AuthMethod  string   `json:"authMethod,omitempty"`
+	SignedInAt  string   `json:"signedInAt,omitempty"`
+	LastSeenAt  string   `json:"lastSeenAt,omitempty"`
+	Permissions []string `json:"permissions"`
+}
+
+type WorkspaceRole struct {
+	ID          string   `json:"id"`
+	Label       string   `json:"label"`
+	Summary     string   `json:"summary"`
+	Permissions []string `json:"permissions"`
+}
+
+type WorkspaceMember struct {
+	ID          string   `json:"id"`
+	Email       string   `json:"email"`
+	Name        string   `json:"name"`
+	Role        string   `json:"role"`
+	Status      string   `json:"status"`
+	Source      string   `json:"source,omitempty"`
+	AddedAt     string   `json:"addedAt,omitempty"`
+	LastSeenAt  string   `json:"lastSeenAt,omitempty"`
+	Permissions []string `json:"permissions"`
+}
+
+type AuthSnapshot struct {
+	Session AuthSession       `json:"session"`
+	Roles   []WorkspaceRole   `json:"roles"`
+	Members []WorkspaceMember `json:"members"`
+}
+
+type MemoryGovernance struct {
+	Mode           string `json:"mode"`
+	RequiresReview bool   `json:"requiresReview"`
+	Escalation     string `json:"escalation"`
+}
+
+type MemoryArtifactVersion struct {
+	Version   int    `json:"version"`
 	Summary   string `json:"summary"`
 	UpdatedAt string `json:"updatedAt"`
+	Source    string `json:"source"`
+	Actor     string `json:"actor"`
+	Digest    string `json:"digest,omitempty"`
+	SizeBytes int    `json:"sizeBytes,omitempty"`
+	Content   string `json:"content,omitempty"`
+}
+
+type MemoryArtifact struct {
+	ID           string           `json:"id"`
+	Scope        string           `json:"scope"`
+	Kind         string           `json:"kind"`
+	Path         string           `json:"path"`
+	Summary      string           `json:"summary"`
+	UpdatedAt    string           `json:"updatedAt"`
+	Version      int              `json:"version"`
+	LatestWrite  string           `json:"latestWrite,omitempty"`
+	LatestSource string           `json:"latestSource,omitempty"`
+	LatestActor  string           `json:"latestActor,omitempty"`
+	Digest       string           `json:"digest,omitempty"`
+	SizeBytes    int              `json:"sizeBytes,omitempty"`
+	Governance   MemoryGovernance `json:"governance"`
+}
+
+type MemoryArtifactDetail struct {
+	Artifact MemoryArtifact          `json:"artifact"`
+	Content  string                  `json:"content,omitempty"`
+	Versions []MemoryArtifactVersion `json:"versions"`
 }
 
 type State struct {
-	Workspace       WorkspaceSnapshot    `json:"workspace"`
-	Channels        []Channel            `json:"channels"`
-	ChannelMessages map[string][]Message `json:"channelMessages"`
-	Issues          []Issue              `json:"issues"`
-	Rooms           []Room               `json:"rooms"`
-	RoomMessages    map[string][]Message `json:"roomMessages"`
-	Runs            []Run                `json:"runs"`
-	Agents          []Agent              `json:"agents"`
-	Machines        []Machine            `json:"machines"`
-	Runtimes        []RuntimeRecord      `json:"runtimes"`
-	Inbox           []InboxItem          `json:"inbox"`
-	PullRequests    []PullRequest        `json:"pullRequests"`
-	Sessions        []Session            `json:"sessions"`
-	Memory          []MemoryArtifact     `json:"memory"`
+	Workspace       WorkspaceSnapshot                  `json:"workspace"`
+	Channels        []Channel                          `json:"channels"`
+	ChannelMessages map[string][]Message               `json:"channelMessages"`
+	Issues          []Issue                            `json:"issues"`
+	Rooms           []Room                             `json:"rooms"`
+	RoomMessages    map[string][]Message               `json:"roomMessages"`
+	Runs            []Run                              `json:"runs"`
+	Agents          []Agent                            `json:"agents"`
+	Machines        []Machine                          `json:"machines"`
+	Runtimes        []RuntimeRecord                    `json:"runtimes"`
+	Inbox           []InboxItem                        `json:"inbox"`
+	PullRequests    []PullRequest                      `json:"pullRequests"`
+	Sessions        []Session                          `json:"sessions"`
+	Auth            AuthSnapshot                       `json:"auth"`
+	Memory          []MemoryArtifact                   `json:"memory"`
+	MemoryVersions  map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`
 }
 
 type RoomDetail struct {

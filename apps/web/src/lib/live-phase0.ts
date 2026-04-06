@@ -83,6 +83,7 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
   runs: [],
   agents: [],
   machines: [],
+  runtimes: [],
   inbox: [],
   pullRequests: [],
   sessions: [],

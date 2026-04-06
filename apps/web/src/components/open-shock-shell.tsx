@@ -13,8 +13,9 @@ import {
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 
-type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings";
+type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access";
 type Tone = "yellow" | "pink" | "lime";
+const ACCESS_UTILITY_LINK = { id: "access", label: "身份", href: "/access" } as const;
 
 type OpenShockShellProps = {
   view: ShellView;
@@ -34,7 +35,15 @@ function cn(...parts: Array<string | false | null | undefined>) {
 }
 
 function activeFromView(view: ShellView): AppTab | null {
-  if (view === "setup" || view === "issues" || view === "runs" || view === "agents" || view === "settings") {
+  if (
+    view === "setup" ||
+    view === "issues" ||
+    view === "runs" ||
+    view === "agents" ||
+    view === "settings" ||
+    view === "memory" ||
+    view === "access"
+  ) {
     return null;
   }
 
@@ -110,6 +119,9 @@ export function OpenShockShell({
 }: OpenShockShellProps) {
   const activeTab = activeFromView(view);
   const { state, loading, error } = usePhaseZeroState();
+  const shellUtilityLinks = utilityLinks.some((link) => link.id === ACCESS_UTILITY_LINK.id)
+    ? utilityLinks
+    : [...utilityLinks, ACCESS_UTILITY_LINK];
   const hasWorkspaceTruth = Boolean(state.workspace.name || state.workspace.repo || state.workspace.branch);
   const hasCollectionTruth =
     state.channels.length > 0 ||
@@ -204,7 +216,7 @@ export function OpenShockShell({
                 ))}
               </nav>
               <div className="mt-3 space-y-2">
-                {utilityLinks.map((link) => (
+                {shellUtilityLinks.map((link) => (
                   <Link
                     key={link.id}
                     href={link.href}

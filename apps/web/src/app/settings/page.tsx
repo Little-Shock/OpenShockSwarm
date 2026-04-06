@@ -1,28 +1,21 @@
 import { OpenShockShell } from "@/components/open-shock-shell";
-import { DetailRail, SettingsView } from "@/components/phase-zero-views";
+import {
+  LiveSettingsContextRail,
+  LiveSettingsView,
+} from "@/components/live-settings-views";
 
 export default function SettingsPage() {
   return (
     <OpenShockShell
       view="settings"
-      eyebrow="全局设置"
-      title="先定策略，再谈魔法"
-      description="Phase 0 把关键旋钮都摆在明面上：身份、沙盒默认值、记忆模式，以及通知规则。"
-      contextTitle="当前技术栈"
-      contextDescription="前端是 Next.js，后端和本地 daemon 都是 Go。这一层先把产品契约定清楚，再把真实服务接上。"
-      contextBody={
-        <DetailRail
-          label="Runtime 栈"
-          items={[
-            { label: "Web", value: "Next.js 16" },
-            { label: "API", value: "Go" },
-            { label: "Daemon", value: "Go" },
-            { label: "记忆", value: "文件优先" },
-          ]}
-        />
-      }
+      eyebrow="Phase 5 通知"
+      title="把提醒系统从静态默认值推到可交付通知面"
+      description="这里直接消费 live inbox / unread truth，并把浏览器 push 偏好、权限和 registration surface 摆到前台；真实 subscriber 与 fanout delivery 继续由后续 server / worker 票接上。"
+      contextTitle="通知真值在线"
+      contextDescription="前台现在要把 server 已知的通知默认值、本地浏览器能力和仍待接通的 delivery contract 分清楚。"
+      contextBody={<LiveSettingsContextRail />}
     >
-      <SettingsView />
+      <LiveSettingsView />
     </OpenShockShell>
   );
 }

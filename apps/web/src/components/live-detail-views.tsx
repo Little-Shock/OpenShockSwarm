@@ -4,6 +4,11 @@ import Link from "next/link";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import {
+  AgentControlSurface,
+  LiveOrchestrationBoard,
+  type RuntimeRegistryRecord,
+} from "@/components/live-orchestration-views";
+import {
   AgentDetailView,
   AgentsListView,
   DetailRail,
@@ -80,6 +85,11 @@ function statusBadgeTone(status: Run["status"]) {
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+function readRuntimeRegistry(state: unknown): RuntimeRegistryRecord[] {
+  const runtimes = (state as { runtimes?: RuntimeRegistryRecord[] }).runtimes;
+  return Array.isArray(runtimes) ? runtimes : [];
 }
 
 function LiveStateNotice({
@@ -336,23 +346,29 @@ function agentStateLabel(state: AgentStatus["state"]) {
 export function LiveAgentsPageContent() {
   const { state, loading, error } = usePhaseZeroState();
   const agents = loading || error ? [] : state.agents;
+  const runs = loading || error ? [] : state.runs;
+  const rooms = loading || error ? [] : state.rooms;
+  const inbox = loading || error ? [] : state.inbox;
+  const pullRequests = loading || error ? [] : state.pullRequests;
+  const runtimes = loading || error ? [] : readRuntimeRegistry(state);
+  const sessions = loading || error ? [] : state.sessions;
 
   return (
     <OpenShockShell
       view="agents"
       eyebrow="Agent 名录"
-      title="一等公民，不是隐藏工具"
-      description="Agent 必须是可见的行动者，带着 runtime 偏好、记忆绑定和可观察的最近 Run。"
-      contextTitle="Agent 契约"
-      contextDescription="Phase 1 开始这块不再读本地样例，而是直接看 server 当前 state 里的公民真值。"
+      title="把公民名录推进成 orchestration board"
+      description="Agent 不只要可见，还要能把调度泳道、runtime 压力、人工闸门和 auto-merge 候选摆在同一个前台。"
+      contextTitle="Agent Loop Surface"
+      contextDescription="这张票先把 orchestration board / agent control / auto-merge surface 收进 `/agents`，真正的 planner / lease / merge action 仍由 `#61/#62` 合同提供。"
       contextBody={
         <DetailRail
-          label="名录结构"
+          label="调度基线"
           items={[
             { label: "总数", value: `${agents.length} 个` },
             { label: "执行中", value: `${agents.filter((agent) => agent.state === "running").length} 个` },
             { label: "阻塞", value: `${agents.filter((agent) => agent.state === "blocked").length} 个` },
-            { label: "待命", value: `${agents.filter((agent) => agent.state === "idle").length} 个` },
+            { label: "Session", value: `${sessions.length} 条` },
           ]}
         />
       }
@@ -364,7 +380,18 @@ export function LiveAgentsPageContent() {
       ) : agents.length === 0 ? (
         <LiveStateNotice title="当前还没有 Agent" message="当 server state 里出现公民记录后，这里会直接展示 live agent surface。" />
       ) : (
-        <AgentsListView agentsList={agents} />
+        <div className="space-y-4">
+          <LiveOrchestrationBoard
+            agents={agents}
+            runs={runs}
+            rooms={rooms}
+            inbox={inbox}
+            pullRequests={pullRequests}
+            runtimes={runtimes}
+            sessions={sessions}
+          />
+          <AgentsListView agentsList={agents} />
+        </div>
       )}
     </OpenShockShell>
   );
@@ -420,6 +447,9 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
   }
 
   const runsForAgent = state.runs.filter((run) => agent.recentRunIds.includes(run.id));
+  const relatedPullRequests = state.pullRequests.filter((pullRequest) =>
+    runsForAgent.some((run) => run.id === pullRequest.runId)
+  );
 
   return (
     <OpenShockShell
@@ -441,7 +471,16 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
         />
       }
     >
-      <AgentDetailView agent={agent} runsForAgent={runsForAgent} />
+      <div className="space-y-4">
+        <AgentControlSurface
+          agent={agent}
+          runsForAgent={runsForAgent}
+          pullRequests={relatedPullRequests}
+          inbox={state.inbox}
+          runtimes={readRuntimeRegistry(state)}
+        />
+        <AgentDetailView agent={agent} runsForAgent={runsForAgent} />
+      </div>
     </OpenShockShell>
   );
 }

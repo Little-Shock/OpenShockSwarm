@@ -122,6 +122,7 @@ func seedState() State {
 			{ID: "session-inbox", IssueKey: "OPS-19", RoomID: "room-inbox", TopicID: "topic-inbox", ActiveRunID: "run_inbox_01", Status: "review", Runtime: "shock-sidecar", Machine: "shock-sidecar", Provider: "Claude Code CLI", Branch: "feat/inbox-decision-cards", Worktree: "wt-inbox-cards", WorktreePath: "", Summary: "Inbox 讨论间的评审上下文。", UpdatedAt: now, MemoryPaths: []string{"MEMORY.md", "notes/work-log.md", "notes/rooms/room-inbox.md"}},
 			{ID: "session-memory", IssueKey: "OPS-27", RoomID: "room-memory", TopicID: "topic-memory", ActiveRunID: "run_memory_01", Status: "blocked", Runtime: "shock-main", Machine: "shock-main", Provider: "Codex CLI", Branch: "feat/memory-writeback", Worktree: "wt-memory-writeback", WorktreePath: "", Summary: "记忆写回冲突上下文。", UpdatedAt: now, MemoryPaths: []string{"MEMORY.md", "notes/work-log.md", "notes/rooms/room-memory.md"}},
 		},
+		Auth:   defaultAuthSnapshot(now),
 		Memory: []MemoryArtifact{},
 	}
 }

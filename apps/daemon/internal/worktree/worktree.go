@@ -15,6 +15,10 @@ type Request struct {
 	Branch        string `json:"branch"`
 	WorktreeName  string `json:"worktreeName"`
 	BaseRef       string `json:"baseRef"`
+	LeaseID       string `json:"leaseId,omitempty"`
+	RunID         string `json:"runId,omitempty"`
+	SessionID     string `json:"sessionId,omitempty"`
+	RoomID        string `json:"roomId,omitempty"`
 }
 
 type Response struct {

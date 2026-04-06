@@ -1,8 +1,6 @@
 package api
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,10 +31,32 @@ type Server struct {
 	githubWebhookSecret string
 }
 
-type ExecRequest struct {
-	Provider string `json:"provider"`
-	Prompt   string `json:"prompt"`
-	Cwd      string `json:"cwd"`
+type serverRouteRegistrar func(*Server, *http.ServeMux)
+
+var serverRouteRegistrars []serverRouteRegistrar
+
+func registerServerRoutes(fn serverRouteRegistrar) {
+	serverRouteRegistrars = append(serverRouteRegistrars, fn)
+}
+
+type requestGuard func(*Server, http.ResponseWriter) bool
+type pullRequestStatusGuard func(*Server, http.ResponseWriter, string) bool
+
+var (
+	issueCreateGuard      requestGuard           = allowRequest
+	roomReplyGuard        requestGuard           = allowRequest
+	roomPullRequestGuard  requestGuard           = allowRequest
+	runtimeManageGuard    requestGuard           = allowRequest
+	runExecuteGuard       requestGuard           = allowRequest
+	pullRequestRouteGuard pullRequestStatusGuard = allowPullRequestRoute
+)
+
+func allowRequest(_ *Server, _ http.ResponseWriter) bool {
+	return true
+}
+
+func allowPullRequestRoute(_ *Server, _ http.ResponseWriter, _ string) bool {
+	return true
 }
 
 type CreateIssueRequest struct {
@@ -54,14 +74,6 @@ type RoomMessageRequest struct {
 
 type UpdatePullRequestRequest struct {
 	Status string `json:"status"`
-}
-
-type DaemonExecResponse struct {
-	Provider string   `json:"provider,omitempty"`
-	Command  []string `json:"command,omitempty"`
-	Output   string   `json:"output"`
-	Error    string   `json:"error,omitempty"`
-	Duration string   `json:"duration,omitempty"`
 }
 
 type RuntimeSnapshotResponse struct {
@@ -101,34 +113,6 @@ type RuntimeSelectionResponse struct {
 	Runtimes          []store.Machine `json:"runtimes"`
 }
 
-type DaemonStreamEvent struct {
-	Type      string       `json:"type"`
-	Provider  string       `json:"provider,omitempty"`
-	Command   []string     `json:"command,omitempty"`
-	Delta     string       `json:"delta,omitempty"`
-	Output    string       `json:"output,omitempty"`
-	Error     string       `json:"error,omitempty"`
-	Duration  string       `json:"duration,omitempty"`
-	Timestamp string       `json:"timestamp,omitempty"`
-	State     *store.State `json:"state,omitempty"`
-}
-
-type WorktreeRequest struct {
-	WorkspaceRoot string `json:"workspaceRoot"`
-	Branch        string `json:"branch"`
-	WorktreeName  string `json:"worktreeName"`
-	BaseRef       string `json:"baseRef"`
-}
-
-type WorktreeResponse struct {
-	WorkspaceRoot string `json:"workspaceRoot"`
-	Branch        string `json:"branch"`
-	WorktreeName  string `json:"worktreeName"`
-	Path          string `json:"path"`
-	Created       bool   `json:"created"`
-	BaseRef       string `json:"baseRef"`
-}
-
 func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 	daemonURL := strings.TrimRight(cfg.DaemonURL, "/")
 	if workspace := s.Snapshot().Workspace; strings.TrimSpace(workspace.PairedRuntimeURL) != "" {
@@ -165,7 +149,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/sessions/", s.handleSessionRoutes)
 	mux.HandleFunc("/v1/inbox", s.handleInbox)
 	mux.HandleFunc("/v1/inbox/", s.handleInboxRoutes)
-	mux.HandleFunc("/v1/memory", s.handleMemory)
 	mux.HandleFunc("/v1/pull-requests", s.handlePullRequests)
 	mux.HandleFunc("/v1/pull-requests/", s.handlePullRequestRoutes)
 	mux.HandleFunc("/v1/runtime/registry", s.handleRuntimeRegistry)
@@ -177,6 +160,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/github/connection", s.handleGitHubConnection)
 	mux.HandleFunc("/v1/github/webhook", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
+	for _, register := range serverRouteRegistrars {
+		register(s, mux)
+	}
 	return withCORS(mux)
 }
 
@@ -210,6 +196,9 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, s.store.Snapshot().Issues)
 	case http.MethodPost:
+		if !issueCreateGuard(s, w) {
+			return
+		}
 		var req CreateIssueRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -249,14 +238,29 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 			Branch:        result.Branch,
 			WorktreeName:  result.WorktreeName,
 			BaseRef:       "HEAD",
+			LeaseID:       defaultString(result.SessionID, result.RunID),
+			RunID:         result.RunID,
+			SessionID:     result.SessionID,
+			RoomID:        result.RoomID,
 		})
 		if ensureErr != nil {
-			nextState, appendErr := s.store.AppendSystemRoomMessage(result.RoomID, "System", fmt.Sprintf("worktree 创建失败：%s", ensureErr.Error()), "blocked")
+			status := http.StatusBadGateway
+			message := fmt.Sprintf("worktree 创建失败：%s", ensureErr.Error())
+			var daemonErr *daemonHTTPError
+			if errors.As(ensureErr, &daemonErr) && daemonErr.Status == http.StatusConflict {
+				status = http.StatusConflict
+				message = buildConflictRoomMessage("runtime lease 冲突", ensureErr)
+			}
+			nextState, appendErr := s.store.AppendSystemRoomMessage(result.RoomID, "System", message, "blocked")
 			if appendErr != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": ensureErr.Error()})
+				writeJSON(w, status, map[string]string{"error": ensureErr.Error()})
 				return
 			}
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": ensureErr.Error(), "state": nextState, "roomId": result.RoomID})
+			payload := map[string]any{"error": ensureErr.Error(), "state": nextState, "roomId": result.RoomID}
+			if daemonErr != nil && daemonErr.Conflict != nil {
+				payload["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, status, payload)
 			return
 		}
 
@@ -295,6 +299,9 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
+		if !roomReplyGuard(s, w) {
+			return
+		}
 		var req RoomMessageRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -308,7 +315,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		s.handleRoomMessageStream(w, r, roomID, ExecRequest{
 			Provider: defaultString(req.Provider, "claude"),
 			Prompt:   prompt,
-			Cwd:      defaultString(req.Cwd, s.workspaceRoot),
+			Cwd:      req.Cwd,
 		}, prompt)
 		return
 	}
@@ -317,6 +324,9 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		roomID := strings.TrimSuffix(path, "/messages")
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if !roomReplyGuard(s, w) {
 			return
 		}
 		var req RoomMessageRequest
@@ -333,15 +343,26 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
 			Provider: defaultString(req.Provider, "claude"),
 			Prompt:   prompt,
-			Cwd:      defaultString(req.Cwd, s.workspaceRoot),
+			Cwd:      req.Cwd,
 		})
 		if err != nil {
-			nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("CLI 连接失败：%s", err.Error()), "blocked")
+			status := http.StatusBadGateway
+			message := fmt.Sprintf("CLI 连接失败：%s", err.Error())
+			var daemonErr *daemonHTTPError
+			if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
+				status = http.StatusConflict
+				message = buildConflictRoomMessage("runtime lease 冲突", err)
+			}
+			nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
 			if appendErr != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				writeJSON(w, status, map[string]string{"error": err.Error()})
 				return
 			}
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "state": nextState})
+			payload := map[string]any{"error": err.Error(), "state": nextState}
+			if daemonErr != nil && daemonErr.Conflict != nil {
+				payload["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, status, payload)
 			return
 		}
 
@@ -358,6 +379,9 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		roomID := strings.TrimSuffix(path, "/pull-request")
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if !roomPullRequestGuard(s, w) {
 			return
 		}
 		snapshot := s.store.Snapshot()
@@ -473,13 +497,6 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.store.Snapshot().Inbox)
 }
 
-func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
-	}
-	writeJSON(w, http.StatusOK, s.store.Snapshot().Memory)
-}
-
 func (s *Server) handlePullRequests(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
@@ -527,6 +544,9 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 	var req UpdatePullRequestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	if !pullRequestRouteGuard(s, w, req.Status) {
 		return
 	}
 	snapshot := s.store.Snapshot()
@@ -763,6 +783,9 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			LastPairedAt:  workspace.LastPairedAt,
 		})
 	case http.MethodPost:
+		if !runtimeManageGuard(s, w) {
+			return
+		}
 		var req PairRuntimeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -824,6 +847,9 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			"state":     nextState,
 		})
 	case http.MethodDelete:
+		if !runtimeManageGuard(s, w) {
+			return
+		}
 		nextState, err := s.store.ClearRuntimePairing()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -844,12 +870,7 @@ func (s *Server) handleRuntimeRegistry(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	snapshot := s.store.Snapshot()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"pairedRuntime": snapshot.Workspace.PairedRuntime,
-		"pairingStatus": snapshot.Workspace.PairingStatus,
-		"runtimes":      snapshot.Runtimes,
-	})
+	writeJSON(w, http.StatusOK, runtimeRegistryResponse(s.store.Snapshot()))
 }
 
 func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request) {
@@ -883,6 +904,9 @@ func (s *Server) handleRuntimeSelection(w http.ResponseWriter, r *http.Request) 
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, buildRuntimeSelectionResponse(s.store.Snapshot()))
 	case http.MethodPost:
+		if !runtimeManageGuard(s, w) {
+			return
+		}
 		var req SelectRuntimeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -916,6 +940,9 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	if !runExecuteGuard(s, w) {
+		return
+	}
 	var req ExecRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -923,6 +950,15 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, err := s.runDaemonExec(req)
 	if err != nil {
+		var daemonErr *daemonHTTPError
+		if errors.As(err, &daemonErr) {
+			response := map[string]any{"error": daemonErr.Error()}
+			if daemonErr.Conflict != nil {
+				response["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, daemonErr.Status, response)
+			return
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -959,7 +995,12 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		return writeNDJSON(w, flusher, event)
 	})
 	if err != nil {
-		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("CLI 连接失败：%s", err.Error()), "blocked")
+		message := fmt.Sprintf("CLI 连接失败：%s", err.Error())
+		var daemonErr *daemonHTTPError
+		if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
+			message = buildConflictRoomMessage("runtime lease 冲突", err)
+		}
+		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
 		if appendErr != nil {
 			_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: err.Error()})
 			return
@@ -982,162 +1023,6 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: finalOutput, State: &nextState})
-}
-
-func (s *Server) ensureWorktreeLane(daemonURL string, req WorktreeRequest) (WorktreeResponse, error) {
-	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/worktrees/ensure", bytes.NewReader(body))
-	if err != nil {
-		return WorktreeResponse{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return WorktreeResponse{}, err
-	}
-	defer response.Body.Close()
-
-	payloadBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return WorktreeResponse{}, err
-	}
-
-	var payload WorktreeResponse
-	if err := json.Unmarshal(payloadBody, &payload); err != nil {
-		return WorktreeResponse{}, err
-	}
-	if response.StatusCode >= 400 {
-		if payload.Path != "" {
-			return WorktreeResponse{}, errors.New(payload.Path)
-		}
-		var daemonErr map[string]string
-		if err := json.Unmarshal(payloadBody, &daemonErr); err == nil && daemonErr["error"] != "" {
-			return WorktreeResponse{}, errors.New(daemonErr["error"])
-		}
-		return WorktreeResponse{}, fmt.Errorf("worktree error: %s", response.Status)
-	}
-	return payload, nil
-}
-
-func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
-	return s.runDaemonExecAgainst(s.daemonURLValue(), req)
-}
-
-func (s *Server) runRoomDaemonExec(roomID string, req ExecRequest) (DaemonExecResponse, error) {
-	daemonURL, err := s.daemonURLForRoom(roomID)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	return s.runDaemonExecAgainst(daemonURL, req)
-}
-
-func (s *Server) runDaemonExecAgainst(daemonURL string, req ExecRequest) (DaemonExecResponse, error) {
-	if strings.TrimSpace(daemonURL) == "" {
-		return DaemonExecResponse{}, fmt.Errorf("runtime daemon url is not configured")
-	}
-	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec", bytes.NewReader(body))
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	defer response.Body.Close()
-
-	payloadBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	var payload DaemonExecResponse
-	if err := json.Unmarshal(payloadBody, &payload); err != nil {
-		return DaemonExecResponse{}, err
-	}
-	if response.StatusCode >= 400 {
-		if payload.Error != "" {
-			return DaemonExecResponse{}, fmt.Errorf("%s", payload.Error)
-		}
-		return DaemonExecResponse{}, fmt.Errorf("daemon error: %s", response.Status)
-	}
-	return payload, nil
-}
-
-func (s *Server) streamDaemonExec(r *http.Request, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
-	return s.streamDaemonExecAgainst(r, s.daemonURLValue(), req, emit)
-}
-
-func (s *Server) streamRoomDaemonExec(r *http.Request, roomID string, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
-	daemonURL, err := s.daemonURLForRoom(roomID)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	return s.streamDaemonExecAgainst(r, daemonURL, req, emit)
-}
-
-func (s *Server) streamDaemonExecAgainst(r *http.Request, daemonURL string, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
-	if strings.TrimSpace(daemonURL) == "" {
-		return DaemonExecResponse{}, fmt.Errorf("runtime daemon url is not configured")
-	}
-	body, _ := json.Marshal(req)
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec/stream", bytes.NewReader(body))
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return DaemonExecResponse{}, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= 400 {
-		payloadBody, readErr := io.ReadAll(response.Body)
-		if readErr != nil {
-			return DaemonExecResponse{}, readErr
-		}
-		var payload DaemonExecResponse
-		if err := json.Unmarshal(payloadBody, &payload); err == nil && payload.Error != "" {
-			return payload, errors.New(payload.Error)
-		}
-		return DaemonExecResponse{}, fmt.Errorf("daemon error: %s", response.Status)
-	}
-
-	var resp DaemonExecResponse
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		var event DaemonStreamEvent
-		if err := json.Unmarshal(line, &event); err != nil {
-			return resp, err
-		}
-		if event.Type == "done" {
-			resp.Output = event.Output
-		}
-		if event.Type == "error" && strings.TrimSpace(event.Error) != "" {
-			resp.Error = event.Error
-		}
-		if emit != nil {
-			if err := emit(event); err != nil {
-				return resp, err
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return resp, err
-	}
-	if strings.TrimSpace(resp.Error) != "" {
-		return resp, errors.New(resp.Error)
-	}
-	return resp, nil
 }
 
 func (s *Server) forwardGetJSON(w http.ResponseWriter, url string) {

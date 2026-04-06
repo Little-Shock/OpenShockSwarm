@@ -34,9 +34,13 @@ type Provider struct {
 }
 
 type ExecRequest struct {
-	Provider string `json:"provider"`
-	Prompt   string `json:"prompt"`
-	Cwd      string `json:"cwd"`
+	Provider  string `json:"provider"`
+	Prompt    string `json:"prompt"`
+	Cwd       string `json:"cwd"`
+	LeaseID   string `json:"leaseId,omitempty"`
+	RunID     string `json:"runId,omitempty"`
+	SessionID string `json:"sessionId,omitempty"`
+	RoomID    string `json:"roomId,omitempty"`
 }
 
 type ExecResponse struct {

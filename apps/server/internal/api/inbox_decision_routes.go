@@ -54,6 +54,9 @@ func (s *Server) handleInboxRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "inbox item not found"})
 		return
 	}
+	if !s.requireSessionPermission(w, permissionForInboxDecision(item, req.Decision)) {
+		return
+	}
 
 	var (
 		nextState store.State
