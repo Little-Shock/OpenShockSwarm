@@ -14,7 +14,6 @@ import {
 } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import {
-  fallbackState,
   type AgentStatus,
   type Issue,
   type Room,
@@ -81,10 +80,6 @@ function statusBadgeTone(status: Run["status"]) {
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
-}
-
-function getResolvedState<T>(items: T[], fallbackItems: T[]) {
-  return items.length > 0 ? items : fallbackItems;
 }
 
 function LiveStateNotice({
@@ -246,10 +241,31 @@ function RunSnapshotCard({
 }
 
 export function LiveIssuesListView() {
-  const { state } = usePhaseZeroState();
-  const issues = getResolvedState(state.issues, fallbackState.issues);
+  const { state, loading, error } = usePhaseZeroState();
 
-  return <IssuesListView issues={issues} />;
+  if (loading) {
+    return (
+      <LiveStateNotice
+        title="正在同步 Issue 真值"
+        message="等待 server 返回当前 issue / room / run 绑定关系，前端不再先拿本地 issue mock 顶上。"
+      />
+    );
+  }
+
+  if (error) {
+    return <LiveStateNotice title="Issue 同步失败" message={error} />;
+  }
+
+  if (state.issues.length === 0) {
+    return (
+      <LiveStateNotice
+        title="当前还没有 Issue"
+        message="当 server state 里出现第一条 issue 后，这里会直接展示 live issue surface。"
+      />
+    );
+  }
+
+  return <IssuesListView issues={state.issues} />;
 }
 
 export function LiveRoomsPageContent() {
@@ -431,10 +447,10 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
 }
 
 export function LiveRunsPageContent() {
-  const { state } = usePhaseZeroState();
-  const rooms = getResolvedState(state.rooms, fallbackState.rooms);
-  const issues = getResolvedState(state.issues, fallbackState.issues);
-  const runs = getResolvedState(state.runs, fallbackState.runs);
+  const { state, loading, error } = usePhaseZeroState();
+  const rooms = loading || error ? [] : state.rooms;
+  const issues = loading || error ? [] : state.issues;
+  const runs = loading || error ? [] : state.runs;
   const activeRuns = runs.filter((run) => run.status === "running" || run.status === "review").length;
   const blockedRuns = runs.filter((run) => run.status === "blocked").length;
   const approvalRuns = runs.filter((run) => run.approvalRequired).length;
@@ -459,28 +475,62 @@ export function LiveRunsPageContent() {
         />
       }
     >
-      <div className="grid gap-4">
-        {runs.map((run) => (
-          <RunSnapshotCard
-            key={run.id}
-            run={run}
-            room={rooms.find((candidate) => candidate.id === run.roomId)}
-            issue={issues.find((candidate) => candidate.key === run.issueKey)}
-          />
-        ))}
-      </div>
+      {loading ? (
+        <LiveStateNotice title="正在同步 Run 真值" message="等待 server 返回当前 run / room / issue 绑定关系。" />
+      ) : error ? (
+        <LiveStateNotice title="Run 同步失败" message={error} />
+      ) : runs.length === 0 ? (
+        <LiveStateNotice title="当前还没有 Run" message="当 server state 里出现第一条 run 后，这里会直接显示 live run surface。" />
+      ) : (
+        <div className="grid gap-4">
+          {runs.map((run) => (
+            <RunSnapshotCard
+              key={run.id}
+              run={run}
+              room={rooms.find((candidate) => candidate.id === run.roomId)}
+              issue={issues.find((candidate) => candidate.key === run.issueKey)}
+            />
+          ))}
+        </div>
+      )}
     </OpenShockShell>
   );
 }
 
 export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
-  const { state } = usePhaseZeroState();
-  const issues = getResolvedState(state.issues, fallbackState.issues);
-  const rooms = getResolvedState(state.rooms, fallbackState.rooms);
-  const runs = getResolvedState(state.runs, fallbackState.runs);
-  const issue =
-    issues.find((candidate) => candidate.key.toLowerCase() === issueKey.toLowerCase()) ??
-    fallbackState.issues.find((candidate) => candidate.key.toLowerCase() === issueKey.toLowerCase());
+  const { state, loading, error } = usePhaseZeroState();
+
+  if (loading) {
+    return (
+      <OpenShockShell
+        view="issues"
+        eyebrow="Issue 详情"
+        title="正在同步 Issue"
+        description="等待 server 返回当前 issue 详情。"
+        contextTitle="Issue Sync"
+        contextDescription="这页现在只读 live state，不再回退到本地 mock issue。"
+      >
+        <LiveStateNotice title="同步中" message="正在拉取 Issue 详情和对应的 room / run 关系。" />
+      </OpenShockShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <OpenShockShell
+        view="issues"
+        eyebrow="Issue 详情"
+        title="Issue 同步失败"
+        description="当前没拿到 server truth。"
+        contextTitle="Issue Sync"
+        contextDescription="先检查 server 是否在线，再重新打开这页。"
+      >
+        <LiveStateNotice title="同步失败" message={error} />
+      </OpenShockShell>
+    );
+  }
+
+  const issue = state.issues.find((candidate) => candidate.key.toLowerCase() === issueKey.toLowerCase());
 
   if (!issue) {
     return (
@@ -499,8 +549,8 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
     );
   }
 
-  const run = runs.find((candidate) => candidate.id === issue.runId);
-  const room = rooms.find((candidate) => candidate.id === issue.roomId);
+  const run = state.runs.find((candidate) => candidate.id === issue.runId);
+  const room = state.rooms.find((candidate) => candidate.id === issue.roomId);
 
   return (
     <OpenShockShell
@@ -535,11 +585,42 @@ export function LiveRunPageContent({
   roomId?: string;
   runId: string;
 }) {
-  const { state } = usePhaseZeroState();
-  const rooms = getResolvedState(state.rooms, fallbackState.rooms);
-  const runs = getResolvedState(state.runs, fallbackState.runs);
-  const run = runs.find((candidate) => candidate.id === runId && (!roomId || candidate.roomId === roomId));
-  const room = rooms.find((candidate) => candidate.id === (roomId ?? run?.roomId));
+  const { state, loading, error } = usePhaseZeroState();
+
+  if (loading) {
+    return (
+      <OpenShockShell
+        view="runs"
+        eyebrow="Run 详情"
+        title="正在同步 Run"
+        description="等待 server 返回当前 run 详情。"
+        selectedRoomId={roomId}
+        contextTitle="Run Sync"
+        contextDescription="这页现在只读 live state，不再回退到本地 mock run。"
+      >
+        <LiveStateNotice title="同步中" message="正在拉取 Run 详情和对应的 room 关系。" />
+      </OpenShockShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <OpenShockShell
+        view="runs"
+        eyebrow="Run 详情"
+        title="Run 同步失败"
+        description="当前没拿到 server truth。"
+        selectedRoomId={roomId}
+        contextTitle="Run Sync"
+        contextDescription="先检查 server 是否在线，再重新打开这页。"
+      >
+        <LiveStateNotice title="同步失败" message={error} />
+      </OpenShockShell>
+    );
+  }
+
+  const run = state.runs.find((candidate) => candidate.id === runId && (!roomId || candidate.roomId === roomId));
+  const room = state.rooms.find((candidate) => candidate.id === (roomId ?? run?.roomId));
 
   if (!room || !run) {
     return (

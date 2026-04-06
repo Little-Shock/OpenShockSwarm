@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 import {
-  fallbackState,
   type Message,
   type PhaseZeroState,
   type Room,
@@ -215,60 +214,115 @@ function ClaudeCompactComposer({
 }
 
 export function StitchChannelsView({ channelId }: { channelId: string }) {
-  const { state } = usePhaseZeroState();
-  const channel = state.channels.find((item) => item.id === channelId) ?? fallbackState.channels[0];
-  const messages = state.channelMessages[channel.id] ?? fallbackState.channelMessages[channel.id] ?? [];
+  const { state, loading, error } = usePhaseZeroState();
+  const channel = loading || error ? undefined : state.channels.find((item) => item.id === channelId);
+  const messages = channel ? state.channelMessages[channel.id] ?? [] : [];
+  const sidebarChannels = loading || error ? [] : state.channels;
+  const sidebarMachines = loading || error ? [] : state.machines;
+  const sidebarAgents = loading || error ? [] : state.agents;
+  const runningAgents = sidebarAgents.filter((agent) => agent.state === "running").length;
+  const blockedAgents = sidebarAgents.filter((agent) => agent.state === "blocked").length;
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
       <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[256px_minmax(0,1fr)]">
-        <StitchSidebar active="channels" channels={state.channels} machines={state.machines} agents={state.agents} />
+        <StitchSidebar active="channels" channels={sidebarChannels} machines={sidebarMachines} agents={sidebarAgents} />
         <section className="flex min-h-0 flex-col bg-white">
-          <StitchTopBar searchPlaceholder="搜索系统日志..." />
+          <StitchTopBar
+            title={
+              loading
+                ? "频道同步中"
+                : error
+                  ? "频道同步失败"
+                  : channel
+                    ? `频道：${channel.name}`
+                    : `频道：${channelId}`
+            }
+            searchPlaceholder="搜索频道消息..."
+          />
           <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_260px]">
             <div className="flex min-h-0 flex-col border-r-2 border-[var(--shock-ink)]">
               <div className="flex-1 overflow-y-auto bg-[radial-gradient(var(--shock-grid)_1px,transparent_1px)] [background-size:20px_20px] p-8">
-                <div className="mb-8 flex items-center gap-4">
-                  <div className="h-[2px] flex-1 bg-[var(--shock-ink)]" />
-                  <span className="rounded-full bg-black px-3 py-1 font-mono text-[10px] text-white">系统纪元 1715423</span>
-                  <div className="h-[2px] flex-1 bg-[var(--shock-ink)]" />
-                </div>
-
                 <div className="mx-auto max-w-4xl space-y-8">
-                  {messages.map((message, index) => (
-                    <article key={message.id} className={cn("flex items-start gap-4", index === 1 && "flex-row-reverse")}>
-                      <div
-                        className={cn(
-                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] shadow-[2px_2px_0_0_var(--shock-ink)]",
-                          index === 1 ? "bg-[var(--shock-purple)] text-white" : "bg-[var(--shock-yellow)]"
-                        )}
-                      >
-                        {index === 1 ? "🤖" : "⚙"}
-                      </div>
-                      <div className={cn("flex-1", index === 1 && "text-right")}>
-                        <div className={cn("mb-2 flex items-center gap-3", index === 1 && "justify-end")}>
-                          <span className={cn("font-display text-lg font-bold", index === 1 && "text-[var(--shock-purple)]")}>{message.speaker}</span>
-                          <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">{message.time}</span>
-                        </div>
-                        <div className={cn("relative rounded-[12px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[4px_4px_0_0_var(--shock-ink)]", index === 1 && "ml-auto max-w-[90%] bg-[#ead7ff] text-left")}>
-                          <p className="text-sm leading-7">{message.message}</p>
-                          {index === 1 ? (
-                            <div className="mt-4 rounded-[8px] border-2 border-[var(--shock-ink)] bg-black px-4 py-4 font-mono text-[11px] leading-5 text-[var(--shock-lime)]">
-                              <p>{">"} ping 127.0.0.1 --cluster=tokyo</p>
-                              <p>[STATUS] 正在分析 shard health...</p>
-                              <p>[WARN] shard 03 latency spike detected</p>
-                              <p>[OK] garbage collection stabilized</p>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                  {loading ? (
+                    <DiscussionStateMessage
+                      title="正在同步频道真值"
+                      message="等待 server 返回当前频道对象和消息列表，前端不再自动退回到另一条 mock 频道。"
+                    />
+                  ) : error ? (
+                    <DiscussionStateMessage title="频道同步失败" message={error} />
+                  ) : !channel ? (
+                    <DiscussionStateMessage
+                      title="未找到频道"
+                      message={`当前找不到 \`${channelId}\` 对应的 live channel 记录。`}
+                    />
+                  ) : messages.length === 0 ? (
+                    <DiscussionStateMessage
+                      title="这个频道当前还没有消息"
+                      message="等第一条 live channel message 出现后，这里会直接显示真实频道流。"
+                    />
+                  ) : (
+                    messages.map((message) => {
+                      const isHuman = message.role === "human";
+                      const isAgent = message.role === "agent";
+                      const blockedTone = message.tone === "blocked";
 
-                  <article className="max-w-[70%] rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-5 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                    <p className="font-display text-lg font-bold">QUICK ACTION REQUIRED</p>
-                    <p className="mt-2 text-sm leading-7">自动恢复策略建议对 Tokyo-03 重新部署。要不要先授权执行？</p>
-                  </article>
+                      return (
+                        <article
+                          key={message.id}
+                          className={cn("flex items-start gap-4", isHuman && "flex-row-reverse")}
+                        >
+                          <div
+                            className={cn(
+                              "flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] shadow-[2px_2px_0_0_var(--shock-ink)]",
+                              blockedTone
+                                ? "bg-[var(--shock-pink)] text-white"
+                                : isAgent
+                                  ? "bg-[var(--shock-purple)] text-white"
+                                  : isHuman
+                                    ? "bg-[var(--shock-yellow)]"
+                                    : "bg-white"
+                            )}
+                          >
+                            {message.role === "human" ? "人" : message.role === "agent" ? "A" : "S"}
+                          </div>
+                          <div className={cn("flex-1", isHuman && "text-right")}>
+                            <div className={cn("mb-2 flex items-center gap-3", isHuman && "justify-end")}>
+                              <span
+                                className={cn(
+                                  "font-display text-lg font-bold",
+                                  blockedTone
+                                    ? "text-[var(--shock-pink)]"
+                                    : isAgent
+                                      ? "text-[var(--shock-purple)]"
+                                      : undefined
+                                )}
+                              >
+                                {message.speaker}
+                              </span>
+                              <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">
+                                {message.time}
+                              </span>
+                            </div>
+                            <div
+                              className={cn(
+                                "relative rounded-[12px] border-2 border-[var(--shock-ink)] p-5 shadow-[4px_4px_0_0_var(--shock-ink)]",
+                                blockedTone
+                                  ? "bg-[var(--shock-pink)] text-white"
+                                  : isAgent
+                                    ? "bg-[#ead7ff]"
+                                    : isHuman
+                                      ? "ml-auto max-w-[90%] bg-white text-left"
+                                      : "bg-[var(--shock-paper)]"
+                              )}
+                            >
+                              <p className="whitespace-pre-wrap text-sm leading-7">{message.message}</p>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -276,10 +330,15 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                 <div className="mx-auto flex max-w-4xl items-center gap-3">
                   <button className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white text-xl">+</button>
                   <div className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-4 py-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.48)]">
-                    发送消息到 {channel.name}...
+                    {channel ? `发送消息到 ${channel.name}...` : "等待频道同步..."}
                   </div>
                   <button className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white">☺</button>
-                  <button className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-3 font-mono text-[11px] tracking-[0.14em]">发送 ↗</button>
+                  <button
+                    disabled={!channel || loading || Boolean(error)}
+                    className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-3 font-mono text-[11px] tracking-[0.14em] disabled:opacity-60"
+                  >
+                    发送 ↗
+                  </button>
                 </div>
               </div>
             </div>
@@ -287,18 +346,37 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             <aside className="hidden overflow-y-auto bg-[#f6f6f6] p-4 xl:block">
               <div className="space-y-4">
                 <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">活动内存</p>
-                  <p className="mt-2 font-display text-4xl font-bold">14.8 GB</p>
-                  <div className="mt-4 h-3 rounded-full border-2 border-[var(--shock-ink)] bg-[#f1f1f1]"><div className="h-full w-[72%] bg-[var(--shock-yellow)]" /></div>
+                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">频道定位</p>
+                  <p className="mt-2 font-display text-2xl font-bold">{channel?.name ?? "等待同步"}</p>
+                  <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                    {channel?.purpose ?? "当前还没有拿到这条频道的 live purpose。"}
+                  </p>
                 </div>
                 <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-4">
-                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Thread Health</p>
-                  <div className="mt-4 flex gap-1">{["#22c55e", "#22c55e", "#facc15", "#22c55e", "#ef4444"].map((color, index) => <span key={`${color}-${index}`} className="h-4 flex-1 rounded-[2px] border border-[var(--shock-ink)]" style={{ backgroundColor: color }} />)}</div>
+                  <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">频道基线</p>
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>消息数</span>
+                      <span className="font-mono text-[11px]">{messages.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>未读</span>
+                      <span className="font-mono text-[11px]">{channel?.unread ?? 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>活跃公民</span>
+                      <span className="font-mono text-[11px]">{runningAgents}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>阻塞公民</span>
+                      <span className="font-mono text-[11px]">{blockedAgents}</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-4">
                   <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">在线公民</p>
                   <div className="mt-4 space-y-3">
-                    {state.agents.map((agent) => (
+                    {sidebarAgents.map((agent) => (
                       <div key={agent.id} className="flex items-start gap-3">
                         <span className={cn("mt-1 h-3 w-3 rounded-full border border-[var(--shock-ink)]", agent.state === "blocked" ? "bg-[var(--shock-pink)]" : "bg-[var(--shock-lime)]")} />
                         <div>

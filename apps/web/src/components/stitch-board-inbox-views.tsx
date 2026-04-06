@@ -178,9 +178,10 @@ export function StitchBoardView() {
 }
 
 export function StitchInboxView() {
-  const { state, loading, error, updatePullRequest } = usePhaseZeroState();
+  const { state, loading, error, applyInboxDecision } = usePhaseZeroState();
   const inboxItems = loading || error ? [] : state.inbox;
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
   const sidebarChannels = loading || error ? [] : state.channels;
   const sidebarMachines = loading || error ? [] : state.machines;
   const sidebarAgents = loading || error ? [] : state.agents;
@@ -190,12 +191,20 @@ export function StitchInboxView() {
     return state.pullRequests.find((pullRequest) => item.href.includes(pullRequest.runId) || item.href.includes(pullRequest.roomId));
   }
 
-  async function handleReviewAction(item: InboxItem, status: "merged" | "changes_requested") {
-    const pullRequest = findPullRequestForItem(item);
-    if (!pullRequest || busyId) return;
-    setBusyId(pullRequest.id);
+  async function handleInboxDecision(
+    item: InboxItem,
+    decision: "approved" | "deferred" | "resolved" | "merged" | "changes_requested"
+  ) {
+    if (busyId) return;
+    setBusyId(item.id);
+    setActionError(null);
     try {
-      await updatePullRequest(pullRequest.id, { status });
+      await applyInboxDecision(item.id, decision);
+    } catch (decisionError) {
+      setActionError({
+        id: item.id,
+        message: decisionError instanceof Error ? decisionError.message : "decision failed",
+      });
     } finally {
       setBusyId(null);
     }
@@ -262,30 +271,67 @@ export function StitchInboxView() {
                         {item.kind === "review" && findPullRequestForItem(item) ? (
                           <>
                             <button
-                              disabled={busyId === findPullRequestForItem(item)?.id}
-                              onClick={() => void handleReviewAction(item, "merged")}
+                              disabled={busyId === item.id}
+                              onClick={() => void handleInboxDecision(item, "merged")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >
                               Merge
                             </button>
                             <button
-                              disabled={busyId === findPullRequestForItem(item)?.id}
-                              onClick={() => void handleReviewAction(item, "changes_requested")}
+                              disabled={busyId === item.id}
+                              onClick={() => void handleInboxDecision(item, "changes_requested")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >
                               Request Changes
                             </button>
                           </>
-                        ) : (
+                        ) : item.kind === "approval" ? (
                           <>
-                            <Link href={item.href} className={cn("inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] px-4 py-3 font-mono text-[10px]", item.kind === "approval" ? "bg-[var(--shock-yellow)]" : item.kind === "blocked" ? "bg-[var(--shock-purple)] text-white" : "bg-white")}>
-                              {item.kind === "approval" ? "Authorize" : item.kind === "blocked" ? "Resolve" : "View"}
-                            </Link>
-                            <button className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px]">
-                              {item.kind === "approval" ? "Review Diff" : item.kind === "blocked" ? "Defer" : "Reply"}
+                            <button
+                              disabled={busyId === item.id}
+                              onClick={() => void handleInboxDecision(item, "approved")}
+                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              disabled={busyId === item.id}
+                              onClick={() => void handleInboxDecision(item, "deferred")}
+                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
+                            >
+                              Defer
                             </button>
                           </>
+                        ) : item.kind === "blocked" ? (
+                          <>
+                            <button
+                              disabled={busyId === item.id}
+                              onClick={() => void handleInboxDecision(item, "resolved")}
+                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] px-4 py-3 font-mono text-[10px] text-white disabled:opacity-60"
+                            >
+                              Resolve
+                            </button>
+                            <button
+                              disabled={busyId === item.id}
+                              onClick={() => void handleInboxDecision(item, "deferred")}
+                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
+                            >
+                              Defer
+                            </button>
+                          </>
+                        ) : (
+                          <Link href={item.href} className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px]">
+                            View
+                          </Link>
                         )}
+                        {item.kind !== "status" ? (
+                          <Link href={item.href} className="font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2">
+                            Open Context
+                          </Link>
+                        ) : null}
+                        {actionError?.id === item.id ? (
+                          <p className="max-w-[200px] text-right font-mono text-[10px] text-[var(--shock-pink)]">{actionError.message}</p>
+                        ) : null}
                       </div>
                     </article>
                   ))

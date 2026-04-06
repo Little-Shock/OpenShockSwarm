@@ -8,7 +8,6 @@ import {
   getBoardColumns,
   getIssueByRoomId,
   getRunById,
-  issues,
   roomMessages,
   settingsSections,
   setupSteps,
@@ -582,7 +581,7 @@ export function BoardView() {
   );
 }
 
-export function IssuesListView({ issues: issueList = issues }: { issues?: Issue[] }) {
+export function IssuesListView({ issues: issueList }: { issues: Issue[] }) {
   return (
     <div className="grid gap-4">
       {issueList.map((issue) => (
@@ -614,7 +613,7 @@ export function IssuesListView({ issues: issueList = issues }: { issues?: Issue[
 
 export function IssueDetailView({
   issue,
-  run = getRunById(issue.runId),
+  run,
   roomTitle,
 }: {
   issue: Issue;

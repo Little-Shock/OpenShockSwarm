@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,12 @@ func TestProbeReadyWhenOriginAndGitHubAuthExist(t *testing.T) {
 	if !status.GHAuthenticated {
 		t.Fatalf("status.GHAuthenticated = false, want true")
 	}
+	if status.AuthMode != "gh-cli" {
+		t.Fatalf("status.AuthMode = %q, want gh-cli", status.AuthMode)
+	}
+	if status.PreferredAuthMode != "gh-cli" {
+		t.Fatalf("status.PreferredAuthMode = %q, want gh-cli", status.PreferredAuthMode)
+	}
 	if status.Repo != "Larkspur-Wang/OpenShock" {
 		t.Fatalf("status.Repo = %q, want Larkspur-Wang/OpenShock", status.Repo)
 	}
@@ -89,6 +96,113 @@ func TestProbeDegradesWhenGitHubCLIIsMissing(t *testing.T) {
 	}
 	if status.Message == "" {
 		t.Fatal("status.Message should not be empty")
+	}
+}
+
+func TestProbePrefersGitHubAppInstallTruthWhenConfigured(t *testing.T) {
+	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
+	t.Setenv("OPENSHOCK_GITHUB_APP_SLUG", "openshock-app")
+	t.Setenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY", "inline-private-key")
+	t.Setenv("OPENSHOCK_GITHUB_APP_INSTALLATION_ID", "67890")
+
+	service := NewService(fakeRunner{
+		lookPaths: map[string]string{},
+		outputs: map[string]fakeOutput{
+			"git -C E:\\repo remote get-url origin":       {text: "https://github.com/Larkspur-Wang/OpenShock.git"},
+			"git -C E:\\repo rev-parse --abbrev-ref HEAD": {text: "main"},
+		},
+	})
+
+	status, err := service.Probe(`E:\repo`)
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if status.AuthMode != "github-app" {
+		t.Fatalf("status.AuthMode = %q, want github-app", status.AuthMode)
+	}
+	if status.PreferredAuthMode != "github-app" {
+		t.Fatalf("status.PreferredAuthMode = %q, want github-app", status.PreferredAuthMode)
+	}
+	if !status.AppConfigured || !status.AppInstalled {
+		t.Fatalf("app readiness = (%t, %t), want true/true", status.AppConfigured, status.AppInstalled)
+	}
+	if !status.Ready {
+		t.Fatalf("status.Ready = false, want true")
+	}
+	if status.InstallationURL != "https://github.com/settings/installations/67890" {
+		t.Fatalf("status.InstallationURL = %q, want installation settings URL", status.InstallationURL)
+	}
+}
+
+func TestProbeSurfacesIncompleteGitHubAppContract(t *testing.T) {
+	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
+	t.Setenv("OPENSHOCK_GITHUB_APP_SLUG", "openshock-app")
+
+	service := NewService(fakeRunner{
+		lookPaths: map[string]string{},
+		outputs: map[string]fakeOutput{
+			"git -C E:\\repo remote get-url origin":       {text: "https://github.com/Larkspur-Wang/OpenShock.git"},
+			"git -C E:\\repo rev-parse --abbrev-ref HEAD": {text: "main"},
+		},
+	})
+
+	status, err := service.Probe(`E:\repo`)
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if status.AuthMode != "unavailable" {
+		t.Fatalf("status.AuthMode = %q, want unavailable", status.AuthMode)
+	}
+	if status.PreferredAuthMode != "github-app" {
+		t.Fatalf("status.PreferredAuthMode = %q, want github-app", status.PreferredAuthMode)
+	}
+	if status.AppConfigured {
+		t.Fatalf("status.AppConfigured = true, want false")
+	}
+	if status.AppInstalled {
+		t.Fatalf("status.AppInstalled = true, want false")
+	}
+	if status.Ready {
+		t.Fatalf("status.Ready = true, want false")
+	}
+	if len(status.Missing) != 2 || status.Missing[0] != "privateKey" || status.Missing[1] != "installationId" {
+		t.Fatalf("status.Missing = %#v, want privateKey + installationId", status.Missing)
+	}
+	if status.InstallationURL != "https://github.com/apps/openshock-app/installations/new" {
+		t.Fatalf("status.InstallationURL = %q, want app installation URL", status.InstallationURL)
+	}
+}
+
+func TestProbeFallsBackToGHCLIWhenGitHubAppProbeIsIncomplete(t *testing.T) {
+	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
+	t.Setenv("OPENSHOCK_GITHUB_APP_SLUG", "openshock-app")
+
+	service := NewService(fakeRunner{
+		lookPaths: map[string]string{
+			"gh": "C:\\gh.exe",
+		},
+		outputs: map[string]fakeOutput{
+			"git -C E:\\repo remote get-url origin":       {text: "https://github.com/Larkspur-Wang/OpenShock.git"},
+			"git -C E:\\repo rev-parse --abbrev-ref HEAD": {text: "main"},
+			"gh auth status --hostname github.com":        {text: "github.com\n  ✓ Logged in"},
+		},
+	})
+
+	status, err := service.Probe(`E:\repo`)
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if !status.Ready {
+		t.Fatalf("status.Ready = false, want true")
+	}
+	if status.AuthMode != "gh-cli" {
+		t.Fatalf("status.AuthMode = %q, want gh-cli", status.AuthMode)
+	}
+	if status.PreferredAuthMode != "github-app" {
+		t.Fatalf("status.PreferredAuthMode = %q, want github-app", status.PreferredAuthMode)
+	}
+	if !strings.Contains(status.Message, "当前仍退回 gh CLI") {
+		t.Fatalf("status.Message = %q, want gh CLI fallback contract", status.Message)
 	}
 }
 

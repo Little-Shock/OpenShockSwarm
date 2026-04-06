@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCreateIssueInitializesSessionMemoryPaths(t *testing.T) {
@@ -14,6 +15,15 @@ func TestCreateIssueInitializesSessionMemoryPaths(t *testing.T) {
 	s, err := New(statePath, root)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
+	}
+	if _, err := s.UpdateRuntimePairing(RuntimePairingInput{
+		DaemonURL:   "http://127.0.0.1:8091",
+		Machine:     "shock-sidecar",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
 	}
 
 	result, err := s.CreateIssue(CreateIssueInput{
@@ -54,6 +64,221 @@ func TestCreateIssueInitializesSessionMemoryPaths(t *testing.T) {
 		if !contains(session.MemoryPaths, path) {
 			t.Fatalf("expected session memory paths to contain %q, got %#v", path, session.MemoryPaths)
 		}
+	}
+}
+
+func TestCreateIssueSchedulesOwnerPreferredRuntime(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if _, err := s.UpdateRuntimePairing(RuntimePairingInput{
+		DaemonURL:   "http://127.0.0.1:8091",
+		Machine:     "shock-sidecar",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	result, err := s.CreateIssue(CreateIssueInput{
+		Title:    "Runtime Scheduler Ready",
+		Summary:  "verify multi-runtime scheduling",
+		Owner:    "Claude Review Runner",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	snapshot := s.Snapshot()
+	run := findRunByID(snapshot, result.RunID)
+	session := findSessionByID(snapshot, result.SessionID)
+	if run == nil || session == nil {
+		t.Fatalf("expected run/session to exist after create issue")
+	}
+
+	if run.Runtime != "shock-sidecar" || run.Machine != "shock-sidecar" {
+		t.Fatalf("run scheduling = runtime %q machine %q, want shock-sidecar", run.Runtime, run.Machine)
+	}
+	if run.Provider != "Claude Code CLI" {
+		t.Fatalf("run provider = %q, want Claude Code CLI", run.Provider)
+	}
+	if session.Runtime != "shock-sidecar" || session.Machine != "shock-sidecar" || session.Provider != "Claude Code CLI" {
+		t.Fatalf("session scheduling = %#v, want shock-sidecar / Claude Code CLI", session)
+	}
+}
+
+func TestCreateIssueRejectsWhenAllRuntimesOffline(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := s.UpdateRuntimePairing(RuntimePairingInput{
+		RuntimeID:  "shock-main",
+		DaemonURL:  "http://127.0.0.1:8090",
+		Machine:    "shock-main",
+		State:      "online",
+		ReportedAt: now.Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing(main) error = %v", err)
+	}
+	if _, err := s.UpsertRuntimeHeartbeat(RuntimeHeartbeatInput{
+		RuntimeID:          "shock-sidecar",
+		DaemonURL:          "http://127.0.0.1:8091",
+		Machine:            "shock-sidecar",
+		State:              "online",
+		ReportedAt:         now.Format(time.RFC3339),
+		HeartbeatIntervalS: 10,
+		HeartbeatTimeoutS:  45,
+	}); err != nil {
+		t.Fatalf("UpsertRuntimeHeartbeat(sidecar online) error = %v", err)
+	}
+
+	offlineReportedAt := now.Add(-2 * time.Minute).Format(time.RFC3339)
+	for _, runtimeID := range []string{"shock-main", "shock-sidecar"} {
+		if _, err := s.UpsertRuntimeHeartbeat(RuntimeHeartbeatInput{
+			RuntimeID:          runtimeID,
+			DaemonURL:          map[string]string{"shock-main": "http://127.0.0.1:8090", "shock-sidecar": "http://127.0.0.1:8091"}[runtimeID],
+			Machine:            runtimeID,
+			State:              "online",
+			ReportedAt:         offlineReportedAt,
+			HeartbeatIntervalS: 10,
+			HeartbeatTimeoutS:  45,
+		}); err != nil {
+			t.Fatalf("UpsertRuntimeHeartbeat(%s offline) error = %v", runtimeID, err)
+		}
+	}
+
+	before := s.Snapshot()
+	_, err = s.CreateIssue(CreateIssueInput{
+		Title:    "All Offline Runtime",
+		Summary:  "verify scheduler rejects offline runtimes",
+		Owner:    "Claude Review Runner",
+		Priority: "high",
+	})
+	if err != ErrNoSchedulableRuntime {
+		t.Fatalf("CreateIssue() error = %v, want %v", err, ErrNoSchedulableRuntime)
+	}
+
+	after := s.Snapshot()
+	if len(after.Issues) != len(before.Issues) || len(after.Runs) != len(before.Runs) || len(after.Sessions) != len(before.Sessions) {
+		t.Fatalf("create issue mutated state on failure: before issues/runs/sessions = %d/%d/%d after = %d/%d/%d", len(before.Issues), len(before.Runs), len(before.Sessions), len(after.Issues), len(after.Runs), len(after.Sessions))
+	}
+	if after.Workspace.PairingStatus != workspacePairingDegraded {
+		t.Fatalf("pairing status = %q, want %q", after.Workspace.PairingStatus, workspacePairingDegraded)
+	}
+	for _, machine := range after.Machines {
+		if machine.Name == "shock-main" || machine.Name == "shock-sidecar" {
+			if machine.State != runtimeStateOffline {
+				t.Fatalf("machine %s state = %q, want %q", machine.Name, machine.State, runtimeStateOffline)
+			}
+		}
+	}
+}
+
+func TestSelectRuntimePersistsSelectedDaemon(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if _, err := s.UpdateRuntimePairing(RuntimePairingInput{
+		DaemonURL:   "http://127.0.0.1:8091",
+		Machine:     "shock-sidecar",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	nextState, err := s.SelectRuntime("shock-sidecar")
+	if err != nil {
+		t.Fatalf("SelectRuntime() error = %v", err)
+	}
+
+	if nextState.Workspace.PairedRuntime != "shock-sidecar" {
+		t.Fatalf("paired runtime = %q, want shock-sidecar", nextState.Workspace.PairedRuntime)
+	}
+	if nextState.Workspace.PairedRuntimeURL != "http://127.0.0.1:8091" {
+		t.Fatalf("paired runtime url = %q, want http://127.0.0.1:8091", nextState.Workspace.PairedRuntimeURL)
+	}
+}
+
+func TestRuntimeHeartbeatLifecycleDegradesAndRecoversPairedRuntime(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	reportedAt := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339)
+	state, err := s.UpdateRuntimePairing(RuntimePairingInput{
+		RuntimeID:  "shock-stale",
+		DaemonURL:  "http://127.0.0.1:8099",
+		Machine:    "shock-stale",
+		State:      "online",
+		ReportedAt: reportedAt,
+	})
+	if err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	if state.Workspace.PairingStatus != workspacePairingDegraded {
+		t.Fatalf("pairing status = %q, want %q", state.Workspace.PairingStatus, workspacePairingDegraded)
+	}
+
+	var staleRuntime *RuntimeRecord
+	for index := range state.Runtimes {
+		if state.Runtimes[index].ID == "shock-stale" {
+			staleRuntime = &state.Runtimes[index]
+			break
+		}
+	}
+	if staleRuntime == nil {
+		t.Fatalf("runtime shock-stale missing from registry: %#v", state.Runtimes)
+	}
+	if staleRuntime.State != runtimeStateOffline {
+		t.Fatalf("runtime state = %q, want %q", staleRuntime.State, runtimeStateOffline)
+	}
+
+	recovered, err := s.UpsertRuntimeHeartbeat(RuntimeHeartbeatInput{
+		RuntimeID:  "shock-stale",
+		DaemonURL:  "http://127.0.0.1:8099",
+		Machine:    "shock-stale",
+		State:      "online",
+		ReportedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("UpsertRuntimeHeartbeat() error = %v", err)
+	}
+	if recovered.Workspace.PairingStatus != workspacePairingPaired {
+		t.Fatalf("pairing status after heartbeat = %q, want %q", recovered.Workspace.PairingStatus, workspacePairingPaired)
+	}
+
+	staleRuntime = nil
+	for index := range recovered.Runtimes {
+		if recovered.Runtimes[index].ID == "shock-stale" {
+			staleRuntime = &recovered.Runtimes[index]
+			break
+		}
+	}
+	if staleRuntime == nil || staleRuntime.State != runtimeStateOnline {
+		t.Fatalf("recovered runtime = %#v, want online", staleRuntime)
 	}
 }
 

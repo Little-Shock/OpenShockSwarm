@@ -16,19 +16,21 @@ import (
 )
 
 type Config struct {
-	DaemonURL     string
-	WorkspaceRoot string
-	GitHub        githubsvc.Client
+	DaemonURL           string
+	WorkspaceRoot       string
+	GitHub              githubsvc.Client
+	GitHubWebhookSecret string
 }
 
 type Server struct {
-	store            *store.Store
-	httpClient       *http.Client
-	defaultDaemonURL string
-	daemonURL        string
-	daemonMu         sync.RWMutex
-	workspaceRoot    string
-	github           githubsvc.Client
+	store               *store.Store
+	httpClient          *http.Client
+	defaultDaemonURL    string
+	daemonURL           string
+	daemonMu            sync.RWMutex
+	workspaceRoot       string
+	github              githubsvc.Client
+	githubWebhookSecret string
 }
 
 type ExecRequest struct {
@@ -63,21 +65,20 @@ type DaemonExecResponse struct {
 }
 
 type RuntimeSnapshotResponse struct {
-	Machine     string   `json:"machine"`
-	DetectedCLI []string `json:"detectedCli"`
-	Providers   []struct {
-		ID           string   `json:"id"`
-		Label        string   `json:"label"`
-		Mode         string   `json:"mode"`
-		Capabilities []string `json:"capabilities"`
-		Transport    string   `json:"transport"`
-	} `json:"providers"`
-	State         string `json:"state"`
-	WorkspaceRoot string `json:"workspaceRoot"`
-	ReportedAt    string `json:"reportedAt"`
+	RuntimeID          string                  `json:"runtimeId,omitempty"`
+	DaemonURL          string                  `json:"daemonUrl,omitempty"`
+	Machine            string                  `json:"machine"`
+	DetectedCLI        []string                `json:"detectedCli"`
+	Providers          []store.RuntimeProvider `json:"providers"`
+	State              string                  `json:"state"`
+	WorkspaceRoot      string                  `json:"workspaceRoot"`
+	ReportedAt         string                  `json:"reportedAt"`
+	HeartbeatIntervalS int                     `json:"heartbeatIntervalSeconds,omitempty"`
+	HeartbeatTimeoutS  int                     `json:"heartbeatTimeoutSeconds,omitempty"`
 }
 
 type PairRuntimeRequest struct {
+	RuntimeID string `json:"runtimeId"`
 	DaemonURL string `json:"daemonUrl"`
 }
 
@@ -87,6 +88,17 @@ type PairingStatusResponse struct {
 	PairingStatus string `json:"pairingStatus"`
 	DeviceAuth    string `json:"deviceAuth"`
 	LastPairedAt  string `json:"lastPairedAt"`
+}
+
+type SelectRuntimeRequest struct {
+	Machine string `json:"machine"`
+}
+
+type RuntimeSelectionResponse struct {
+	SelectedRuntime   string          `json:"selectedRuntime"`
+	SelectedDaemonURL string          `json:"selectedDaemonUrl"`
+	PairingStatus     string          `json:"pairingStatus"`
+	Runtimes          []store.Machine `json:"runtimes"`
 }
 
 type DaemonStreamEvent struct {
@@ -127,12 +139,13 @@ func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 		githubService = githubsvc.NewService(nil)
 	}
 	return &Server{
-		store:            s,
-		httpClient:       httpClient,
-		defaultDaemonURL: strings.TrimRight(cfg.DaemonURL, "/"),
-		daemonURL:        daemonURL,
-		workspaceRoot:    cfg.WorkspaceRoot,
-		github:           githubService,
+		store:               s,
+		httpClient:          httpClient,
+		defaultDaemonURL:    strings.TrimRight(cfg.DaemonURL, "/"),
+		daemonURL:           daemonURL,
+		workspaceRoot:       cfg.WorkspaceRoot,
+		github:              githubService,
+		githubWebhookSecret: strings.TrimSpace(cfg.GitHubWebhookSecret),
 	}
 }
 
@@ -151,13 +164,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/sessions", s.handleSessionRoutes)
 	mux.HandleFunc("/v1/sessions/", s.handleSessionRoutes)
 	mux.HandleFunc("/v1/inbox", s.handleInbox)
+	mux.HandleFunc("/v1/inbox/", s.handleInboxRoutes)
 	mux.HandleFunc("/v1/memory", s.handleMemory)
 	mux.HandleFunc("/v1/pull-requests", s.handlePullRequests)
 	mux.HandleFunc("/v1/pull-requests/", s.handlePullRequestRoutes)
+	mux.HandleFunc("/v1/runtime/registry", s.handleRuntimeRegistry)
+	mux.HandleFunc("/v1/runtime/heartbeats", s.handleRuntimeHeartbeats)
 	mux.HandleFunc("/v1/runtime", s.handleRuntime)
 	mux.HandleFunc("/v1/runtime/pairing", s.handleRuntimePairing)
+	mux.HandleFunc("/v1/runtime/selection", s.handleRuntimeSelection)
 	mux.HandleFunc("/v1/repo/binding", s.handleRepoBinding)
 	mux.HandleFunc("/v1/github/connection", s.handleGitHubConnection)
+	mux.HandleFunc("/v1/github/webhook", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
 	return withCORS(mux)
 }
@@ -204,11 +222,29 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 			Priority: req.Priority,
 		})
 		if err != nil {
+			if errors.Is(err, store.ErrNoSchedulableRuntime) {
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"error": err.Error(),
+					"state": s.store.Snapshot(),
+				})
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 
-		worktreePayload, ensureErr := s.ensureWorktreeLane(WorktreeRequest{
+		daemonURL, daemonErr := s.daemonURLForRunID(result.RunID)
+		if daemonErr != nil {
+			nextState, appendErr := s.store.AppendSystemRoomMessage(result.RoomID, "System", fmt.Sprintf("worktree 创建失败：%s", daemonErr.Error()), "blocked")
+			if appendErr != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": daemonErr.Error()})
+				return
+			}
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": daemonErr.Error(), "state": nextState, "roomId": result.RoomID})
+			return
+		}
+
+		worktreePayload, ensureErr := s.ensureWorktreeLane(daemonURL, WorktreeRequest{
 			WorkspaceRoot: s.workspaceRoot,
 			Branch:        result.Branch,
 			WorktreeName:  result.WorktreeName,
@@ -294,7 +330,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		payload, err := s.runDaemonExec(ExecRequest{
+		payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
 			Provider: defaultString(req.Provider, "claude"),
 			Prompt:   prompt,
 			Cwd:      defaultString(req.Cwd, s.workspaceRoot),
@@ -328,7 +364,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		if existing, ok := findPullRequestByRoom(snapshot, roomID); ok {
 			nextState, err := s.syncStoredPullRequest(existing)
 			if err != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				writePullRequestFailure(w, "sync", roomID, existing.ID, err, nextState)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"pullRequestId": existing.ID, "state": nextState})
@@ -349,12 +385,12 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			Body:       buildPullRequestBody(issue, room, run),
 		})
 		if err != nil {
-			nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", fmt.Sprintf("GitHub PR 创建失败：%s", err.Error()), "blocked")
+			nextState, appendErr := s.store.AppendGitHubPullRequestFailure(roomID, "create", "", err.Error())
 			if appendErr != nil {
 				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 				return
 			}
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "state": nextState})
+			writePullRequestFailure(w, "create", roomID, "", err, nextState)
 			return
 		}
 
@@ -451,7 +487,7 @@ func (s *Server) handlePullRequests(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.store.Snapshot()
 	nextState, err := s.syncStoredPullRequests(snapshot.PullRequests)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writePullRequestFailure(w, "sync", "", "", err, nextState)
 		return
 	}
 	writeJSON(w, http.StatusOK, nextState.PullRequests)
@@ -472,7 +508,7 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 		}
 		nextState, err := s.syncStoredPullRequest(item)
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			writePullRequestFailure(w, "sync", item.RoomID, pullRequestID, err, nextState)
 			return
 		}
 		synced, ok := findPullRequest(nextState, pullRequestID)
@@ -514,12 +550,16 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	if err != nil {
-		nextState, appendErr := s.store.AppendSystemRoomMessage(item.RoomID, "System", fmt.Sprintf("GitHub PR 同步失败：%s", err.Error()), "blocked")
+		operation := "sync"
+		if req.Status == "merged" {
+			operation = "merge"
+		}
+		nextState, appendErr := s.store.AppendGitHubPullRequestFailure(item.RoomID, operation, item.Label, err.Error())
 		if appendErr != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "state": nextState})
+		writePullRequestFailure(w, operation, item.RoomID, pullRequestID, err, nextState)
 		return
 	}
 
@@ -536,7 +576,7 @@ func (s *Server) syncStoredPullRequests(items []store.PullRequest) (store.State,
 	for _, item := range items {
 		nextState, err := s.syncStoredPullRequest(item)
 		if err != nil {
-			return store.State{}, err
+			return nextState, err
 		}
 		finalState = nextState
 	}
@@ -554,9 +594,28 @@ func (s *Server) syncStoredPullRequest(item store.PullRequest) (store.State, err
 		Number: item.Number,
 	})
 	if err != nil {
-		return store.State{}, err
+		nextState, appendErr := s.store.AppendGitHubPullRequestFailure(item.RoomID, "sync", item.Label, err.Error())
+		if appendErr != nil {
+			return store.State{}, err
+		}
+		return nextState, err
 	}
 	return s.store.SyncPullRequestFromRemote(item.ID, mapGitHubPullRequest(remotePullRequest))
+}
+
+func writePullRequestFailure(w http.ResponseWriter, operation, roomID, pullRequestID string, err error, nextState store.State) {
+	payload := map[string]any{
+		"error":     err.Error(),
+		"operation": operation,
+		"state":     nextState,
+	}
+	if roomID != "" {
+		payload["roomId"] = roomID
+	}
+	if pullRequestID != "" {
+		payload["pullRequestId"] = pullRequestID
+	}
+	writeJSON(w, http.StatusBadGateway, payload)
 }
 
 func shouldSyncGitHubPullRequest(workspace store.WorkspaceSnapshot, item store.PullRequest) bool {
@@ -658,12 +717,38 @@ func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	workspace := s.store.Snapshot().Workspace
-	if workspace.PairingStatus != "paired" || strings.TrimSpace(s.daemonURLValue()) == "" {
-		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(workspace))
+	snapshot := s.store.Snapshot()
+	runtimeName := strings.TrimSpace(r.URL.Query().Get("machine"))
+	if runtimeName == "" {
+		runtimeName = snapshot.Workspace.PairedRuntime
+	}
+	daemonURL, err := daemonURLForRuntime(snapshot, runtimeName)
+	if err != nil {
+		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
 		return
 	}
-	s.forwardGetJSON(w, s.daemonURLValue()+"/v1/runtime")
+
+	runtimeSnapshot, err := s.fetchRuntimeSnapshot(daemonURL)
+	if err != nil {
+		if record, ok := findRuntimeRecord(snapshot, runtimeName); ok {
+			writeJSON(w, http.StatusOK, runtimeSnapshotFromRecord(record))
+			return
+		}
+		writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+		return
+	}
+
+	if runtimeSnapshot.DaemonURL == "" {
+		runtimeSnapshot.DaemonURL = daemonURL
+	}
+	if runtimeSnapshot.RuntimeID == "" {
+		runtimeSnapshot.RuntimeID = defaultString(runtimeSnapshot.Machine, runtimeName)
+	}
+	if _, upsertErr := s.store.UpsertRuntimeHeartbeat(runtimeHeartbeatInputFromSnapshot(runtimeSnapshot)); upsertErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": upsertErr.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, runtimeSnapshot)
 }
 
 func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
@@ -683,7 +768,21 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
+		snapshot := s.store.Snapshot()
 		daemonURL := strings.TrimRight(strings.TrimSpace(req.DaemonURL), "/")
+		runtimeID := strings.TrimSpace(req.RuntimeID)
+		if runtimeID != "" && daemonURL == "" {
+			record, ok := findRuntimeRecord(snapshot, runtimeID)
+			if !ok {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime not found"})
+				return
+			}
+			daemonURL = strings.TrimRight(strings.TrimSpace(record.DaemonURL), "/")
+			if daemonURL == "" {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("runtime %s is not paired to a daemon", runtimeID)})
+				return
+			}
+		}
 		if daemonURL == "" {
 			daemonURL = s.daemonURLValue()
 		}
@@ -692,20 +791,35 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
-		s.setDaemonURL(daemonURL)
+		if runtimeSnapshot.DaemonURL == "" {
+			runtimeSnapshot.DaemonURL = daemonURL
+		}
+		if runtimeSnapshot.RuntimeID == "" {
+			runtimeSnapshot.RuntimeID = defaultString(runtimeID, runtimeSnapshot.Machine)
+		}
+		if runtimeID != "" && !runtimeSnapshotMatchesRequested(runtimeSnapshot, runtimeID) {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"error": fmt.Sprintf("runtime %s resolved to %s", runtimeID, defaultString(strings.TrimSpace(runtimeSnapshot.RuntimeID), runtimeSnapshot.Machine)),
+			})
+			return
+		}
+		s.setDaemonURL(runtimeSnapshot.DaemonURL)
 		nextState, err := s.store.UpdateRuntimePairing(store.RuntimePairingInput{
-			DaemonURL:   daemonURL,
-			Machine:     runtimeSnapshot.Machine,
-			DetectedCLI: runtimeSnapshot.DetectedCLI,
-			State:       runtimeSnapshot.State,
-			ReportedAt:  runtimeSnapshot.ReportedAt,
+			RuntimeID:     runtimeSnapshot.RuntimeID,
+			DaemonURL:     runtimeSnapshot.DaemonURL,
+			Machine:       runtimeSnapshot.Machine,
+			DetectedCLI:   runtimeSnapshot.DetectedCLI,
+			Providers:     runtimeSnapshot.Providers,
+			State:         runtimeSnapshot.State,
+			WorkspaceRoot: runtimeSnapshot.WorkspaceRoot,
+			ReportedAt:    runtimeSnapshot.ReportedAt,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"daemonUrl": daemonURL,
+			"daemonUrl": runtimeSnapshot.DaemonURL,
 			"runtime":   runtimeSnapshot,
 			"state":     nextState,
 		})
@@ -718,8 +832,79 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 		s.setDaemonURL("")
 		writeJSON(w, http.StatusOK, map[string]any{
 			"daemonUrl": "",
-			"runtime":   offlineRuntimeSnapshot(nextState.Workspace),
+			"runtime":   offlineRuntimeSnapshot("", nextState.Workspace.LastPairedAt),
 			"state":     nextState,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) handleRuntimeRegistry(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	snapshot := s.store.Snapshot()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"pairedRuntime": snapshot.Workspace.PairedRuntime,
+		"pairingStatus": snapshot.Workspace.PairingStatus,
+		"runtimes":      snapshot.Runtimes,
+	})
+}
+
+func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req RuntimeSnapshotResponse
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.RuntimeID) == "" && strings.TrimSpace(req.Machine) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "runtimeId or machine is required"})
+		return
+	}
+
+	nextState, err := s.store.UpsertRuntimeHeartbeat(runtimeHeartbeatInputFromSnapshot(req))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"runtimeId": defaultString(req.RuntimeID, req.Machine),
+		"state":     nextState,
+	})
+}
+
+func (s *Server) handleRuntimeSelection(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, buildRuntimeSelectionResponse(s.store.Snapshot()))
+	case http.MethodPost:
+		var req SelectRuntimeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		nextState, err := s.store.SelectRuntime(req.Machine)
+		if err != nil {
+			status := http.StatusConflict
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				status = http.StatusNotFound
+			}
+			writeJSON(w, status, map[string]any{
+				"error":     err.Error(),
+				"state":     s.store.Snapshot(),
+				"selection": buildRuntimeSelectionResponse(s.store.Snapshot()),
+			})
+			return
+		}
+		s.setDaemonURL(nextState.Workspace.PairedRuntimeURL)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"state":     nextState,
+			"selection": buildRuntimeSelectionResponse(nextState),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -759,7 +944,7 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 	var outputBuilder strings.Builder
 	var stderrBuilder strings.Builder
 
-	resp, err := s.streamDaemonExec(r, req, func(event DaemonStreamEvent) error {
+	resp, err := s.streamRoomDaemonExec(r, roomID, req, func(event DaemonStreamEvent) error {
 		switch event.Type {
 		case "stdout":
 			outputBuilder.WriteString(event.Delta)
@@ -799,9 +984,9 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: finalOutput, State: &nextState})
 }
 
-func (s *Server) ensureWorktreeLane(req WorktreeRequest) (WorktreeResponse, error) {
+func (s *Server) ensureWorktreeLane(daemonURL string, req WorktreeRequest) (WorktreeResponse, error) {
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, s.daemonURLValue()+"/v1/worktrees/ensure", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/worktrees/ensure", bytes.NewReader(body))
 	if err != nil {
 		return WorktreeResponse{}, err
 	}
@@ -836,8 +1021,23 @@ func (s *Server) ensureWorktreeLane(req WorktreeRequest) (WorktreeResponse, erro
 }
 
 func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
+	return s.runDaemonExecAgainst(s.daemonURLValue(), req)
+}
+
+func (s *Server) runRoomDaemonExec(roomID string, req ExecRequest) (DaemonExecResponse, error) {
+	daemonURL, err := s.daemonURLForRoom(roomID)
+	if err != nil {
+		return DaemonExecResponse{}, err
+	}
+	return s.runDaemonExecAgainst(daemonURL, req)
+}
+
+func (s *Server) runDaemonExecAgainst(daemonURL string, req ExecRequest) (DaemonExecResponse, error) {
+	if strings.TrimSpace(daemonURL) == "" {
+		return DaemonExecResponse{}, fmt.Errorf("runtime daemon url is not configured")
+	}
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, s.daemonURLValue()+"/v1/exec", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec", bytes.NewReader(body))
 	if err != nil {
 		return DaemonExecResponse{}, err
 	}
@@ -867,8 +1067,23 @@ func (s *Server) runDaemonExec(req ExecRequest) (DaemonExecResponse, error) {
 }
 
 func (s *Server) streamDaemonExec(r *http.Request, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
+	return s.streamDaemonExecAgainst(r, s.daemonURLValue(), req, emit)
+}
+
+func (s *Server) streamRoomDaemonExec(r *http.Request, roomID string, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
+	daemonURL, err := s.daemonURLForRoom(roomID)
+	if err != nil {
+		return DaemonExecResponse{}, err
+	}
+	return s.streamDaemonExecAgainst(r, daemonURL, req, emit)
+}
+
+func (s *Server) streamDaemonExecAgainst(r *http.Request, daemonURL string, req ExecRequest, emit func(DaemonStreamEvent) error) (DaemonExecResponse, error) {
+	if strings.TrimSpace(daemonURL) == "" {
+		return DaemonExecResponse{}, fmt.Errorf("runtime daemon url is not configured")
+	}
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.daemonURLValue()+"/v1/exec/stream", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec/stream", bytes.NewReader(body))
 	if err != nil {
 		return DaemonExecResponse{}, err
 	}
@@ -962,6 +1177,130 @@ func (s *Server) fetchRuntimeSnapshot(daemonURL string) (RuntimeSnapshotResponse
 	return payload, nil
 }
 
+func runtimeHeartbeatInputFromSnapshot(snapshot RuntimeSnapshotResponse) store.RuntimeHeartbeatInput {
+	return store.RuntimeHeartbeatInput{
+		RuntimeID:          strings.TrimSpace(snapshot.RuntimeID),
+		DaemonURL:          strings.TrimRight(strings.TrimSpace(snapshot.DaemonURL), "/"),
+		Machine:            strings.TrimSpace(snapshot.Machine),
+		DetectedCLI:        snapshot.DetectedCLI,
+		Providers:          snapshot.Providers,
+		State:              strings.TrimSpace(snapshot.State),
+		WorkspaceRoot:      strings.TrimSpace(snapshot.WorkspaceRoot),
+		ReportedAt:         strings.TrimSpace(snapshot.ReportedAt),
+		HeartbeatIntervalS: snapshot.HeartbeatIntervalS,
+		HeartbeatTimeoutS:  snapshot.HeartbeatTimeoutS,
+	}
+}
+
+func runtimeSnapshotFromRecord(record store.RuntimeRecord) RuntimeSnapshotResponse {
+	return RuntimeSnapshotResponse{
+		RuntimeID:          record.ID,
+		DaemonURL:          record.DaemonURL,
+		Machine:            record.Machine,
+		DetectedCLI:        record.DetectedCLI,
+		Providers:          record.Providers,
+		State:              record.State,
+		WorkspaceRoot:      record.WorkspaceRoot,
+		ReportedAt:         record.ReportedAt,
+		HeartbeatIntervalS: record.HeartbeatIntervalS,
+		HeartbeatTimeoutS:  record.HeartbeatTimeoutS,
+	}
+}
+
+func findRuntimeRecord(snapshot store.State, runtimeName string) (store.RuntimeRecord, bool) {
+	runtimeName = strings.TrimSpace(runtimeName)
+	for _, item := range snapshot.Runtimes {
+		if item.ID == runtimeName || item.Machine == runtimeName {
+			return item, true
+		}
+	}
+	return store.RuntimeRecord{}, false
+}
+
+func runtimeSnapshotMatchesRequested(snapshot RuntimeSnapshotResponse, runtimeID string) bool {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if runtimeID == "" {
+		return true
+	}
+	return strings.TrimSpace(snapshot.RuntimeID) == runtimeID || strings.TrimSpace(snapshot.Machine) == runtimeID
+}
+
+func buildRuntimeSelectionResponse(snapshot store.State) RuntimeSelectionResponse {
+	return RuntimeSelectionResponse{
+		SelectedRuntime:   snapshot.Workspace.PairedRuntime,
+		SelectedDaemonURL: snapshot.Workspace.PairedRuntimeURL,
+		PairingStatus:     snapshot.Workspace.PairingStatus,
+		Runtimes:          snapshot.Machines,
+	}
+}
+
+func (s *Server) daemonURLForRoom(roomID string) (string, error) {
+	snapshot := s.store.Snapshot()
+	_, run, _, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return "", fmt.Errorf("room not found")
+	}
+	return daemonURLForRuntime(snapshot, run.Runtime)
+}
+
+func (s *Server) daemonURLForRunID(runID string) (string, error) {
+	snapshot := s.store.Snapshot()
+	for _, run := range snapshot.Runs {
+		if run.ID == runID {
+			return daemonURLForRuntime(snapshot, run.Runtime)
+		}
+	}
+	return "", fmt.Errorf("run not found")
+}
+
+func daemonURLForRuntime(snapshot store.State, runtimeName string) (string, error) {
+	runtimeName = strings.TrimSpace(runtimeName)
+	if runtimeName == "" {
+		if strings.TrimSpace(snapshot.Workspace.PairedRuntimeURL) == "" {
+			return "", fmt.Errorf("no runtime is selected")
+		}
+		return strings.TrimRight(snapshot.Workspace.PairedRuntimeURL, "/"), nil
+	}
+
+	for _, machine := range snapshot.Machines {
+		if !runtimeMachineMatches(machine, runtimeName) {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(machine.State), "offline") {
+			return "", fmt.Errorf("runtime %s is offline", machine.Name)
+		}
+		daemonURL := strings.TrimSpace(machine.DaemonURL)
+		if daemonURL == "" && runtimeMachineMatches(snapshotMachineFromWorkspace(snapshot.Workspace), runtimeName) {
+			daemonURL = snapshot.Workspace.PairedRuntimeURL
+		}
+		if strings.TrimSpace(daemonURL) == "" {
+			return "", fmt.Errorf("runtime %s is not paired to a daemon", machine.Name)
+		}
+		return strings.TrimRight(daemonURL, "/"), nil
+	}
+
+	if runtimeMachineMatches(snapshotMachineFromWorkspace(snapshot.Workspace), runtimeName) && strings.TrimSpace(snapshot.Workspace.PairedRuntimeURL) != "" {
+		return strings.TrimRight(snapshot.Workspace.PairedRuntimeURL, "/"), nil
+	}
+	return "", fmt.Errorf("runtime %s not found", runtimeName)
+}
+
+func snapshotMachineFromWorkspace(workspace store.WorkspaceSnapshot) store.Machine {
+	return store.Machine{
+		Name:      workspace.PairedRuntime,
+		DaemonURL: workspace.PairedRuntimeURL,
+		State:     workspace.PairingStatus,
+	}
+}
+
+func runtimeMachineMatches(machine store.Machine, runtimeName string) bool {
+	runtimeName = strings.TrimSpace(runtimeName)
+	if runtimeName == "" {
+		return false
+	}
+	return machine.Name == runtimeName || machine.ID == runtimeName
+}
+
 func (s *Server) daemonURLValue() string {
 	s.daemonMu.RLock()
 	defer s.daemonMu.RUnlock()
@@ -974,18 +1313,18 @@ func (s *Server) setDaemonURL(url string) {
 	s.daemonURL = strings.TrimRight(url, "/")
 }
 
-func offlineRuntimeSnapshot(workspace store.WorkspaceSnapshot) RuntimeSnapshotResponse {
-	machine := workspace.PairedRuntime
+func offlineRuntimeSnapshot(machine, reportedAt string) RuntimeSnapshotResponse {
 	if strings.TrimSpace(machine) == "" {
 		machine = "未配对"
 	}
 	return RuntimeSnapshotResponse{
+		RuntimeID:     machine,
 		Machine:       machine,
 		DetectedCLI:   []string{},
 		Providers:     nil,
 		State:         "offline",
 		WorkspaceRoot: "",
-		ReportedAt:    workspace.LastPairedAt,
+		ReportedAt:    reportedAt,
 	}
 }
 

@@ -3,21 +3,30 @@ package github
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
 
 type Status struct {
-	Repo             string `json:"repo"`
-	RepoURL          string `json:"repoUrl"`
-	Branch           string `json:"branch"`
-	Provider         string `json:"provider"`
-	RemoteConfigured bool   `json:"remoteConfigured"`
-	GHCLIInstalled   bool   `json:"ghCliInstalled"`
-	GHAuthenticated  bool   `json:"ghAuthenticated"`
-	Ready            bool   `json:"ready"`
-	AuthMode         string `json:"authMode"`
-	Message          string `json:"message"`
+	Repo              string   `json:"repo"`
+	RepoURL           string   `json:"repoUrl"`
+	Branch            string   `json:"branch"`
+	Provider          string   `json:"provider"`
+	RemoteConfigured  bool     `json:"remoteConfigured"`
+	GHCLIInstalled    bool     `json:"ghCliInstalled"`
+	GHAuthenticated   bool     `json:"ghAuthenticated"`
+	AppID             string   `json:"appId"`
+	AppSlug           string   `json:"appSlug"`
+	AppConfigured     bool     `json:"appConfigured"`
+	AppInstalled      bool     `json:"appInstalled"`
+	InstallationID    string   `json:"installationId"`
+	InstallationURL   string   `json:"installationUrl"`
+	Missing           []string `json:"missing,omitempty"`
+	Ready             bool     `json:"ready"`
+	AuthMode          string   `json:"authMode"`
+	PreferredAuthMode string   `json:"preferredAuthMode,omitempty"`
+	Message           string   `json:"message"`
 }
 
 type Prober interface {
@@ -84,9 +93,10 @@ func NewService(runner Runner) *Service {
 
 func (s *Service) Probe(workspaceRoot string) (Status, error) {
 	status := Status{
-		Provider: "github",
-		AuthMode: "unavailable",
-		Message:  "尚未探测 GitHub 连接状态。",
+		Provider:          "github",
+		AuthMode:          "unavailable",
+		PreferredAuthMode: "unavailable",
+		Message:           "尚未探测 GitHub 连接状态。",
 	}
 
 	repoURL, repoErr := s.git(workspaceRoot, "remote", "get-url", "origin")
@@ -101,31 +111,69 @@ func (s *Service) Probe(workspaceRoot string) (Status, error) {
 		status.Branch = branch
 	}
 
+	appStatus := detectGitHubAppProbe()
+	status.AppID = appStatus.AppID
+	status.AppSlug = appStatus.AppSlug
+	status.AppConfigured = appStatus.Configured
+	status.AppInstalled = appStatus.Installed
+	status.InstallationID = appStatus.InstallationID
+	status.InstallationURL = appStatus.InstallationURL
+	if len(appStatus.Missing) > 0 {
+		status.Missing = append([]string(nil), appStatus.Missing...)
+	}
+
 	if _, err := s.runner.LookPath("gh"); err == nil {
 		status.GHCLIInstalled = true
-		status.AuthMode = "gh-cli"
 		if _, err := s.runner.CombinedOutput("gh", "auth", "status", "--hostname", "github.com"); err == nil {
 			status.GHAuthenticated = true
-			status.Message = "GitHub CLI 已认证，可以继续推进真实远端 PR 集成。"
-		} else {
-			status.Message = "GitHub CLI 已安装，但当前没有认证。"
 		}
-	} else {
-		status.Message = "未发现 GitHub CLI，当前只能维持本地 repo 绑定。"
 	}
 
-	status.Ready = status.RemoteConfigured && status.GHCLIInstalled && status.GHAuthenticated
+	appReady := status.RemoteConfigured && status.AppConfigured && status.AppInstalled && status.Provider == "github"
+	ghReady := status.RemoteConfigured && status.GHCLIInstalled && status.GHAuthenticated
+	status.Ready = appReady || ghReady
 
-	if !status.RemoteConfigured {
-		status.Message = "当前仓库还没有 origin remote，无法进入真实 GitHub 闭环。"
-	}
-
-	if !status.Ready && status.RemoteConfigured && status.GHCLIInstalled && !status.GHAuthenticated {
-		status.Message = "origin 已存在，但 GitHub CLI 尚未认证。"
-	}
-
-	if !status.Ready && status.RemoteConfigured && !status.GHCLIInstalled {
-		status.Message = "origin 已存在，但机器上没有 gh CLI。"
+	switch {
+	case appReady:
+		status.AuthMode = "github-app"
+		status.PreferredAuthMode = "github-app"
+		status.Message = githubAppProbeMessage(status, appReady, ghReady)
+	case ghReady:
+		status.AuthMode = "gh-cli"
+		if appStatus.Enabled {
+			status.PreferredAuthMode = "github-app"
+			status.Message = githubAppProbeMessage(status, appReady, ghReady)
+			break
+		}
+		status.PreferredAuthMode = "gh-cli"
+		switch {
+		case !status.RemoteConfigured:
+			status.Message = "当前仓库还没有 origin remote，无法进入真实 GitHub 闭环。"
+		case status.GHAuthenticated:
+			status.Message = "GitHub CLI 已认证，可以继续推进真实远端 PR 集成。"
+		default:
+			status.Message = "origin 已存在，但 GitHub CLI 尚未认证。"
+		}
+	case appStatus.Enabled:
+		status.PreferredAuthMode = "github-app"
+		status.Message = githubAppProbeMessage(status, appReady, ghReady)
+	case status.GHCLIInstalled:
+		status.PreferredAuthMode = "gh-cli"
+		switch {
+		case !status.RemoteConfigured:
+			status.Message = "当前仓库还没有 origin remote，无法进入真实 GitHub 闭环。"
+		case status.GHAuthenticated:
+			status.Message = "GitHub CLI 已认证，可以继续推进真实远端 PR 集成。"
+		default:
+			status.Message = "origin 已存在，但 GitHub CLI 尚未认证。"
+		}
+	default:
+		switch {
+		case !status.RemoteConfigured:
+			status.Message = "当前仓库还没有 origin remote，无法进入真实 GitHub 闭环。"
+		default:
+			status.Message = "origin 已存在，但机器上没有 gh CLI。"
+		}
 	}
 
 	return status, nil
@@ -312,6 +360,83 @@ func detectProvider(host string) string {
 		return "bitbucket"
 	default:
 		return normalized
+	}
+}
+
+type appProbeStatus struct {
+	Enabled         bool
+	Configured      bool
+	Installed       bool
+	AppID           string
+	AppSlug         string
+	InstallationID  string
+	InstallationURL string
+	Missing         []string
+}
+
+func detectGitHubAppProbe() appProbeStatus {
+	appID := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_ID"))
+	appSlug := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_SLUG"))
+	installationID := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_INSTALLATION_ID"))
+	privateKey := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY"))
+	privateKeyPath := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY_PATH"))
+	installationURL := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_INSTALL_URL"))
+
+	enabled := appID != "" || appSlug != "" || installationID != "" || privateKey != "" || privateKeyPath != "" || installationURL != ""
+	configured := appID != "" && (privateKey != "" || privateKeyPath != "")
+	installed := configured && installationID != ""
+	if installationURL == "" {
+		switch {
+		case installationID != "":
+			installationURL = "https://github.com/settings/installations/" + installationID
+		case appSlug != "":
+			installationURL = "https://github.com/apps/" + appSlug + "/installations/new"
+		}
+	}
+
+	missing := make([]string, 0, 3)
+	if enabled {
+		if appID == "" {
+			missing = append(missing, "appId")
+		}
+		if privateKey == "" && privateKeyPath == "" {
+			missing = append(missing, "privateKey")
+		}
+		if installationID == "" {
+			missing = append(missing, "installationId")
+		}
+	}
+
+	return appProbeStatus{
+		Enabled:         enabled,
+		Configured:      configured,
+		Installed:       installed,
+		AppID:           appID,
+		AppSlug:         appSlug,
+		InstallationID:  installationID,
+		InstallationURL: installationURL,
+		Missing:         missing,
+	}
+}
+
+func githubAppProbeMessage(status Status, appReady, ghReady bool) string {
+	switch {
+	case !status.RemoteConfigured:
+		return "GitHub App 配置已探测，但当前仓库还没有 origin remote。"
+	case !status.AppConfigured && ghReady:
+		return fmt.Sprintf("GitHub App 配置不完整，缺少 %s；当前仍退回 gh CLI。", strings.Join(status.Missing, " / "))
+	case !status.AppConfigured:
+		return fmt.Sprintf("GitHub App 配置不完整，缺少 %s。", strings.Join(status.Missing, " / "))
+	case !status.AppInstalled && ghReady:
+		return "GitHub App 已配置，但 installation 还未完成；当前仍退回 gh CLI。"
+	case !status.AppInstalled:
+		return "GitHub App 已配置，但 installation 还未完成。"
+	case ghReady:
+		return "GitHub App installation 已就绪；当前 gh CLI 也已认证，可并行支撑 repo binding 与现有 PR 闭环。"
+	case status.GHCLIInstalled && !status.GHAuthenticated:
+		return "GitHub App installation 已就绪；gh CLI 尚未认证，但不影响 installation / repo binding contract。"
+	default:
+		return "GitHub App installation 已就绪，可以继续推进 repo binding 与 webhook contract。"
 	}
 }
 

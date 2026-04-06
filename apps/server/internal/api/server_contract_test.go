@@ -3,11 +3,13 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	githubsvc "github.com/Larkspur-Wang/OpenShock/apps/server/internal/github"
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
@@ -18,6 +20,9 @@ type fakeGitHubClient struct {
 	createInput githubsvc.CreatePullRequestInput
 	syncInputs  []githubsvc.SyncPullRequestInput
 	mergeInputs []githubsvc.MergePullRequestInput
+	createErr   error
+	syncErr     error
+	mergeErr    error
 	created     githubsvc.PullRequest
 	synced      map[int]githubsvc.PullRequest
 	merged      githubsvc.PullRequest
@@ -29,11 +34,17 @@ func (f *fakeGitHubClient) Probe(_ string) (githubsvc.Status, error) {
 
 func (f *fakeGitHubClient) CreatePullRequest(_ string, input githubsvc.CreatePullRequestInput) (githubsvc.PullRequest, error) {
 	f.createInput = input
+	if f.createErr != nil {
+		return githubsvc.PullRequest{}, f.createErr
+	}
 	return f.created, nil
 }
 
 func (f *fakeGitHubClient) SyncPullRequest(_ string, input githubsvc.SyncPullRequestInput) (githubsvc.PullRequest, error) {
 	f.syncInputs = append(f.syncInputs, input)
+	if f.syncErr != nil {
+		return githubsvc.PullRequest{}, f.syncErr
+	}
 	if value, ok := f.synced[input.Number]; ok {
 		return value, nil
 	}
@@ -42,6 +53,9 @@ func (f *fakeGitHubClient) SyncPullRequest(_ string, input githubsvc.SyncPullReq
 
 func (f *fakeGitHubClient) MergePullRequest(_ string, input githubsvc.MergePullRequestInput) (githubsvc.PullRequest, error) {
 	f.mergeInputs = append(f.mergeInputs, input)
+	if f.mergeErr != nil {
+		return githubsvc.PullRequest{}, f.mergeErr
+	}
 	return f.merged, nil
 }
 
@@ -323,8 +337,17 @@ func TestCreateIssueEndpointCreatesLinkedLaneState(t *testing.T) {
 	}))
 	defer daemon.Close()
 
-	_, server := newContractTestServer(t, root, daemon.URL)
-	defer server.Close()
+		s, server := newContractTestServer(t, root, daemon.URL)
+		defer server.Close()
+		if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+			DaemonURL:   daemon.URL,
+			Machine:     "shock-main",
+			DetectedCLI: []string{"codex"},
+			State:       "online",
+			ReportedAt:  time.Now().UTC().Format(time.RFC3339),
+		}); err != nil {
+			t.Fatalf("UpdateRuntimePairing() error = %v", err)
+		}
 
 	body, err := json.Marshal(map[string]any{
 		"title":    "Ship Phase Zero Server Shell",
@@ -534,6 +557,87 @@ func TestCreatePullRequestRouteCreatesGitHubBackedPullRequest(t *testing.T) {
 	}
 }
 
+func TestCreatePullRequestRouteEscalatesBlockedOnGitHubCreateFailure(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Blocked PR Create",
+		Summary:  "verify create failure escalation",
+		Owner:    "Codex Dockmaster",
+		Priority: "critical",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{createErr: errors.New("gh auth missing")}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/pull-request", "application/json", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatalf("POST create pull request error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("create pull request status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	var payload struct {
+		Error     string      `json:"error"`
+		Operation string      `json:"operation"`
+		RoomID    string      `json:"roomId"`
+		State     store.State `json:"state"`
+	}
+	decodeJSON(t, resp, &payload)
+
+	if payload.Error != "gh auth missing" || payload.Operation != "create" || payload.RoomID != created.RoomID {
+		t.Fatalf("create failure payload = %#v, want error/operation/roomId populated", payload)
+	}
+	if _, ok := findPullRequestByID(payload.State, "pr-52"); ok {
+		t.Fatalf("unexpected GitHub-backed pull request created on failure: %#v", payload.State.PullRequests)
+	}
+	if pr := findPullRequestByRoomID(payload.State, created.RoomID); pr != nil {
+		t.Fatalf("pull request for room %q = %#v, want none created on failure", created.RoomID, pr)
+	}
+
+	room := findRoomByID(payload.State, created.RoomID)
+	run := findRunByID(payload.State, created.RunID)
+	session := findSessionByID(payload.State, created.SessionID)
+	issue := findIssueByRoomID(payload.State, created.RoomID)
+	if room == nil || run == nil || session == nil || issue == nil {
+		t.Fatalf("expected room/run/session/issue after escalation")
+	}
+	if room.Topic.Status != "blocked" || run.Status != "blocked" || session.Status != "blocked" || issue.State != "blocked" {
+		t.Fatalf("blocked escalation missing from state: room=%#v run=%#v session=%#v issue=%#v", room, run, session, issue)
+	}
+	if !strings.Contains(run.NextAction, "PR 创建") || !strings.Contains(run.Summary, "GitHub PR 创建失败") {
+		t.Fatalf("run escalation malformed: %#v", run)
+	}
+	if len(payload.State.Inbox) == 0 || payload.State.Inbox[0].Title != "GitHub PR 创建失败" || payload.State.Inbox[0].Action != "处理 GitHub 阻塞" {
+		t.Fatalf("inbox escalation malformed: %#v", payload.State.Inbox)
+	}
+	if !roomMessagesContain(payload.State, created.RoomID, "GitHub PR 创建失败：gh auth missing") {
+		t.Fatalf("room messages missing GitHub create failure escalation: %#v", payload.State.RoomMessages[created.RoomID])
+	}
+}
+
 func TestPullRequestRouteSyncsAndMergesRemoteState(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
@@ -650,6 +754,312 @@ func TestPullRequestRouteSyncsAndMergesRemoteState(t *testing.T) {
 	}
 }
 
+func TestPullRequestRouteEscalatesBlockedOnGitHubSyncFailure(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Sync Failure Escalation",
+		Summary:  "verify sync failure escalation",
+		Owner:    "Codex Dockmaster",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+	_, pullRequestID, err := s.CreatePullRequestFromRemote(created.RoomID, store.PullRequestRemoteSnapshot{
+		Number:         88,
+		Title:          "Sync Failure Escalation",
+		Status:         "in_review",
+		Branch:         created.Branch,
+		BaseBranch:     "main",
+		Author:         "CodexDockmaster",
+		Provider:       "github",
+		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/88",
+		ReviewDecision: "REVIEW_REQUIRED",
+	})
+	if err != nil {
+		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{syncErr: errors.New("github api timeout")}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
+	if err != nil {
+		t.Fatalf("GET pull request error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("GET pull request status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	var payload struct {
+		Error         string      `json:"error"`
+		Operation     string      `json:"operation"`
+		RoomID        string      `json:"roomId"`
+		PullRequestID string      `json:"pullRequestId"`
+		State         store.State `json:"state"`
+	}
+	decodeJSON(t, resp, &payload)
+
+	if payload.Error != "github api timeout" || payload.Operation != "sync" || payload.RoomID != created.RoomID || payload.PullRequestID != pullRequestID {
+		t.Fatalf("sync failure payload = %#v, want error/operation/ids populated", payload)
+	}
+
+	room := findRoomByID(payload.State, created.RoomID)
+	run := findRunByID(payload.State, created.RunID)
+	if room == nil || run == nil {
+		t.Fatalf("expected room/run after sync escalation")
+	}
+	pr, ok := findPullRequestByID(payload.State, pullRequestID)
+	if !ok {
+		t.Fatalf("pull request %q missing from sync failure payload", pullRequestID)
+	}
+	if room.Topic.Status != "blocked" || run.Status != "blocked" {
+		t.Fatalf("sync escalation did not block room/run: room=%#v run=%#v", room, run)
+	}
+	if pr.Status != "changes_requested" || pr.ReviewDecision != "" || !strings.Contains(pr.ReviewSummary, "PR #88 同步失败：github api timeout") {
+		t.Fatalf("sync failure pull request = %#v, want blocked GitHub failure semantics", pr)
+	}
+	if !strings.Contains(run.NextAction, "重试同步") {
+		t.Fatalf("run next action = %q, want GitHub sync retry guidance", run.NextAction)
+	}
+	if len(payload.State.Inbox) == 0 || payload.State.Inbox[0].Title != "PR #88 同步失败" || payload.State.Inbox[0].Kind != "blocked" || payload.State.Inbox[0].Action != "处理 GitHub 阻塞" {
+		t.Fatalf("sync failure inbox malformed: %#v", payload.State.Inbox)
+	}
+	if inboxHasKindAndHref(payload.State, "review", "/rooms/"+created.RoomID+"/runs/"+created.RunID) {
+		t.Fatalf("stale review inbox item remained after sync failure escalation: %#v", payload.State.Inbox)
+	}
+	if !roomMessagesContain(payload.State, created.RoomID, "PR #88 同步失败：github api timeout") {
+		t.Fatalf("room messages missing GitHub sync failure escalation: %#v", payload.State.RoomMessages[created.RoomID])
+	}
+}
+
+func TestPullRequestRouteSyncFailureIsIdempotentAcrossRepeatedReads(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Sync Failure Idempotency",
+		Summary:  "verify repeated read does not duplicate blocked evidence",
+		Owner:    "Codex Dockmaster",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+	_, pullRequestID, err := s.CreatePullRequestFromRemote(created.RoomID, store.PullRequestRemoteSnapshot{
+		Number:         108,
+		Title:          "Sync Failure Idempotency",
+		Status:         "in_review",
+		Branch:         created.Branch,
+		BaseBranch:     "main",
+		Author:         "CodexDockmaster",
+		Provider:       "github",
+		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/108",
+		ReviewDecision: "REVIEW_REQUIRED",
+	})
+	if err != nil {
+		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{syncErr: errors.New("github api timeout")}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	firstResp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
+	if err != nil {
+		t.Fatalf("first GET pull request error = %v", err)
+	}
+	defer firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("first GET pull request status = %d, want %d", firstResp.StatusCode, http.StatusBadGateway)
+	}
+
+	secondResp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
+	if err != nil {
+		t.Fatalf("second GET pull request error = %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("second GET pull request status = %d, want %d", secondResp.StatusCode, http.StatusBadGateway)
+	}
+
+	var firstPayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, firstResp, &firstPayload)
+
+	var secondPayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, secondResp, &secondPayload)
+
+	firstRoom := findRoomByID(firstPayload.State, created.RoomID)
+	secondRoom := findRoomByID(secondPayload.State, created.RoomID)
+	firstRun := findRunByID(firstPayload.State, created.RunID)
+	secondRun := findRunByID(secondPayload.State, created.RunID)
+	if firstRoom == nil || secondRoom == nil || firstRun == nil || secondRun == nil {
+		t.Fatalf("expected room/run snapshots after repeated sync failure")
+	}
+
+	if countRoomMessages(secondPayload.State, created.RoomID, "PR #108 同步失败：github api timeout") != 1 {
+		t.Fatalf("room messages duplicated after repeated read: %#v", secondPayload.State.RoomMessages[created.RoomID])
+	}
+	if countInboxItems(secondPayload.State, "blocked", "PR #108 同步失败", "/rooms/"+created.RoomID+"/runs/"+created.RunID) != 1 {
+		t.Fatalf("blocked inbox items duplicated after repeated read: %#v", secondPayload.State.Inbox)
+	}
+	if secondRoom.Unread != firstRoom.Unread || secondRoom.Unread != 1 {
+		t.Fatalf("room unread after repeated read = %d (first=%d), want stable 1", secondRoom.Unread, firstRoom.Unread)
+	}
+	if len(secondPayload.State.RoomMessages[created.RoomID]) != len(firstPayload.State.RoomMessages[created.RoomID]) {
+		t.Fatalf("room messages length changed after repeated read: first=%d second=%d", len(firstPayload.State.RoomMessages[created.RoomID]), len(secondPayload.State.RoomMessages[created.RoomID]))
+	}
+	if len(secondPayload.State.Inbox) != len(firstPayload.State.Inbox) {
+		t.Fatalf("inbox length changed after repeated read: first=%d second=%d", len(firstPayload.State.Inbox), len(secondPayload.State.Inbox))
+	}
+	if len(secondRun.Timeline) != len(firstRun.Timeline) || countRunTimelineLabels(secondRun.Timeline, "PR #108 同步失败") != 1 {
+		t.Fatalf("run timeline duplicated after repeated read: first=%#v second=%#v", firstRun.Timeline, secondRun.Timeline)
+	}
+	if len(secondRun.Stderr) != len(firstRun.Stderr) {
+		t.Fatalf("run stderr duplicated after repeated read: first=%#v second=%#v", firstRun.Stderr, secondRun.Stderr)
+	}
+}
+
+func TestPullRequestRouteEscalatesBlockedOnGitHubMergeFailure(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Merge Failure Escalation",
+		Summary:  "verify merge failure escalation",
+		Owner:    "Codex Dockmaster",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+	_, pullRequestID, err := s.CreatePullRequestFromRemote(created.RoomID, store.PullRequestRemoteSnapshot{
+		Number:         96,
+		Title:          "Merge Failure Escalation",
+		Status:         "in_review",
+		Branch:         created.Branch,
+		BaseBranch:     "main",
+		Author:         "CodexDockmaster",
+		Provider:       "github",
+		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/96",
+		ReviewDecision: "APPROVED",
+	})
+	if err != nil {
+		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{mergeErr: errors.New("merge blocked by branch protections")}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{"status": "merged"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	resp, err := http.Post(server.URL+"/v1/pull-requests/"+pullRequestID, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST merge pull request error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("POST merge pull request status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	var payload struct {
+		Error         string      `json:"error"`
+		Operation     string      `json:"operation"`
+		RoomID        string      `json:"roomId"`
+		PullRequestID string      `json:"pullRequestId"`
+		State         store.State `json:"state"`
+	}
+	decodeJSON(t, resp, &payload)
+
+	if payload.Error != "merge blocked by branch protections" || payload.Operation != "merge" || payload.RoomID != created.RoomID || payload.PullRequestID != pullRequestID {
+		t.Fatalf("merge failure payload = %#v, want error/operation/ids populated", payload)
+	}
+
+	room := findRoomByID(payload.State, created.RoomID)
+	run := findRunByID(payload.State, created.RunID)
+	if room == nil || run == nil {
+		t.Fatalf("expected room/run after merge escalation")
+	}
+	pr, ok := findPullRequestByID(payload.State, pullRequestID)
+	if !ok {
+		t.Fatalf("pull request %q missing from merge failure payload", pullRequestID)
+	}
+	if room.Topic.Status != "blocked" || run.Status != "blocked" {
+		t.Fatalf("merge escalation did not block room/run: room=%#v run=%#v", room, run)
+	}
+	if pr.Status != "changes_requested" || pr.ReviewDecision != "" || !strings.Contains(pr.ReviewSummary, "PR #96 合并失败：merge blocked by branch protections") {
+		t.Fatalf("merge failure pull request = %#v, want blocked GitHub failure semantics", pr)
+	}
+	if !strings.Contains(run.NextAction, "重试合并") {
+		t.Fatalf("run next action = %q, want GitHub merge retry guidance", run.NextAction)
+	}
+	if len(payload.State.Inbox) == 0 || payload.State.Inbox[0].Title != "PR #96 合并失败" || payload.State.Inbox[0].Kind != "blocked" || payload.State.Inbox[0].Action != "处理 GitHub 阻塞" {
+		t.Fatalf("merge failure inbox malformed: %#v", payload.State.Inbox)
+	}
+	if inboxHasKindAndHref(payload.State, "review", "/rooms/"+created.RoomID+"/runs/"+created.RunID) {
+		t.Fatalf("stale review inbox item remained after merge failure escalation: %#v", payload.State.Inbox)
+	}
+	if !roomMessagesContain(payload.State, created.RoomID, "PR #96 合并失败：merge blocked by branch protections") {
+		t.Fatalf("room messages missing GitHub merge failure escalation: %#v", payload.State.RoomMessages[created.RoomID])
+	}
+}
+
 func newContractTestServer(t *testing.T, root, daemonURL string) (*store.Store, *httptest.Server) {
 	t.Helper()
 
@@ -706,4 +1116,88 @@ func findIssueByRoomID(state store.State, roomID string) *store.Issue {
 		}
 	}
 	return nil
+}
+
+func findPullRequestByRoomID(state store.State, roomID string) *store.PullRequest {
+	for index := range state.PullRequests {
+		if state.PullRequests[index].RoomID == roomID {
+			return &state.PullRequests[index]
+		}
+	}
+	return nil
+}
+
+func findRoomByID(state store.State, roomID string) *store.Room {
+	for index := range state.Rooms {
+		if state.Rooms[index].ID == roomID {
+			return &state.Rooms[index]
+		}
+	}
+	return nil
+}
+
+func findRunByID(state store.State, runID string) *store.Run {
+	for index := range state.Runs {
+		if state.Runs[index].ID == runID {
+			return &state.Runs[index]
+		}
+	}
+	return nil
+}
+
+func findSessionByID(state store.State, sessionID string) *store.Session {
+	for index := range state.Sessions {
+		if state.Sessions[index].ID == sessionID {
+			return &state.Sessions[index]
+		}
+	}
+	return nil
+}
+
+func roomMessagesContain(state store.State, roomID, needle string) bool {
+	for _, item := range state.RoomMessages[roomID] {
+		if strings.Contains(item.Message, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func inboxHasKindAndHref(state store.State, kind, href string) bool {
+	for _, item := range state.Inbox {
+		if item.Kind == kind && item.Href == href {
+			return true
+		}
+	}
+	return false
+}
+
+func countInboxItems(state store.State, kind, title, href string) int {
+	count := 0
+	for _, item := range state.Inbox {
+		if item.Kind == kind && item.Title == title && item.Href == href {
+			count++
+		}
+	}
+	return count
+}
+
+func countRoomMessages(state store.State, roomID, needle string) int {
+	count := 0
+	for _, item := range state.RoomMessages[roomID] {
+		if strings.Contains(item.Message, needle) {
+			count++
+		}
+	}
+	return count
+}
+
+func countRunTimelineLabels(items []store.RunEvent, label string) int {
+	count := 0
+	for _, item := range items {
+		if item.Label == label {
+			count++
+		}
+	}
+	return count
 }

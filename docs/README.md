@@ -19,6 +19,8 @@
   - OpenShock 的产品定义、Phase 0 边界、当前已落地 / 未落地能力
 - [Phase 0 MVP](./product/Phase0-MVP.md)
   - 第一轮执行范围、验收门、Review/Merge 前要过什么
+- [To Do List](./product/TODO-List.md)
+  - 当前已完成 faces、active batch、umbrella backlog、推荐拆票方向和开票规则
 
 ### 设计与品牌
 

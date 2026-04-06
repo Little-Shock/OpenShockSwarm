@@ -77,6 +77,14 @@ func (s *Store) hydrateMissingDefaults() {
 	if strings.TrimSpace(s.state.Workspace.LastPairedAt) == "" {
 		s.state.Workspace.LastPairedAt = defaults.Workspace.LastPairedAt
 	}
+	if len(s.state.Machines) == 0 {
+		s.state.Machines = defaults.Machines
+	}
+	for index := range s.state.Machines {
+		if strings.TrimSpace(s.state.Machines[index].DaemonURL) == "" && machineMatches(s.state.Machines[index], s.state.Workspace.PairedRuntime) {
+			s.state.Machines[index].DaemonURL = s.state.Workspace.PairedRuntimeURL
+		}
+	}
 	if len(s.state.PullRequests) == 0 {
 		s.state.PullRequests = defaults.PullRequests
 	}
@@ -92,6 +100,7 @@ func (s *Store) hydrateMissingDefaults() {
 	if s.state.RoomMessages == nil {
 		s.state.RoomMessages = defaults.RoomMessages
 	}
+	s.ensureRuntimeRegistryState()
 	s.ensureSessionConsistency()
 }
 
@@ -324,6 +333,7 @@ func cloneState(state State) State {
 	if err := json.Unmarshal(body, &clone); err != nil {
 		return state
 	}
+	applyRuntimeDerivedTruth(&clone, time.Now())
 	return clone
 }
 

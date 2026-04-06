@@ -3,21 +3,21 @@ package store
 import "sync"
 
 type WorkspaceSnapshot struct {
-	Name             string `json:"name"`
-	Repo             string `json:"repo"`
-	RepoURL          string `json:"repoUrl"`
-	Branch           string `json:"branch"`
-	RepoProvider     string `json:"repoProvider"`
+	Name              string `json:"name"`
+	Repo              string `json:"repo"`
+	RepoURL           string `json:"repoUrl"`
+	Branch            string `json:"branch"`
+	RepoProvider      string `json:"repoProvider"`
 	RepoBindingStatus string `json:"repoBindingStatus"`
-	RepoAuthMode     string `json:"repoAuthMode"`
-	Plan             string `json:"plan"`
-	PairedRuntime    string `json:"pairedRuntime"`
-	PairedRuntimeURL string `json:"pairedRuntimeUrl"`
-	PairingStatus    string `json:"pairingStatus"`
-	DeviceAuth       string `json:"deviceAuth"`
-	LastPairedAt     string `json:"lastPairedAt"`
-	BrowserPush      string `json:"browserPush"`
-	MemoryMode       string `json:"memoryMode"`
+	RepoAuthMode      string `json:"repoAuthMode"`
+	Plan              string `json:"plan"`
+	PairedRuntime     string `json:"pairedRuntime"`
+	PairedRuntimeURL  string `json:"pairedRuntimeUrl"`
+	PairingStatus     string `json:"pairingStatus"`
+	DeviceAuth        string `json:"deviceAuth"`
+	LastPairedAt      string `json:"lastPairedAt"`
+	BrowserPush       string `json:"browserPush"`
+	MemoryMode        string `json:"memoryMode"`
 }
 
 type Channel struct {
@@ -127,9 +127,33 @@ type Machine struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
 	State         string `json:"state"`
+	DaemonURL     string `json:"daemonUrl"`
 	CLI           string `json:"cli"`
 	OS            string `json:"os"`
 	LastHeartbeat string `json:"lastHeartbeat"`
+}
+
+type RuntimeProvider struct {
+	ID           string   `json:"id"`
+	Label        string   `json:"label"`
+	Mode         string   `json:"mode"`
+	Capabilities []string `json:"capabilities"`
+	Transport    string   `json:"transport"`
+}
+
+type RuntimeRecord struct {
+	ID                 string            `json:"id"`
+	Machine            string            `json:"machine"`
+	DaemonURL          string            `json:"daemonUrl"`
+	DetectedCLI        []string          `json:"detectedCli"`
+	Providers          []RuntimeProvider `json:"providers"`
+	State              string            `json:"state"`
+	PairingState       string            `json:"pairingState"`
+	WorkspaceRoot      string            `json:"workspaceRoot"`
+	ReportedAt         string            `json:"reportedAt"`
+	LastHeartbeatAt    string            `json:"lastHeartbeatAt"`
+	HeartbeatIntervalS int               `json:"heartbeatIntervalSeconds,omitempty"`
+	HeartbeatTimeoutS  int               `json:"heartbeatTimeoutSeconds,omitempty"`
 }
 
 type InboxItem struct {
@@ -144,22 +168,22 @@ type InboxItem struct {
 }
 
 type PullRequest struct {
-	ID            string `json:"id"`
-	Number        int    `json:"number"`
-	Label         string `json:"label"`
-	Title         string `json:"title"`
-	Status        string `json:"status"`
-	IssueKey      string `json:"issueKey"`
-	RoomID        string `json:"roomId"`
-	RunID         string `json:"runId"`
-	Branch        string `json:"branch"`
-	BaseBranch    string `json:"baseBranch"`
-	Author        string `json:"author"`
-	Provider      string `json:"provider"`
-	URL           string `json:"url"`
+	ID             string `json:"id"`
+	Number         int    `json:"number"`
+	Label          string `json:"label"`
+	Title          string `json:"title"`
+	Status         string `json:"status"`
+	IssueKey       string `json:"issueKey"`
+	RoomID         string `json:"roomId"`
+	RunID          string `json:"runId"`
+	Branch         string `json:"branch"`
+	BaseBranch     string `json:"baseBranch"`
+	Author         string `json:"author"`
+	Provider       string `json:"provider"`
+	URL            string `json:"url"`
 	ReviewDecision string `json:"reviewDecision"`
-	ReviewSummary string `json:"reviewSummary"`
-	UpdatedAt     string `json:"updatedAt"`
+	ReviewSummary  string `json:"reviewSummary"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 type PullRequestRemoteSnapshot struct {
@@ -213,6 +237,7 @@ type State struct {
 	Runs            []Run                `json:"runs"`
 	Agents          []Agent              `json:"agents"`
 	Machines        []Machine            `json:"machines"`
+	Runtimes        []RuntimeRecord      `json:"runtimes"`
 	Inbox           []InboxItem          `json:"inbox"`
 	PullRequests    []PullRequest        `json:"pullRequests"`
 	Sessions        []Session            `json:"sessions"`
@@ -247,20 +272,36 @@ type LaneBinding struct {
 }
 
 type RuntimePairingInput struct {
-	DaemonURL   string
-	Machine     string
-	DetectedCLI []string
-	State       string
-	ReportedAt  string
+	RuntimeID     string
+	DaemonURL     string
+	Machine       string
+	DetectedCLI   []string
+	Providers     []RuntimeProvider
+	State         string
+	WorkspaceRoot string
+	ReportedAt    string
+}
+
+type RuntimeHeartbeatInput struct {
+	RuntimeID          string
+	DaemonURL          string
+	Machine            string
+	DetectedCLI        []string
+	Providers          []RuntimeProvider
+	State              string
+	WorkspaceRoot      string
+	ReportedAt         string
+	HeartbeatIntervalS int
+	HeartbeatTimeoutS  int
 }
 
 type RepoBindingInput struct {
-	Repo         string
-	RepoURL      string
-	Branch       string
-	Provider     string
-	AuthMode     string
-	DetectedAt   string
+	Repo       string
+	RepoURL    string
+	Branch     string
+	Provider   string
+	AuthMode   string
+	DetectedAt string
 }
 
 type Store struct {
