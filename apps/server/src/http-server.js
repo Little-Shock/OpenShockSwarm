@@ -134,6 +134,14 @@ function matchRoute(method, pathName) {
     return { route: "V1_POST_TOPIC_COMMAND", topicId: v1TopicCommandsMatch[1] };
   }
 
+  const v1TopicMessagesMatch = pathName.match(/^\/v1\/topics\/([^/]+)\/messages$/);
+  if (method === "POST" && v1TopicMessagesMatch) {
+    return { route: "V1_POST_TOPIC_MESSAGE", topicId: v1TopicMessagesMatch[1] };
+  }
+  if (method === "GET" && v1TopicMessagesMatch) {
+    return { route: "V1_GET_TOPIC_MESSAGES", topicId: v1TopicMessagesMatch[1] };
+  }
+
   const v1TopicEventsMatch = pathName.match(/^\/v1\/topics\/([^/]+)\/events$/);
   if (method === "GET" && v1TopicEventsMatch) {
     return { route: "V1_GET_TOPIC_EVENTS", topicId: v1TopicEventsMatch[1] };
@@ -1389,7 +1397,7 @@ export function createHttpServer(coordinator, options = {}) {
         return;
       }
 
-      if (route.route === "POST_TOPIC_MESSAGE") {
+      if (route.route === "POST_TOPIC_MESSAGE" || route.route === "V1_POST_TOPIC_MESSAGE") {
         const body = await readJsonBody(request);
         const result = coordinator.ingestMessage(route.topicId, body);
         sendJson(response, 200, result);
@@ -1415,7 +1423,7 @@ export function createHttpServer(coordinator, options = {}) {
         return;
       }
 
-      if (route.route === "GET_TOPIC_MESSAGES") {
+      if (route.route === "GET_TOPIC_MESSAGES" || route.route === "V1_GET_TOPIC_MESSAGES") {
         const routingScope = parsedUrl.searchParams.get("route");
         const result = coordinator.listMessages(route.topicId, { route: routingScope });
         sendJson(response, 200, result);
@@ -1781,7 +1789,8 @@ export function createHttpServer(coordinator, options = {}) {
 
       if (route.route === "V1_GET_APPROVAL_DECISIONS") {
         const decisions = coordinator
-          .listDecisions(route.topicId, { holdId: route.holdId })
+          .getTopicOverview(route.topicId)
+          .approvalDecisions.filter((decision) => decision.holdId === route.holdId)
           .map((decision) => serializeDecisionResource(decision));
         sendJson(response, 200, {
           items: decisions,
@@ -1975,7 +1984,13 @@ export function createHttpServer(coordinator, options = {}) {
         if (typeof body.decider_actor_id !== "string" || body.decider_actor_id.trim().length === 0) {
           throw new CoordinatorError("invalid_decider_actor", "decider_actor_id is required");
         }
-        if (typeof body.intervention_point !== "string" || body.intervention_point.trim().length === 0) {
+        const interventionPoint =
+          typeof body.intervention_point === "string" && body.intervention_point.trim().length > 0
+            ? body.intervention_point.trim()
+            : typeof body.intervention_id === "string" && body.intervention_id.trim().length > 0
+              ? body.intervention_id.trim()
+              : null;
+        if (!interventionPoint) {
           throw new CoordinatorError("invalid_intervention_point", "intervention_point is required");
         }
         if (typeof body.approve !== "boolean") {
@@ -1987,7 +2002,7 @@ export function createHttpServer(coordinator, options = {}) {
           assertWriteRevision(coordinator, route.topicId, truthRevision);
           decisionResult = coordinator.applyHumanDecision(route.topicId, route.holdId, {
             decider: body.decider_actor_id,
-            interventionPoint: body.intervention_point,
+            interventionId: interventionPoint,
             approve: body.approve
           });
         } catch (error) {

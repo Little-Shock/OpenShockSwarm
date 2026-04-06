@@ -6,8 +6,17 @@ import { ServerCoordinator } from "../src/coordinator.js";
 import { createHttpServer } from "../src/http-server.js";
 import { DEFAULT_SAMPLE_FIXTURE } from "../src/runtime-fixtures.js";
 
-async function requestJson({ port, method, path, body }) {
+async function requestJson({ port, method, path, body, headers }) {
   const payload = body === undefined ? null : JSON.stringify(body);
+  const requestHeaders = {
+    ...(payload
+      ? {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload)
+        }
+      : {}),
+    ...(headers ?? {})
+  };
   return new Promise((resolve, reject) => {
     const request = http.request(
       {
@@ -15,12 +24,7 @@ async function requestJson({ port, method, path, body }) {
         port,
         method,
         path,
-        headers: payload
-          ? {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(payload)
-            }
-          : {}
+        headers: requestHeaders
       },
       (response) => {
         const chunks = [];
@@ -1499,10 +1503,9 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
 
       const upsertHuman = await requestJson({
         port,
-        method: "POST",
-        path: "/topics/topic_batch6_control_truth/agents",
+        method: "PUT",
+        path: "/v1/topics/topic_batch6_control_truth/actors/human_sample_01",
         body: {
-          agentId: "human_sample_01",
           role: "human",
           status: "active"
         }
@@ -1512,7 +1515,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const truthOnlyPatch = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "shared_truth_proposal",
           sourceAgentId: "lead_sample_01",
@@ -1540,7 +1543,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const conflictOpen = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "challenge",
           sourceAgentId: "worker_sample_01",
@@ -1557,20 +1560,19 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const overviewWithConflict = await requestJson({
         port,
         method: "GET",
-        path: "/topics/topic_batch6_control_truth/overview"
+        path: "/v1/topics/topic_batch6_control_truth"
       });
       assert.equal(overviewWithConflict.statusCode, 200);
-      assert.equal(overviewWithConflict.body.openConflicts.length, 1);
-      assert.equal(overviewWithConflict.body.openConflicts[0].failure_reason, "unresolved_conflict");
-      assert.equal(overviewWithConflict.body.openConflicts[0].evidence_anchor.source, "server_owned");
-      assert.equal(overviewWithConflict.body.mergeLifecycle.closeout_explanation.status, "failed");
-      assert.equal(overviewWithConflict.body.mergeLifecycle.closeout_explanation.reason_code, "truth_failure_reason");
-      assert.equal(overviewWithConflict.body.deliveryProjection.closeout_explanation.reason_code, "truth_failure_reason");
+      assert.equal(overviewWithConflict.body.topic.open_conflicts.length, 1);
+      assert.equal(overviewWithConflict.body.topic.open_conflicts[0].failure_reason, "unresolved_conflict");
+      assert.equal(overviewWithConflict.body.topic.open_conflicts[0].evidence_anchor.source, "server_owned");
+      assert.equal(overviewWithConflict.body.topic.merge_lifecycle.closeout_explanation.status, "waiting_gate");
+      assert.equal(overviewWithConflict.body.topic.merge_lifecycle.closeout_explanation.reason_code, "unresolved_conflict");
 
       const resolveConflict = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "conflict_resolution",
           sourceAgentId: "lead_sample_01",
@@ -1588,7 +1590,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const handoff = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "handoff_package",
           sourceAgentId: "worker_sample_01",
@@ -1607,7 +1609,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const handoffAck = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "status_report",
           sourceAgentId: "lead_sample_01",
@@ -1625,7 +1627,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const mergeRequest = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "merge_request",
           sourceAgentId: "worker_sample_01",
@@ -1644,43 +1646,53 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const overviewWithPendingGate = await requestJson({
         port,
         method: "GET",
-        path: "/topics/topic_batch6_control_truth/overview"
+        path: "/v1/topics/topic_batch6_control_truth"
       });
       assert.equal(overviewWithPendingGate.statusCode, 200);
-      assert.equal(overviewWithPendingGate.body.pendingApprovals.length, 1);
-      assert.equal(overviewWithPendingGate.body.pendingApprovals[0].evidence_anchor.source, "server_owned");
-      assert.equal(overviewWithPendingGate.body.pendingApprovals[0].failure_reason, null);
+      assert.equal(overviewWithPendingGate.body.topic.pending_approvals.length, 1);
+      assert.equal(overviewWithPendingGate.body.topic.pending_approvals[0].evidence_anchor.source, "server_owned");
+      assert.equal(overviewWithPendingGate.body.topic.pending_approvals[0].failure_reason, null);
       assert.ok(
-        overviewWithPendingGate.body.mergeLifecycle.evidence_anchor.pending_approval_ids.includes(holdId)
+        overviewWithPendingGate.body.topic.merge_lifecycle.evidence_anchor.pending_approval_ids.includes(holdId)
       );
 
       const rejectDecision = await requestJson({
         port,
         method: "POST",
-        path: `/topics/topic_batch6_control_truth/approvals/${holdId}/decision`,
+        path: `/v1/topics/topic_batch6_control_truth/approval-holds/${holdId}/decisions`,
+        headers: {
+          "idempotency-key": `decision-${holdId}`
+        },
         body: {
-          decider: "human_sample_01",
+          decider_actor_id: "human_sample_01",
           approve: false,
-          interventionId: holdId
+          intervention_point: holdId
         }
       });
       assert.equal(rejectDecision.statusCode, 200);
-      assert.equal(rejectDecision.body.status, "rejected");
-      assert.equal(rejectDecision.body.failure_reason, "approval_rejected");
-      assert.equal(rejectDecision.body.evidence_anchor.source, "server_owned");
+      assert.equal(rejectDecision.body.decision.status, "rejected");
+      assert.equal(rejectDecision.body.decision.hold_id, holdId);
+
+      const decisionList = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/topics/topic_batch6_control_truth/approval-holds/${holdId}/decisions`
+      });
+      assert.equal(decisionList.statusCode, 200);
+      assert.equal(decisionList.body.items.length, 1);
+      assert.equal(decisionList.body.items[0].failure_reason, "approval_rejected");
+      assert.equal(decisionList.body.items[0].evidence_anchor.source, "server_owned");
 
       const overviewAfterReject = await requestJson({
         port,
         method: "GET",
-        path: "/topics/topic_batch6_control_truth/overview"
+        path: "/v1/topics/topic_batch6_control_truth"
       });
       assert.equal(overviewAfterReject.statusCode, 200);
-      assert.equal(overviewAfterReject.body.approvalDecisions.length, 1);
-      assert.equal(overviewAfterReject.body.approvalDecisions[0].failure_reason, "approval_rejected");
-      assert.equal(overviewAfterReject.body.mergeLifecycle.closeout_explanation.status, "failed");
-      assert.equal(overviewAfterReject.body.mergeLifecycle.closeout_explanation.reason_code, "truth_failure_reason");
+      assert.equal(overviewAfterReject.body.topic.merge_lifecycle.closeout_explanation.status, "failed");
+      assert.equal(overviewAfterReject.body.topic.merge_lifecycle.closeout_explanation.reason_code, "approval_rejected");
       assert.ok(
-        overviewAfterReject.body.mergeLifecycle.evidence_anchor.blocker_ids.includes(`approval_rejected:${holdId}`)
+        overviewAfterReject.body.topic.merge_lifecycle.evidence_anchor.blocker_ids.includes(`approval_rejected:${holdId}`)
       );
 
       const repoBinding = await requestJson({
@@ -1702,10 +1714,9 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
 
       const blockLead = await requestJson({
         port,
-        method: "POST",
-        path: "/topics/topic_batch6_control_truth/agents",
+        method: "PUT",
+        path: "/v1/topics/topic_batch6_control_truth/actors/lead_sample_01",
         body: {
-          agentId: "lead_sample_01",
           role: "lead",
           status: "blocked"
         }
@@ -1715,7 +1726,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const blockedConflictOpen = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "challenge",
           sourceAgentId: "worker_sample_01",
@@ -1731,7 +1742,7 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
       const blockedResolution = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_batch6_control_truth/messages",
+        path: "/v1/topics/topic_batch6_control_truth/messages",
         body: {
           type: "conflict_resolution",
           sourceAgentId: "lead_sample_01",
@@ -1742,8 +1753,8 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
           }
         }
       });
-      assert.equal(blockedResolution.statusCode, 400);
-      assert.equal(blockedResolution.body.error, "source_actor_inactive");
+      assert.equal(blockedResolution.statusCode, 422);
+      assert.equal(blockedResolution.body.error.code, "source_actor_inactive");
     }
   );
 });
@@ -1766,19 +1777,19 @@ test("v1 batch6 integration replay/debug/run-history/compatibility surfaces expo
       const topicOverview = await requestJson({
         port,
         method: "GET",
-        path: "/topics/topic_v1_batch6_surface/overview"
+        path: "/v1/topics/topic_v1_batch6_surface"
       });
       assert.equal(topicOverview.statusCode, 200);
 
       const evidenceTruth = await requestJson({
         port,
         method: "POST",
-        path: "/topics/topic_v1_batch6_surface/messages",
+        path: "/v1/topics/topic_v1_batch6_surface/messages",
         body: {
           type: "shared_truth_proposal",
           sourceAgentId: "lead_sample_01",
           sourceRole: "lead",
-          truthRevision: topicOverview.body.revision,
+          truthRevision: topicOverview.body.topic.revision,
           payload: {
             patch: {
               deliveryState: {
