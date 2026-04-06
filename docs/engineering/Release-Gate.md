@@ -58,9 +58,17 @@ pnpm ops:smoke
 - `GET /v1/state`
 - `GET /v1/runtime/registry`
 - `GET /v1/runtime/pairing`
+- `GET /v1/runtime`
 - `GET /v1/repo/binding`
 - `GET /v1/github/connection`
 - daemon `GET /v1/runtime`
+
+其中 runtime gate 现在按 fail-closed 读：
+
+- `pairing.daemonUrl` 必须和 `OPENSHOCK_DAEMON_URL` 一致
+- registry 里 `pairedRuntime` 对应 runtime 的 `daemonUrl` 必须一致
+- server `GET /v1/runtime` 打到的 live daemon URL 也必须一致
+- 任一 surface 漂移，`pnpm ops:smoke` 必须直接失败并指出 mismatch
 
 如果你希望把 GitHub readiness 也收成硬 gate，再加：
 
@@ -130,6 +138,7 @@ pnpm verify:release:full
 对抗性读法固定成：
 
 - 默认 smoke 可以在 not-ready GitHub 环境下作为观测入口通过
+- 默认 smoke 不允许把 runtime pairing drift 放过去
 - strict smoke 必须 fail-closed，不能把 not-ready GitHub state 放过去
 
 ---

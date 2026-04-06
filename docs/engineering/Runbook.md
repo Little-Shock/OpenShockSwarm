@@ -324,9 +324,16 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
     - `GET /v1/state`
     - `GET /v1/runtime/registry`
     - `GET /v1/runtime/pairing`
+    - `GET /v1/runtime`
     - `GET /v1/repo/binding`
     - `GET /v1/github/connection`
     - daemon `GET /v1/runtime`
+  - 关键真值：
+    - `pairing.daemonUrl`
+    - registry 中 `pairedRuntime` 对应 runtime 的 `daemonUrl`
+    - server `GET /v1/runtime` 返回的 `daemonUrl`
+    - daemon `GET /v1/runtime` 的 advertise URL
+  - 任一 URL 不一致时，smoke 直接失败并指出 mismatch surface
 - `pnpm verify:release:full`
   - 先跑 repo gate，再跑 live stack smoke
 
@@ -338,7 +345,7 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
 | daemon liveness | `GET /healthz` | daemon 进程是否存活 |
 | control-plane truth | `GET /v1/state` | workspace / issue / room / run / inbox 是否还可读 |
 | runtime registry | `GET /v1/runtime/registry` | runtime heartbeat / lease 面有没有继续写回 |
-| runtime pairing | `GET /v1/runtime/pairing` | server 当前是否还指向正确 daemon |
+| runtime pairing | `GET /v1/runtime/pairing` + `GET /v1/runtime` + daemon `GET /v1/runtime` | server pairing URL、runtime registry 和 live daemon truth 是否一致 |
 | repo binding | `GET /v1/repo/binding` | repo / branch / auth mode / app install truth |
 | GitHub connection | `GET /v1/github/connection` | GitHub App 或 gh auth readiness |
 | daemon snapshot | `GET /v1/runtime` 或 `go run ./cmd/openshock-daemon -once` | 本机 provider 探测和 heartbeat payload |
