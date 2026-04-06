@@ -10,6 +10,7 @@
 - `pnpm`
 - 不要求系统预装 Go；根脚本会优先使用系统里可用的 Go 1.24.x，否则通过 `scripts/go.sh` 下载并使用 repo-local toolchain
 - `git`
+- `curl`
 - 至少安装一个本地 CLI provider：
   - `codex`
   - 或 `claude`
@@ -24,6 +25,10 @@
 - `pnpm dev` 只启动 web
 - server 和 daemon 需要分别启动
 - 根 `package.json` 里的 `dev:server` / `dev:daemon` 现在已经是 Bash 入口，并会转到 `scripts/go.sh`
+- round-end release gate 现在统一走根脚本：
+  - `pnpm verify:release`
+  - `pnpm ops:smoke`
+  - `pnpm verify:release:full`
 - 跨平台最稳的方式是直接跑 Go 入口
 - server 默认状态文件是：
   - `<OPENSHOCK_WORKSPACE_ROOT>/data/phase0/state.json`
@@ -39,6 +44,7 @@ export OPENSHOCK_WORKSPACE_ROOT=/home/lark/OpenShock
 export OPENSHOCK_SERVER_ADDR=:8080
 export OPENSHOCK_DAEMON_ADDR=:8090
 export OPENSHOCK_DAEMON_URL=http://127.0.0.1:8090
+export OPENSHOCK_SERVER_URL=http://127.0.0.1:8080
 export NEXT_PUBLIC_OPENSHOCK_API_BASE=http://127.0.0.1:8080
 ```
 
@@ -49,14 +55,45 @@ $env:OPENSHOCK_WORKSPACE_ROOT = "E:\00.Lark_Projects\00_OpenShock"
 $env:OPENSHOCK_SERVER_ADDR = ":8080"
 $env:OPENSHOCK_DAEMON_ADDR = ":8090"
 $env:OPENSHOCK_DAEMON_URL = "http://127.0.0.1:8090"
+$env:OPENSHOCK_SERVER_URL = "http://127.0.0.1:8080"
 $env:NEXT_PUBLIC_OPENSHOCK_API_BASE = "http://127.0.0.1:8080"
 ```
+
+### Deploy / GitHub App 相关变量
+
+- Server:
+  - `OPENSHOCK_STATE_FILE`
+  - `OPENSHOCK_GITHUB_WEBHOOK_SECRET`
+  - `OPENSHOCK_GITHUB_APP_ID`
+  - `OPENSHOCK_GITHUB_APP_SLUG`
+  - `OPENSHOCK_GITHUB_APP_INSTALLATION_ID`
+  - `OPENSHOCK_GITHUB_APP_PRIVATE_KEY` 或 `OPENSHOCK_GITHUB_APP_PRIVATE_KEY_PATH`
+  - `OPENSHOCK_GITHUB_APP_INSTALL_URL`
+- Daemon:
+  - `OPENSHOCK_CONTROL_URL`
+  - `OPENSHOCK_DAEMON_ADVERTISE_URL`
+  - `OPENSHOCK_DAEMON_HEARTBEAT_INTERVAL`
+  - `OPENSHOCK_DAEMON_HEARTBEAT_TIMEOUT`
+- Smoke / release gate:
+  - `OPENSHOCK_SERVER_URL`
+  - `OPENSHOCK_DAEMON_URL`
+  - `OPENSHOCK_REQUIRE_GITHUB_READY=1` 会把 GitHub readiness 也收进 smoke gate
 
 ---
 
 ## 4. 启动 3 个进程
 
 打开 3 个终端。
+
+如果你当前在 Linux/macOS 或已经有 Bash 入口，优先用 repo 根脚本启动：
+
+```bash
+pnpm dev
+pnpm dev:server
+pnpm dev:daemon
+```
+
+如果你在 PowerShell 或只想绕过 Bash wrapper，再退回下面的直接 Go 入口。
 
 ### Terminal 1: Web
 
@@ -272,21 +309,65 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
 
 ## 7. 当前什么是“真”，什么还是“下一步”
 
+### Deploy / Observability / Release Gate
+
+当前推荐把 round-end 验证分成两层：
+
+- `pnpm verify:release`
+  - repo 级 release gate
+  - 统一跑 `pnpm verify`
+  - 再额外验证 daemon heartbeat snapshot 和 runbook 入口
+- `pnpm ops:smoke`
+  - 对已经启动的 server / daemon 打 live HTTP smoke
+  - 默认检查：
+    - `GET /healthz`
+    - `GET /v1/state`
+    - `GET /v1/runtime/registry`
+    - `GET /v1/runtime/pairing`
+    - `GET /v1/repo/binding`
+    - `GET /v1/github/connection`
+    - daemon `GET /v1/runtime`
+- `pnpm verify:release:full`
+  - 先跑 repo gate，再跑 live stack smoke
+
+### 当前观测面
+
+| Surface | 入口 | 用来判断什么 |
+| --- | --- | --- |
+| server liveness | `GET /healthz` | server 进程是否存活 |
+| daemon liveness | `GET /healthz` | daemon 进程是否存活 |
+| control-plane truth | `GET /v1/state` | workspace / issue / room / run / inbox 是否还可读 |
+| runtime registry | `GET /v1/runtime/registry` | runtime heartbeat / lease 面有没有继续写回 |
+| runtime pairing | `GET /v1/runtime/pairing` | server 当前是否还指向正确 daemon |
+| repo binding | `GET /v1/repo/binding` | repo / branch / auth mode / app install truth |
+| GitHub connection | `GET /v1/github/connection` | GitHub App 或 gh auth readiness |
+| daemon snapshot | `GET /v1/runtime` 或 `go run ./cmd/openshock-daemon -once` | 本机 provider 探测和 heartbeat payload |
+
+### 当前最小 rollback
+
+1. 记录失败的是 repo gate 还是 live smoke gate。
+2. 回到上一拍可用 ref 或 dev 分支已知绿点。
+3. 重新启动 `web / server / daemon`。
+4. 先跑 `pnpm verify:release`，再跑 `pnpm ops:smoke`。
+5. 只有 repo gate 和 smoke gate 都转绿，才继续收票或发布下一拍。
+
 ### 现在是真的
 
 - 三个进程可以本地跑起来
 - server / daemon 的健康检查可打
 - runtime pairing / repo binding / GitHub readiness 有真实接口
+- GitHub App install / auth、webhook ingest、真实 PR create / sync / merge 主链已站住
+- 邮箱登录 / workspace member / role / permission truth 已站住
+- approval center state、notification delivery contract、worker fanout 已站住
+- memory version / diff / audit contract 已站住
+- multi-runtime registry / scheduler / lease / conflict guard 已站住
 - issue 创建会推进到 room / run / session / worktree lane
 - bridge 可以调用本地 CLI
 
 ### 现在还不是“真服务”
 
-- 真实远端 PR 创建
-- GitHub App
-- 邮箱登录
-- 多用户 workspace
-- 完整审批中心
-- 生产级通知
+- 生产级 realtime subscription / presence / event stream
+- fully managed deploy target / rollout automation
+- 更长周期的自治 orchestration / next-wave infra
 
 如果你跑通了上面的最小验收，应该把它读成：**Phase 0 基线成立**，不是“产品已经完整”。

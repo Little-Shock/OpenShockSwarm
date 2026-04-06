@@ -266,7 +266,11 @@ func (s *Store) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, body, 0o644)
+	if err := os.WriteFile(s.path, body, 0o644); err != nil {
+		return err
+	}
+	s.publishSnapshotLocked()
+	return nil
 }
 
 func cloneState(state State) State {

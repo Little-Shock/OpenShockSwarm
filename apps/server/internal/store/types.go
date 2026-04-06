@@ -379,4 +379,6 @@ type Store struct {
 	path          string
 	workspaceRoot string
 	state         State
+	subscribers   map[int]chan State
+	nextSubID     int
 }

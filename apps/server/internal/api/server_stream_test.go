@@ -584,6 +584,9 @@ func TestRuntimePairingRejectsExplicitRuntimeIdentityMismatch(t *testing.T) {
 func TestRuntimeSelectionExposesMultiRuntimeSurfaceAndDispatchesByRun(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
+	now := time.Now().UTC()
+	mainReportedAt := now.Format(time.RFC3339)
+	sidecarReportedAt := now.Add(time.Second).Format(time.RFC3339)
 
 	s, err := store.New(statePath, root)
 	if err != nil {
@@ -600,7 +603,7 @@ func TestRuntimeSelectionExposesMultiRuntimeSurfaceAndDispatchesByRun(t *testing
 				"providers":     []map[string]any{{"id": "codex", "label": "Codex CLI", "mode": "direct-cli", "capabilities": []string{"conversation", "patch"}, "transport": "http bridge"}},
 				"state":         "online",
 				"workspaceRoot": root,
-				"reportedAt":    "2026-04-06T12:40:00Z",
+				"reportedAt":    mainReportedAt,
 			}); err != nil {
 				t.Fatalf("encode main runtime payload: %v", err)
 			}
@@ -636,7 +639,7 @@ func TestRuntimeSelectionExposesMultiRuntimeSurfaceAndDispatchesByRun(t *testing
 				"providers":     []map[string]any{{"id": "claude", "label": "Claude Code CLI", "mode": "direct-cli", "capabilities": []string{"conversation"}, "transport": "http bridge"}},
 				"state":         "online",
 				"workspaceRoot": root,
-				"reportedAt":    "2026-04-06T12:41:00Z",
+				"reportedAt":    sidecarReportedAt,
 			}); err != nil {
 				t.Fatalf("encode sidecar runtime payload: %v", err)
 			}
@@ -667,7 +670,7 @@ func TestRuntimeSelectionExposesMultiRuntimeSurfaceAndDispatchesByRun(t *testing
 		Machine:     "shock-main",
 		DetectedCLI: []string{"codex"},
 		State:       "online",
-		ReportedAt:  "2026-04-06T12:40:00Z",
+		ReportedAt:  mainReportedAt,
 	}); err != nil {
 		t.Fatalf("UpdateRuntimePairing(main) error = %v", err)
 	}
@@ -676,7 +679,7 @@ func TestRuntimeSelectionExposesMultiRuntimeSurfaceAndDispatchesByRun(t *testing
 		Machine:     "shock-sidecar",
 		DetectedCLI: []string{"claude"},
 		State:       "online",
-		ReportedAt:  "2026-04-06T12:41:00Z",
+		ReportedAt:  sidecarReportedAt,
 	}); err != nil {
 		t.Fatalf("UpdateRuntimePairing(sidecar) error = %v", err)
 	}
