@@ -48,6 +48,14 @@ const server = http.createServer(async (req, res) => {
       return handleRunFollowUp(req, res, route.runId);
     }
 
+    if (route.kind === "operator-repo-binding-upsert") {
+      return handleOperatorRepoBindingUpsert(req, res);
+    }
+
+    if (route.kind === "operator-agent-upsert") {
+      return handleOperatorAgentUpsert(req, res, route.actorId);
+    }
+
     if (route.kind === "intervention-point-action") {
       return handleInterventionPointAction(req, res, route.pointId);
     }
@@ -98,6 +106,15 @@ function matchRoute(rawUrl) {
     return { kind: "run-follow-up", runId: decodeURIComponent(runFollowUpMatch[1]) };
   }
 
+  if (pathname === "/api/v0a/operator/repo-binding" && url.search.length === 0) {
+    return { kind: "operator-repo-binding-upsert" };
+  }
+
+  const operatorAgentUpsertMatch = pathname.match(/^\/api\/v0a\/operator\/agents\/([^/]+)\/upsert$/);
+  if (operatorAgentUpsertMatch) {
+    return { kind: "operator-agent-upsert", actorId: decodeURIComponent(operatorAgentUpsertMatch[1]) };
+  }
+
   const interventionPointActionMatch = pathname.match(/^\/api\/v0a\/intervention-points\/([^/]+)\/action$/);
   if (interventionPointActionMatch) {
     return { kind: "intervention-point-action", pointId: decodeURIComponent(interventionPointActionMatch[1]) };
@@ -142,8 +159,21 @@ async function writeShellState(res) {
   try {
     const topicId = await resolveConsumerTopicId();
     const encodedTopicId = encodeURIComponent(topicId);
-    const [topicRead, topicStatusRead, topicStateRead, mergeLifecycleRead, taskAllocationRead, holdsRead, messages, runHistory] =
-      await Promise.all([
+    const [
+      topicRead,
+      topicStatusRead,
+      topicStateRead,
+      mergeLifecycleRead,
+      taskAllocationRead,
+      holdsRead,
+      messages,
+      runHistory,
+      runtimeConfigRead,
+      runtimeSmokeRead,
+      repoBindingRead,
+      actorListRead,
+      controlEventsRead,
+    ] = await Promise.all([
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/status`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/topic-state`),
@@ -152,6 +182,11 @@ async function writeShellState(res) {
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/approval-holds?status=pending&limit=50`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/messages?route=topic`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/run-history?limit=20`),
+        fetchUpstreamJson("/runtime/config"),
+        fetchUpstreamJson("/runtime/smoke"),
+        fetchUpstreamJson(`/v1/topics/${encodedTopicId}/repo-binding`),
+        fetchUpstreamJson(`/v1/topics/${encodedTopicId}/actors?limit=100`),
+        fetchUpstreamJson(`/v1/topics/${encodedTopicId}/events?limit=20`),
       ]);
     const payload = buildShellStatePayload({
       topicId,
@@ -163,6 +198,11 @@ async function writeShellState(res) {
       approvalHolds: Array.isArray(holdsRead?.items) ? holdsRead.items : [],
       messages: Array.isArray(messages) ? messages : [],
       runHistory: Array.isArray(runHistory?.items) ? runHistory.items : [],
+      runtimeConfig: runtimeConfigRead ?? null,
+      runtimeSmoke: runtimeSmokeRead ?? null,
+      repoBindingProjection: repoBindingRead?.repo_binding ?? null,
+      actorRegistry: Array.isArray(actorListRead?.items) ? actorListRead.items : [],
+      controlEvents: Array.isArray(controlEventsRead?.items) ? controlEventsRead.items : [],
     });
     return writeJson(res, 200, payload);
   } catch (error) {
@@ -289,6 +329,73 @@ async function handleRunFollowUp(req, res, runId) {
         },
       },
     });
+    return writeJson(res, 200, result);
+  } catch (error) {
+    return writeUpstreamError(res, error);
+  }
+}
+
+async function handleOperatorRepoBindingUpsert(req, res) {
+  try {
+    if (req.method !== "POST") {
+      return writeJson(res, 405, { error: "method_not_allowed" });
+    }
+    const input = await readJsonBody(req);
+    const repoRef = normalizeText(input.repo_ref);
+    if (!repoRef) {
+      return writeJson(res, 400, { error: "invalid_repo_ref", message: "repo_ref is required" });
+    }
+    const provider = normalizeText(input.provider) || "github";
+    const defaultBranch = normalizeText(input.default_branch) || null;
+    const topicId = await resolveConsumerTopicId();
+    const encodedTopicId = encodeURIComponent(topicId);
+    const operator = normalizeOperator(input.operator);
+    const result = await fetchUpstreamJson(`/v1/topics/${encodedTopicId}/repo-binding`, {
+      method: "PUT",
+      body: {
+        provider_ref: {
+          provider,
+          repo_ref: repoRef,
+        },
+        default_branch: defaultBranch,
+        bound_by: operator,
+      },
+    });
+    return writeJson(res, 200, result);
+  } catch (error) {
+    return writeUpstreamError(res, error);
+  }
+}
+
+async function handleOperatorAgentUpsert(req, res, actorId) {
+  try {
+    if (req.method !== "POST") {
+      return writeJson(res, 405, { error: "method_not_allowed" });
+    }
+    const normalizedActorId = normalizeText(actorId);
+    if (!normalizedActorId) {
+      return writeJson(res, 400, { error: "invalid_actor_id", message: "actorId is required" });
+    }
+    const input = await readJsonBody(req);
+    const role = normalizeText(input.role);
+    if (!role) {
+      return writeJson(res, 400, { error: "invalid_actor_role", message: "role is required" });
+    }
+    const status = normalizeText(input.status) || "active";
+    const laneId = normalizeText(input.lane_id) || null;
+    const topicId = await resolveConsumerTopicId();
+    const encodedTopicId = encodeURIComponent(topicId);
+    const result = await fetchUpstreamJson(
+      `/v1/topics/${encodedTopicId}/actors/${encodeURIComponent(normalizedActorId)}`,
+      {
+        method: "PUT",
+        body: {
+          role,
+          status,
+          lane_id: laneId,
+        },
+      },
+    );
     return writeJson(res, 200, result);
   } catch (error) {
     return writeUpstreamError(res, error);
@@ -535,6 +642,11 @@ function buildShellStatePayload({
   approvalHolds,
   messages,
   runHistory,
+  runtimeConfig,
+  runtimeSmoke,
+  repoBindingProjection,
+  actorRegistry,
+  controlEvents,
 }) {
   const now = Date.now();
   const normalizedTopicState = normalizeTopicState(topicState, status);
@@ -545,6 +657,16 @@ function buildShellStatePayload({
   const normalizedMessages = normalizeMessages(messages);
   const normalizedRunHistory = normalizeRunHistory(runHistory);
   const actors = normalizeTopicActors(topic);
+  const normalizedActorRegistry = normalizeActorRegistry(actorRegistry);
+  const normalizedControlEvents = normalizeControlEvents(controlEvents);
+  const normalizedOperatorConsole = buildOperatorConsoleState({
+    topicId,
+    runtimeConfig,
+    runtimeSmoke,
+    repoBindingProjection,
+    actorRegistry: normalizedActorRegistry,
+    controlEvents: normalizedControlEvents,
+  });
   const leadAgent = actors.find((agent) => normalizeText(agent?.role) === "lead");
 
   const activeActorCount = Number(normalizedStatus.active_actor_count || 0);
@@ -602,6 +724,8 @@ function buildShellStatePayload({
       status: hold.status,
     })),
     runs: normalizedRunHistory,
+    operator_console: normalizedOperatorConsole,
+    operatorConsole: normalizedOperatorConsole,
     interventionPoints: buildInterventionPoints(topicId, normalizedMessages, coarseModel, normalizedApprovals.length),
     interventions: buildInterventions(topicId, blockers, openConflicts),
     observability: {
@@ -711,6 +835,106 @@ function normalizeRunHistory(runHistory) {
     summary: normalizeText(item?.summary) || "run_history",
     updatedAt: item?.updated_at || item?.updatedAt || item?.at || new Date().toISOString(),
   }));
+}
+
+function normalizeActorRegistry(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => ({
+    actor_id: normalizeText(item?.actor_id || item?.actorId),
+    role: normalizeText(item?.role) || "unknown",
+    status: normalizeText(item?.status) || "unknown",
+    lane_id: normalizeText(item?.lane_id || item?.laneId) || null,
+    last_seen_at: item?.last_seen_at || item?.lastSeenAt || null,
+  }));
+}
+
+function normalizeControlEvents(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => ({
+    event_id: normalizeText(item?.event_id || item?.eventId),
+    event_type: normalizeText(item?.event_type || item?.eventType) || "unknown",
+    related_resource_type: normalizeText(item?.related_resource_type || item?.relatedResourceType) || null,
+    related_resource_id: normalizeText(item?.related_resource_id || item?.relatedResourceId) || null,
+    result_state: normalizeText(item?.result_state || item?.resultState) || null,
+    reason_code: normalizeText(item?.reason_code || item?.reasonCode) || null,
+    at: item?.at || item?.createdAt || new Date().toISOString(),
+  }));
+}
+
+function buildOperatorConsoleState({
+  topicId,
+  runtimeConfig,
+  runtimeSmoke,
+  repoBindingProjection,
+  actorRegistry,
+  controlEvents,
+}) {
+  const runtimeName = normalizeText(runtimeConfig?.runtimeName) || "openshock-runtime";
+  const daemonName = normalizeText(runtimeConfig?.daemonName) || "openshock-daemon";
+  const shellUrl = normalizeText(runtimeConfig?.shellUrl) || null;
+  const serverPort = Number.isFinite(Number(runtimeConfig?.serverPort)) ? Number(runtimeConfig.serverPort) : null;
+  const sampleTopicId = normalizeText(runtimeConfig?.sampleFixture?.topicId) || topicId;
+  const sampleTopicReady = Boolean(runtimeSmoke?.sampleTopicReady);
+  const sampleTopicAgentCount = Number(runtimeSmoke?.sampleTopicAgentCount || actorRegistry.length || 0);
+
+  const normalizedRepoBinding =
+    repoBindingProjection && typeof repoBindingProjection === "object"
+      ? {
+          topic_id: normalizeText(repoBindingProjection.topic_id) || topicId,
+          provider: normalizeText(repoBindingProjection?.provider_ref?.provider) || "unknown",
+          repo_ref: normalizeText(repoBindingProjection?.provider_ref?.repo_ref) || null,
+          default_branch: normalizeText(repoBindingProjection.default_branch) || null,
+          bound_by: normalizeText(repoBindingProjection.bound_by) || null,
+          updated_at: repoBindingProjection.updated_at || repoBindingProjection.linked_at || null,
+        }
+      : null;
+
+  const auditEntries = controlEvents.slice(0, 20).map((item) => ({
+    event_id: item.event_id || null,
+    action: item.event_type,
+    target:
+      item.related_resource_type && item.related_resource_id
+        ? `${item.related_resource_type}:${item.related_resource_id}`
+        : item.related_resource_type || "topic",
+    result_state: item.result_state || "accepted",
+    reason_code: item.reason_code || null,
+    at: item.at,
+  }));
+
+  return {
+    scope: "single_human_multi_agent",
+    workspace: {
+      workspace_id: `single_operator_${topicId}`,
+      operator_id: operatorAgentId,
+      default_topic_id: topicId,
+      mode: "single_human_multi_agent",
+    },
+    runtime: {
+      runtime_name: runtimeName,
+      daemon_name: daemonName,
+      shell_url: shellUrl,
+      server_port: serverPort,
+      sample_topic_id: sampleTopicId,
+      pairing_status: sampleTopicReady ? "paired" : "pending_pairing",
+    },
+    machine: {
+      machine_id: `${runtimeName}@single-machine`,
+      status: sampleTopicReady ? "online" : "booting",
+      sample_topic_ready: sampleTopicReady,
+      sample_topic_agent_count: sampleTopicAgentCount,
+    },
+    repo_binding: normalizedRepoBinding,
+    agents: actorRegistry,
+    audit_entries: auditEntries,
+    write_anchors: {
+      repo_binding_upsert: "/api/v0a/operator/repo-binding",
+      agent_upsert: "/api/v0a/operator/agents/:actorId/upsert",
+    },
+  };
 }
 
 function mapAgents(agents, nowMs) {

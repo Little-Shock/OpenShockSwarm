@@ -9,6 +9,9 @@ const ENDPOINTS = {
   interventionPointAction: (pointId) =>
     toApiUrl(runtimeConfig.apiBaseUrl, `/api/v0a/intervention-points/${encodeURIComponent(pointId)}/action`),
   runFollowUp: (runId) => toApiUrl(runtimeConfig.apiBaseUrl, `/api/v0a/runs/${encodeURIComponent(runId)}/follow-up`),
+  operatorRepoBindingUpsert: toApiUrl(runtimeConfig.apiBaseUrl, "/api/v0a/operator/repo-binding"),
+  operatorAgentUpsert: (actorId) =>
+    toApiUrl(runtimeConfig.apiBaseUrl, `/api/v0a/operator/agents/${encodeURIComponent(actorId)}/upsert`),
 };
 
 const POLL_MS = 5000;
@@ -25,6 +28,11 @@ const dom = {
   interventionList: document.getElementById("intervention-list"),
   interventionPointsList: document.getElementById("intervention-points-list"),
   eventFeed: document.getElementById("event-feed"),
+  workspaceSummaryList: document.getElementById("workspace-summary-list"),
+  repoBindingList: document.getElementById("repo-binding-list"),
+  runtimeMachineList: document.getElementById("runtime-machine-list"),
+  agentRegistryList: document.getElementById("agent-registry-list"),
+  auditEntryList: document.getElementById("audit-entry-list"),
   actionTemplate: document.getElementById("queue-action-template"),
 };
 
@@ -70,6 +78,7 @@ function render(payload) {
   renderApprovalQueue(payload.approvals || []);
   renderInterventionQueue(payload.interventions || []);
   renderCloseoutPoints(payload.interventionPoints || []);
+  renderOperatorConsole(payload.operator_console || payload.operatorConsole || null, payload);
   renderEvents(payload.observability?.events || []);
 }
 
@@ -348,6 +357,262 @@ function renderCloseoutPoints(points) {
   }
 }
 
+function renderOperatorConsole(operatorConsole, payload) {
+  renderWorkspaceSummary(operatorConsole, payload);
+  renderRepoBinding(operatorConsole);
+  renderRuntimeMachine(operatorConsole);
+  renderAgentRegistry(operatorConsole);
+  renderAuditEntries(operatorConsole);
+}
+
+function renderWorkspaceSummary(operatorConsole, payload) {
+  dom.workspaceSummaryList.replaceChildren();
+  if (!operatorConsole || typeof operatorConsole !== "object") {
+    dom.workspaceSummaryList.textContent = "Operator workspace is unavailable.";
+    return;
+  }
+
+  const workspace = operatorConsole.workspace || {};
+  const topic = Array.isArray(payload?.topics) && payload.topics.length > 0 ? payload.topics[0] : null;
+  const topicId = normalizeText(workspace.default_topic_id) || normalizeText(topic?.id) || "unknown_topic";
+  const scope = normalizeText(operatorConsole.scope) || "single_human_multi_agent";
+  const workspaceId = normalizeText(workspace.workspace_id) || `single_operator_${topicId}`;
+  const operatorId = normalizeText(workspace.operator_id) || "shell-operator";
+
+  const channelCard = queueCard({
+    title: `Channel ${topicId}`,
+    subtitle: "Layer: channel -> workspace(root) -> repo/worktree -> agent",
+    note: `scope=${scope} · operator=${operatorId}`,
+    status: "active",
+  });
+
+  const workspaceCard = queueCard({
+    title: `Workspace ${workspaceId}`,
+    subtitle: `Default topic ${topicId}`,
+    note: "Guide: docs/open-shock-roadmap.md",
+    status: "idle",
+  });
+
+  dom.workspaceSummaryList.append(channelCard, workspaceCard);
+}
+
+function renderRepoBinding(operatorConsole) {
+  dom.repoBindingList.replaceChildren();
+  if (!operatorConsole || typeof operatorConsole !== "object") {
+    dom.repoBindingList.textContent = "Repo binding is unavailable.";
+    return;
+  }
+
+  const repoBinding = operatorConsole.repo_binding;
+  const title = repoBinding?.repo_ref ? repoBinding.repo_ref : "Unbound repo";
+  const subtitle = repoBinding?.provider
+    ? `${repoBinding.provider} · ${repoBinding.default_branch || "branch not set"}`
+    : "repo binding missing";
+  const note = repoBinding?.updated_at
+    ? `updated ${formatTime(repoBinding.updated_at)} by ${repoBinding.bound_by || "unknown"}`
+    : "upsert repo binding to enable operator workspace";
+
+  const card = queueCard({
+    title,
+    subtitle,
+    note,
+    status: repoBinding?.repo_ref ? "active" : "pending",
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "queue-actions";
+  actions.append(
+    queueAction("Upsert binding", async () => {
+      const repoRefInput = window.prompt("Repo ref (owner/repo)", repoBinding?.repo_ref || "");
+      if (repoRefInput === null) {
+        return;
+      }
+      const repoRef = normalizeText(repoRefInput);
+      if (!repoRef) {
+        throw new Error("repo_ref is required");
+      }
+      const branchInput = window.prompt("Default branch", repoBinding?.default_branch || "main");
+      if (branchInput === null) {
+        return;
+      }
+      const defaultBranch = normalizeText(branchInput);
+      const providerInput = window.prompt("Provider", repoBinding?.provider || "github");
+      if (providerInput === null) {
+        return;
+      }
+      const provider = normalizeText(providerInput) || "github";
+      await requestJson(ENDPOINTS.operatorRepoBindingUpsert, {
+        method: "POST",
+        body: {
+          provider,
+          repo_ref: repoRef,
+          default_branch: defaultBranch || null,
+          operator: "shell-operator",
+        },
+      });
+      await loadAndRender();
+    }),
+  );
+  card.append(actions);
+  dom.repoBindingList.append(card);
+}
+
+function renderRuntimeMachine(operatorConsole) {
+  dom.runtimeMachineList.replaceChildren();
+  if (!operatorConsole || typeof operatorConsole !== "object") {
+    dom.runtimeMachineList.textContent = "Runtime and machine state unavailable.";
+    return;
+  }
+
+  const runtime = operatorConsole.runtime || {};
+  const machine = operatorConsole.machine || {};
+
+  const runtimeCard = queueCard({
+    title: normalizeText(runtime.runtime_name) || "runtime",
+    subtitle: `daemon=${normalizeText(runtime.daemon_name) || "unknown"} · pairing=${
+      normalizeText(runtime.pairing_status) || "unknown"
+    }`,
+    note: `shell=${normalizeText(runtime.shell_url) || "n/a"} · port=${
+      Number.isFinite(Number(runtime.server_port)) ? Number(runtime.server_port) : "n/a"
+    }`,
+    status: normalizeText(runtime.pairing_status) || "pending",
+  });
+
+  const machineCard = queueCard({
+    title: normalizeText(machine.machine_id) || "single-machine",
+    subtitle: `status=${normalizeText(machine.status) || "unknown"} · sample_topic_ready=${
+      machine.sample_topic_ready ? "yes" : "no"
+    }`,
+    note: `sample_topic_agent_count=${Number(machine.sample_topic_agent_count || 0)}`,
+    status: normalizeText(machine.status) || "idle",
+  });
+
+  dom.runtimeMachineList.append(runtimeCard, machineCard);
+}
+
+function renderAgentRegistry(operatorConsole) {
+  dom.agentRegistryList.replaceChildren();
+  if (!operatorConsole || typeof operatorConsole !== "object") {
+    dom.agentRegistryList.textContent = "Agent registry unavailable.";
+    return;
+  }
+  const agents = Array.isArray(operatorConsole.agents) ? operatorConsole.agents : [];
+  if (agents.length === 0) {
+    dom.agentRegistryList.textContent = "No agents registered.";
+  } else {
+    for (const agent of agents) {
+      const actorId = normalizeText(agent.actor_id);
+      if (!actorId) {
+        continue;
+      }
+      const role = normalizeText(agent.role) || "worker";
+      const status = normalizeText(agent.status) || "unknown";
+      const laneId = normalizeText(agent.lane_id) || "unassigned";
+      const note = agent.last_seen_at ? `last_seen=${formatTime(agent.last_seen_at)}` : "last_seen=n/a";
+      const card = queueCard({
+        title: actorId,
+        subtitle: `role=${role} · status=${status} · lane=${laneId}`,
+        note,
+        status,
+      });
+      const actions = document.createElement("div");
+      actions.className = "queue-actions";
+      actions.append(
+        queueAction("Set active", async () => {
+          await upsertAgent(actorId, role, "active", normalizeText(agent.lane_id) || null);
+        }),
+        queueAction("Set blocked", async () => {
+          await upsertAgent(actorId, role, "blocked", normalizeText(agent.lane_id) || null);
+        }),
+        queueAction("Edit lane", async () => {
+          const laneInput = window.prompt("Lane ID", normalizeText(agent.lane_id) || "");
+          if (laneInput === null) {
+            return;
+          }
+          const updatedLaneId = normalizeText(laneInput) || null;
+          await upsertAgent(actorId, role, status, updatedLaneId);
+        }),
+      );
+      card.append(actions);
+      dom.agentRegistryList.append(card);
+    }
+  }
+
+  const registrationCard = queueCard({
+    title: "Register Agent",
+    subtitle: "Add a new agent to current topic",
+    note: "Single operator entry only",
+    status: "pending",
+  });
+  const registrationActions = document.createElement("div");
+  registrationActions.className = "queue-actions";
+  registrationActions.append(
+    queueAction("Add agent", async () => {
+      const actorIdInput = window.prompt("Actor ID", "");
+      if (actorIdInput === null) {
+        return;
+      }
+      const actorId = normalizeText(actorIdInput);
+      if (!actorId) {
+        throw new Error("actor_id is required");
+      }
+      const roleInput = window.prompt("Role (lead/worker/human/system)", "worker");
+      if (roleInput === null) {
+        return;
+      }
+      const role = normalizeText(roleInput);
+      if (!role) {
+        throw new Error("role is required");
+      }
+      const laneInput = window.prompt("Lane ID (optional)", "");
+      if (laneInput === null) {
+        return;
+      }
+      const laneId = normalizeText(laneInput) || null;
+      await upsertAgent(actorId, role, "active", laneId);
+    }),
+  );
+  registrationCard.append(registrationActions);
+  dom.agentRegistryList.append(registrationCard);
+}
+
+async function upsertAgent(actorId, role, status, laneId) {
+  await requestJson(ENDPOINTS.operatorAgentUpsert(actorId), {
+    method: "POST",
+    body: {
+      role,
+      status,
+      lane_id: laneId,
+    },
+  });
+  await loadAndRender();
+}
+
+function renderAuditEntries(operatorConsole) {
+  dom.auditEntryList.replaceChildren();
+  if (!operatorConsole || typeof operatorConsole !== "object") {
+    dom.auditEntryList.textContent = "Audit trail unavailable.";
+    return;
+  }
+  const entries = Array.isArray(operatorConsole.audit_entries) ? operatorConsole.audit_entries : [];
+  if (entries.length === 0) {
+    dom.auditEntryList.textContent = "No audit entries yet.";
+    return;
+  }
+  for (const entry of entries) {
+    const target = normalizeText(entry.target) || "topic";
+    const reason = normalizeText(entry.reason_code) || "none";
+    const at = entry.at ? formatTime(entry.at) : "n/a";
+    const card = queueCard({
+      title: normalizeText(entry.action) || "unknown_action",
+      subtitle: `${target} · result=${normalizeText(entry.result_state) || "unknown"}`,
+      note: `reason=${reason} · at=${at}`,
+      status: normalizeText(entry.result_state) || "idle",
+    });
+    dom.auditEntryList.append(card);
+  }
+}
+
 function renderEvents(events) {
   dom.eventFeed.replaceChildren();
   for (const event of events) {
@@ -398,6 +663,7 @@ async function withButtonDisabled(button, action) {
     await action();
   } catch (error) {
     console.error(error);
+    dom.lastUpdated.textContent = `Last action failed (${String(error)}) [api=${runtimeConfig.apiBaseUrl}]`;
   } finally {
     button.disabled = false;
   }
@@ -413,13 +679,26 @@ function statusCell(status) {
 }
 
 function statusBadgeClass(status) {
-  if (status === "running" || status === "active" || status === "approved") {
+  if (
+    status === "running" ||
+    status === "active" ||
+    status === "approved" ||
+    status === "online" ||
+    status === "paired" ||
+    status === "accepted"
+  ) {
     return "badge-running";
   }
-  if (status === "blocked" || status === "approval_required" || status === "hold" || status === "rejected") {
+  if (
+    status === "blocked" ||
+    status === "approval_required" ||
+    status === "hold" ||
+    status === "rejected" ||
+    status === "failed"
+  ) {
     return "badge-blocked";
   }
-  if (status === "pending" || status === "open" || status === "waiting") {
+  if (status === "pending" || status === "open" || status === "waiting" || status === "booting") {
     return "badge-pending";
   }
   return "badge-idle";
@@ -469,10 +748,16 @@ async function requestJson(url, { method, body }) {
     headers: { "content-type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  const text = await response.text();
+  const parsed = safeParseJson(text);
   if (!response.ok) {
-    throw new Error(`${method} ${url} failed: ${response.status}`);
+    const reason = normalizeText(parsed?.error) || normalizeText(parsed?.message) || normalizeText(text) || "request_failed";
+    throw new Error(`${method} ${url} failed: ${response.status} ${reason}`);
   }
-  return response.json();
+  if (parsed && typeof parsed === "object") {
+    return parsed;
+  }
+  return {};
 }
 
 function resolveRuntimeConfig() {
@@ -497,4 +782,15 @@ function normalizeText(value) {
     return "";
   }
   return value.trim();
+}
+
+function safeParseJson(text) {
+  if (typeof text !== "string" || text.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

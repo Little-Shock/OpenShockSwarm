@@ -9,8 +9,10 @@
   <body>
     <header class="shell-header">
       <div>
-        <h1>OpenShock Stage 1 Collaboration Shell</h1>
-        <p>Room workspace for Topic, Run, Inbox, approval, intervention, follow-up, and closeout workflows.</p>
+        <h1>OpenShock Collaboration Shell</h1>
+        <p>
+          Stage 1 workflow workspace with Stage 2 first-shot operator console fan-in for single human multi-agent runtime.
+        </p>
       </div>
       <div class="header-actions">
         <button id="refresh-button" type="button">Refresh</button>
@@ -28,6 +30,35 @@
       <section class="panel" id="metrics-panel">
         <h2>Coarse Metrics</h2>
         <div id="metric-cards" class="metric-cards"></div>
+      </section>
+
+      <section class="panel" id="operator-panel">
+        <h2>Operator Console</h2>
+        <p class="panel-subtitle">
+          Single operator workspace for repo binding, runtime/machine pairing, agent registration, and audit evidence.
+        </p>
+        <div class="operator-sections">
+          <section class="operator-section">
+            <h3>Workspace</h3>
+            <div id="workspace-summary-list" class="list-cards"></div>
+          </section>
+          <section class="operator-section">
+            <h3>Repo Binding</h3>
+            <div id="repo-binding-list" class="list-cards"></div>
+          </section>
+          <section class="operator-section">
+            <h3>Runtime & Machine</h3>
+            <div id="runtime-machine-list" class="list-cards"></div>
+          </section>
+          <section class="operator-section">
+            <h3>Agent Registry</h3>
+            <div id="agent-registry-list" class="list-cards"></div>
+          </section>
+          <section class="operator-section">
+            <h3>Audit Trail</h3>
+            <div id="audit-entry-list" class="list-cards"></div>
+          </section>
+        </div>
       </section>
 
       <section class="panel" id="topic-panel">

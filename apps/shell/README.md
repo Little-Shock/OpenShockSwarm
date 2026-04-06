@@ -1,20 +1,22 @@
-# Stage 1 Collaboration Shell
+# Stage 1 + Stage 2 First-Shot Collaboration Shell
 
-This directory contains the Stage 1 collaboration shell for OpenShock.
+This directory contains the collaboration shell for OpenShock, including:
+
+- Stage 1 productized collaboration workflows
+- Stage 2 first-shot single-human multi-agent operator-console fan-in
 
 Scope in this stage:
 
-- Room workspace (`1 Room = 1 Topic`)
-- Topic and run workspace views
-- Inbox for pending approvals, interventions, and closeout gates
-- Approval, intervention, follow-up, and closeout actions
-- Coarse observability
+- Room workspace (`1 Room = 1 Topic`) with topic/run/inbox/approval/intervention/follow-up/closeout
+- Operator console fan-in for channel/workspace root context, repo binding, runtime/machine state, agent registry, and audit trail
+- Coarse observability and stable shell adapter actions
 
 Out of scope in this stage:
 
 - New backend truth sources or new backend nouns
 - Re-introducing old `/topics/*` shell-local patterns
-- Phase 2/3/4 capabilities (workspace/account/runtime-governance expansion)
+- Multi-human collaboration workspace/account/role-flow/notifications
+- Cross-machine scheduling, cloud runtime, or complex orchestration
 
 ## Local run
 
@@ -43,7 +45,13 @@ The shell does not own local mock truth. `dev-server.mjs` serves shell assets an
 - `GET /v1/topics/:topicId/approval-holds?status=pending`
 - `GET /v1/topics/:topicId/messages`
 - `GET /v1/topics/:topicId/run-history`
+- `GET /v1/topics/:topicId/repo-binding`
+- `GET /v1/topics/:topicId/actors?limit=100`
+- `GET /v1/topics/:topicId/events?limit=20`
+- `GET /runtime/config`
+- `GET /runtime/smoke`
 - `PUT /v1/topics/:topicId/actors/:actorId`
+- `PUT /v1/topics/:topicId/repo-binding`
 - `POST /v1/topics/:topicId/approval-holds/:holdId/decisions`
 - `POST /v1/topics/:topicId/messages`
 
@@ -60,3 +68,7 @@ Adapter routes:
   - Writes a `shell_follow_up_request` status event to `/v1/topics/:topicId/messages`.
 - `POST /api/v0a/intervention-points/:pointId/action`
   - Body: `{ "action": "approve" | "hold" | "escalate", "operator": "<string>", "note": "<string>" }`
+- `POST /api/v0a/operator/repo-binding`
+  - Body: `{ "provider": "<string>", "repo_ref": "<string>", "default_branch": "<string|null>", "operator": "<string>" }`
+- `POST /api/v0a/operator/agents/:actorId/upsert`
+  - Body: `{ "role": "lead" | "worker" | "human" | "system", "status": "<string>", "lane_id": "<string|null>" }`
