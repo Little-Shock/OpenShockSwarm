@@ -182,10 +182,14 @@ async function handleApprovalDecision(req, res, approvalId) {
         status: "active",
       },
     });
+    const idempotencyKey = resolveIdempotencyKey(req, `approval:${topicId}:${approvalId}:${decision}`);
     const result = await fetchUpstreamJson(
       `/v1/topics/${encodedTopicId}/approval-holds/${encodeURIComponent(approvalId)}/decisions`,
       {
         method: "POST",
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+        },
         body: {
           decider_actor_id: operator,
           approve: decision === "approve",
@@ -358,6 +362,13 @@ class UpstreamUnavailableError extends Error {
 async function fetchUpstreamJson(pathWithQuery, options = {}) {
   const url = new URL(pathWithQuery, apiUpstream).toString();
   const headers = {};
+  if (options.headers && typeof options.headers === "object") {
+    for (const [key, value] of Object.entries(options.headers)) {
+      if (typeof value === "string" && value.length > 0) {
+        headers[key] = value;
+      }
+    }
+  }
   const request = {
     method: options.method || "GET",
     headers,
@@ -447,6 +458,21 @@ function normalizeOperator(value) {
 function normalizeNote(value) {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function resolveIdempotencyKey(req, fallbackPrefix) {
+  const raw =
+    req.headers?.["idempotency-key"] ||
+    req.headers?.["Idempotency-Key"] ||
+    req.headers?.["x-idempotency-key"] ||
+    "";
+  if (typeof raw === "string") {
+    const normalized = raw.trim();
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+  return `${fallbackPrefix}:${Date.now()}`;
 }
 
 function buildShellStatePayload({
