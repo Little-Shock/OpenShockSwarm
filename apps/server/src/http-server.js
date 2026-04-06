@@ -2335,7 +2335,12 @@ export function createHttpServer(coordinator, options = {}) {
             view,
             items: deepClone(page.items),
             page: page.page,
-            request_id: requestId
+            request_id: requestId,
+            projection_meta: integrationProjectionMeta({
+              resource: "topic_debug_history_projection",
+              sourcePlane: "control_plane_debug_history_projection",
+              topicId: route.topicId
+            })
           });
           return;
         }
@@ -2353,7 +2358,12 @@ export function createHttpServer(coordinator, options = {}) {
           view,
           items: deepClone(snapshotPage.items),
           page: snapshotPage.page,
-          request_id: requestId
+          request_id: requestId,
+          projection_meta: integrationProjectionMeta({
+            resource: "topic_debug_history_projection",
+            sourcePlane: "control_plane_debug_history_projection",
+            topicId: route.topicId
+          })
         });
         return;
       }
@@ -2373,7 +2383,12 @@ export function createHttpServer(coordinator, options = {}) {
         sendJson(response, 200, {
           items: deepClone(page.items),
           page: page.page,
-          request_id: requestId
+          request_id: requestId,
+          projection_meta: integrationProjectionMeta({
+            resource: "topic_debug_rejection_projection",
+            sourcePlane: "control_plane_rejection_projection",
+            topicId: route.topicId
+          })
         });
         return;
       }

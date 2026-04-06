@@ -1994,6 +1994,8 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
         path: "/v1/topics/topic_batch6_control_truth/debug/rejections?limit=20"
       });
       assert.equal(debugRejections.statusCode, 200);
+      assert.equal(debugRejections.body.projection_meta.resource, "topic_debug_rejection_projection");
+      assert.equal(debugRejections.body.projection_meta.source_plane, "control_plane_rejection_projection");
       assert.ok(
         debugRejections.body.items.some((item) =>
           ["source_actor_inactive", "write_actor_inactive"].includes(item.reason_code)
@@ -2006,6 +2008,8 @@ test("batch6 control-plane closeout/debug truth exposes server-owned evidence an
         path: "/v1/topics/topic_batch6_control_truth/debug/history?view=snapshot&limit=5"
       });
       assert.equal(debugSnapshots.statusCode, 200);
+      assert.equal(debugSnapshots.body.projection_meta.resource, "topic_debug_history_projection");
+      assert.equal(debugSnapshots.body.projection_meta.source_plane, "control_plane_debug_history_projection");
       assert.ok(Array.isArray(debugSnapshots.body.items));
       assert.ok(debugSnapshots.body.items.length >= 1);
     }
@@ -2752,6 +2756,16 @@ test("v1 batch7 integration projection closure keeps projection meta and backend
       );
       assert.ok(
         shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/topics/:topicId/debug/rejections"
+        )
+      );
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/topics/:topicId/debug/history?view=:view"
+        )
+      );
+      assert.ok(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
           "/v1/topics/:topicId/messages"
         )
       );
@@ -2762,6 +2776,14 @@ test("v1 batch7 integration projection closure keeps projection meta and backend
       assert.equal(
         shellCompatibility.body.backend_derived_projection.lineage_anchors.execution_events,
         "/v1/execution/runs/:runId/events?topic_id=:topicId"
+      );
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.lineage_anchors.topic_debug_rejections,
+        "/v1/topics/:topicId/debug/rejections"
+      );
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.lineage_anchors.topic_debug_history,
+        "/v1/topics/:topicId/debug/history?view=:view"
       );
     }
   );
