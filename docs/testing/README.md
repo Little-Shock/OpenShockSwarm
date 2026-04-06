@@ -1,0 +1,11 @@
+# Testing Docs
+
+- [Test Cases](./Test-Cases.md)
+  - 以 `PRD -> Checklist -> Test Case` 链路整理的全量验证项
+- [Test Report 2026-04-06 Main](./Test-Report-2026-04-06-main.md)
+  - 本轮在 `main` 基线上的实际执行结果、失败项和 GAP
+
+如果 `Test Cases` 和 `Test Report` 冲突：
+
+- 用 `Test Cases` 判断应该测什么
+- 用 `Test Report` 判断这一轮实际测到了什么、结果如何

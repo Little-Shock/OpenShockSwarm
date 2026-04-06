@@ -8,7 +8,8 @@ Next.js frontend for the OpenShock Phase 0 shell.
 - Issue Room and Run detail routes
 - Stitch-inspired visual direction
 - Setup page live bridge for local `claude` and `codex`
-- Mock control-surface data while backend services are still being made real
+- Live control-surface routes for `Setup / Issues / Rooms / Runs / Agents / Memory / Access`
+- Phase 0 shell for repo binding, GitHub readiness, runtime pairing, and bridge verification
 
 ## Run
 
@@ -23,10 +24,16 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
 - `/setup`
 - `/chat/all`
-- `/issues`
-- `/rooms/room-runtime`
-- `/inbox`
 - `/board`
+- `/inbox`
+- `/issues`
+- `/issues/[issueKey]`
+- `/rooms`
+- `/rooms/room-runtime`
+- `/runs`
+- `/agents`
+- `/access`
+- `/memory`
 
 ## Design Inputs
 

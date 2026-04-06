@@ -16,11 +16,22 @@
 ### 产品合同
 
 - [PRD](./product/PRD.md)
-  - OpenShock 的产品定义、Phase 0 边界、当前已落地 / 未落地能力
+  - OpenShock 的完整产品基线，恢复到最初全量 PRD 口径
 - [Phase 0 MVP](./product/Phase0-MVP.md)
-  - 第一轮执行范围、验收门、Review/Merge 前要过什么
+  - 当前仓库实现切片、第一轮执行范围、验收门
+- [Product Checklist](./product/Checklist.md)
+  - 按 PRD 拆开的合同项、当前状态与 GAP
 - [To Do List](./product/TODO-List.md)
-  - 当前已完成 faces、active batch、umbrella backlog、推荐拆票方向和开票规则
+  - 基于 Checklist 收敛出来的近期推进顺序和开票规则
+
+### 测试与验证
+
+- [Testing Index](./testing/README.md)
+  - 测试文档索引
+- [Test Cases](./testing/Test-Cases.md)
+  - 按 `PRD -> Checklist -> Test Case` 整理的全量验证项
+- [Test Report 2026-04-06 Main](./testing/Test-Report-2026-04-06-main.md)
+  - 当前 `main` 基线上的真实执行结果
 
 ### 设计与品牌
 
@@ -66,7 +77,9 @@
 ## 文档维护规则
 
 - 根 README 只写入口级真值，不堆未来路线图
-- PRD 写产品合同，但必须显式区分“当前仓库基线”和“下一阶段目标”
+- PRD 写完整产品合同；当前仓库实现边界由 Phase 0 MVP 和 Checklist 承接
 - Phase 0 MVP 只写第一轮必须交付和验收门，不写超出当前 repo 的幻想
+- Checklist 必须把“已完成 / 部分完成 / 未完成”分清楚
+- Test Cases 必须能追溯回 Checklist，而不是零散 checklist
 - Runbook 只能写当前仓库实际能跑的启动方式和验证步骤
 - Research 文档允许更宽，但不能冒充“已落地功能说明”

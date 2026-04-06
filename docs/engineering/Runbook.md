@@ -356,11 +356,10 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
 - 三个进程可以本地跑起来
 - server / daemon 的健康检查可打
 - runtime pairing / repo binding / GitHub readiness 有真实接口
-- GitHub App install / auth、webhook ingest、真实 PR create / sync / merge 主链已站住
-- 邮箱登录 / workspace member / role / permission truth 已站住
-- approval center state、notification delivery contract、worker fanout 已站住
-- memory version / diff / audit contract 已站住
-- multi-runtime registry / scheduler / lease / conflict guard 已站住
+- issue / room / run / session / worktree lane 主链已站住
+- memory 读取面与文件级写回 scaffold 已站住
+- auth session / workspace members 基础读取面已站住
+- state SSE 初始快照已站住
 - issue 创建会推进到 room / run / session / worktree lane
 - bridge 可以调用本地 CLI
 

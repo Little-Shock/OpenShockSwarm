@@ -102,6 +102,14 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 换句话说：现在已经是“可运行基线”，但还不是“完整产品闭环”。
 
+## 文档链路
+
+- 完整产品基线: [docs/product/PRD.md](./docs/product/PRD.md)
+- 当前实现切片: [docs/product/Phase0-MVP.md](./docs/product/Phase0-MVP.md)
+- 能力合同与 GAP: [docs/product/Checklist.md](./docs/product/Checklist.md)
+- 全量测试用例: [docs/testing/Test-Cases.md](./docs/testing/Test-Cases.md)
+- 本轮测试报告: [docs/testing/Test-Report-2026-04-06-main.md](./docs/testing/Test-Report-2026-04-06-main.md)
+
 ## 仓库结构
 
 ```text

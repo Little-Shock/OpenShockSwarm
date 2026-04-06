@@ -1,8 +1,8 @@
 # OpenShock Phase 0 MVP
 
-**版本:** 0.3
+**版本:** 0.4
 **版本日期:** 2026 年 4 月 6 日
-**关联文档:** [PRD](./PRD.md)
+**关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
 
@@ -14,7 +14,7 @@
 2. 第一轮执行票应该围绕哪些真实能力推进
 3. Review / Merge 前最低要过哪些验收门
 
-它不是完整 PRD，也不是研究笔记。
+它是完整 PRD 的当前实现切片，不负责替代完整产品基线。
 
 ---
 

@@ -1,263 +1,125 @@
 # OpenShock To Do List
 
-**版本:** 0.2
+**版本:** 0.3
 **更新日期:** 2026 年 4 月 6 日
-**用途:** 给后续开票、拆票、收口提供一个稳定的执行清单，不再只靠频道口头同步。
+**关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
 
-## 一、这份文档怎么用
+## 一、这份文档现在只做什么
 
-这份 To Do List 只做 4 件事：
+- 不再把“完整产品范围”和“当前已完成实现”混在一起
+- 不再提前把 GitHub App、远端 PR、通知、成员权限等写成已完成
+- 只维护当前最需要推进的 GAP、优先级和推荐顺序
 
-1. 记录当前已经完成的执行面，避免重复开票
-2. 把接下来还要推进的 face 分清楚
-3. 给开票人一个可直接落板的拆票方向
-4. 固定每一轮的开票和收口规则，避免 batch 漂移
+如果 live board 和文档冲突：
 
-如果 live board 和这份文档冲突：
-
-- 板面状态以 live board 为准
-- face 划分、拆票方向、gate 规则以这份文档为准
+- 实时状态以 live board 为准
+- 需求边界以 `PRD + Checklist` 为准
+- 测试结论以 `Test Report` 为准
 
 ---
 
-## 二、当前 active batch 归口
+## 二、当前已经站住的基线
 
-这份文档不再承载会频繁变化的 live status 快照。
+- chat-first 主壳与主要路由可在浏览器打开
+- issue -> room -> run -> session -> worktree lane 主链已存在
+- daemon bridge 可执行本地 prompt
+- memory 列表/详情和文件写回 scaffold 已存在
+- auth session / workspace members 基础读取面已存在
+- state SSE 初始快照已存在
 
-- 实时 `done / in_progress / in_review / todo` 一律以 live task board 为准
-- 这份文档只固定 face 划分、canonical batch、umbrella/backlog 归口、拆票方向和 gate 规则
-
-按当前 planning 归口，Phase 3 只认这版：
-
-- canonical active batch:
-  - `#28` GitHub App install / auth / repo binding contract
-  - `#29` webhook ingest / signature verify / event normalization
-  - `#30` review / comment / check / merge 事件写回 `state / inbox / room`
-  - `#31` multi-runtime registry / heartbeat / pairing state contract
-  - `#32` runtime scheduler / selection / multi-runtime surface
-- umbrella backlog:
-  - `#24` GitHub 集成产品化主题票
-  - `#25` 多 runtime 注册 / 心跳 / 调度主题票
-
-这意味着：
-
-- 当前 Phase 0 到 Phase 2 主链已经收口
-- Phase 3 执行面只按 `#28-#32` 这组票推进
-- `#24/#25` 继续只做 umbrella backlog / face 归口，不直接当执行票
-- 谁空出来就直接回看 live board，再认领 `#28-#32` 里仍待推进的票
+这些能力的详细验收见 [Product Checklist](./Checklist.md) 中的 `CHK-01/03/05/10/13/15`。
 
 ---
 
-## 三、已完成 Faces
+## 三、当前必须先收的 GAP
 
-### Face A: Phase 0 基线与工程入口
+### GAP-01 Runtime Pairing 冷启动一致性
 
-已完成：
+- 现象:
+  - `GET /v1/runtime/pairing` 可能返回旧的 `8090`
+  - 实际活跃 daemon 在 `18090`
+  - 首次 `POST /v1/exec` 会直接 `502`
+- 影响:
+  - Setup 主链首跳失败
+  - `ops:smoke` 产生假绿
+- 相关合同:
+  - `CHK-04`
+  - `CHK-14`
+  - `CHK-15`
+- 优先级: P0
 
-- 仓库基线、分支、代理、回归门
-- Go toolchain / PATH / repo 级 verify 门
-- README / docs index / PRD / Phase0-MVP / Runbook 真值收口
+### GAP-02 GitHub App / Webhook / 真实远端 PR 闭环
 
-对应已完成票：
+- 现状:
+  - 当前只有 readiness probe、本地 PR 状态对象和局部 mutation
+  - 不能宣称已有真实远端 PR create/sync/merge 闭环
+- 相关合同:
+  - `CHK-07`
+  - `CHK-13`
+- 优先级: P0/P1
 
-- `#2 #3 #4 #8 #9 #10 #12`
+### GAP-03 完整身份、成员、角色与设备授权
 
-### Face B: Web 协作壳与 live truth
+- 现状:
+  - session / members 读取面可见
+  - 邮箱登录、邀请、角色、权限、设备授权未完成
+- 相关合同:
+  - `CHK-12`
+  - `CHK-13`
+- 优先级: P1
 
-已完成：
+### GAP-04 通知、恢复触达与审批中心产品化
 
-- Chat / Board / Inbox / Issues / Rooms / Runs / Agents / Setup / Settings 主壳
-- `board / inbox / agents / room` 从 mock-data 收成 live truth
-- `workspace / channels / issues / runs` 剩余 mock/fallback 收口
+- 现状:
+  - notifications 对象存在
+  - 浏览器 push、邮件通知、完整 approval center 未完成
+- 相关合同:
+  - `CHK-08`
+  - `CHK-11`
+- 优先级: P1
 
-对应已完成票：
+### GAP-05 多 Runtime 调度与 Failover
 
-- `#5 #14 #20`
+- 现状:
+  - registry / pairing / selection 已出现
+  - scheduler、lease、failover、offline handling 未完成
+- 相关合同:
+  - `CHK-14`
+- 优先级: P1
 
-### Face C: Server 控制面主链
+### GAP-06 Stop / Resume / Skill Promotion
 
-已完成：
-
-- workspace / issue / room / run / inbox / github binding API 壳
-- issue -> room -> run -> session -> worktree lane 主链
-- GitHub PR create / sync / merge 主链
-- GitHub PR failure-path blocked escalation contract
-
-对应已完成票：
-
-- `#6 #15 #22`
-
-### Face D: Daemon / Runtime 基线
-
-已完成：
-
-- runtime / worktree / exec contract
-- server 与 daemon 的最小闭环
-
-对应已完成票：
-
-- `#7`
-
-### Face E: 文件级记忆与写回
-
-已完成：
-
-- `MEMORY.md / notes / decisions` 从 scaffold 升级为可验证写回 contract
-
-对应已完成票：
-
-- `#16`
-
-### Face F: 人类决策面
-
-已完成：
-
-- Inbox `approval / blocked / review` 从只读卡片升级成真实 decision mutation loop
-- `review` failure path 已与 `#22` failure contract 对齐
-
-对应已完成票：
-
-- `#21`
-
-### Face G: Planning / Batch Gate
-
-已完成：
-
-- 每轮 planning / gate / merge 节奏锁定
-- duplicate ticket 清理
-
-对应已完成票：
-
-- `#13 #19 #23 #26`
+- 现状:
+  - 当前只有 run 可见性和 memory 写回 scaffold
+  - stop/resume/follow-thread、skill/policy 提升闭环未完成
+- 相关合同:
+  - `CHK-09`
+  - `CHK-10`
+- 优先级: P1/P2
 
 ---
 
-## 四、下一步 To Do Faces
+## 四、推荐推进顺序
 
-当前真正该继续推进的 face 仍然只有 2 组，但已经从 umbrella backlog 进一步拆成了 Phase 3 执行票。
-
-### Face 1: GitHub 集成产品化
-
-对应 umbrella backlog：
-
-- `#24`
-
-当前已拆出的 Phase 3 执行票：
-
-- `#28` GitHub App install / auth / repo binding contract
-- `#29` webhook ingest / signature verify / event normalization
-- `#30` review / comment / check / merge 事件同步回 state / inbox / room
-
-当前归口：
-
-- GitHub 集成产品化这条 face 的执行面固定看 `#28/#29/#30`
-- 具体实时状态仍以 live board 为准
-
-一句话目标：
-
-- 把当前 gh CLI / remote probe 级别的 GitHub 能力，升级成可持续同步的 GitHub App / webhook / review sync 闭环
-
-当前推荐执行顺序：
-
-1. 先用 `#27` 把 GitHub 线的 gate / merge 节奏锁稳
-2. `#28` 先站住 installation / auth / repo binding contract
-3. `#29` 再补 webhook ingest / signature verify
-4. `#30` 最后把 review/comment/check/merge 事件写回 `pullRequest / inbox / room / run`
-
-补充说明：
-
-- 如果后面需要补 web 可见面，也应该挂在 GitHub 集成产品化这条 face 下，而不是新开一条脱离 contract 的散票
-- 这条 face 必须持续兼容当前 `#15/#22` 已经站住的 PR create/sync/merge 与 failure contract
-
-这一 face 的 review gate：
-
-- 不再只靠手动 sync 或 CLI probe 才能更新 review 状态
-- webhook / app-state 错误可见且有测试锁住
-- 现有 `#15/#22` 的 create/sync/merge contract 不被带坏
-
-### Face 2: 多 Runtime 注册与调度
-
-对应 umbrella backlog：
-
-- `#25`
-
-当前已拆出的 Phase 3 执行票：
-
-- `#31` multi-runtime registry / heartbeat / pairing state contract
-- `#32` runtime scheduler / selection / multi-runtime surface
-
-当前归口：
-
-- 多 runtime 这条 face 的执行面固定看 `#31/#32`
-- 具体实时状态仍以 live board 为准
-
-一句话目标：
-
-- 把当前单 runtime pairing，升级成可注册多个 runtime、持续 heartbeat、并按 run 调度的真实控制面
-
-当前推荐执行顺序：
-
-1. `#31` 先把 registry / heartbeat / pairing state contract 站住
-2. `#32` 再把 runtime scheduler / selection / multi-runtime surface 打通
-
-补充说明：
-
-- `#32` 已经进入进行态，但它不能脱离 `#31` 的 registry / heartbeat contract 单独漂移
-- 这一 face 同时会动 `server + daemon + web`，所以 reviewer 必须按 write scope 分开核，不要把 GitHub 线的 reopen 混进来
-
-这一 face 的 review gate：
-
-- 多 runtime 真值能在 web 和 server 同时看到
-- 调度决策不是静态 mock
-- runtime offline / failover 有显式错误态
+1. 先修 `GAP-01`，同时补 `ops:smoke`，把 Setup 主链和回归门收稳。
+2. 再推进 `GAP-02`，把 GitHub 线从“探测/本地状态”升级到“远端闭环”。
+3. 然后处理 `GAP-03` 与 `GAP-04`，补团队级身份与通知能力。
+4. 最后推进 `GAP-05` 与 `GAP-06`，扩到多 runtime 调度和更完整的人类接管能力。
 
 ---
 
-## 五、暂不进入下一拍 Active Batch 的 Faces
-
-这些方向在 PRD 里成立，但当前不建议和 `#24/#25` 混开：
-
-- 完整审批中心产品化
-- 浏览器 push / 邮件通知生产化
-- 邮箱登录 / workspace 成员 / 权限系统
-- 长期自治、多 Agent 协商、自动 merge
-
-规则很简单：
-
-- 没有明确 owner、write scope、gate 的，不起执行票
-- 没有从当前 repo 真缺口直接导出的，不抢进 active batch
-
----
-
-## 六、推荐开票顺序
-
-当前这一拍建议按这个顺序推进：
-
-1. 先用 `#27` 锁定 canonical active batch / gate / merge 节奏
-2. GitHub 线按 `#28 -> #29 -> #30` 往前推
-3. 多 runtime 线按 `#31 -> #32` 往前推
-
-如果要并行：
-
-- 可以并行，但必须先切清 write scope
-- `#28/#29/#30` 和 `#31/#32` 可以跨 face 并行
-- 同一条主链内部不要再重复起 scope 重叠的票
-
----
-
-## 七、每张票必须写清的字段
-
-后续开票统一至少包含：
+## 五、每张执行票最少要写清什么
 
 - `Goal`
-- `Write Scope`
+- `Scope`
+- `Dependencies`
 - `Self-Check`
 - `Review Gate`
 - `Merge Gate`
-- `Parallel`
-- `Blocked-by`
+- `Related Checklist IDs`
+- `Related Test Case IDs`
 
 没有这 7 项，不进入 active execution。
 
