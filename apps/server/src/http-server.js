@@ -317,16 +317,6 @@ function matchRoute(method, pathName) {
     return { route: "V1_GET_DEBUG_HISTORY" };
   }
 
-  const v1InboxMatch = pathName.match(/^\/v1\/inbox\/([^/]+)$/);
-  if (method === "GET" && v1InboxMatch) {
-    return { route: "V1_GET_INBOX", actorId: v1InboxMatch[1] };
-  }
-
-  const v1InboxAckMatch = pathName.match(/^\/v1\/inbox\/([^/]+)\/acks$/);
-  if (method === "POST" && v1InboxAckMatch) {
-    return { route: "V1_POST_INBOX_ACKS", actorId: v1InboxAckMatch[1] };
-  }
-
   if (method === "GET" && pathName === "/v1/compatibility/shell-adapter") {
     return { route: "V1_GET_SHELL_ADAPTER_COMPATIBILITY" };
   }
@@ -347,39 +337,6 @@ function matchRoute(method, pathName) {
   const v1PrChecksMatch = pathName.match(/^\/v1\/prs\/([^/]+)\/checks$/);
   if (method === "POST" && v1PrChecksMatch) {
     return { route: "V1_POST_PR_CHECK", prId: v1PrChecksMatch[1] };
-  }
-
-  const v1RunReplayMatch = pathName.match(/^\/v1\/runs\/([^/]+)\/replay$/);
-  if (method === "GET" && v1RunReplayMatch) {
-    return { route: "V1_GET_RUN_REPLAY", runId: v1RunReplayMatch[1] };
-  }
-
-  const v1RunTimelineMatch = pathName.match(/^\/v1\/runs\/([^/]+)\/timeline$/);
-  if (method === "GET" && v1RunTimelineMatch) {
-    return { route: "V1_GET_RUN_TIMELINE", runId: v1RunTimelineMatch[1] };
-  }
-
-  const v1RunMatch = pathName.match(/^\/v1\/runs\/([^/]+)$/);
-  if (method === "GET" && v1RunMatch) {
-    return { route: "V1_GET_RUN", runId: v1RunMatch[1] };
-  }
-
-  const v1RunFeedbackMatch = pathName.match(/^\/v1\/runs\/([^/]+)\/feedback$/);
-  if (method === "GET" && v1RunFeedbackMatch) {
-    return { route: "V1_GET_RUN_FEEDBACK", runId: v1RunFeedbackMatch[1] };
-  }
-
-  const v1RunHoldsMatch = pathName.match(/^\/v1\/runs\/([^/]+)\/holds$/);
-  if (method === "GET" && v1RunHoldsMatch) {
-    return { route: "V1_GET_RUN_HOLDS", runId: v1RunHoldsMatch[1] };
-  }
-
-  if (method === "GET" && pathName === "/v1/debug/events") {
-    return { route: "V1_GET_DEBUG_EVENTS" };
-  }
-
-  if (method === "GET" && pathName === "/v1/debug/history") {
-    return { route: "V1_GET_DEBUG_HISTORY" };
   }
 
   const v1InboxMatch = pathName.match(/^\/v1\/inbox\/([^/]+)$/);
