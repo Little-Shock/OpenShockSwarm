@@ -215,11 +215,14 @@
 
 - PRD 来源: 十三.5、十八.8
 - 优先级: P1
-- 当前状态: 未完成
+- 当前状态: 部分完成
 - 已落地:
   - [x] auth session 与 workspace members API 可读取
+  - [x] `/access` 已消费 live auth session / members / roles truth，并提供 email login / logout 入口
+  - [x] auth session persistence 已有 store test 与 browser reload evidence
 - 当前 GAP:
-  - [ ] 邮箱登录、邀请、成员管理、角色权限、设备授权都未站住
+  - [ ] invite、成员管理、角色变更和 action-level authz 仍未站住
+  - [ ] 设备授权与完整邮箱验证流程仍未产品化
   - [ ] GitHub 仍主要是 readiness probe，不是完整授权模型
 - 对应 Test Cases: `TC-014` `TC-016`
 

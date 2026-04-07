@@ -25,6 +25,44 @@ export type WorkspaceSnapshot = {
   memoryMode: string;
 };
 
+export type AuthSession = {
+  id: string;
+  memberId?: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  status: string;
+  authMethod?: string;
+  signedInAt?: string;
+  lastSeenAt?: string;
+  permissions: string[];
+};
+
+export type WorkspaceRole = {
+  id: string;
+  label: string;
+  summary: string;
+  permissions: string[];
+};
+
+export type WorkspaceMember = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  source?: string;
+  addedAt?: string;
+  lastSeenAt?: string;
+  permissions: string[];
+};
+
+export type AuthSnapshot = {
+  session: AuthSession;
+  roles: WorkspaceRole[];
+  members: WorkspaceMember[];
+};
+
 export type Channel = {
   id: string;
   name: string;
@@ -244,6 +282,7 @@ export type SettingsSection = {
 
 export type PhaseZeroState = {
   workspace: WorkspaceSnapshot;
+  auth: AuthSnapshot;
   channels: Channel[];
   channelMessages: Record<string, Message[]>;
   issues: Issue[];
@@ -275,6 +314,137 @@ export const workspace: WorkspaceSnapshot = {
   lastPairedAt: "刚刚",
   browserPush: "只推高优先级",
   memoryMode: "MEMORY.md + notes/ + decisions/",
+};
+
+export const auth: AuthSnapshot = {
+  session: {
+    id: "auth-session-current",
+    memberId: "member-larkspur",
+    email: "larkspur@openshock.dev",
+    name: "Larkspur",
+    role: "owner",
+    status: "active",
+    authMethod: "email-link",
+    signedInAt: "2026-04-07T04:12:00Z",
+    lastSeenAt: "2026-04-07T05:35:00Z",
+    permissions: [
+      "workspace.manage",
+      "members.manage",
+      "repo.admin",
+      "runtime.manage",
+      "issue.create",
+      "room.reply",
+      "run.execute",
+      "inbox.review",
+      "inbox.decide",
+      "memory.read",
+      "memory.write",
+      "pull_request.read",
+      "pull_request.review",
+      "pull_request.merge",
+    ],
+  },
+  roles: [
+    {
+      id: "owner",
+      label: "Owner",
+      summary: "可以管理 workspace、成员、repo/runtime 绑定，并批准或合并关键动作。",
+      permissions: [
+        "workspace.manage",
+        "members.manage",
+        "repo.admin",
+        "runtime.manage",
+        "issue.create",
+        "room.reply",
+        "run.execute",
+        "inbox.review",
+        "inbox.decide",
+        "memory.read",
+        "memory.write",
+        "pull_request.read",
+        "pull_request.review",
+        "pull_request.merge",
+      ],
+    },
+    {
+      id: "member",
+      label: "Member",
+      summary: "可以参与 issue / room / run / review，但不能改 roster 或 workspace 级配置。",
+      permissions: [
+        "issue.create",
+        "room.reply",
+        "run.execute",
+        "inbox.review",
+        "memory.read",
+        "pull_request.read",
+        "pull_request.review",
+      ],
+    },
+    {
+      id: "viewer",
+      label: "Viewer",
+      summary: "只读查看控制面和历史真值，不做破坏性变更。",
+      permissions: ["room.read", "run.read", "inbox.read", "memory.read", "pull_request.read"],
+    },
+  ],
+  members: [
+    {
+      id: "member-larkspur",
+      email: "larkspur@openshock.dev",
+      name: "Larkspur",
+      role: "owner",
+      status: "active",
+      source: "seed",
+      addedAt: "2026-04-07T04:10:00Z",
+      lastSeenAt: "2026-04-07T05:35:00Z",
+      permissions: [
+        "workspace.manage",
+        "members.manage",
+        "repo.admin",
+        "runtime.manage",
+        "issue.create",
+        "room.reply",
+        "run.execute",
+        "inbox.review",
+        "inbox.decide",
+        "memory.read",
+        "memory.write",
+        "pull_request.read",
+        "pull_request.review",
+        "pull_request.merge",
+      ],
+    },
+    {
+      id: "member-mina",
+      email: "mina@openshock.dev",
+      name: "Mina",
+      role: "member",
+      status: "active",
+      source: "seed",
+      addedAt: "2026-04-07T04:10:00Z",
+      lastSeenAt: "2026-04-07T05:18:00Z",
+      permissions: [
+        "issue.create",
+        "room.reply",
+        "run.execute",
+        "inbox.review",
+        "memory.read",
+        "pull_request.read",
+        "pull_request.review",
+      ],
+    },
+    {
+      id: "member-longwen",
+      email: "longwen@openshock.dev",
+      name: "Longwen",
+      role: "viewer",
+      status: "active",
+      source: "seed",
+      addedAt: "2026-04-07T04:10:00Z",
+      lastSeenAt: "2026-04-07T05:05:00Z",
+      permissions: ["room.read", "run.read", "inbox.read", "memory.read", "pull_request.read"],
+    },
+  ],
 };
 
 export const tabs: Array<{ id: AppTab; label: string; href: string }> = [
@@ -950,6 +1120,7 @@ export function buildGlobalStats(state: PhaseZeroState) {
 
 export const fallbackState: PhaseZeroState = {
   workspace,
+  auth,
   channels,
   channelMessages,
   issues,

@@ -168,7 +168,7 @@
   1. 访问 `/access`。
   2. 请求 `/v1/auth/session` 与 `/v1/workspace/members`。
 - 预期结果: 页面和 API 都能返回当前会话与成员基线数据。
-- 业务结论: 读取面已具备，但完整身份系统仍是 GAP。
+- 业务结论: 2026 年 4 月 7 日 `TKT-07` 已把 auth session / member / role truth 正式接进 `/access` 前台；页面不再停在静态边界说明，而会直接显示当前 session、member roster、role definitions 与权限差异。基础读取面继续保持 Pass。
 
 ## TC-013 Memory 列表与详情
 
@@ -193,7 +193,7 @@
   2. 走邮箱验证与登录。
   3. 调整角色并验证访问权限。
 - 预期结果: 团队成员身份链路完整闭环。
-- 业务结论: 当前仓库无可验收闭环，属于明确 GAP。
+- 业务结论: 2026 年 4 月 7 日 `TKT-07` 已补上 email login / logout / session persistence foundation，并在 `/access` 上给出真实 session/member/role surface；但 invite、成员管理、角色变更和 action-level authz 仍未在同一票内收平，所以这条完整团队身份链路继续保持 Blocked。
 
 ## TC-015 GitHub App 安装与 Webhook
 

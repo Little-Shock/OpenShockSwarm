@@ -18,6 +18,7 @@
     "verify:go": "pnpm verify:server && pnpm verify:daemon",
     "verify:release": "bash ./scripts/release-gate.sh repo",
     "verify:release:full": "bash ./scripts/release-gate.sh all",
+    "test:headed-session-foundation": "node ./scripts/headed-session-foundation.mjs",
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
     "test:webhook-replay": "node ./scripts/github-webhook-replay.mjs",
     "verify:server": "bash -lc 'root=$(pwd); cd apps/server && OPENSHOCK_WORKSPACE_ROOT=\"${OPENSHOCK_WORKSPACE_ROOT:-$root}\" \"$root/scripts/go.sh\" test ./...'",

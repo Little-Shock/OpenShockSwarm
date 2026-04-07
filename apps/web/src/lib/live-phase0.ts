@@ -2,7 +2,7 @@
 
 import { createContext, createElement, startTransition, useContext, useEffect, useState, type ReactNode } from "react";
 
-import type { PhaseZeroState } from "@/lib/mock-data";
+import type { AuthSession, PhaseZeroState } from "@/lib/mock-data";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
 const STATE_STREAM_PATH = "/v1/state/stream";
@@ -21,6 +21,7 @@ type StateMutationResponse = {
   roomId?: string;
   output?: string;
   pullRequestId?: string;
+  session?: AuthSession;
 };
 
 class StateMutationError extends Error {
@@ -80,6 +81,8 @@ type PhaseZeroContextValue = {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  loginAuthSession: (input: { email: string; name?: string }) => Promise<StateMutationResponse>;
+  logoutAuthSession: () => Promise<StateMutationResponse>;
   createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
   postRoomMessage: (roomId: string, prompt: string, provider?: string) => Promise<StateMutationResponse>;
   streamRoomMessage: (
@@ -110,6 +113,15 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
     lastPairedAt: "",
     browserPush: "",
     memoryMode: "",
+  },
+  auth: {
+    session: {
+      id: "auth-session-current",
+      status: "signed_out",
+      permissions: [],
+    },
+    roles: [],
+    members: [],
   },
   channels: [],
   channelMessages: {},
@@ -225,6 +237,29 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       source?.close();
     };
   }, []);
+
+  async function loginAuthSession(input: { email: string; name?: string }) {
+    const payload = await readJSON<StateMutationResponse>("/v1/auth/session", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitState(payload.state);
+    }
+    return payload;
+  }
+
+  async function logoutAuthSession() {
+    const payload = await readJSON<StateMutationResponse>("/v1/auth/session", {
+      method: "DELETE",
+    });
+
+    if (payload.state) {
+      commitState(payload.state);
+    }
+    return payload;
+  }
 
   async function createIssue(input: CreateIssueInput) {
     const payload = await readJSON<StateMutationResponse>("/v1/issues", {
@@ -395,6 +430,8 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     loading,
     error,
     refresh,
+    loginAuthSession,
+    logoutAuthSession,
     createIssue,
     postRoomMessage,
     streamRoomMessage,

@@ -63,8 +63,8 @@
 ### GAP-03 完整身份、成员、角色与设备授权
 
 - 现状:
-  - session / members 读取面可见
-  - 邮箱登录、邀请、角色、权限、设备授权未完成
+  - login / logout / session persistence foundation 已站住，`/access` 已消费 live auth/member/role truth
+  - invite、角色变更、设备授权与 action-level authz 仍未完成
 - 相关合同:
   - `CHK-12`
   - `CHK-13`

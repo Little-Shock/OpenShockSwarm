@@ -6,10 +6,10 @@ export default function AccessPage() {
     <OpenShockShell
       view="access"
       eyebrow="Phase 5 身份"
-      title="把登录入口、成员目录与权限闸门收进前台"
-      description="这里直接消费当前 workspace / repo auth / control-plane truth，并把仍待 #53/#55 的 email session、member roster 与 role guard 缺口摆到台前。"
+      title="把登录、会话与成员真值正式收进前台"
+      description="这里直接消费 live auth session、workspace member 和 role truth，把 login/logout/session foundation 摆成真实可操作 surface。"
       contextTitle="Auth / Member / Guard"
-      contextDescription="当前仓库已经有 workspace、repo auth、runtime pairing 与控制面真值，但邮箱 session、workspace member 和 role-aware permission 仍在下一拍 contract；这页先把边界和入口收成单值。"
+      contextDescription="当前仓库已经有 email login/logout、session persistence 与 workspace member roster contract；这页先把 foundation 收住，再把 invite / role mutation / action-level authz 留给后续票。"
       contextBody={<LiveAccessContextRail />}
     >
       <LiveAccessOverview />

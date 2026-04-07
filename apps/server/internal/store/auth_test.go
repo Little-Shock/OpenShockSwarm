@@ -77,6 +77,55 @@ func TestAuthSessionContractTracksEmailLoginAndLogout(t *testing.T) {
 	}
 }
 
+func TestAuthSessionPersistsAcrossStoreReload(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	first, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(first) error = %v", err)
+	}
+
+	loggedInState, loggedIn, err := first.LoginWithEmail(AuthLoginInput{Email: "mina@openshock.dev"})
+	if err != nil {
+		t.Fatalf("LoginWithEmail() error = %v", err)
+	}
+	if loggedIn.Email != "mina@openshock.dev" || loggedIn.Role != workspaceRoleMember {
+		t.Fatalf("loggedIn session = %#v, want mina member", loggedIn)
+	}
+	if loggedInState.Auth.Session.Email != "mina@openshock.dev" {
+		t.Fatalf("loggedIn state auth session = %#v, want mina", loggedInState.Auth.Session)
+	}
+
+	second, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(second) error = %v", err)
+	}
+
+	secondSnapshot := second.Snapshot()
+	if secondSnapshot.Auth.Session.Email != "mina@openshock.dev" || secondSnapshot.Auth.Session.Status != authSessionStatusActive {
+		t.Fatalf("reloaded auth session = %#v, want persisted active mina session", secondSnapshot.Auth.Session)
+	}
+
+	loggedOutState, _, err := second.LogoutAuthSession()
+	if err != nil {
+		t.Fatalf("LogoutAuthSession() error = %v", err)
+	}
+	if loggedOutState.Auth.Session.Status != authSessionStatusSignedOut {
+		t.Fatalf("loggedOut state auth session = %#v, want signed_out", loggedOutState.Auth.Session)
+	}
+
+	third, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(third) error = %v", err)
+	}
+
+	thirdSnapshot := third.Snapshot()
+	if thirdSnapshot.Auth.Session.Status != authSessionStatusSignedOut || thirdSnapshot.Auth.Session.Email != "" {
+		t.Fatalf("reloaded signed-out session = %#v, want persisted signed_out session", thirdSnapshot.Auth.Session)
+	}
+}
+
 func TestWorkspaceMemberContractEnforcesOwnerRoleAndRetainsLastOwner(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
