@@ -78,11 +78,11 @@ export function RunControlSurface({
   }
 
   return (
-    <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
+    <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run Control</p>
-          <p data-testid={`${prefix}-control-status`} className="mt-2 font-display text-2xl font-bold">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run Control</p>
+          <p data-testid={`${prefix}-control-status`} className="mt-2 font-display text-[18px] font-bold leading-6">
             {statusLabel(currentStatus)}
           </p>
         </div>
@@ -97,7 +97,7 @@ export function RunControlSurface({
         </span>
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+      <p className="mt-3 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
         Stop 会把当前 run/session 切到暂停态；Resume 会复用当前 session continuity；Follow-thread 会把后续恢复锁到当前讨论线程，不切新 follow-up run。
       </p>
 
@@ -106,7 +106,7 @@ export function RunControlSurface({
         value={note}
         onChange={(event) => setNote(event.target.value)}
         disabled={busyAction !== null || hasGate || isDone}
-        className="mt-4 min-h-[96px] w-full rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 py-3 text-sm outline-none disabled:opacity-60"
+        className="mt-4 min-h-[84px] w-full border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 py-3 text-[13px] outline-none disabled:opacity-60"
         placeholder="补充 stop / resume / follow-thread 的纠偏说明；留空则走默认文案。"
       />
 
@@ -116,7 +116,7 @@ export function RunControlSurface({
           data-testid={`${prefix}-control-stop`}
           onClick={() => void handleAction("stop")}
           disabled={busyAction !== null || hasGate || isDone || isPaused}
-          className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white disabled:opacity-60"
+          className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white disabled:opacity-60"
         >
           {busyAction === "stop" ? "暂停中..." : "Stop"}
         </button>
@@ -125,7 +125,7 @@ export function RunControlSurface({
           data-testid={`${prefix}-control-resume`}
           onClick={() => void handleAction("resume")}
           disabled={busyAction !== null || hasGate || isDone || !isPaused}
-          className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-60"
+          className="border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60"
         >
           {busyAction === "resume" ? "恢复中..." : "Resume"}
         </button>
@@ -134,7 +134,7 @@ export function RunControlSurface({
           data-testid={`${prefix}-control-follow-thread`}
           onClick={() => void handleAction("follow_thread")}
           disabled={busyAction !== null || hasGate || isDone}
-          className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-60"
+          className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60"
         >
           {busyAction === "follow_thread" ? "写回中..." : "Follow Thread"}
         </button>

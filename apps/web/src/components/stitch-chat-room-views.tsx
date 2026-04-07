@@ -814,7 +814,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
               </span>
             </div>
           </div>
-          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-h-0 flex-col border-r-2 border-[var(--shock-ink)]">
               <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -866,15 +866,15 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
               )}
             </div>
 
-            <aside className="hidden min-h-0 flex-col bg-[#f1efe7] xl:flex">
+            <aside className="hidden min-h-0 flex-col border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex">
               <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <p className="font-display text-2xl font-bold leading-none">Context Rail</p>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <p className="font-display text-[20px] font-bold leading-none">Context Rail</p>
+                <div className="mt-3 flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
                   {["Chat", "Topic", "Run", "PR", "Board"].map((tab) => (
                     <span
                       key={tab}
                       className={cn(
-                        "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                        "border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] last:border-r-0",
                         tab === "Chat" ? "bg-[var(--shock-yellow)]" : "bg-white"
                       )}
                     >
@@ -886,14 +886,14 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
 
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="mb-3 flex gap-2">
-                  <button className="flex-1 rounded-[10px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] text-white">
+                  <button className="flex-1 border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)]">
                     注入 Guidance
                   </button>
                   <button
                     data-testid="room-pull-request-action"
                     disabled={pullRequestActionDisabled}
                     onClick={() => void pullRequestActionHandler?.()}
-                    className="flex-1 rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] disabled:opacity-60"
+                    className="flex-1 border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
                   >
                     {pullRequestActionLabel}
                   </button>
@@ -914,29 +914,29 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     <DiscussionStateMessage title="缺少讨论间上下文" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
                   ) : (
                     <>
-                      <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Topic</p>
-                        <p className="mt-3 font-display text-2xl font-bold">{room.topic.title}</p>
-                        <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{room.topic.summary}</p>
+                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Topic</p>
+                        <p className="mt-2 font-display text-[18px] font-bold leading-6">{room.topic.title}</p>
+                        <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{room.topic.summary}</p>
                         <div className="mt-4 grid grid-cols-2 gap-2">
-                          <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                             <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Owner</p>
                             <p className="mt-2 text-sm font-semibold">{room.topic.owner}</p>
                           </div>
-                          <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                             <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Board</p>
                             <p className="mt-2 text-sm font-semibold">{room.boardCount} planning cards</p>
                           </div>
                         </div>
                       </section>
 
-                      <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Run</p>
-                        <div className="mt-3 rounded-[12px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] px-3 py-3">
+                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run</p>
+                        <div className="mt-3 border-2 border-[var(--shock-ink)] bg-[#f7f7f7] px-3 py-3">
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Current Branch</p>
-                              <p className="mt-2 font-display text-2xl font-bold">{session?.branch ?? run.branch}</p>
+                              <p className="mt-2 font-display text-[18px] font-bold leading-6">{session?.branch ?? run.branch}</p>
                             </div>
                             <span
                               data-testid="room-run-status"
@@ -971,17 +971,17 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                         onControl={handleRunControl}
                       />
 
-                      <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
+                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
-                            <p data-testid="room-pull-request-label" className="mt-2 font-display text-2xl font-bold">{pullRequest?.label ?? run.pullRequest ?? "未创建"}</p>
+                            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
+                            <p data-testid="room-pull-request-label" className="mt-2 font-display text-[18px] font-bold leading-6">{pullRequest?.label ?? run.pullRequest ?? "未创建"}</p>
                           </div>
                           <span data-testid="room-pull-request-status" className="rounded-[4px] border border-[var(--shock-ink)] bg-[#ececec] px-2 py-1 font-mono text-[10px]">
                             {pullRequestStatusLabel(pullRequest?.status)}
                           </span>
                         </div>
-                        <p data-testid="room-pull-request-summary" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.64)]">
+                        <p data-testid="room-pull-request-summary" className="mt-3 text-[13px] leading-6 text-[color:rgba(24,20,14,0.64)]">
                           {pullRequest?.reviewSummary ?? run.nextAction}
                         </p>
                         {prError ? (
@@ -991,9 +991,9 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                         ) : null}
                       </section>
 
-                      <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-[#111827] p-4 text-white shadow-[4px_4px_0_0_var(--shock-ink)]">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/70">Session Memory</p>
-                        <div className="mt-3 space-y-2 font-mono text-[11px] leading-5 text-[#8bff9e]">
+                      <section className="border-2 border-[var(--shock-ink)] bg-[#111827] p-3 text-white shadow-[var(--shock-shadow-sm)]">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">Session Memory</p>
+                        <div className="mt-3 space-y-2 font-mono text-[10px] leading-5 text-[#8bff9e]">
                           {sessionMemoryPaths.map((item) => (
                             <p key={item}>{item}</p>
                           ))}
@@ -1001,31 +1001,31 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       </section>
 
                       <div className="grid gap-3 xl:grid-cols-2">
-                        <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-[#ead7ff] p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Tool Calls</p>
-                          <p className="mt-2 font-display text-4xl font-bold">{run.toolCalls.length}</p>
-                          <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.tool ?? "当前还没有工具调用"}</p>
-                          <p className="mt-1 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.summary ?? "等待下一条执行事件"}</p>
+                        <section className="border-2 border-[var(--shock-ink)] bg-[#ead7ff] p-3 shadow-[var(--shock-shadow-sm)]">
+                          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Tool Calls</p>
+                          <p className="mt-2 font-display text-[28px] font-bold leading-none">{run.toolCalls.length}</p>
+                          <p className="mt-2 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.tool ?? "当前还没有工具调用"}</p>
+                          <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.summary ?? "等待下一条执行事件"}</p>
                         </section>
-                        <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Timeline</p>
-                          <p className="mt-2 font-display text-4xl font-bold">{run.timeline.length}</p>
-                          <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.label ?? "暂无事件"}</p>
-                          <p className="mt-1 text-xs leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.at ?? "等待同步"}</p>
+                        <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Timeline</p>
+                          <p className="mt-2 font-display text-[28px] font-bold leading-none">{run.timeline.length}</p>
+                          <p className="mt-2 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.label ?? "暂无事件"}</p>
+                          <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.at ?? "等待同步"}</p>
                         </section>
                       </div>
 
-                      <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
+                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] text-[10px] text-white">AI</span>
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-[10px]">{activeAgents.length}</span>
+                            <span className="flex h-6 w-6 items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] text-[10px] text-white">AI</span>
+                            <span className="flex h-6 w-6 items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-[10px]">{activeAgents.length}</span>
                           </div>
                           <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">{run.runtime} / {run.provider}</p>
                         </div>
-                        <div className="mt-4 rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                        <div className="mt-4 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                           <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Board mirror</p>
-                          <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                          <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
                             这间房关联 {room.boardCount} 张 planning 卡。Board 只是镜像，不是主协作入口。
                           </p>
                         </div>
