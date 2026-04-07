@@ -419,7 +419,7 @@ function renderWorkspaceSummary(operatorConsole, payload) {
       }
       const workspaceRootInput = window.prompt(
         "Workspace root path",
-        normalizeText(channelContract?.workspace?.root_path) || "/Users/atou/.slock/agents",
+        normalizeText(channelContract?.workspace?.root_path) || "/Users/atou/OpenShockSwarm",
       );
       if (workspaceRootInput === null) {
         return;
@@ -430,7 +430,7 @@ function renderWorkspaceSummary(operatorConsole, payload) {
       }
       const baselineInput = window.prompt(
         "Baseline ref",
-        normalizeText(channelContract?.context?.baseline_ref) || "feat/initial-implementation",
+        normalizeText(channelContract?.context?.baseline_ref) || "feat/initial-implementation@0116e37",
       );
       if (baselineInput === null) {
         return;

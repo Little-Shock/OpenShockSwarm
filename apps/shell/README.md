@@ -1,22 +1,31 @@
-# Stage 1 + Stage 2 First-Shot Collaboration Shell
+# Stage 3 Shell Entry and Release Fan-In
 
-This directory contains the collaboration shell for OpenShock, including:
+This directory hosts the collaboration shell surface used by Stage 1/2 runtime flow and Stage 3 delivery/ops readiness fan-in.
 
-- Stage 1 productized collaboration workflows
-- Stage 2 first-shot + batch2 single-human multi-agent operator-console fan-in
+Stage 3 scope for this module:
 
-Scope in this stage:
-
-- Room workspace (`1 Room = 1 Topic`) with topic/run/inbox/approval/intervention/follow-up/closeout
-- Operator console fan-in for channel/workspace root context, work assignment, recovery action loop, recent actions, repo binding, runtime/machine state, agent registry, and audit trail
-- Coarse observability and stable shell adapter actions
+- Keep shell consuming only stable adapter routes backed by `/v1` truth.
+- Keep directory entry and release-gate references in one place.
+- Keep regression baseline pinned to `feat/initial-implementation@0116e37` and `apps/server 33/33 pass` (or a newer explicitly recorded baseline).
 
 Out of scope in this stage:
 
 - New backend truth sources or new backend nouns
-- Re-introducing old `/topics/*` shell-local patterns
+- Re-introducing shadow shell-local truth paths
 - Multi-human collaboration workspace/account/role-flow/notifications
 - Cross-machine scheduling, cloud runtime, or complex orchestration
+
+## Stage 3 Entry Contract
+
+Use fixed directory `/Users/atou/OpenShockSwarm` as the only delivery/handoff root.
+
+Start with:
+
+- `README.md` (repo-level entry)
+- `docs/stage3-delivery-ops-entry.md` (single delivery/ops entry)
+- `docs/stage3-release-gate.md` (release gate checklist and evidence contract)
+
+Do not treat `.slock/.../OpenShockSwarm` copies as release or handoff entry.
 
 ## Local run
 
@@ -31,6 +40,21 @@ node apps/shell/scripts/dev-server.mjs
 Open:
 
 <http://127.0.0.1:4173>
+
+## Release Gate Baseline
+
+Run Stage 3 gate from repo root:
+
+```bash
+bash scripts/stage3-release-gate.sh
+```
+
+Gate includes:
+
+- shell adapter syntax checks
+- server automated tests
+- `/v1` smoke on isolated local server port
+- baseline guard (`0116e37` ancestor check)
 
 ## Integrated runtime contract
 

@@ -1,6 +1,11 @@
 # OpenShock 0A Single-Machine Runtime Entry
 
-This file is the only runtime entry for 0A integrated rerun.
+This file is the component-level 0A integrated runtime note.
+
+Stage 3 release and handoff entry has moved to:
+
+- `docs/stage3-delivery-ops-entry.md`
+- `docs/stage3-release-gate.md`
 
 Use `runtime/shared-runtime-config.example.json` as the shared config template for server, daemon, and shell bring-up.
 

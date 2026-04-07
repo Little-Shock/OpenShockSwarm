@@ -2,6 +2,12 @@
 
 This module implements the first server-side coordination core for 0A.
 
+For Stage 3 release/handoff entry, start from repo-level files:
+
+- `README.md`
+- `docs/stage3-delivery-ops-entry.md`
+- `docs/stage3-release-gate.md`
+
 It focuses on the scope frozen in `open-shock-boundary-contract-v2`:
 
 - Topic truth revision ownership
