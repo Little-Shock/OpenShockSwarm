@@ -806,9 +806,9 @@ test("v1 batch3 integration hardening exposes compatibility window and cross-pla
         path: "/v1/compatibility/shell-adapter"
       });
       assert.equal(shellCompatibility.statusCode, 200);
-      assert.equal(shellCompatibility.body.contract_version, "v1.1");
+      assert.equal(shellCompatibility.body.contract_version, "v1.2");
       assert.equal(shellCompatibility.body.compatibility_window.policy, "bounded_bridge_window");
-      assert.equal(shellCompatibility.body.retirement.phase, "phase2_batch3_window_open");
+      assert.equal(shellCompatibility.body.retirement.phase, "phase3_batch1_ops_readiness");
       assert.equal(
         shellCompatibility.body.retirement.debug_anchors.cross_plane_debug_history,
         "/v1/debug/history"
@@ -1051,10 +1051,10 @@ test("v1 governance/eval integration evidence packet stays replayable for extern
       assert.deepEqual(normalizedPacket, {
         packet_version: "phase2_governance_eval_integration_v1",
         external_consumer_contract: {
-          adapter_contract_version: "v1.1",
+          adapter_contract_version: "v1.2",
           adapter_backend_source: "/v1/*",
           compatibility_policy: "bounded_bridge_window",
-          retirement_phase: "phase2_batch3_window_open",
+          retirement_phase: "phase3_batch1_ops_readiness",
           debug_history_anchor: "/v1/debug/history"
         },
         replay_evidence: {
@@ -3263,6 +3263,32 @@ test("v1 phase3 batch1 execution/compatibility consumer verification keeps stabl
       assert.equal(shellCompatibility.statusCode, 200);
       assert.equal(shellCompatibility.body.projection_meta.resource, "shell_adapter_compatibility_projection");
       assert.equal(shellCompatibility.body.projection_meta.topic_id, topicId);
+      assert.equal(shellCompatibility.body.contract_version, "v1.2");
+      assert.equal(shellCompatibility.body.release_baseline.fixed_directory, "/Users/atou/OpenShockSwarm");
+      assert.equal(shellCompatibility.body.release_baseline.git_ref, "feat/initial-implementation@0116e37");
+      assert.equal(shellCompatibility.body.release_baseline.server_test_result, "33/33 pass");
+      assert.equal(shellCompatibility.body.runtime_helper_boundary.policy, "bounded_runtime_helper_window");
+      assert.ok(shellCompatibility.body.runtime_helper_boundary.helper_routes.includes("/runtime/config"));
+      assert.ok(shellCompatibility.body.runtime_helper_boundary.helper_routes.includes("/runtime/daemon/events"));
+      assert.ok(shellCompatibility.body.runtime_helper_boundary.helper_routes.includes("/runtime/smoke"));
+      assert.equal(
+        shellCompatibility.body.legacy_transition_paths.some(
+          (item) =>
+            item.surface === "/topics/*" &&
+            item.status === "transition_only" &&
+            item.replacement_surface === "/v1/topics/*"
+        ),
+        true
+      );
+      assert.equal(
+        shellCompatibility.body.legacy_transition_paths.some(
+          (item) =>
+            item.surface === "/api/v0a/*" &&
+            item.status === "compatibility_alias_only" &&
+            item.replacement_surface === "/v1/*"
+        ),
+        true
+      );
       const projectionSurfaces = shellCompatibility.body.backend_derived_projection.projection_surfaces;
       assert.ok(Array.isArray(projectionSurfaces));
       assert.ok(projectionSurfaces.includes("/v1/topics/:topicId/status"));

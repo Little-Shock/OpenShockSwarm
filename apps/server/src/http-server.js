@@ -532,10 +532,6 @@ function matchRoute(method, pathName) {
     return { route: "V1_POST_RUNTIME_WORKTREE_RELEASE", claimKey: v1RuntimeWorktreeReleaseMatch[1] };
   }
 
-  if (method === "GET" && pathName === "/v1/compatibility/shell-adapter") {
-    return { route: "V1_GET_SHELL_ADAPTER_COMPATIBILITY" };
-  }
-
   if (method === "GET" && pathName === "/runtime/config") {
     return { route: "GET_RUNTIME_CONFIG" };
   }

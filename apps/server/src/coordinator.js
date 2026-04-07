@@ -3531,7 +3531,7 @@ export class ServerCoordinator {
     const topicId = typeof input.topicId === "string" && input.topicId.trim().length > 0 ? input.topicId.trim() : null;
     const contract = {
       projection: "integration_adaptor_contract",
-      contract_version: "v1.1",
+      contract_version: "v1.2",
       adapter: "shell_v0a_compatibility_layer",
       owner: "apps/shell/scripts/dev-server.mjs",
       backend_contract_source: "/v1/*",
@@ -3539,7 +3539,14 @@ export class ServerCoordinator {
         "/api/v0a/shell-state",
         "/api/v0a/approvals/:approvalId/decision",
         "/api/v0a/interventions/:interventionId/action",
-        "/api/v0a/intervention-points/:pointId/action"
+        "/api/v0a/runs/:runId/follow-up",
+        "/api/v0a/intervention-points/:pointId/action",
+        "/api/v0a/operator/repo-binding",
+        "/api/v0a/operator/channel-context",
+        "/api/v0a/operator/agents/:actorId/upsert",
+        "/api/v0a/operator/agents/:actorId/assignment",
+        "/api/v0a/operator/agents/:actorId/recovery-actions",
+        "/api/v0a/operator/actions"
       ],
       freeze_rule: "compatibility adapter must not define backend truth or new API nouns",
       compatibility_window: {
@@ -3553,9 +3560,45 @@ export class ServerCoordinator {
         ],
         hard_boundary: "adapter is projection/adaptor only; backend truth remains in control/execution planes"
       },
+      runtime_helper_boundary: {
+        policy: "bounded_runtime_helper_window",
+        helper_routes: [
+          "/runtime/config",
+          "/runtime/fixtures/seed",
+          "/runtime/daemon/events",
+          "/runtime/smoke"
+        ],
+        usage_scope: [
+          "single_machine_bring_up",
+          "recovery_drill",
+          "deterministic_fixture_seed",
+          "daemon_publish_stream"
+        ],
+        hard_boundary: "runtime helpers are ops-only helpers and must not become long-term product consumer contracts"
+      },
+      legacy_transition_paths: [
+        {
+          surface: "/topics/*",
+          status: "transition_only",
+          replacement_surface: "/v1/topics/*",
+          retirement_condition: "stage3 reviewer+qa pass and no required callers in default workflow"
+        },
+        {
+          surface: "/api/v0a/*",
+          status: "compatibility_alias_only",
+          replacement_surface: "/v1/*",
+          retirement_condition: "shell clients migrate to /v1-native surface or approved bounded adapter window"
+        }
+      ],
+      release_baseline: {
+        fixed_directory: "/Users/atou/OpenShockSwarm",
+        git_ref: "feat/initial-implementation@0116e37",
+        server_test_command: "cd apps/server && node --test",
+        server_test_result: "33/33 pass"
+      },
       retirement: {
-        status: "active_compatibility_layer",
-        phase: "phase2_batch3_window_open",
+        status: "bounded_compatibility_aliases",
+        phase: "phase3_batch1_ops_readiness",
         retirement_path: [
           {
             stage: "window_open",
@@ -3573,7 +3616,8 @@ export class ServerCoordinator {
         exit_criteria: [
           "third-party consumer can complete operator flow with /v1 APIs",
           "batch2 reviewer and QA gates pass on integration surface",
-          "batch3 reviewer and QA gates pass on compatibility window + debug history aggregation"
+          "batch3 reviewer and QA gates pass on compatibility window + debug history aggregation",
+          "stage3 reviewer and QA gates pass on compatibility alias/runtime helper cleanup"
         ],
         next_action: "new backend contract only ships under /v1 namespace",
         debug_anchors: {
