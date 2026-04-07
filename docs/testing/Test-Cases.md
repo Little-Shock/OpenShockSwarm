@@ -59,7 +59,7 @@
 ## TC-004 Runtime Pairing 冷启动一致性
 
 - 业务目标: 确认 server 冷启动后展示的 pairing URL 与真实活跃 daemon 一致。
-- 当前执行状态: Fail
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-04` `CHK-14`
 - 前置条件: server 和 daemon 使用非默认端口启动，且工作区已有 pairing 历史。
 - 测试步骤:
@@ -67,7 +67,7 @@
   2. 读取 `GET /v1/runtime/pairing`。
   3. 直接调用 `POST /v1/exec` 验证 bridge。
 - 预期结果: pairing URL 与活跃 daemon 一致，bridge 首次即可成功。
-- 业务结论: 当前不能通过验收。已观察到 pairing 返回 `127.0.0.1:8090`，而真实 daemon 在 `127.0.0.1:18090`，导致 bridge 首次 502。
+- 业务结论: 已通过 blocker 修复验收。当前冷启动在 `offline` 与 `stale` 两种窗口下都会回落到当前 daemon truth，pairing 与 bridge 首次一致。
 
 ## TC-005 创建 Issue 生成执行 lane
 

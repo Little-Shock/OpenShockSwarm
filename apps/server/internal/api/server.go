@@ -1165,7 +1165,7 @@ func daemonURLForRuntime(snapshot store.State, runtimeName string) (string, erro
 		if !runtimeMachineMatches(machine, runtimeName) {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(machine.State), "offline") {
+		if runtimeStateIsUnroutable(machine.State) {
 			return "", fmt.Errorf("runtime %s is offline", machine.Name)
 		}
 		daemonURL := strings.TrimSpace(machine.DaemonURL)
@@ -1210,6 +1210,11 @@ func runtimeMachineMatches(machine store.Machine, runtimeName string) bool {
 		return false
 	}
 	return machine.Name == runtimeName || machine.ID == runtimeName
+}
+
+func runtimeStateIsUnroutable(value string) bool {
+	state := strings.TrimSpace(value)
+	return strings.EqualFold(state, "offline") || strings.EqualFold(state, "stale")
 }
 
 func (s *Server) currentWorkspaceDaemonURL() string {

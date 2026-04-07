@@ -99,8 +99,8 @@
   - [x] Setup 页展示 repo binding、GitHub readiness、runtime pairing、live bridge
   - [x] Setup 页可展示 effective auth path、GitHub App install state 与 installation URL
   - [x] 手动配对 runtime 后可以成功执行 bridge prompt
+  - [x] 冷启动时 pairing / exec 在 `offline` 与 `stale` 窗口都回到当前活跃 daemon truth
 - 当前 GAP:
-  - [ ] 冷启动时 pairing URL 与当前活跃 daemon 可能漂移，导致桥接失败
   - [ ] repo binding / GitHub readiness 缺少一轮新的浏览器自动化回放证据
 - 对应 Test Cases: `TC-001` `TC-002` `TC-003` `TC-004`
 
@@ -230,8 +230,8 @@
 - 已落地:
   - [x] runtime registry、selection、pairing 接口存在
   - [x] daemon heartbeat 已接入 server 状态
+  - [x] pairing 冷启动一致性已覆盖 `offline` 与 `stale` 窗口
 - 当前 GAP:
-  - [ ] pairing 冷启动一致性存在缺口
   - [ ] 多 runtime 调度、failover、lease/conflict guard 尚未完成
 - 对应 Test Cases: `TC-003` `TC-004` `TC-020`
 
