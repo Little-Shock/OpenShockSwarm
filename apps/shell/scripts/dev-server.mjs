@@ -300,6 +300,7 @@ async function writeShellState(res) {
     const [
       channelRepoBindingRead,
       channelNotificationEndpointRead,
+      channelOrchestrationUpgradeRead,
       channelAuditTrailRead,
       channelWorkAssignmentsRead,
       channelOperatorActionsRead,
@@ -309,6 +310,7 @@ async function writeShellState(res) {
     ] = await Promise.all([
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/repo-binding` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/notification-endpoint` : ""),
+      fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/orchestration-upgrade` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/audit-trail?limit=50` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/work-assignments?limit=100` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/operator-actions?limit=100` : ""),
@@ -345,6 +347,8 @@ async function writeShellState(res) {
       repoBindingProjection: repoBindingRead?.repo_binding ?? null,
       channelContextContract: channelContextRead.payload?.context ?? null,
       channelNotificationEndpointContract: channelNotificationEndpointRead.payload?.notification_endpoint ?? null,
+      channelOrchestrationUpgradeContract:
+        channelOrchestrationUpgradeRead.payload?.orchestration_upgrade ?? null,
       channelExternalMemoryProviderContract:
         channelExternalMemoryProviderRead.payload?.external_memory_provider ?? null,
       channelMemoryViewerProjection: channelMemoryViewerRead.payload?.memory_viewer ?? null,
@@ -368,6 +372,7 @@ async function writeShellState(res) {
       channelSurface: {
         context_status: channelContextRead.status,
         notification_endpoint_status: channelNotificationEndpointRead.status,
+        orchestration_upgrade_status: channelOrchestrationUpgradeRead.status,
         repo_binding_status: channelRepoBindingRead.status,
         audit_trail_status: channelAuditTrailRead.status,
         work_assignments_status: channelWorkAssignmentsRead.status,
@@ -1330,6 +1335,7 @@ function buildShellStatePayload({
   repoBindingProjection,
   channelContextContract,
   channelNotificationEndpointContract,
+  channelOrchestrationUpgradeContract,
   channelExternalMemoryProviderContract,
   channelMemoryViewerProjection,
   channelRepoBindingConfig,
@@ -1373,6 +1379,7 @@ function buildShellStatePayload({
     topicRepoBindingProjection: repoBindingProjection,
     channelContextContract,
     channelNotificationEndpointContract,
+    channelOrchestrationUpgradeContract,
     channelExternalMemoryProviderContract,
     channelMemoryViewerProjection,
     channelRepoBindingConfig,
@@ -1610,6 +1617,7 @@ function buildOperatorConsoleState({
   topicRepoBindingProjection,
   channelContextContract,
   channelNotificationEndpointContract,
+  channelOrchestrationUpgradeContract,
   channelExternalMemoryProviderContract,
   channelMemoryViewerProjection,
   channelRepoBindingConfig,
@@ -1724,6 +1732,14 @@ function buildOperatorConsoleState({
     channelSurface,
   });
   normalizedWorkspaceGovernance.stage4b_governance = normalizedWorkspaceGovernance.stage4b;
+  normalizedWorkspaceGovernance.stage4c = buildStage4cGovernanceProjection({
+    channelContextContract: channelContract,
+    channelOrchestrationUpgradeContract,
+    channelOperatorActions,
+    channelRecentActions,
+    channelSurface,
+  });
+  normalizedWorkspaceGovernance.stage4c_governance = normalizedWorkspaceGovernance.stage4c;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -1938,6 +1954,515 @@ function buildStage4a2GovernanceProjection({
           null,
       },
     },
+  };
+}
+
+function buildStage4cGovernanceProjection({
+  channelContextContract,
+  channelOrchestrationUpgradeContract,
+  channelOperatorActions,
+  channelRecentActions,
+  channelSurface,
+}) {
+  const context = channelContextContract?.context && typeof channelContextContract.context === "object"
+    ? channelContextContract.context
+    : {};
+  const governance = channelContextContract?.governance && typeof channelContextContract.governance === "object"
+    ? channelContextContract.governance
+    : {};
+  const writeAnchors = channelContextContract?.write_anchors && typeof channelContextContract.write_anchors === "object"
+    ? channelContextContract.write_anchors
+    : {};
+  const auditAnchor = channelContextContract?.audit_anchor && typeof channelContextContract.audit_anchor === "object"
+    ? channelContextContract.audit_anchor
+    : {};
+  const orchestrationUpgradeContract = normalizeStage4cOrchestrationUpgradeContract(channelOrchestrationUpgradeContract);
+  const orchestrationWriteAnchors =
+    orchestrationUpgradeContract.write_anchors && typeof orchestrationUpgradeContract.write_anchors === "object"
+      ? orchestrationUpgradeContract.write_anchors
+      : {};
+  const orchestrationTimelineAnchors =
+    orchestrationUpgradeContract.timeline_anchor && typeof orchestrationUpgradeContract.timeline_anchor === "object"
+      ? orchestrationUpgradeContract.timeline_anchor
+      : {};
+  const orchestrationContractAuditAnchor =
+    orchestrationUpgradeContract.audit_anchor && typeof orchestrationUpgradeContract.audit_anchor === "object"
+      ? orchestrationUpgradeContract.audit_anchor
+      : {};
+
+  const digitalTwin = normalizeStage4cDigitalTwin(
+    pickFirstDefinedValue([
+      governance.digital_twin,
+      governance.digitalTwin,
+      context.digital_twin,
+      context.digitalTwin,
+    ]),
+  );
+  const operationalCapability = normalizeStage4cOperationalCapability(
+    pickFirstDefinedValue([
+      governance.operational_capability,
+      governance.operationalCapability,
+      context.operational_capability,
+      context.operationalCapability,
+    ]),
+  );
+  const orchestration = normalizeStage4cOrchestration(
+    pickFirstDefinedValue([
+      orchestrationUpgradeContract.multi_agent_orchestration,
+      governance.multi_agent_orchestration,
+      governance.multiAgentOrchestration,
+      governance.orchestration,
+      governance.agent_orchestration,
+      governance.agentOrchestration,
+      context.multi_agent_orchestration,
+      context.multiAgentOrchestration,
+      context.orchestration,
+      context.agent_orchestration,
+      context.agentOrchestration,
+    ]),
+  );
+  const upgradeArbitration = normalizeStage4cUpgradeArbitration(
+    pickFirstDefinedValue([
+      orchestrationUpgradeContract.upgrade_arbitration,
+      governance.upgrade_arbitration,
+      governance.upgradeArbitration,
+      context.upgrade_arbitration,
+      context.upgradeArbitration,
+    ]),
+  );
+  const humanUpgradeChain = normalizeStage4cHumanUpgradeChain(
+    pickFirstDefinedValue([
+      upgradeArbitration?.human_upgrade_chain,
+      orchestrationUpgradeContract.upgrade_arbitration?.human_upgrade_chain,
+      governance.human_upgrade_chain,
+      governance.humanUpgradeChain,
+      context.human_upgrade_chain,
+      context.humanUpgradeChain,
+    ]),
+  );
+  const latestEscalation =
+    findLatestStage4cHumanEscalation(channelOperatorActions) ||
+    (humanUpgradeChain
+      ? {
+          action_id: null,
+          action_type: "human_upgrade_chain",
+          status: normalizeText(humanUpgradeChain.status) || "pending",
+          approval_id: normalizeText(humanUpgradeChain.approval_id) || null,
+          operator_id: normalizeText(humanUpgradeChain.approved_by) || null,
+          agent_id: null,
+          thread_id: null,
+          workitem_id: null,
+          note: null,
+          at: humanUpgradeChain.approved_at || null,
+        }
+      : null);
+  const stage4cTimeline = summarizeStage4cTimeline(channelRecentActions);
+  const contextReadStatus = normalizeText(channelSurface?.context_status) || "skipped";
+  const orchestrationUpgradeReadStatus = normalizeText(channelSurface?.orchestration_upgrade_status) || "skipped";
+
+  const resolveContextStatus = (ready) => {
+    if (contextReadStatus === "ok") {
+      return ready ? "ok" : "pending";
+    }
+    return contextReadStatus;
+  };
+  const resolveOrchestrationStatus = (ready) => {
+    if (orchestrationUpgradeReadStatus === "ok") {
+      return ready ? "ok" : "pending";
+    }
+    return orchestrationUpgradeReadStatus;
+  };
+  const digitalTwinStatus = resolveContextStatus(Boolean(digitalTwin?.agent_id));
+  const operationalCapabilityStatus = resolveContextStatus(Boolean(operationalCapability));
+  const orchestrationStatus = resolveOrchestrationStatus(Boolean(orchestration?.orchestration_id));
+  const upgradeArbitrationStatus = resolveOrchestrationStatus(Boolean(upgradeArbitration?.arbitration_id));
+  const humanUpgradeChainStatus = resolveOrchestrationStatus(Boolean(humanUpgradeChain?.escalation_id || latestEscalation));
+
+  const digitalTwinAuditAnchor = normalizeStage4a2AuditAnchor(
+    pickFirstDefinedValue([auditAnchor.latest?.digital_twin, auditAnchor.latest?.digitalTwin]),
+  );
+  const operationalCapabilityAuditAnchor = normalizeStage4a2AuditAnchor(
+    pickFirstDefinedValue([
+      auditAnchor.latest?.operational_capability,
+      auditAnchor.latest?.operationalCapability,
+    ]),
+  );
+  const orchestrationAuditAnchor = normalizeStage4a2AuditAnchor(
+    pickFirstDefinedValue([
+      orchestrationContractAuditAnchor.latest?.multi_agent_orchestration,
+      auditAnchor.latest?.multi_agent_orchestration,
+      auditAnchor.latest?.multiAgentOrchestration,
+      auditAnchor.latest?.orchestration,
+      auditAnchor.latest?.agent_orchestration,
+      auditAnchor.latest?.agentOrchestration,
+    ]),
+  );
+  const upgradeArbitrationAuditAnchor = normalizeStage4a2AuditAnchor(
+    pickFirstDefinedValue([
+      orchestrationContractAuditAnchor.latest?.upgrade_arbitration,
+      auditAnchor.latest?.upgrade_arbitration,
+      auditAnchor.latest?.upgradeArbitration,
+    ]),
+  );
+  const humanUpgradeChainAuditAnchor = normalizeStage4a2AuditAnchor(
+    pickFirstDefinedValue([
+      orchestrationContractAuditAnchor.latest?.human_upgrade_chain,
+      auditAnchor.latest?.human_upgrade_chain,
+      auditAnchor.latest?.humanUpgradeChain,
+    ]),
+  );
+  const escalationAuditAnchor = latestEscalation
+    ? {
+        action: normalizeText(latestEscalation.action_type) || "unknown_action",
+        audit_id: normalizeText(latestEscalation.action_id) || "n/a",
+        at: latestEscalation.at || null,
+      }
+    : null;
+  const normalizedEscalationAuditAnchor = normalizeStage4a2AuditAnchor(escalationAuditAnchor);
+
+  const normalizedWriteAnchors = {
+    digital_twin_upsert:
+      normalizeText(writeAnchors.digital_twin_upsert) ||
+      normalizeText(writeAnchors.context_upsert) ||
+      null,
+    operational_capability_upsert:
+      normalizeText(writeAnchors.operational_capability_upsert) ||
+      normalizeText(writeAnchors.context_upsert) ||
+      null,
+    orchestration_upsert:
+      normalizeText(orchestrationWriteAnchors.orchestration_upgrade_upsert) ||
+      normalizeText(writeAnchors.multi_agent_orchestration_upsert) ||
+      normalizeText(writeAnchors.orchestration_upsert) ||
+      normalizeText(writeAnchors.agent_orchestration_upsert) ||
+      normalizeText(writeAnchors.context_upsert) ||
+      null,
+    upgrade_arbitration_upsert:
+      normalizeText(orchestrationWriteAnchors.orchestration_upgrade_upsert) ||
+      normalizeText(writeAnchors.upgrade_arbitration_upsert) ||
+      normalizeText(writeAnchors.context_upsert) ||
+      null,
+    human_upgrade_chain_upsert:
+      normalizeText(orchestrationWriteAnchors.orchestration_upgrade_upsert) ||
+      normalizeText(writeAnchors.human_upgrade_chain_upsert) ||
+      normalizeText(writeAnchors.context_upsert) ||
+      null,
+    operator_action:
+      normalizeText(orchestrationWriteAnchors.operator_action) ||
+      normalizeText(writeAnchors.operator_action_append) ||
+      normalizeText(writeAnchors.operator_action_upsert) ||
+      null,
+    approval_decision:
+      normalizeText(orchestrationWriteAnchors.approval_decision) ||
+      normalizeText(writeAnchors.approval_decision) ||
+      null,
+    timeline_anchor:
+      normalizeText(orchestrationTimelineAnchors.recent_actions) ||
+      normalizeText(writeAnchors.recent_actions) ||
+      null,
+    operator_actions_timeline_anchor:
+      normalizeText(orchestrationTimelineAnchors.operator_actions) ||
+      normalizeText(writeAnchors.operator_action_append) ||
+      null,
+    approval_holds_timeline_anchor:
+      normalizeText(orchestrationTimelineAnchors.approval_holds) ||
+      null,
+    approval_decisions_timeline_anchor:
+      normalizeText(orchestrationTimelineAnchors.approval_decisions) ||
+      null,
+  };
+
+  const auditReady = Boolean(
+    digitalTwinAuditAnchor ||
+      operationalCapabilityAuditAnchor ||
+      orchestrationAuditAnchor ||
+      upgradeArbitrationAuditAnchor ||
+      humanUpgradeChainAuditAnchor ||
+      normalizedEscalationAuditAnchor,
+  );
+  const timelineReady = stage4cTimeline.total > 0 || Boolean(normalizedWriteAnchors.timeline_anchor);
+
+  return {
+    status: {
+      digital_twin_status: digitalTwinStatus,
+      operational_capability_status: operationalCapabilityStatus,
+      orchestration_status: orchestrationStatus,
+      upgrade_arbitration_status: upgradeArbitrationStatus,
+      human_upgrade_chain_status: humanUpgradeChainStatus,
+      audit_status: auditReady ? "ok" : "pending",
+      timeline_status: timelineReady ? "ok" : "pending",
+    },
+    digital_twin: {
+      value: digitalTwin,
+      write_anchor: normalizedWriteAnchors.digital_twin_upsert,
+      audit_anchor: digitalTwinAuditAnchor,
+    },
+    operational_capability: {
+      value: operationalCapability,
+      write_anchor: normalizedWriteAnchors.operational_capability_upsert,
+      audit_anchor: operationalCapabilityAuditAnchor,
+    },
+    orchestration: {
+      value: orchestration,
+      write_anchor: normalizedWriteAnchors.orchestration_upsert,
+      audit_anchor: orchestrationAuditAnchor,
+    },
+    upgrade: {
+      arbitration: upgradeArbitration,
+      human_upgrade_chain: humanUpgradeChain,
+      latest_escalation: latestEscalation,
+      write_anchors: {
+        upgrade_arbitration_upsert: normalizedWriteAnchors.upgrade_arbitration_upsert,
+        human_upgrade_chain_upsert: normalizedWriteAnchors.human_upgrade_chain_upsert,
+        operator_action: normalizedWriteAnchors.operator_action,
+        approval_decision: normalizedWriteAnchors.approval_decision,
+      },
+      audit_anchor: {
+        upgrade_arbitration: upgradeArbitrationAuditAnchor,
+        human_upgrade_chain: humanUpgradeChainAuditAnchor,
+        latest_escalation: normalizedEscalationAuditAnchor,
+      },
+    },
+    timeline: {
+      anchor: normalizedWriteAnchors.timeline_anchor,
+      operator_actions_anchor: normalizedWriteAnchors.operator_actions_timeline_anchor,
+      approval_holds_anchor: normalizedWriteAnchors.approval_holds_timeline_anchor,
+      approval_decisions_anchor: normalizedWriteAnchors.approval_decisions_timeline_anchor,
+      recent_actions: stage4cTimeline.actions,
+      total: stage4cTimeline.total,
+    },
+  };
+}
+
+function normalizeStage4cOrchestrationUpgradeContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const contract =
+    raw.orchestration_upgrade && typeof raw.orchestration_upgrade === "object" ? raw.orchestration_upgrade : raw;
+  return {
+    multi_agent_orchestration: contract.multi_agent_orchestration || null,
+    upgrade_arbitration: contract.upgrade_arbitration || null,
+    write_anchors: contract.write_anchors || {},
+    timeline_anchor: contract.timeline_anchor || {},
+    audit_anchor: contract.audit_anchor || {},
+  };
+}
+
+function normalizeStage4cDigitalTwin(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    twin_id: normalizeText(raw.twin_id || raw.twinId) || null,
+    agent_id: normalizeText(raw.agent_id || raw.agentId) || null,
+    persona_ref: normalizeText(raw.persona_ref || raw.personaRef) || null,
+    mode: normalizeText(raw.mode) || null,
+    status: normalizeText(raw.status) || null,
+    memory_scope: normalizeText(raw.memory_scope || raw.memoryScope) || null,
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
+  };
+}
+
+function normalizeStage4cOperationalCapability(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    enabled: raw.enabled !== false,
+    capability_level: normalizeText(raw.capability_level || raw.capabilityLevel) || null,
+    operation_modes: normalizeStringArray(raw.operation_modes || raw.operationModes),
+    human_escalation_required:
+      raw.human_escalation_required === undefined && raw.humanEscalationRequired === undefined
+        ? null
+        : raw.human_escalation_required === true || raw.humanEscalationRequired === true,
+    timeline_evidence_required:
+      raw.timeline_evidence_required === undefined && raw.timelineEvidenceRequired === undefined
+        ? null
+        : raw.timeline_evidence_required === true || raw.timelineEvidenceRequired === true,
+    audit_evidence_required:
+      raw.audit_evidence_required === undefined && raw.auditEvidenceRequired === undefined
+        ? null
+        : raw.audit_evidence_required === true || raw.auditEvidenceRequired === true,
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
+  };
+}
+
+function normalizeStage4cOrchestration(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    orchestration_id: normalizeText(raw.orchestration_id || raw.orchestrationId) || null,
+    mode: normalizeText(raw.mode) || null,
+    status: normalizeText(raw.status) || null,
+    plan_ref: normalizeText(raw.plan_ref || raw.planRef) || null,
+    participant_agent_ids: normalizeStringArray(
+      raw.participant_agent_ids || raw.participantAgentIds,
+    ),
+    participants: Array.isArray(raw.participants)
+      ? raw.participants.map((item) => ({
+          agent_id: normalizeText(item?.agent_id || item?.agentId) || null,
+          role: normalizeText(item?.role) || null,
+          duty: normalizeText(item?.duty) || null,
+          required:
+            item?.required === undefined || item?.required === null ? null : item.required === true,
+        }))
+      : [],
+    dependency_edges: Array.isArray(raw.dependency_edges || raw.dependencyEdges)
+      ? (raw.dependency_edges || raw.dependencyEdges).map((item) => ({
+          from_agent_id: normalizeText(item?.from_agent_id || item?.fromAgentId) || null,
+          to_agent_id: normalizeText(item?.to_agent_id || item?.toAgentId) || null,
+          handoff_required:
+            item?.handoff_required === undefined || item?.handoff_required === null
+              ? null
+              : item.handoff_required === true,
+          condition: normalizeText(item?.condition) || null,
+        }))
+      : [],
+    quorum:
+      raw.quorum && typeof raw.quorum === "object"
+        ? {
+            min_success_count:
+              raw.quorum.min_success_count === undefined || raw.quorum.min_success_count === null
+                ? null
+                : Number(raw.quorum.min_success_count),
+            max_parallel_agents:
+              raw.quorum.max_parallel_agents === undefined || raw.quorum.max_parallel_agents === null
+                ? null
+                : Number(raw.quorum.max_parallel_agents),
+            stop_on_blocked:
+              raw.quorum.stop_on_blocked === undefined || raw.quorum.stop_on_blocked === null
+                ? null
+                : raw.quorum.stop_on_blocked === true,
+            stop_on_failure_count:
+              raw.quorum.stop_on_failure_count === undefined || raw.quorum.stop_on_failure_count === null
+                ? null
+                : Number(raw.quorum.stop_on_failure_count),
+          }
+        : null,
+    stop_conditions: normalizeStringArray(raw.stop_conditions || raw.stopConditions),
+    escalation_triggers: normalizeStringArray(raw.escalation_triggers || raw.escalationTriggers),
+    evidence_anchors:
+      raw.evidence_anchors && typeof raw.evidence_anchors === "object" ? raw.evidence_anchors : null,
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
+  };
+}
+
+function normalizeStage4cUpgradeArbitration(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    arbitration_id: normalizeText(raw.arbitration_id || raw.arbitrationId) || null,
+    status: normalizeText(raw.status) || null,
+    reason: normalizeText(raw.reason) || null,
+    candidate_paths: Array.isArray(raw.candidate_paths || raw.candidatePaths)
+      ? (raw.candidate_paths || raw.candidatePaths).map((item) => ({
+          path_id: normalizeText(item?.path_id || item?.pathId) || null,
+          target_mode: normalizeText(item?.target_mode || item?.targetMode) || null,
+          reason: normalizeText(item?.reason) || null,
+          evidence_refs: normalizeStringArray(item?.evidence_refs || item?.evidenceRefs),
+        }))
+      : [],
+    selected_path_id: normalizeText(raw.selected_path_id || raw.selectedPathId) || null,
+    human_upgrade_chain: normalizeStage4cHumanUpgradeChain(raw.human_upgrade_chain || raw.humanUpgradeChain),
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
+  };
+}
+
+function normalizeStage4cHumanUpgradeChain(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    escalation_id: normalizeText(raw.escalation_id || raw.escalationId) || null,
+    status: normalizeText(raw.status) || null,
+    approval_required:
+      raw.approval_required === undefined && raw.approvalRequired === undefined
+        ? null
+        : raw.approval_required === true || raw.approvalRequired === true,
+    approval_id: normalizeText(raw.approval_id || raw.approvalId) || null,
+    approved_by: normalizeText(raw.approved_by || raw.approvedBy) || null,
+    approved_at: raw.approved_at || raw.approvedAt || null,
+    rollback_allowed:
+      raw.rollback_allowed === undefined && raw.rollbackAllowed === undefined
+        ? null
+        : raw.rollback_allowed === true || raw.rollbackAllowed === true,
+    rollback_ref: normalizeText(raw.rollback_ref || raw.rollbackRef) || null,
+    operator_action_ref: normalizeText(raw.operator_action_ref || raw.operatorActionRef) || null,
+    approval_hold_ref: normalizeText(raw.approval_hold_ref || raw.approvalHoldRef) || null,
+    decision_ref: normalizeText(raw.decision_ref || raw.decisionRef) || null,
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
+  };
+}
+
+function findLatestStage4cHumanEscalation(items) {
+  if (!Array.isArray(items)) {
+    return null;
+  }
+  for (const item of items) {
+    const actionType = normalizeText(item?.action_type || item?.actionType);
+    const approvalId = normalizeText(item?.approval_id || item?.approvalId);
+    if (
+      !approvalId &&
+      !actionType.includes("upgrade") &&
+      !actionType.includes("escalat") &&
+      !actionType.includes("arbitrat")
+    ) {
+      continue;
+    }
+    return {
+      action_id: normalizeText(item?.action_id || item?.actionId) || null,
+      action_type: actionType || "unknown",
+      status: normalizeText(item?.status) || "accepted",
+      approval_id: approvalId || null,
+      operator_id: normalizeText(item?.operator_id || item?.operatorId) || null,
+      agent_id: normalizeText(item?.agent_id || item?.agentId) || null,
+      thread_id: normalizeText(item?.thread_id || item?.threadId) || null,
+      workitem_id: normalizeText(item?.workitem_id || item?.workitemId) || null,
+      note: normalizeText(item?.note) || null,
+      at: item?.at || null,
+    };
+  }
+  return null;
+}
+
+function summarizeStage4cTimeline(items) {
+  if (!Array.isArray(items)) {
+    return { total: 0, actions: [] };
+  }
+  const actions = [];
+  for (const item of items) {
+    const action = normalizeText(item?.action);
+    if (!action) {
+      continue;
+    }
+    if (
+      !action.includes("digital_twin") &&
+      !action.includes("operational_capability") &&
+      !action.includes("orchestration") &&
+      !action.includes("upgrade_arbitration") &&
+      !action.includes("human_upgrade_chain") &&
+      !action.includes("escalation")
+    ) {
+      continue;
+    }
+    actions.push({
+      action,
+      at: item?.at || null,
+    });
+    if (actions.length >= 10) {
+      break;
+    }
+  }
+  return {
+    total: actions.length,
+    actions,
   };
 }
 

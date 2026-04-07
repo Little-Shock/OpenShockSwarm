@@ -508,6 +508,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage4b_governance && typeof governance.stage4b_governance === "object"
       ? governance.stage4b_governance
       : null);
+  const stage4c =
+    (governance.stage4c && typeof governance.stage4c === "object" ? governance.stage4c : null) ||
+    (governance.stage4c_governance && typeof governance.stage4c_governance === "object"
+      ? governance.stage4c_governance
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -795,6 +800,60 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
           : "pending",
     });
     dom.workspaceGovernanceList.append(tokenQuotaCard);
+  }
+
+  if (stage4c) {
+    const stage4cStatus = stage4c.status && typeof stage4c.status === "object" ? stage4c.status : {};
+    const digitalTwin = stage4c.digital_twin && typeof stage4c.digital_twin === "object" ? stage4c.digital_twin : {};
+    const operationalCapability =
+      stage4c.operational_capability && typeof stage4c.operational_capability === "object"
+        ? stage4c.operational_capability
+        : {};
+    const orchestration = stage4c.orchestration && typeof stage4c.orchestration === "object" ? stage4c.orchestration : {};
+    const upgrade = stage4c.upgrade && typeof stage4c.upgrade === "object" ? stage4c.upgrade : {};
+    const timeline = stage4c.timeline && typeof stage4c.timeline === "object" ? stage4c.timeline : {};
+
+    const digitalTwinCard = queueCard({
+      title: "Stage4C Digital Twin",
+      subtitle: `status=${normalizeText(stage4cStatus.digital_twin_status) || "pending"}`,
+      note: `${formatStage4cDigitalTwin(digitalTwin.value)} · ${formatStage4bAuditAnchor(digitalTwin.audit_anchor)}`,
+      status: normalizeText(stage4cStatus.digital_twin_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(digitalTwinCard);
+
+    const operationalCapabilityCard = queueCard({
+      title: "Stage4C Operational Capability",
+      subtitle: `status=${normalizeText(stage4cStatus.operational_capability_status) || "pending"}`,
+      note:
+        `${formatStage4cOperationalCapability(operationalCapability.value)} · ` +
+        `${formatStage4bAuditAnchor(operationalCapability.audit_anchor)}`,
+      status: normalizeText(stage4cStatus.operational_capability_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(operationalCapabilityCard);
+
+    const orchestrationCard = queueCard({
+      title: "Stage4C Multi-Agent Orchestration",
+      subtitle: `status=${normalizeText(stage4cStatus.orchestration_status) || "pending"}`,
+      note: `${formatStage4cOrchestration(orchestration.value)} · ${formatStage4bAuditAnchor(orchestration.audit_anchor)}`,
+      status: normalizeText(stage4cStatus.orchestration_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(orchestrationCard);
+
+    const upgradeCard = queueCard({
+      title: "Stage4C Upgrade Arbitration / Human Chain",
+      subtitle:
+        `arbitration=${normalizeText(stage4cStatus.upgrade_arbitration_status) || "pending"} · ` +
+        `human_chain=${normalizeText(stage4cStatus.human_upgrade_chain_status) || "pending"}`,
+      note:
+        `${formatStage4cUpgrade(upgrade)} · ${formatStage4cTimeline(timeline)} · ` +
+        `${formatStage4cEscalation(upgrade.latest_escalation)}`,
+      status:
+        normalizeText(stage4cStatus.upgrade_arbitration_status) === "ok" &&
+        normalizeText(stage4cStatus.human_upgrade_chain_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(upgradeCard);
   }
 }
 
@@ -1537,6 +1596,88 @@ function formatStage4bTimeline(raw) {
     .join(",");
   const anchor = normalizeText(raw.anchor) || "n/a";
   return `timeline total=${total} · latest=${summary} · anchor=${anchor}`;
+}
+
+function formatStage4cDigitalTwin(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "digital twin pending";
+  }
+  const twinId = normalizeText(raw.twin_id) || "n/a";
+  const agentId = normalizeText(raw.agent_id) || "n/a";
+  const mode = normalizeText(raw.mode) || "n/a";
+  const status = normalizeText(raw.status) || "n/a";
+  const memoryScope = normalizeText(raw.memory_scope) || "n/a";
+  return `twin=${twinId} · agent=${agentId} · mode=${mode} · status=${status} · memory_scope=${memoryScope}`;
+}
+
+function formatStage4cOperationalCapability(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "operational capability pending";
+  }
+  const enabled = raw.enabled === false ? "off" : "on";
+  const capabilityLevel = normalizeText(raw.capability_level) || "n/a";
+  const operationModes = Array.isArray(raw.operation_modes) ? raw.operation_modes : [];
+  const escalation = raw.human_escalation_required === true ? "required" : "optional";
+  return `mode=${enabled} · level=${capabilityLevel} · operation_modes=${operationModes.join(",") || "n/a"} · escalation=${escalation}`;
+}
+
+function formatStage4cOrchestration(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "orchestration pending";
+  }
+  const orchestrationId = normalizeText(raw.orchestration_id) || "n/a";
+  const mode = normalizeText(raw.mode) || "n/a";
+  const status = normalizeText(raw.status) || "n/a";
+  const planRef = normalizeText(raw.plan_ref) || "n/a";
+  const participants = Array.isArray(raw.participant_agent_ids) ? raw.participant_agent_ids : [];
+  const edges = Array.isArray(raw.dependency_edges) ? raw.dependency_edges : [];
+  return `orchestration=${orchestrationId} · mode=${mode}/${status} · plan=${planRef} · participants=${participants.length} · edges=${edges.length}`;
+}
+
+function formatStage4cUpgrade(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "upgrade governance pending";
+  }
+  const arbitration = raw.arbitration && typeof raw.arbitration === "object" ? raw.arbitration : null;
+  const humanChain = raw.human_upgrade_chain && typeof raw.human_upgrade_chain === "object" ? raw.human_upgrade_chain : {};
+  if (!arbitration) {
+    return "upgrade arbitration pending";
+  }
+  const arbitrationId = normalizeText(arbitration.arbitration_id) || "n/a";
+  const status = normalizeText(arbitration.status) || "n/a";
+  const selectedPath = normalizeText(arbitration.selected_path_id) || "n/a";
+  const candidatePaths = Array.isArray(arbitration.candidate_paths) ? arbitration.candidate_paths : [];
+  const chainStatus = normalizeText(humanChain.status) || "n/a";
+  const approval = humanChain.approval_required === true ? "required" : "optional";
+  return `arbitration=${arbitrationId}:${status} · selected_path=${selectedPath} · candidates=${candidatePaths.length} · human_chain=${chainStatus}/${approval}`;
+}
+
+function formatStage4cEscalation(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "no human escalation evidence projected";
+  }
+  const actionType = normalizeText(raw.action_type) || "unknown_action";
+  const approvalId = normalizeText(raw.approval_id) || "n/a";
+  const at = raw.at ? formatTime(raw.at) : "n/a";
+  return `latest_escalation=${actionType} · approval_id=${approvalId} · at=${at}`;
+}
+
+function formatStage4cTimeline(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "timeline evidence pending";
+  }
+  const total = Number(raw.total || 0);
+  const actions = Array.isArray(raw.recent_actions) ? raw.recent_actions : [];
+  if (total === 0 || actions.length === 0) {
+    return "no stage4c timeline evidence projected";
+  }
+  const summary = actions
+    .slice(0, 4)
+    .map((item) => normalizeText(item?.action) || "unknown_action")
+    .join(",");
+  const anchor = normalizeText(raw.anchor) || "n/a";
+  const operatorAnchor = normalizeText(raw.operator_actions_anchor) || "n/a";
+  return `timeline total=${total} · latest=${summary} · recent=${anchor} · operator=${operatorAnchor}`;
 }
 
 function formatStage4a2UsageNotes(raw) {
