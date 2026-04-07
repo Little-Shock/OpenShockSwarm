@@ -881,6 +881,41 @@ function serializeChannelContextContract(input = {}) {
             updated_by: input.governance.secretsBinding.updatedBy ?? null
           }
         : null,
+      skill_policy_plugin: input.governance?.skillPolicyPlugin
+        ? {
+            enabled: input.governance.skillPolicyPlugin.enabled !== false,
+            scope: input.governance.skillPolicyPlugin.scope ?? "channel",
+            registry: {
+              skill_refs: deepClone(input.governance.skillPolicyPlugin.registry?.skillRefs ?? []),
+              policy_refs: deepClone(input.governance.skillPolicyPlugin.registry?.policyRefs ?? []),
+              plugin_refs: deepClone(input.governance.skillPolicyPlugin.registry?.pluginRefs ?? [])
+            },
+            bindings: deepClone(input.governance.skillPolicyPlugin.bindings ?? []).map((item) => ({
+              binding_id: item.bindingId ?? null,
+              plugin_ref: item.pluginRef ?? null,
+              skill_ref: item.skillRef ?? null,
+              policy_ref: item.policyRef ?? null,
+              enabled: item.enabled !== false,
+              scope: item.scope ?? "channel"
+            })),
+            updated_at: input.governance.skillPolicyPlugin.updatedAt ?? null,
+            updated_by: input.governance.skillPolicyPlugin.updatedBy ?? null
+          }
+        : null,
+      token_quota_context: input.governance?.tokenQuotaContext
+        ? {
+            token_used: input.governance.tokenQuotaContext.tokenUsed ?? 0,
+            token_limit: input.governance.tokenQuotaContext.tokenLimit ?? null,
+            quota_state: input.governance.tokenQuotaContext.quotaState ?? "healthy",
+            context_tokens: input.governance.tokenQuotaContext.contextTokens ?? 0,
+            context_window_tokens: input.governance.tokenQuotaContext.contextWindowTokens ?? null,
+            recall_source: input.governance.tokenQuotaContext.recallSource ?? null,
+            recall_hits: input.governance.tokenQuotaContext.recallHits ?? 0,
+            degrade_reason: input.governance.tokenQuotaContext.degradeReason ?? null,
+            updated_at: input.governance.tokenQuotaContext.updatedAt ?? null,
+            updated_by: input.governance.tokenQuotaContext.updatedBy ?? null
+          }
+        : null,
       permission_matrix: deepClone(input.governance?.permissionMatrix ?? {}),
       state_graph: deepClone(input.governance?.stateGraph ?? {})
     },
@@ -966,6 +1001,8 @@ function serializeChannelContextContract(input = {}) {
       auth_identity_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       member_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       github_installation_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      skill_policy_plugin_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      token_quota_context_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       repo_binding_upsert: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
       notification_endpoint_upsert: `/v1/channels/${encodeURIComponent(channelId)}/notification-endpoint`,
       topic_repo_binding: "/v1/topics/:topicId/repo-binding",
@@ -1010,6 +1047,20 @@ function serializeChannelContextContract(input = {}) {
               audit_id: input.auditAnchor.latest.secretsBinding.auditId ?? null,
               action: input.auditAnchor.latest.secretsBinding.action ?? null,
               at: input.auditAnchor.latest.secretsBinding.at ?? null
+            }
+          : null,
+        skill_policy_plugin: input.auditAnchor?.latest?.skillPolicyPlugin
+          ? {
+              audit_id: input.auditAnchor.latest.skillPolicyPlugin.auditId ?? null,
+              action: input.auditAnchor.latest.skillPolicyPlugin.action ?? null,
+              at: input.auditAnchor.latest.skillPolicyPlugin.at ?? null
+            }
+          : null,
+        token_quota_context: input.auditAnchor?.latest?.tokenQuotaContext
+          ? {
+              audit_id: input.auditAnchor.latest.tokenQuotaContext.auditId ?? null,
+              action: input.auditAnchor.latest.tokenQuotaContext.action ?? null,
+              at: input.auditAnchor.latest.tokenQuotaContext.at ?? null
             }
           : null,
         repo_binding: input.auditAnchor?.latest?.repoBinding
@@ -2289,6 +2340,8 @@ export function createHttpServer(coordinator, options = {}) {
           "github_installation",
           "sandbox_profile",
           "secrets_binding",
+          "skill_policy_plugin",
+          "token_quota_context",
           "policy_snapshot"
         ]);
         for (const key of Object.keys(body)) {
@@ -2365,6 +2418,102 @@ export function createHttpServer(coordinator, options = {}) {
             throw new CoordinatorError("invalid_secrets_injection_mode", "secrets_binding.injection_mode must be string");
           }
         }
+        if (body.skill_policy_plugin !== undefined) {
+          assertObjectBody(body.skill_policy_plugin, "invalid_skill_policy_plugin", "skill_policy_plugin payload must be object");
+          const allowedSkillPolicyPluginFields = new Set(["enabled", "scope", "registry", "bindings"]);
+          for (const key of Object.keys(body.skill_policy_plugin)) {
+            if (!allowedSkillPolicyPluginFields.has(key)) {
+              throw new CoordinatorError(
+                "invalid_skill_policy_plugin_field",
+                `unsupported skill_policy_plugin field: ${key}`
+              );
+            }
+          }
+          if (body.skill_policy_plugin.enabled !== undefined && typeof body.skill_policy_plugin.enabled !== "boolean") {
+            throw new CoordinatorError("invalid_skill_policy_plugin_enabled", "skill_policy_plugin.enabled must be boolean");
+          }
+          if (
+            body.skill_policy_plugin.scope !== undefined &&
+            (typeof body.skill_policy_plugin.scope !== "string" || body.skill_policy_plugin.scope.trim().length === 0)
+          ) {
+            throw new CoordinatorError("invalid_skill_policy_plugin_scope", "skill_policy_plugin.scope must be non-empty string");
+          }
+          if (body.skill_policy_plugin.registry !== undefined) {
+            assertObjectBody(
+              body.skill_policy_plugin.registry,
+              "invalid_skill_policy_plugin_registry",
+              "skill_policy_plugin.registry must be object"
+            );
+            const allowedRegistryFields = new Set(["skill_refs", "policy_refs", "plugin_refs"]);
+            for (const key of Object.keys(body.skill_policy_plugin.registry)) {
+              if (!allowedRegistryFields.has(key)) {
+                throw new CoordinatorError(
+                  "invalid_skill_policy_plugin_registry_field",
+                  `unsupported skill_policy_plugin.registry field: ${key}`
+                );
+              }
+            }
+            const registryLists = ["skill_refs", "policy_refs", "plugin_refs"];
+            for (const key of registryLists) {
+              if (
+                body.skill_policy_plugin.registry[key] !== undefined &&
+                !Array.isArray(body.skill_policy_plugin.registry[key])
+              ) {
+                throw new CoordinatorError(
+                  "invalid_skill_policy_plugin_registry_refs",
+                  `skill_policy_plugin.registry.${key} must be string[]`
+                );
+              }
+            }
+          }
+          if (body.skill_policy_plugin.bindings !== undefined) {
+            if (!Array.isArray(body.skill_policy_plugin.bindings)) {
+              throw new CoordinatorError("invalid_skill_policy_plugin_bindings", "skill_policy_plugin.bindings must be object[]");
+            }
+            for (const item of body.skill_policy_plugin.bindings) {
+              assertObjectBody(item, "invalid_skill_policy_plugin_binding", "skill_policy_plugin binding must be object");
+              const allowedBindingFields = new Set(["binding_id", "plugin_ref", "skill_ref", "policy_ref", "enabled", "scope"]);
+              for (const key of Object.keys(item)) {
+                if (!allowedBindingFields.has(key)) {
+                  throw new CoordinatorError(
+                    "invalid_skill_policy_plugin_binding_field",
+                    `unsupported skill_policy_plugin.bindings field: ${key}`
+                  );
+                }
+              }
+              if (item.enabled !== undefined && typeof item.enabled !== "boolean") {
+                throw new CoordinatorError(
+                  "invalid_skill_policy_plugin_binding_enabled",
+                  "skill_policy_plugin binding enabled must be boolean"
+                );
+              }
+              if (item.scope !== undefined && (typeof item.scope !== "string" || item.scope.trim().length === 0)) {
+                throw new CoordinatorError(
+                  "invalid_skill_policy_plugin_binding_scope",
+                  "skill_policy_plugin binding scope must be non-empty string"
+                );
+              }
+            }
+          }
+        }
+        if (body.token_quota_context !== undefined) {
+          assertObjectBody(body.token_quota_context, "invalid_token_quota_context", "token_quota_context payload must be object");
+          const allowedTokenQuotaContextFields = new Set([
+            "token_used",
+            "token_limit",
+            "quota_state",
+            "context_tokens",
+            "context_window_tokens",
+            "recall_source",
+            "recall_hits",
+            "degrade_reason"
+          ]);
+          for (const key of Object.keys(body.token_quota_context)) {
+            if (!allowedTokenQuotaContextFields.has(key)) {
+              throw new CoordinatorError("invalid_token_quota_context_field", `unsupported token_quota_context field: ${key}`);
+            }
+          }
+        }
         const context = coordinator.upsertChannelContextContract(route.channelId, {
           operatorId: body.operator_id,
           workspaceId: body.workspace_id,
@@ -2405,6 +2554,41 @@ export function createHttpServer(coordinator, options = {}) {
                 allowedSecretRefs: body.secrets_binding.allowed_secret_refs,
                 approvalRequired: body.secrets_binding.approval_required,
                 injectionMode: body.secrets_binding.injection_mode
+              }
+            : undefined,
+          skillPolicyPlugin: body.skill_policy_plugin
+            ? {
+                enabled: body.skill_policy_plugin.enabled,
+                scope: body.skill_policy_plugin.scope,
+                registry: body.skill_policy_plugin.registry
+                  ? {
+                      skillRefs: body.skill_policy_plugin.registry.skill_refs,
+                      policyRefs: body.skill_policy_plugin.registry.policy_refs,
+                      pluginRefs: body.skill_policy_plugin.registry.plugin_refs
+                    }
+                  : undefined,
+                bindings: Array.isArray(body.skill_policy_plugin.bindings)
+                  ? body.skill_policy_plugin.bindings.map((item) => ({
+                      bindingId: item.binding_id,
+                      pluginRef: item.plugin_ref,
+                      skillRef: item.skill_ref,
+                      policyRef: item.policy_ref,
+                      enabled: item.enabled,
+                      scope: item.scope
+                    }))
+                  : undefined
+              }
+            : undefined,
+          tokenQuotaContext: body.token_quota_context
+            ? {
+                tokenUsed: body.token_quota_context.token_used,
+                tokenLimit: body.token_quota_context.token_limit,
+                quotaState: body.token_quota_context.quota_state,
+                contextTokens: body.token_quota_context.context_tokens,
+                contextWindowTokens: body.token_quota_context.context_window_tokens,
+                recallSource: body.token_quota_context.recall_source,
+                recallHits: body.token_quota_context.recall_hits,
+                degradeReason: body.token_quota_context.degrade_reason
               }
             : undefined,
           policySnapshot: body.policy_snapshot

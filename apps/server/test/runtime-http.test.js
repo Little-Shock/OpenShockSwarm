@@ -4952,6 +4952,207 @@ test("v1 stage4a2 restricted local sandbox enforces secrets injection and approv
   });
 });
 
+test("v1 stage4b skill-policy-plugin governance and token/quota/context observability contract keeps explainable read model and audit anchors", async () => {
+  const channelId = "channel_stage4b_skill_policy_plugin";
+  const operatorId = "human_operator_stage4b";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const seeded = await requestJson({
+      port,
+      method: "POST",
+      path: "/runtime/fixtures/seed",
+      body: {}
+    });
+    assert.equal(seeded.statusCode, 200);
+
+    const context = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        workspace_id: "workspace_stage4b",
+        workspace_root: "/Users/atou/.slock/agents",
+        member: {
+          member_id: "member_stage4b_owner",
+          role: "owner",
+          status: "active"
+        },
+        skill_policy_plugin: {
+          enabled: true,
+          scope: "channel",
+          registry: {
+            skill_refs: ["skill.memory.search", "skill.memory.write"],
+            policy_refs: ["policy.workspace_only"],
+            plugin_refs: ["plugin.memos.v1"]
+          },
+          bindings: [
+            {
+              binding_id: "binding_stage4b_skill",
+              plugin_ref: "plugin.memos.v1",
+              skill_ref: "skill.memory.search",
+              enabled: true,
+              scope: "channel"
+            },
+            {
+              binding_id: "binding_stage4b_policy",
+              plugin_ref: "plugin.memos.v1",
+              policy_ref: "policy.workspace_only",
+              enabled: true
+            }
+          ]
+        },
+        token_quota_context: {
+          token_used: 7800,
+          token_limit: 10000,
+          quota_state: "near_limit",
+          context_tokens: 2200,
+          context_window_tokens: 32000,
+          recall_source: "external_memory_provider",
+          recall_hits: 3
+        },
+        policy_snapshot: {
+          mode: "stage4b",
+          boundary: "skill_policy_plugin_and_observability_only"
+        }
+      }
+    });
+    assert.equal(context.statusCode, 200);
+    assert.equal(context.body.context.governance.skill_policy_plugin.enabled, true);
+    assert.equal(context.body.context.governance.skill_policy_plugin.scope, "channel");
+    assert.equal(context.body.context.governance.skill_policy_plugin.registry.skill_refs.length, 2);
+    assert.equal(context.body.context.governance.skill_policy_plugin.bindings.length, 2);
+    assert.equal(context.body.context.governance.token_quota_context.token_used, 7800);
+    assert.equal(context.body.context.governance.token_quota_context.token_limit, 10000);
+    assert.equal(context.body.context.governance.token_quota_context.quota_state, "near_limit");
+    assert.equal(
+      context.body.context.write_anchors.skill_policy_plugin_upsert,
+      `/v1/channels/${encodeURIComponent(channelId)}/context`
+    );
+    assert.equal(
+      context.body.context.write_anchors.token_quota_context_upsert,
+      `/v1/channels/${encodeURIComponent(channelId)}/context`
+    );
+    assert.equal(
+      context.body.context.audit_anchor.latest.skill_policy_plugin.action,
+      "channel_skill_policy_plugin_upsert"
+    );
+    assert.equal(
+      context.body.context.audit_anchor.latest.token_quota_context.action,
+      "channel_token_quota_context_upsert"
+    );
+
+    const contextRead = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+    });
+    assert.equal(contextRead.statusCode, 200);
+    assert.equal(contextRead.body.context.governance.skill_policy_plugin.registry.plugin_refs[0], "plugin.memos.v1");
+    assert.equal(contextRead.body.context.governance.token_quota_context.recall_source, "external_memory_provider");
+    assert.equal(contextRead.body.context.governance.token_quota_context.recall_hits, 3);
+
+    const auditTrail = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/audit-trail?limit=40`
+    });
+    assert.equal(auditTrail.statusCode, 200);
+    assert.equal(
+      auditTrail.body.items.some(
+        (item) =>
+          item.action === "channel_skill_policy_plugin_upsert" &&
+          item.details.binding_count === 2 &&
+          item.details.scope === "channel"
+      ),
+      true
+    );
+    assert.equal(
+      auditTrail.body.items.some(
+        (item) =>
+          item.action === "channel_token_quota_context_upsert" &&
+          item.details.token_used === 7800 &&
+          item.details.quota_state === "near_limit"
+      ),
+      true
+    );
+
+    const invalidSkillPolicyPluginField = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        skill_policy_plugin: {
+          enabled: true,
+          unsupported_field: true
+        }
+      }
+    });
+    assert.equal(invalidSkillPolicyPluginField.statusCode, 400);
+    assert.equal(invalidSkillPolicyPluginField.body.error.code, "invalid_skill_policy_plugin_field");
+
+    const invalidSkillPolicyBindingScope = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        skill_policy_plugin: {
+          bindings: [
+            {
+              plugin_ref: "plugin.memos.v1",
+              skill_ref: "skill.memory.search",
+              scope: "global"
+            }
+          ]
+        }
+      }
+    });
+    assert.equal(invalidSkillPolicyBindingScope.statusCode, 400);
+    assert.equal(invalidSkillPolicyBindingScope.body.error.code, "invalid_skill_policy_plugin_binding_scope");
+
+    const invalidTokenQuotaContextField = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        token_quota_context: {
+          token_used: 100,
+          token_limit: 1000,
+          context_tokens: 120,
+          context_window_tokens: 4000,
+          unknown_metric: 1
+        }
+      }
+    });
+    assert.equal(invalidTokenQuotaContextField.statusCode, 400);
+    assert.equal(invalidTokenQuotaContextField.body.error.code, "invalid_token_quota_context_field");
+
+    const invalidQuotaState = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        token_quota_context: {
+          quota_state: "overflowing"
+        }
+      }
+    });
+    assert.equal(invalidQuotaState.statusCode, 400);
+    assert.equal(invalidQuotaState.body.error.code, "invalid_token_quota_state");
+
+    const payload = JSON.stringify({
+      context: contextRead.body.context,
+      auditTrail: auditTrail.body
+    });
+    assert.equal(payload.includes("\"cloud_sandbox\""), false);
+    assert.equal(payload.includes("\"phase4c\""), false);
+  });
+});
+
 test("v1 stage2 batch2 runtime recovery contract supports assignment enforcement and operator-triggered recoveries", async () => {
   const operatorId = "human_operator_stage2_batch2";
   const channelId = "channel_open_shock_batch2";

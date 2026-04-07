@@ -208,6 +208,8 @@ const APPROVAL_NOTIFICATION_TRIGGER_EVENTS = Object.freeze([
   "mention",
   "pr_review_pending"
 ]);
+const SKILL_POLICY_PLUGIN_SCOPES = new Set(["channel", "workspace"]);
+const TOKEN_QUOTA_STATES = new Set(["healthy", "near_limit", "blocked"]);
 
 const WORKSPACE_GOVERNANCE_PERMISSION_MATRIX = Object.freeze({
   owner: Object.freeze({
@@ -280,7 +282,9 @@ function createEmptyChannelGovernance() {
     member: null,
     githubInstallation: null,
     sandboxProfile: null,
-    secretsBinding: null
+    secretsBinding: null,
+    skillPolicyPlugin: null,
+    tokenQuotaContext: null
   };
 }
 
@@ -2547,6 +2551,12 @@ export class ServerCoordinator {
     if (!Object.prototype.hasOwnProperty.call(channel.governance, "secretsBinding")) {
       channel.governance.secretsBinding = null;
     }
+    if (!Object.prototype.hasOwnProperty.call(channel.governance, "skillPolicyPlugin")) {
+      channel.governance.skillPolicyPlugin = null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(channel.governance, "tokenQuotaContext")) {
+      channel.governance.tokenQuotaContext = null;
+    }
     return channel.governance;
   }
 
@@ -2604,6 +2614,8 @@ export class ServerCoordinator {
         githubInstallation: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_github_installation_upsert")),
         sandboxProfile: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_sandbox_profile_upsert")),
         secretsBinding: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_secrets_binding_upsert")),
+        skillPolicyPlugin: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_skill_policy_plugin_upsert")),
+        tokenQuotaContext: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_token_quota_context_upsert")),
         repoBinding: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_repo_binding_upsert")),
         notificationEndpoint: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_notification_endpoint_upsert"))
       }
@@ -2876,6 +2888,282 @@ export class ServerCoordinator {
         }
       });
     }
+
+    if (input.skillPolicyPlugin !== undefined) {
+      const skillPolicyPluginInput = input.skillPolicyPlugin;
+      assertOrThrow(
+        skillPolicyPluginInput && typeof skillPolicyPluginInput === "object" && !Array.isArray(skillPolicyPluginInput),
+        "invalid_skill_policy_plugin",
+        "skill_policy_plugin payload must be object"
+      );
+      const allowedKeys = new Set(["enabled", "scope", "registry", "bindings"]);
+      for (const key of Object.keys(skillPolicyPluginInput)) {
+        assertOrThrow(allowedKeys.has(key), "invalid_skill_policy_plugin_field", `unsupported skill_policy_plugin field: ${key}`);
+      }
+
+      const existing = governance.skillPolicyPlugin;
+      const scope =
+        normalizeOptionalScopeId(skillPolicyPluginInput.scope) ??
+        normalizeOptionalScopeId(existing?.scope) ??
+        "channel";
+      assertOrThrow(
+        SKILL_POLICY_PLUGIN_SCOPES.has(scope),
+        "invalid_skill_policy_plugin_scope",
+        "skill_policy_plugin.scope is invalid"
+      );
+      if (skillPolicyPluginInput.enabled !== undefined) {
+        assertOrThrow(
+          typeof skillPolicyPluginInput.enabled === "boolean",
+          "invalid_skill_policy_plugin_enabled",
+          "skill_policy_plugin.enabled must be boolean"
+        );
+      }
+      const enabled = skillPolicyPluginInput.enabled ?? existing?.enabled ?? true;
+
+      const normalizeRefList = (value, code, message) => {
+        if (!Array.isArray(value)) {
+          throw new CoordinatorError(code, message);
+        }
+        return Array.from(
+          new Set(
+            value
+              .filter((item) => typeof item === "string" && item.trim().length > 0)
+              .map((item) => item.trim())
+          )
+        );
+      };
+
+      const registryInput =
+        skillPolicyPluginInput.registry === undefined ? existing?.registry ?? {} : skillPolicyPluginInput.registry;
+      assertOrThrow(
+        registryInput && typeof registryInput === "object" && !Array.isArray(registryInput),
+        "invalid_skill_policy_plugin_registry",
+        "skill_policy_plugin.registry must be object"
+      );
+      const allowedRegistryKeys = new Set(["skillRefs", "policyRefs", "pluginRefs"]);
+      for (const key of Object.keys(registryInput)) {
+        assertOrThrow(
+          allowedRegistryKeys.has(key),
+          "invalid_skill_policy_plugin_registry_field",
+          `unsupported skill_policy_plugin.registry field: ${key}`
+        );
+      }
+      const registry = {
+        skillRefs:
+          registryInput.skillRefs === undefined
+            ? deepClone(existing?.registry?.skillRefs ?? [])
+            : normalizeRefList(
+                registryInput.skillRefs,
+                "invalid_skill_policy_plugin_registry_refs",
+                "skill_policy_plugin.registry.skill_refs must be string[]"
+              ),
+        policyRefs:
+          registryInput.policyRefs === undefined
+            ? deepClone(existing?.registry?.policyRefs ?? [])
+            : normalizeRefList(
+                registryInput.policyRefs,
+                "invalid_skill_policy_plugin_registry_refs",
+                "skill_policy_plugin.registry.policy_refs must be string[]"
+              ),
+        pluginRefs:
+          registryInput.pluginRefs === undefined
+            ? deepClone(existing?.registry?.pluginRefs ?? [])
+            : normalizeRefList(
+                registryInput.pluginRefs,
+                "invalid_skill_policy_plugin_registry_refs",
+                "skill_policy_plugin.registry.plugin_refs must be string[]"
+              )
+      };
+
+      const bindingsInput =
+        skillPolicyPluginInput.bindings === undefined ? existing?.bindings ?? [] : skillPolicyPluginInput.bindings;
+      assertOrThrow(
+        Array.isArray(bindingsInput),
+        "invalid_skill_policy_plugin_bindings",
+        "skill_policy_plugin.bindings must be object[]"
+      );
+      const bindings = bindingsInput.map((item) => {
+        assertOrThrow(
+          item && typeof item === "object" && !Array.isArray(item),
+          "invalid_skill_policy_plugin_binding",
+          "skill_policy_plugin binding must be object"
+        );
+        const allowedBindingKeys = new Set(["bindingId", "pluginRef", "skillRef", "policyRef", "enabled", "scope"]);
+        for (const key of Object.keys(item)) {
+          assertOrThrow(
+            allowedBindingKeys.has(key),
+            "invalid_skill_policy_plugin_binding_field",
+            `unsupported skill_policy_plugin.bindings field: ${key}`
+          );
+        }
+        const pluginRef = normalizeOptionalScopeId(item.pluginRef);
+        const skillRef = normalizeOptionalScopeId(item.skillRef);
+        const policyRef = normalizeOptionalScopeId(item.policyRef);
+        assertOrThrow(
+          pluginRef,
+          "invalid_skill_policy_plugin_binding_ref",
+          "skill_policy_plugin binding plugin_ref is required"
+        );
+        assertOrThrow(
+          skillRef || policyRef,
+          "invalid_skill_policy_plugin_binding_ref",
+          "skill_policy_plugin binding requires skill_ref or policy_ref"
+        );
+        if (item.enabled !== undefined) {
+          assertOrThrow(
+            typeof item.enabled === "boolean",
+            "invalid_skill_policy_plugin_binding_enabled",
+            "skill_policy_plugin binding enabled must be boolean"
+          );
+        }
+        const bindingScope = normalizeOptionalScopeId(item.scope) ?? scope;
+        assertOrThrow(
+          SKILL_POLICY_PLUGIN_SCOPES.has(bindingScope),
+          "invalid_skill_policy_plugin_binding_scope",
+          "skill_policy_plugin binding scope is invalid"
+        );
+        return {
+          bindingId: normalizeOptionalScopeId(item.bindingId) ?? generateId("binding"),
+          pluginRef,
+          skillRef,
+          policyRef,
+          enabled: item.enabled === undefined ? true : item.enabled,
+          scope: bindingScope
+        };
+      });
+
+      const now = nowIso();
+      governance.skillPolicyPlugin = {
+        enabled,
+        scope,
+        registry,
+        bindings,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      this.appendChannelAuditEntry(channel, {
+        actorId: operatorId,
+        action: "channel_skill_policy_plugin_upsert",
+        target: `channel:${channel.channelId}:skill_policy_plugin`,
+        policySnapshot,
+        details: {
+          enabled: governance.skillPolicyPlugin.enabled,
+          scope: governance.skillPolicyPlugin.scope,
+          skill_ref_count: governance.skillPolicyPlugin.registry.skillRefs.length,
+          policy_ref_count: governance.skillPolicyPlugin.registry.policyRefs.length,
+          plugin_ref_count: governance.skillPolicyPlugin.registry.pluginRefs.length,
+          binding_count: governance.skillPolicyPlugin.bindings.length
+        }
+      });
+    }
+
+    if (input.tokenQuotaContext !== undefined) {
+      const tokenQuotaContextInput = input.tokenQuotaContext;
+      assertOrThrow(
+        tokenQuotaContextInput && typeof tokenQuotaContextInput === "object" && !Array.isArray(tokenQuotaContextInput),
+        "invalid_token_quota_context",
+        "token_quota_context payload must be object"
+      );
+      const allowedKeys = new Set([
+        "tokenUsed",
+        "tokenLimit",
+        "quotaState",
+        "contextTokens",
+        "contextWindowTokens",
+        "recallSource",
+        "recallHits",
+        "degradeReason"
+      ]);
+      for (const key of Object.keys(tokenQuotaContextInput)) {
+        assertOrThrow(allowedKeys.has(key), "invalid_token_quota_context_field", `unsupported token_quota_context field: ${key}`);
+      }
+
+      const existing = governance.tokenQuotaContext;
+      const tokenLimitRaw = tokenQuotaContextInput.tokenLimit ?? existing?.tokenLimit ?? null;
+      const tokenLimit = Number(tokenLimitRaw);
+      assertOrThrow(
+        Number.isInteger(tokenLimit) && tokenLimit > 0,
+        "invalid_token_limit",
+        "token_quota_context.token_limit must be positive integer"
+      );
+
+      const tokenUsedRaw = tokenQuotaContextInput.tokenUsed ?? existing?.tokenUsed ?? 0;
+      const tokenUsed = Number(tokenUsedRaw);
+      assertOrThrow(
+        Number.isInteger(tokenUsed) && tokenUsed >= 0,
+        "invalid_token_used",
+        "token_quota_context.token_used must be non-negative integer"
+      );
+
+      const contextWindowTokensRaw = tokenQuotaContextInput.contextWindowTokens ?? existing?.contextWindowTokens ?? null;
+      const contextWindowTokens = Number(contextWindowTokensRaw);
+      assertOrThrow(
+        Number.isInteger(contextWindowTokens) && contextWindowTokens > 0,
+        "invalid_context_window_tokens",
+        "token_quota_context.context_window_tokens must be positive integer"
+      );
+
+      const contextTokensRaw = tokenQuotaContextInput.contextTokens ?? existing?.contextTokens ?? 0;
+      const contextTokens = Number(contextTokensRaw);
+      assertOrThrow(
+        Number.isInteger(contextTokens) && contextTokens >= 0,
+        "invalid_context_tokens",
+        "token_quota_context.context_tokens must be non-negative integer"
+      );
+
+      const recallHitsRaw = tokenQuotaContextInput.recallHits ?? existing?.recallHits ?? 0;
+      const recallHits = Number(recallHitsRaw);
+      assertOrThrow(
+        Number.isInteger(recallHits) && recallHits >= 0,
+        "invalid_recall_hits",
+        "token_quota_context.recall_hits must be non-negative integer"
+      );
+
+      const recallSource = normalizeOptionalScopeId(tokenQuotaContextInput.recallSource) ?? existing?.recallSource ?? null;
+      const degradeReason =
+        tokenQuotaContextInput.degradeReason === null
+          ? null
+          : normalizeOptionalScopeId(tokenQuotaContextInput.degradeReason) ?? existing?.degradeReason ?? null;
+      const quotaStateInput = normalizeOptionalScopeId(tokenQuotaContextInput.quotaState);
+      const quotaStateDerived =
+        tokenUsed >= tokenLimit ? "blocked" : tokenUsed >= Math.floor(tokenLimit * 0.85) ? "near_limit" : "healthy";
+      const quotaState = quotaStateInput ?? existing?.quotaState ?? quotaStateDerived;
+      assertOrThrow(
+        TOKEN_QUOTA_STATES.has(quotaState),
+        "invalid_token_quota_state",
+        "token_quota_context.quota_state is invalid"
+      );
+
+      const now = nowIso();
+      governance.tokenQuotaContext = {
+        tokenUsed,
+        tokenLimit,
+        quotaState,
+        contextTokens,
+        contextWindowTokens,
+        recallSource,
+        recallHits,
+        degradeReason,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      this.appendChannelAuditEntry(channel, {
+        actorId: operatorId,
+        action: "channel_token_quota_context_upsert",
+        target: `channel:${channel.channelId}:token_quota_context`,
+        policySnapshot,
+        details: {
+          token_used: governance.tokenQuotaContext.tokenUsed,
+          token_limit: governance.tokenQuotaContext.tokenLimit,
+          quota_state: governance.tokenQuotaContext.quotaState,
+          context_tokens: governance.tokenQuotaContext.contextTokens,
+          context_window_tokens: governance.tokenQuotaContext.contextWindowTokens,
+          recall_source: governance.tokenQuotaContext.recallSource,
+          recall_hits: governance.tokenQuotaContext.recallHits,
+          degrade_reason: governance.tokenQuotaContext.degradeReason
+        }
+      });
+    }
   }
 
   findChannelContextByTopicId(topicId) {
@@ -3141,6 +3429,8 @@ export class ServerCoordinator {
         githubInstallation: channel.governance.githubInstallation,
         sandboxProfile: channel.governance.sandboxProfile,
         secretsBinding: channel.governance.secretsBinding,
+        skillPolicyPlugin: channel.governance.skillPolicyPlugin,
+        tokenQuotaContext: channel.governance.tokenQuotaContext,
         permissionMatrix: WORKSPACE_GOVERNANCE_PERMISSION_MATRIX,
         stateGraph: WORKSPACE_GOVERNANCE_STATE_GRAPH
       },
@@ -3169,6 +3459,8 @@ export class ServerCoordinator {
       "githubInstallation",
       "sandboxProfile",
       "secretsBinding",
+      "skillPolicyPlugin",
+      "tokenQuotaContext",
       "policySnapshot"
     ]);
     for (const key of Object.keys(input)) {
@@ -3247,7 +3539,9 @@ export class ServerCoordinator {
         member: input.member,
         githubInstallation: input.githubInstallation,
         sandboxProfile: input.sandboxProfile,
-        secretsBinding: input.secretsBinding
+        secretsBinding: input.secretsBinding,
+        skillPolicyPlugin: input.skillPolicyPlugin,
+        tokenQuotaContext: input.tokenQuotaContext
       },
       operatorId,
       input.policySnapshot
@@ -3268,7 +3562,13 @@ export class ServerCoordinator {
         rule_entry_count: channel.context.ruleEntries.length,
         sandbox_profile: channel.governance.sandboxProfile?.profile ?? null,
         secrets_binding_enabled: channel.governance.secretsBinding !== null,
-        secrets_ref_count: channel.governance.secretsBinding?.allowedSecretRefs?.length ?? 0
+        secrets_ref_count: channel.governance.secretsBinding?.allowedSecretRefs?.length ?? 0,
+        skill_policy_plugin_enabled: channel.governance.skillPolicyPlugin?.enabled ?? null,
+        skill_policy_plugin_scope: channel.governance.skillPolicyPlugin?.scope ?? null,
+        skill_policy_plugin_binding_count: channel.governance.skillPolicyPlugin?.bindings?.length ?? 0,
+        token_quota_state: channel.governance.tokenQuotaContext?.quotaState ?? null,
+        token_used: channel.governance.tokenQuotaContext?.tokenUsed ?? null,
+        token_limit: channel.governance.tokenQuotaContext?.tokenLimit ?? null
       }
     });
     this.channelContexts.set(normalizedChannelId, channel);
