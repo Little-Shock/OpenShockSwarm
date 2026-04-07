@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const evidenceRoot =
   process.env.OPENSHOCK_E2E_ARTIFACTS_DIR?.trim() ||
-  (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt03-headed-setup-")));
+  (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt04-github-onboarding-")));
 const artifactsDir = path.resolve(evidenceRoot);
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
@@ -254,8 +254,7 @@ async function main() {
   const daemonURL = `http://127.0.0.1:${daemonPort}`;
   const statePath = path.join(workspaceDir, "data", "phase0", "state.json");
   const chromiumExecutable = resolveChromiumExecutable();
-  const issueTitle = `TKT-03 headed setup e2e ${Date.now()}`;
-  const issueSummary = "Replay setup -> board -> room -> PR entry with headed Chromium evidence.";
+  const installURL = "https://github.com/apps/openshock-app/installations/new";
 
   await prepareWorkspace();
 
@@ -290,6 +289,10 @@ async function main() {
       OPENSHOCK_DAEMON_URL: daemonURL,
       OPENSHOCK_WORKSPACE_ROOT: workspaceDir,
       OPENSHOCK_STATE_FILE: statePath,
+      OPENSHOCK_GITHUB_APP_ID: "12345",
+      OPENSHOCK_GITHUB_APP_SLUG: "openshock-app",
+      OPENSHOCK_GITHUB_APP_PRIVATE_KEY: "test-private-key",
+      OPENSHOCK_GITHUB_APP_INSTALL_URL: installURL,
     },
   });
 
@@ -333,140 +336,63 @@ async function main() {
 
   const page = await context.newPage();
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await page.locator('[data-testid="setup-repo-binding"]').waitFor({ state: "visible" });
+  await page.locator('[data-testid="setup-github-connection"]').waitFor({ state: "visible" });
   await capture(page, "setup-shell");
 
-  await page.getByTestId("setup-repo-bind-button").click();
-  await page.waitForFunction(
-    () => document.querySelector('[data-testid="setup-repo-binding-status"]')?.textContent?.includes("已绑定"),
-    undefined,
-    { timeout: 30_000 }
-  );
-  const repoBindingStatus = (await page.getByTestId("setup-repo-binding-status").textContent())?.trim() ?? "";
-  const repoBindingMessage = (await page.getByTestId("setup-repo-binding-message").textContent())?.trim() ?? "";
-
-  await page.getByTestId("setup-github-refresh-button").click();
   await page.waitForFunction(
     () => {
-      const message = (document.querySelector('[data-testid="setup-github-message"]')?.textContent || "").trim();
-      const status = (document.querySelector('[data-testid="setup-github-readiness-status"]')?.textContent || "").trim();
-      return message.length > 0 && status.length > 0;
+      const message = document.querySelector('[data-testid="setup-github-message"]')?.textContent?.trim() || "";
+      const installLink = document.querySelector('[data-testid="setup-github-install-link"]');
+      return message.length > 0 && Boolean(installLink);
     },
     undefined,
     { timeout: 30_000 }
   );
+
   const githubReadinessStatus = (await page.getByTestId("setup-github-readiness-status").textContent())?.trim() ?? "";
   const githubMessage = (await page.getByTestId("setup-github-message").textContent())?.trim() ?? "";
-  assert(
-    githubReadinessStatus === "可进远端 PR",
-    `expected GitHub readiness happy path to be 可进远端 PR, got ${githubReadinessStatus}: ${githubMessage}`
-  );
-  await capture(page, "setup-binding-and-github");
+  const githubMissingFields = (await page.getByTestId("setup-github-missing-fields").textContent())?.trim() ?? "";
+  const githubInstallLink = (await page.getByTestId("setup-github-install-link").getAttribute("href"))?.trim() ?? "";
+  const githubReturnSteps = (await page.getByTestId("setup-github-return-steps").textContent())?.trim() ?? "";
 
-  await page.getByTestId("setup-runtime-daemon-url").fill(daemonURL);
-  await page.getByTestId("setup-runtime-pair-button").click();
+  assert(
+    githubReadinessStatus === "仅本地闭环",
+    `expected GitHub readiness status to stay local-only until installation completes, got: ${githubReadinessStatus}`
+  );
+  assert(githubMessage.includes("installation"), `expected github message to mention installation, got: ${githubMessage}`);
+  assert(githubInstallLink === installURL, `expected github install link ${installURL}, got ${githubInstallLink}`);
+  await capture(page, "github-app-onboarding");
+
+  const repoBindButtonLabel = (await page.getByTestId("setup-repo-bind-button").textContent())?.trim() ?? "";
+  await page.getByTestId("setup-repo-bind-button").click();
   await page.waitForFunction(
-    () => document.querySelector('[data-testid="setup-runtime-pairing-value"]')?.textContent?.includes("已配对"),
+    () => {
+      const status = document.querySelector('[data-testid="setup-repo-binding-status"]')?.textContent?.trim() || "";
+      const error = document.querySelector('[data-testid="setup-repo-binding-error"]')?.textContent?.trim() || "";
+      return status.includes("待补安装") || error.length > 0;
+    },
     undefined,
     { timeout: 30_000 }
   );
 
-  let selectedRuntime = (await page.getByTestId("setup-runtime-selection-value").textContent())?.trim() ?? "";
-  if (!selectedRuntime || selectedRuntime === "未选择") {
-    const selectableRuntime = page.locator('[data-testid^="setup-runtime-select-"]').first();
-    await selectableRuntime.waitFor({ state: "visible", timeout: 30_000 });
-    if (await selectableRuntime.isEnabled()) {
-      await selectableRuntime.click();
-    }
-    await page.waitForFunction(
-      () => {
-        const value = document.querySelector('[data-testid="setup-runtime-selection-value"]')?.textContent?.trim();
-        return Boolean(value) && value !== "未选择";
-      },
-      undefined,
-      { timeout: 30_000 }
-    );
-    selectedRuntime = (await page.getByTestId("setup-runtime-selection-value").textContent())?.trim() ?? "";
-  }
+  const repoBindingStatus = (await page.getByTestId("setup-repo-binding-status").textContent())?.trim() ?? "";
+  const repoBindingMessage = (await page.getByTestId("setup-repo-binding-message").textContent())?.trim() ?? "";
+  const repoBindingError = (await page.getByTestId("setup-repo-binding-error").textContent())?.trim() ?? "";
+  const repoBindingMissingFields = (await page.getByTestId("setup-repo-binding-missing-fields").textContent())?.trim() ?? "";
+  const repoBindingInstallLink = (await page.getByTestId("setup-repo-binding-install-link").getAttribute("href"))?.trim() ?? "";
+  const repoBindingReturnSteps = (await page.getByTestId("setup-repo-binding-return-steps").textContent())?.trim() ?? "";
 
-  await page.waitForFunction(() => {
-    const select = document.querySelector('[data-testid="setup-bridge-provider"]');
-    return select instanceof HTMLSelectElement && select.options.length > 0;
-  }, undefined, { timeout: 30_000 });
-  const pairingValue = (await page.getByTestId("setup-runtime-pairing-value").textContent())?.trim() ?? "";
-
-  const providerOptions = await page.locator('[data-testid="setup-bridge-provider"] option').evaluateAll((options) =>
-    options.map((option) => ({
-      value: option instanceof HTMLOptionElement ? option.value : "",
-      label: option.textContent?.trim() ?? "",
-    }))
-  );
-  const selectedProvider =
-    providerOptions.find((option) => option.value === "codex")?.value ?? providerOptions[0]?.value ?? "";
-  assert(selectedProvider, "setup bridge never exposed a selectable provider");
-  await page.getByTestId("setup-bridge-provider").selectOption(selectedProvider);
-
-  await page.getByTestId("setup-bridge-prompt").fill("Please reply with one short sentence confirming the setup bridge is online.");
-  await page.getByTestId("setup-bridge-submit").click();
-  const bridgeResultHandle = await page.waitForFunction(
-    () => {
-      const value = document.querySelector('[data-testid="setup-bridge-output"]')?.textContent?.trim();
-      if (value && value !== "（没有输出）") {
-        return { kind: "output", text: value };
-      }
-
-      const error = document.querySelector('[data-testid="setup-bridge-error"]')?.textContent?.trim();
-      if (error) {
-        return { kind: "error", text: error };
-      }
-
-      return false;
-    },
-    undefined,
-    { timeout: 120_000 }
-  );
-  const bridgeResult = await bridgeResultHandle.jsonValue();
-  if (!bridgeResult || typeof bridgeResult !== "object") {
-    throw new Error("setup bridge completed without a readable result");
-  }
-  if (bridgeResult.kind === "error") {
-    await capture(page, "setup-runtime-and-bridge-error");
-    throw new Error(`setup bridge failed: ${bridgeResult.text}`);
-  }
-  const bridgeOutput = String(bridgeResult.text ?? "").trim();
-  await capture(page, "setup-runtime-and-bridge");
-
-  await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await page.getByTestId("board-create-issue-title").fill(issueTitle);
-  await page.getByTestId("board-create-issue-summary").fill(issueSummary);
-  await page.getByTestId("board-create-issue-submit").click();
-  await page.waitForURL(/\/rooms\//, { timeout: 30_000 });
-  const roomURL = page.url();
-  await page.getByTestId("room-pull-request-action").waitFor({ state: "visible" });
-  const pullRequestActionButton = page.getByTestId("room-pull-request-action");
-  const pullRequestAction = (await pullRequestActionButton.textContent())?.trim() ?? "";
-  const pullRequestActionEnabled = await pullRequestActionButton.isEnabled();
-  const pullRequestLabel = (await page.getByTestId("room-pull-request-label").textContent())?.trim() ?? "";
-  const pullRequestStatus = (await page.getByTestId("room-pull-request-status").textContent())?.trim() ?? "";
-  await capture(page, "room-pr-entry-ready");
-
-  const currentState = await fetchJSON(`${serverURL}/v1/state`);
-  const issue = currentState.issues.find((item) => item.title === issueTitle) ?? null;
-  const room = issue ? currentState.rooms.find((item) => item.id === issue.roomId) ?? null : null;
-  const run = room ? currentState.runs.find((item) => item.id === room.runId) ?? null : null;
-
-  assert(issue, "expected created issue to appear in /v1/state");
-  assert(room, "expected created room to appear in /v1/state");
-  assert(run, "expected created run to appear in /v1/state");
-  assert(pullRequestActionEnabled, "expected room pull request action to be enabled");
+  assert(repoBindingStatus.includes("待补安装"), `expected repo binding status to be blocked, got: ${repoBindingStatus}`);
   assert(
-    pullRequestAction === "发起 PR" && pullRequestLabel === "未创建" && pullRequestStatus === "未创建",
-    `expected room pull request entry to stay ready for continuation, got action=${pullRequestAction} label=${pullRequestLabel} status=${pullRequestStatus}`
+    repoBindingError.includes("installation") || repoBindingMessage.includes("installation"),
+    `expected blocked contract to mention installation, got error=${repoBindingError} message=${repoBindingMessage}`
   );
+  assert(repoBindingInstallLink === installURL, `expected repo binding install link ${installURL}, got ${repoBindingInstallLink}`);
+  await capture(page, "repo-binding-blocked");
 
   await context.tracing.stop({ path: path.join(artifactsDir, "trace.zip") });
 
-  const report = `# TKT-03 Headed Setup E2E Report
+  const report = `# TKT-04 GitHub App Onboarding Report
 
 Date: ${timestamp()}
 Project Root: ${projectRoot}
@@ -479,27 +405,22 @@ Chromium: ${chromiumExecutable}
 - Web: ${webURL}
 - Server: ${serverURL}
 - Daemon: ${daemonURL}
+- App Install URL: ${installURL}
 
-## Setup Checks
+## GitHub Setup Checks
 
-- Repo Binding Status: ${repoBindingStatus}
-- Repo Binding Message: ${repoBindingMessage}
 - GitHub Readiness Status: ${githubReadinessStatus}
 - GitHub Message: ${githubMessage}
-- Runtime Selection: ${selectedRuntime}
-- Pairing Value: ${pairingValue}
-- Bridge Output (excerpt): ${bridgeOutput.slice(0, 240)}
-
-## Lane Checks
-
-- Issue: ${issue.key} / ${issue.title}
-- Room: ${room.id}
-- Run: ${run.id}
-- Pull Request Action: ${pullRequestAction} (${pullRequestActionEnabled ? "enabled" : "disabled"})
-- Pull Request Label: ${pullRequestLabel}
-- Pull Request Status: ${pullRequestStatus}
-- Run Next Action: ${run.nextAction}
-- Room URL: ${roomURL}
+- GitHub Missing Fields: ${githubMissingFields}
+- GitHub Install Link: ${githubInstallLink}
+- GitHub Return Steps: ${githubReturnSteps}
+- Repo Bind Button: ${repoBindButtonLabel}
+- Repo Binding Status: ${repoBindingStatus}
+- Repo Binding Message: ${repoBindingMessage}
+- Repo Binding Error: ${repoBindingError}
+- Repo Binding Missing Fields: ${repoBindingMissingFields}
+- Repo Binding Install Link: ${repoBindingInstallLink}
+- Repo Binding Return Steps: ${repoBindingReturnSteps}
 
 ## Evidence
 
@@ -511,10 +432,9 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
 
 ## Result
 
-- TC-001 Setup shell visibility: PASS
-- TC-002 Repo binding via Setup: PASS
-- TC-003 Runtime pairing and bridge prompt via Setup: PASS
-- TC-026 Headed Setup to PR entry-ready journey: PASS
+- TC-022 GitHub App effective auth setup surface: PASS
+- TC-026 Headed Setup onboarding blocked path: PASS
+- TKT-04 repo binding blocked contract when installation is pending: PASS
 `;
 
   const metadata = {
@@ -526,34 +446,19 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
     serverURL,
     daemonURL,
     chromiumExecutable,
-    repoBindingStatus,
-    repoBindingMessage,
+    installURL,
     githubReadinessStatus,
     githubMessage,
-    selectedRuntime,
-    pairingValue,
-    bridgeOutput,
-    issue: {
-      id: issue.id,
-      key: issue.key,
-      title: issue.title,
-      roomId: issue.roomId,
-    },
-    room: {
-      id: room.id,
-      runId: room.runId,
-    },
-    run: {
-      id: run.id,
-      status: run.status,
-      nextAction: run.nextAction,
-    },
-    pullRequestEntry: {
-      action: pullRequestAction,
-      enabled: pullRequestActionEnabled,
-      label: pullRequestLabel,
-      status: pullRequestStatus,
-    },
+    githubMissingFields,
+    githubInstallLink,
+    githubReturnSteps,
+    repoBindButtonLabel,
+    repoBindingStatus,
+    repoBindingMessage,
+    repoBindingError,
+    repoBindingMissingFields,
+    repoBindingInstallLink,
+    repoBindingReturnSteps,
     screenshots,
     logs: Object.fromEntries(processes.map((entry) => [entry.name, entry.logPath])),
   };
@@ -569,7 +474,7 @@ try {
   await main();
 } catch (error) {
   const summary = [
-    "# TKT-03 Headed Setup E2E Failure",
+    "# TKT-04 GitHub App Onboarding Failure",
     "",
     `Date: ${timestamp()}`,
     `Artifacts Root: ${artifactsDir}`,

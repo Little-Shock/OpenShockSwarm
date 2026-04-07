@@ -188,6 +188,63 @@ func TestRepoBindingPromotesToGitHubAppWhenConnectionIsReady(t *testing.T) {
 	}
 }
 
+func TestCurrentRepoBindingCarriesPreferredAuthPathAndMissingFields(t *testing.T) {
+	root := initGitBindingRepo(t, "https://github.com/example/phase-zero.git")
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub: fakeGitHubProber{
+			status: githubsvc.Status{
+				Repo:              "example/phase-zero",
+				RepoURL:           "https://github.com/example/phase-zero.git",
+				Branch:            "main",
+				Provider:          "github",
+				RemoteConfigured:  true,
+				AppID:             "12345",
+				AppSlug:           "openshock-app",
+				AppConfigured:     false,
+				AppInstalled:      false,
+				InstallationURL:   "https://github.com/apps/openshock-app/installations/new",
+				Missing:           []string{"privateKey", "installationId"},
+				PreferredAuthMode: "github-app",
+				Message:           "GitHub App 配置不完整，缺少 privateKey / installationId。",
+			},
+		},
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/repo/binding")
+	if err != nil {
+		t.Fatalf("GET repo binding error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("repo binding status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload RepoBindingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode repo binding payload: %v", err)
+	}
+	if payload.PreferredAuthMode != "github-app" {
+		t.Fatalf("preferred auth mode = %q, want github-app", payload.PreferredAuthMode)
+	}
+	if len(payload.Missing) != 2 || payload.Missing[0] != "privateKey" || payload.Missing[1] != "installationId" {
+		t.Fatalf("missing = %#v, want privateKey + installationId", payload.Missing)
+	}
+	if payload.InstallationURL != "https://github.com/apps/openshock-app/installations/new" {
+		t.Fatalf("installation url = %q, want app installation url", payload.InstallationURL)
+	}
+}
+
 func TestRepoBindingReturnsExplicitContractWhenGitHubAppIsNotInstalled(t *testing.T) {
 	root := initGitBindingRepo(t, "https://github.com/example/phase-zero.git")
 	statePath := filepath.Join(root, "data", "state.json")
@@ -252,6 +309,75 @@ func TestRepoBindingReturnsExplicitContractWhenGitHubAppIsNotInstalled(t *testin
 	}
 	if payload.Connection.AppInstalled {
 		t.Fatalf("connection AppInstalled = true, want false")
+	}
+}
+
+func TestRepoBindingPrefersGitHubAppContractAndBlocksWhenInstallationIsPending(t *testing.T) {
+	root := initGitBindingRepo(t, "https://github.com/example/phase-zero.git")
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub: fakeGitHubProber{
+			status: githubsvc.Status{
+				Repo:              "example/phase-zero",
+				RepoURL:           "https://github.com/example/phase-zero.git",
+				Branch:            "main",
+				Provider:          "github",
+				RemoteConfigured:  true,
+				GHCLIInstalled:    true,
+				GHAuthenticated:   true,
+				AppID:             "12345",
+				AppSlug:           "openshock-app",
+				AppConfigured:     true,
+				AppInstalled:      false,
+				InstallationURL:   "https://github.com/apps/openshock-app/installations/new",
+				AuthMode:          "gh-cli",
+				PreferredAuthMode: "github-app",
+				Message:           "GitHub App 已配置，但 installation 还未完成；当前仍退回 gh CLI。",
+			},
+		},
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/repo/binding", "application/json", bytes.NewReader([]byte("{}")))
+	if err != nil {
+		t.Fatalf("POST repo binding error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("repo binding status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	var payload struct {
+		Error      string              `json:"error"`
+		Binding    RepoBindingResponse `json:"binding"`
+		Connection githubsvc.Status    `json:"connection"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode repo binding failure payload: %v", err)
+	}
+	if payload.Binding.BindingStatus != "blocked" {
+		t.Fatalf("binding status = %q, want blocked", payload.Binding.BindingStatus)
+	}
+	if payload.Binding.AuthMode != "github-app" {
+		t.Fatalf("binding auth mode = %q, want github-app", payload.Binding.AuthMode)
+	}
+	if payload.Binding.PreferredAuthMode != "github-app" {
+		t.Fatalf("binding preferred auth mode = %q, want github-app", payload.Binding.PreferredAuthMode)
+	}
+	if payload.Binding.InstallationURL != "https://github.com/apps/openshock-app/installations/new" {
+		t.Fatalf("binding installation url = %q, want app installation URL", payload.Binding.InstallationURL)
+	}
+	if !strings.Contains(payload.Error, "installation") {
+		t.Fatalf("error = %q, want installation contract failure", payload.Error)
 	}
 }
 

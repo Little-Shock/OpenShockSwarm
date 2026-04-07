@@ -206,7 +206,7 @@
   2. 触发 webhook 事件。
   3. 检查 state / inbox / room / PR 是否同步更新。
 - 预期结果: GitHub 事件可以持续同步回 OpenShock。
-- 业务结论: 当前仓库未完成，不应写成已做完。
+- 业务结论: 2026 年 4 月 7 日已补齐 Setup 中 installation pending 的 missing fields、installation action、回流步骤和 repo binding blocked contract 的浏览器级验收；但 webhook ingest / 签名校验 / 事件回流仍未收口，所以这条完整安装 + webhook 用例继续保持 Blocked。
 
 ## TC-016 真实远端 PR 创建、同步与合并
 
@@ -295,7 +295,7 @@
   2. 再触发 PR sync / merge。
   3. 验证请求使用 installation token，并在 review-decision GraphQL 失败时返回 blocked escalation。
 - 预期结果: effective auth path 为 `github-app` 时，PR create / sync / merge 走 app-backed 逻辑，失败路径可被显式捕获。
-- 业务结论: 服务器端 GitHub App PR contract 已落地，但浏览器级 onboarding 和实机回放还没补。
+- 业务结论: 服务器端 GitHub App PR contract 已落地；2026 年 4 月 7 日又补齐了 Setup 对 preferred auth path、missing fields、installation URL 和 repo binding blocked contract 的浏览器级 onboarding 证据，但 webhook / live repo 回放仍未完成。
 
 ## TC-023 Memory Version / Governance Contract
 
@@ -345,7 +345,7 @@
   2. 创建一条 issue，进入 room / run。
   3. 验证 PR 入口处于可继续推进状态。
 - 预期结果: Setup 到执行 lane 的用户旅程可稳定自动化回放。
-- 业务结论: 2026 年 4 月 7 日的 headed Chromium harness 已稳定回放 `Setup -> Issue -> Room`，并验证 room 里的 PR 入口保持 `发起 PR / 未创建 / enabled` 的可继续推进状态。真实远端 PR create/sync/merge 仍由 `TKT-04/TKT-06` 继续收口。
+- 业务结论: 2026 年 4 月 7 日的 headed Chromium harness 已稳定回放 `Setup -> Issue -> Room`，并验证 room 里的 PR 入口保持 `发起 PR / 未创建 / enabled` 的可继续推进状态；同日新增的 GitHub App onboarding 场景也已验证 Setup 在 installation 未完成时能展示 missing fields / installation action，并把 repo binding 保持在 blocked contract。真实远端 PR create/sync/merge 仍由 `TKT-05/TKT-06` 继续收口。
 
 ## TC-027 Sandbox / Destructive Approval Guard
 

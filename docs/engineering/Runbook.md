@@ -69,6 +69,7 @@ $env:NEXT_PUBLIC_OPENSHOCK_API_BASE = "http://127.0.0.1:8080"
   - `OPENSHOCK_GITHUB_APP_INSTALLATION_ID`
   - `OPENSHOCK_GITHUB_APP_PRIVATE_KEY` 或 `OPENSHOCK_GITHUB_APP_PRIVATE_KEY_PATH`
   - `OPENSHOCK_GITHUB_APP_INSTALL_URL`
+    - Setup 会把这个 URL 暴露给 installation pending 的 onboarding / blocked contract
 - Daemon:
   - `OPENSHOCK_CONTROL_URL`
   - `OPENSHOCK_DAEMON_ADVERTISE_URL`
@@ -346,8 +347,8 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
 | control-plane truth | `GET /v1/state` | workspace / issue / room / run / inbox 是否还可读 |
 | runtime registry | `GET /v1/runtime/registry` | runtime heartbeat / lease 面有没有继续写回 |
 | runtime pairing | `GET /v1/runtime/pairing` + `GET /v1/runtime` + daemon `GET /v1/runtime` | server pairing URL、runtime registry 和 live daemon truth 是否一致 |
-| repo binding | `GET /v1/repo/binding` | repo / branch / auth mode / app install truth |
-| GitHub connection | `GET /v1/github/connection` | GitHub App 或 gh auth readiness |
+| repo binding | `GET /v1/repo/binding` | repo / branch / auth mode / preferred auth mode / missing fields / app install truth |
+| GitHub connection | `GET /v1/github/connection` | GitHub App 或 gh auth readiness、installation URL、missing fields |
 | daemon snapshot | `GET /v1/runtime` 或 `go run ./cmd/openshock-daemon -once` | 本机 provider 探测和 heartbeat payload |
 
 ### 当前最小 rollback

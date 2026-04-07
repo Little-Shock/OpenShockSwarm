@@ -94,15 +94,16 @@
 
 - PRD 来源: 十.工作流 A
 - 优先级: P0
-- 当前状态: 部分完成
+- 当前状态: 已完成
 - 已落地:
   - [x] Setup 页展示 repo binding、GitHub readiness、runtime pairing、live bridge
   - [x] Setup 页可展示 effective auth path、GitHub App install state 与 installation URL
   - [x] 手动配对 runtime 后可以成功执行 bridge prompt
   - [x] 冷启动时 pairing / exec 在 `offline` 与 `stale` 窗口都回到当前活跃 daemon truth
   - [x] headed Setup harness 已能回放 repo binding、GitHub readiness、runtime pairing 与 bridge prompt，并输出截图、trace、报告
+  - [x] GitHub App installation 未完成时，Setup 已能在浏览器里展示 missing fields、installation action 与回流步骤，并把 repo binding 收成 blocked contract
 - 当前 GAP:
-  - [ ] GitHub App 未安装 / installation 未闭环时的 blocked contract 与回流 UX 仍缺浏览器级验收
+  - [ ] Setup 初始化面本轮无新增 blocker；GitHub App 安装后的 webhook / 远端 PR 回流继续由 `CHK-07` 后续票推进
 - 对应 Test Cases: `TC-001` `TC-002` `TC-003` `TC-004`
 
 ### CHK-05 工作流 B: 创建 Issue 并派发给 Agent
@@ -143,8 +144,10 @@
   - [x] room / inbox 可承接 review 语义的本地状态
   - [x] server 已支持按 effective auth path 在 `gh CLI / GitHub App` 间切换 PR create / sync / merge
   - [x] GitHub App-backed create / sync / merge 与 review-decision failure path 已有 contract tests
+  - [x] Setup 已能展示 GitHub App preferred auth path、missing fields、installation URL 与“安装后如何回来”的 onboarding 提示
+  - [x] repo binding 在 preferred path=`github-app` 且 installation 未完成时会返回显式 blocked contract，而不是静默退回旧路径
 - 当前 GAP:
-  - [ ] GitHub App onboarding 与浏览器级真实回放仍未补齐
+  - [ ] GitHub App onboarding 的 blocked-path 浏览器回放已补齐，但 installation 完成后的 webhook / live repo 持续同步仍未实机验证
   - [ ] webhook / live repo 环境下的持续同步仍缺少本轮实机验证
 - 对应 Test Cases: `TC-010` `TC-015` `TC-016`
 

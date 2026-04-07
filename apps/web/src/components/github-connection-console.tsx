@@ -147,7 +147,10 @@ export function GitHubConnectionConsole() {
             {status?.message ?? "等待探测 GitHub 连接状态。"}
           </p>
           {status?.missing?.length ? (
-            <p className="mt-3 font-mono text-xs leading-6 text-[color:rgba(24,20,14,0.72)]">
+            <p
+              data-testid="setup-github-missing-fields"
+              className="mt-3 font-mono text-xs leading-6 text-[color:rgba(24,20,14,0.72)]"
+            >
               缺失字段: {status.missing.join(" / ")}
             </p>
           ) : null}
@@ -195,6 +198,7 @@ export function GitHubConnectionConsole() {
           </p>
           {status?.installationUrl ? (
             <a
+              data-testid="setup-github-install-link"
               href={status.installationUrl}
               target="_blank"
               rel="noreferrer"
@@ -203,6 +207,12 @@ export function GitHubConnectionConsole() {
               打开 installation 页面
             </a>
           ) : null}
+          <p
+            data-testid="setup-github-return-steps"
+            className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]"
+          >
+            完成安装或补齐配置后，回到 Setup，先点“重新探测 GitHub”，确认状态更新，再继续同步 Repo Binding。
+          </p>
         </div>
       </div>
 

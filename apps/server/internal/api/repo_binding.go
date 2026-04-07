@@ -28,12 +28,14 @@ type RepoBindingResponse struct {
 	Provider          string `json:"provider"`
 	BindingStatus     string `json:"bindingStatus"`
 	AuthMode          string `json:"authMode"`
+	PreferredAuthMode string `json:"preferredAuthMode,omitempty"`
 	DetectedAt        string `json:"detectedAt"`
 	ConnectionReady   bool   `json:"connectionReady"`
 	AppConfigured     bool   `json:"appConfigured"`
 	AppInstalled      bool   `json:"appInstalled"`
 	InstallationID    string `json:"installationId"`
 	InstallationURL   string `json:"installationUrl"`
+	Missing           []string `json:"missing,omitempty"`
 	ConnectionMessage string `json:"connectionMessage"`
 }
 
@@ -121,10 +123,14 @@ func enrichRepoBindingResponse(response RepoBindingResponse, connection *githubs
 		return response
 	}
 	response.ConnectionReady = connection.Ready
+	response.PreferredAuthMode = connection.PreferredAuthMode
 	response.AppConfigured = connection.AppConfigured
 	response.AppInstalled = connection.AppInstalled
 	response.InstallationID = connection.InstallationID
 	response.InstallationURL = connection.InstallationURL
+	if len(connection.Missing) > 0 {
+		response.Missing = append([]string(nil), connection.Missing...)
+	}
 	response.ConnectionMessage = connection.Message
 	if strings.TrimSpace(response.Provider) == "" {
 		response.Provider = connection.Provider
@@ -159,7 +165,10 @@ func alignRepoBindingWithConnection(binding store.RepoBindingInput, req RepoBind
 	if strings.TrimSpace(req.AuthMode) != "" || probeErr != nil {
 		return binding
 	}
-	if connection.RemoteConfigured && connection.AppConfigured && connection.AppInstalled && strings.EqualFold(connection.Provider, "github") {
+	provider := defaultString(strings.TrimSpace(binding.Provider), connection.Provider)
+	if connection.RemoteConfigured &&
+		strings.EqualFold(provider, "github") &&
+		(strings.EqualFold(connection.AuthMode, "github-app") || strings.EqualFold(connection.PreferredAuthMode, "github-app")) {
 		binding.AuthMode = "github-app"
 	}
 	return binding
@@ -179,9 +188,18 @@ func validateRepoBindingConnection(binding store.RepoBindingInput, probeErr erro
 		return fmt.Errorf("github-app repo binding only supports GitHub remotes")
 	}
 	if !connection.AppConfigured {
+		if message := strings.TrimSpace(connection.Message); message != "" {
+			return fmt.Errorf("%s", message)
+		}
+		if len(connection.Missing) > 0 {
+			return fmt.Errorf("github-app auth is not configured; missing %s", strings.Join(connection.Missing, " / "))
+		}
 		return fmt.Errorf("github-app auth is not configured")
 	}
 	if !connection.AppInstalled {
+		if message := strings.TrimSpace(connection.Message); message != "" {
+			return fmt.Errorf("%s", message)
+		}
 		return fmt.Errorf("github-app installation is not ready")
 	}
 	return nil

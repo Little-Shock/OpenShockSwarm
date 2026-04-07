@@ -11,12 +11,14 @@ type RepoBindingSnapshot = {
   provider: string;
   bindingStatus: string;
   authMode: string;
+  preferredAuthMode?: string;
   detectedAt?: string;
   connectionReady: boolean;
   appConfigured: boolean;
   appInstalled: boolean;
   installationId?: string;
   installationUrl?: string;
+  missing?: string[];
   connectionMessage: string;
 };
 
@@ -40,6 +42,12 @@ function githubAppLabel(snapshot: RepoBindingSnapshot | null) {
   if (snapshot.appInstalled) return "已安装";
   if (snapshot.appConfigured) return "待安装";
   return "未配置";
+}
+
+function bindingActionLabel(snapshot: RepoBindingSnapshot | null, loading: boolean) {
+  if (loading) return "同步中...";
+  if (snapshot?.preferredAuthMode === "github-app") return "按 GitHub App 同步 Repo Binding";
+  return "同步 Repo Binding";
 }
 
 export function RepoBindingConsole() {
@@ -159,6 +167,12 @@ export function RepoBindingConsole() {
           </p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">推荐路径</p>
+          <p className="mt-2 font-display text-xl font-semibold">
+            {valueOrFallback(binding?.preferredAuthMode, "待扫描")}
+          </p>
+        </div>
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">连接就绪</p>
           <p className="mt-2 font-display text-xl font-semibold">
             {binding ? (binding.connectionReady ? "已就绪" : "待补全") : "等待扫描"}
@@ -186,6 +200,14 @@ export function RepoBindingConsole() {
           <p data-testid="setup-repo-binding-message" className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.8)]">
             {valueOrFallback(binding?.connectionMessage, "等待 repo binding contract 返回当前 GitHub 连接判断。")}
           </p>
+          {binding?.missing?.length ? (
+            <p
+              data-testid="setup-repo-binding-missing-fields"
+              className="mt-3 font-mono text-xs leading-6 text-[color:rgba(24,20,14,0.72)]"
+            >
+              缺失字段: {binding.missing.join(" / ")}
+            </p>
+          ) : null}
           {binding?.detectedAt ? (
             <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
               detected at {binding.detectedAt}
@@ -204,6 +226,7 @@ export function RepoBindingConsole() {
           </p>
           {binding?.installationUrl ? (
             <a
+              data-testid="setup-repo-binding-install-link"
               href={binding.installationUrl}
               target="_blank"
               rel="noreferrer"
@@ -212,6 +235,12 @@ export function RepoBindingConsole() {
               打开 installation 页面
             </a>
           ) : null}
+          <p
+            data-testid="setup-repo-binding-return-steps"
+            className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]"
+          >
+            完成安装或补齐配置后，回到 Setup，先点“重新探测 GitHub”，再点“同步 Repo Binding”。
+          </p>
         </div>
       </div>
 
@@ -226,12 +255,15 @@ export function RepoBindingConsole() {
           disabled={loading}
           className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? "同步中..." : "同步 Repo Binding"}
+          {bindingActionLabel(binding, loading)}
         </button>
       </div>
 
       {error ? (
-        <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white">
+        <div
+          data-testid="setup-repo-binding-error"
+          className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white"
+        >
           {error}
         </div>
       ) : null}

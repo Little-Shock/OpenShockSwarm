@@ -173,7 +173,7 @@ func TestProbeSurfacesIncompleteGitHubAppContract(t *testing.T) {
 	}
 }
 
-func TestProbeFallsBackToGHCLIWhenGitHubAppProbeIsIncomplete(t *testing.T) {
+func TestProbeMarksPreferredGitHubAppPathNotReadyWhenItFallsBackToGHCLI(t *testing.T) {
 	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
 	t.Setenv("OPENSHOCK_GITHUB_APP_SLUG", "openshock-app")
 
@@ -192,8 +192,8 @@ func TestProbeFallsBackToGHCLIWhenGitHubAppProbeIsIncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
-	if !status.Ready {
-		t.Fatalf("status.Ready = false, want true")
+	if status.Ready {
+		t.Fatalf("status.Ready = true, want false")
 	}
 	if status.AuthMode != "gh-cli" {
 		t.Fatalf("status.AuthMode = %q, want gh-cli", status.AuthMode)

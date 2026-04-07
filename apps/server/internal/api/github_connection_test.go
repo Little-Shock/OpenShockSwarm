@@ -168,7 +168,7 @@ func TestGitHubConnectionEndpointSurfacesEffectiveAuthModeWhenGitHubAppFallsBack
 				GHAuthenticated:   true,
 				AppID:             "12345",
 				AppSlug:           "openshock-app",
-				Ready:             true,
+				Ready:             false,
 				AuthMode:          "gh-cli",
 				PreferredAuthMode: "github-app",
 				Message:           "GitHub App 配置不完整，缺少 privateKey / installationId；当前仍退回 gh CLI。",
@@ -196,5 +196,8 @@ func TestGitHubConnectionEndpointSurfacesEffectiveAuthModeWhenGitHubAppFallsBack
 	}
 	if payload.PreferredAuthMode != "github-app" {
 		t.Fatalf("payload.PreferredAuthMode = %q, want github-app", payload.PreferredAuthMode)
+	}
+	if payload.Ready {
+		t.Fatalf("payload.Ready = true, want false when preferred github-app path is not ready")
 	}
 }
