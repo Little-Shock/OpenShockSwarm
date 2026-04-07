@@ -1,6 +1,6 @@
-# Stage 3/4 Shell Governance and Release Fan-In
+# Stage 3/4/5A Shell Governance and Release Fan-In
 
-This directory hosts the collaboration shell surface used by Stage 1/2 runtime flow, Stage 3 delivery/ops readiness fan-in, and Stage 4A1 workspace governance fan-in.
+This directory hosts the collaboration shell surface used by Stage 1/2 runtime flow, Stage 3 delivery/ops readiness fan-in, Stage 4A1/4A2/4B governance fan-in, and Stage 5A hosted workbench fan-in.
 
 Stage 3 scope for this module:
 
@@ -13,6 +13,12 @@ Out of scope in this stage:
 - New backend truth sources or new backend nouns
 - Re-introducing shadow shell-local truth paths
 - Cross-machine scheduling, cloud runtime, or complex orchestration
+
+Stage 5A hosted workbench fan-in scope:
+
+- Build hosted default entry projection from existing `/v1` truth and `/api/v0a` adapter only
+- Keep hosted home, unified inbox, and channel/thread/task default flow in one projection
+- Keep local entry and hosted entry on one delivery contract without adding a second collaboration truth
 
 Stage 4A1 governance fan-in scope:
 

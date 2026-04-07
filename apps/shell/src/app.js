@@ -513,6 +513,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage4c_governance && typeof governance.stage4c_governance === "object"
       ? governance.stage4c_governance
       : null);
+  const stage5a =
+    (governance.stage5a && typeof governance.stage5a === "object" ? governance.stage5a : null) ||
+    (governance.stage5a_hosted_workbench && typeof governance.stage5a_hosted_workbench === "object"
+      ? governance.stage5a_hosted_workbench
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -854,6 +859,60 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
           : "pending",
     });
     dom.workspaceGovernanceList.append(upgradeCard);
+  }
+
+  if (stage5a) {
+    const stage5aStatus = stage5a.status && typeof stage5a.status === "object" ? stage5a.status : {};
+    const hostedAccess = stage5a.hosted_access && typeof stage5a.hosted_access === "object" ? stage5a.hosted_access : {};
+    const hostedWorkbench =
+      stage5a.hosted_workbench && typeof stage5a.hosted_workbench === "object" ? stage5a.hosted_workbench : {};
+    const deployRuntime = stage5a.deploy_runtime && typeof stage5a.deploy_runtime === "object" ? stage5a.deploy_runtime : {};
+    const deliveryContract =
+      stage5a.delivery_contract && typeof stage5a.delivery_contract === "object" ? stage5a.delivery_contract : {};
+
+    const hostedAccessCard = queueCard({
+      title: "Stage5A Hosted Access",
+      subtitle:
+        `hosted=${normalizeText(stage5aStatus.hosted_access_status) || "pending"} · ` +
+        `non_local=${normalizeText(stage5aStatus.non_local_access_status) || "pending"} · ` +
+        `login=${normalizeText(stage5aStatus.stable_login_status) || "pending"}`,
+      note: formatStage5aHostedAccess(hostedAccess),
+      status:
+        normalizeText(stage5aStatus.hosted_access_status) === "ok" &&
+        normalizeText(stage5aStatus.stable_login_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(hostedAccessCard);
+
+    const hostedWorkbenchCard = queueCard({
+      title: "Stage5A Hosted Workbench",
+      subtitle:
+        `home=${normalizeText(stage5aStatus.hosted_home_status) || "pending"} · ` +
+        `inbox=${normalizeText(stage5aStatus.unified_inbox_status) || "pending"} · ` +
+        `default_flow=${normalizeText(stage5aStatus.default_flow_status) || "pending"}`,
+      note: formatStage5aHostedWorkbench(hostedWorkbench),
+      status:
+        normalizeText(stage5aStatus.hosted_home_status) === "ok" &&
+        normalizeText(stage5aStatus.unified_inbox_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(hostedWorkbenchCard);
+
+    const deployCard = queueCard({
+      title: "Stage5A Deploy / Delivery Contract",
+      subtitle:
+        `deploy=${normalizeText(stage5aStatus.deploy_runtime_status) || "pending"} · ` +
+        `delivery=${normalizeText(stage5aStatus.delivery_surface_status) || "pending"}`,
+      note: `${formatStage5aDeployRuntime(deployRuntime)} · ${formatStage5aDeliveryContract(deliveryContract)}`,
+      status:
+        normalizeText(stage5aStatus.deploy_runtime_status) === "ok" &&
+        normalizeText(stage5aStatus.delivery_surface_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(deployCard);
   }
 }
 
@@ -1685,6 +1744,57 @@ function formatStage4a2UsageNotes(raw) {
     return "usage notes pending";
   }
   return raw.slice(0, 6).join(" · ");
+}
+
+function formatStage5aHostedAccess(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted access pending";
+  }
+  const entryUrl = normalizeText(raw.hosted_entry_url) || "n/a";
+  const nonLocal = raw.non_local_access === true ? "yes" : "no";
+  const loginState = normalizeText(raw.login_state) || "pending";
+  const channelId = normalizeText(raw.channel_id) || "unbound_channel";
+  return `entry=${entryUrl} · non_local=${nonLocal} · login=${loginState} · channel=${channelId}`;
+}
+
+function formatStage5aHostedWorkbench(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted workbench pending";
+  }
+  const home = raw.home && typeof raw.home === "object" ? raw.home : {};
+  const inbox = raw.unified_inbox && typeof raw.unified_inbox === "object" ? raw.unified_inbox : {};
+  const flow = raw.default_flow && typeof raw.default_flow === "object" ? raw.default_flow : {};
+  return (
+    `home=${normalizeText(home.hosted_home_url) || "n/a"} · ` +
+    `inbox approvals=${Number(inbox.pending_approvals || 0)} notifications=${Number(
+      inbox.notification_signals?.total || 0,
+    )} interventions=${Number(inbox.intervention_actions || 0)} · ` +
+    `flow=${normalizeText(flow.channel_id) || "n/a"}/${normalizeText(flow.thread_id) || "n/a"}/${normalizeText(
+      flow.task_id,
+    ) || "n/a"}`
+  );
+}
+
+function formatStage5aDeployRuntime(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "deploy runtime pending";
+  }
+  const runtimeName = normalizeText(raw.runtime_name) || "runtime";
+  const daemonName = normalizeText(raw.daemon_name) || "daemon";
+  const shellUrl = normalizeText(raw.shell_url) || "n/a";
+  const ready = raw.sample_topic_ready === true ? "ready" : "pending";
+  return `runtime=${runtimeName} · daemon=${daemonName} · shell=${shellUrl} · readiness=${ready}`;
+}
+
+function formatStage5aDeliveryContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "delivery contract pending";
+  }
+  const localRoot = normalizeText(raw.local_entry_root) || "n/a";
+  const hostedEntry = normalizeText(raw.hosted_entry_url) || "n/a";
+  const adapterEntry = normalizeText(raw.adapter_entry) || "/api/v0a/shell-state";
+  const singlePath = raw.single_delivery_path === true ? "yes" : "no";
+  return `local=${localRoot} · hosted=${hostedEntry} · adapter=${adapterEntry} · single_path=${singlePath}`;
 }
 
 function queueCard({ title, subtitle, note, status = "pending" }) {

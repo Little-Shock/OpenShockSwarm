@@ -1760,6 +1760,20 @@ function buildOperatorConsoleState({
     channelSurface,
   });
   normalizedWorkspaceGovernance.stage4c_governance = normalizedWorkspaceGovernance.stage4c;
+  normalizedWorkspaceGovernance.stage5a = buildStage5aHostedWorkbenchProjection({
+    topicId,
+    scope,
+    runtimeConfig,
+    runtimeSmoke,
+    channelContextContract: channelContract,
+    channelWorkAssignments,
+    channelOperatorActions,
+    approvalHolds,
+    topicNotifications,
+    repoBinding: normalizedRepoBinding,
+    chain: normalizedWorkspaceGovernance.chain,
+  });
+  normalizedWorkspaceGovernance.stage5a_hosted_workbench = normalizedWorkspaceGovernance.stage5a;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -2689,6 +2703,266 @@ function buildStage4bGovernanceProjection({
       total: stage4bTimeline.total,
     },
   };
+}
+
+function buildStage5aHostedWorkbenchProjection({
+  topicId,
+  scope,
+  runtimeConfig,
+  runtimeSmoke,
+  channelContextContract,
+  channelWorkAssignments,
+  channelOperatorActions,
+  approvalHolds,
+  topicNotifications,
+  repoBinding,
+  chain,
+}) {
+  const context = channelContextContract?.context && typeof channelContextContract.context === "object"
+    ? channelContextContract.context
+    : {};
+  const governance = channelContextContract?.governance && typeof channelContextContract.governance === "object"
+    ? channelContextContract.governance
+    : {};
+  const writeAnchors = channelContextContract?.write_anchors && typeof channelContextContract.write_anchors === "object"
+    ? channelContextContract.write_anchors
+    : {};
+  const statusSource = findStage5aStatusSource({ context, governance });
+
+  const scopeChannelId = normalizeText(scope?.channelId);
+  const scopeThreadId = normalizeText(scope?.threadId);
+  const scopeWorkitemId = normalizeText(scope?.workitemId);
+  const primaryAssignment = resolvePrimaryStage5aAssignment(channelWorkAssignments, scopeChannelId);
+  const resolvedChannelId =
+    scopeChannelId ||
+    normalizeText(channelContextContract?.channel_id) ||
+    normalizeText(primaryAssignment?.assigned_channel_id) ||
+    null;
+  const resolvedThreadId =
+    scopeThreadId ||
+    normalizeText(primaryAssignment?.assigned_thread_id) ||
+    null;
+  const resolvedWorkitemId =
+    scopeWorkitemId ||
+    normalizeText(primaryAssignment?.assigned_workitem_id) ||
+    null;
+
+  const hostedEntryUrl =
+    normalizeText(statusSource?.hosted_entry_url) ||
+    normalizeText(statusSource?.entry_url) ||
+    normalizeText(statusSource?.hosted_url) ||
+    normalizeText(runtimeConfig?.shellUrl) ||
+    null;
+  const hostedHomeUrl =
+    normalizeText(statusSource?.hosted_home_url) ||
+    normalizeText(statusSource?.home_url) ||
+    hostedEntryUrl ||
+    null;
+  const nonLocalAccess = isNonLocalHttpUrl(hostedEntryUrl);
+  const loginReady =
+    normalizeText(statusSource?.login_state) === "ready" ||
+    normalizeText(statusSource?.session_state) === "ready" ||
+    (normalizeText(chain?.identity_link_status) === "ready" && normalizeText(chain?.installation_status) === "ready");
+  const pendingApprovals = Array.isArray(approvalHolds)
+    ? approvalHolds.filter((item) => normalizeText(item?.status) === "pending").length
+    : 0;
+  const inboxSignals = summarizeStage5aInboxSignals(topicNotifications);
+  const interventionActions = countStage5aInterventionActions(channelOperatorActions);
+  const localEntryRoot =
+    normalizeText(statusSource?.local_entry_root) ||
+    normalizeText(context?.workspace?.root_path) ||
+    normalizeText(channelContextContract?.workspace?.root_path) ||
+    normalizeText(repoBinding?.fixed_directory) ||
+    null;
+  const hostedAccessStatus = hostedEntryUrl ? "ok" : "pending";
+  const nonLocalStatus = nonLocalAccess ? "ok" : hostedEntryUrl ? "local_only" : "pending";
+  const stableLoginStatus = loginReady ? "ok" : "pending";
+  const hostedHomeStatus = hostedHomeUrl ? "ok" : "pending";
+  const unifiedInboxStatus = resolvedChannelId ? "ok" : "pending";
+  const defaultFlowStatus = resolvedChannelId && resolvedThreadId && resolvedWorkitemId ? "ok" : "pending";
+  const deployRuntimeStatus = resolveStage5aDeployRuntimeStatus(statusSource, runtimeSmoke);
+  const deliverySurfaceStatus = localEntryRoot && hostedEntryUrl ? "ok" : "pending";
+
+  return {
+    status: {
+      hosted_access_status: hostedAccessStatus,
+      non_local_access_status: nonLocalStatus,
+      stable_login_status: stableLoginStatus,
+      hosted_home_status: hostedHomeStatus,
+      unified_inbox_status: unifiedInboxStatus,
+      default_flow_status: defaultFlowStatus,
+      deploy_runtime_status: deployRuntimeStatus,
+      delivery_surface_status: deliverySurfaceStatus,
+    },
+    hosted_access: {
+      hosted_entry_url: hostedEntryUrl,
+      non_local_access: nonLocalAccess,
+      login_state: loginReady ? "ready" : "pending",
+      workspace_id: normalizeText(channelContextContract?.workspace?.workspace_id) || null,
+      channel_id: resolvedChannelId,
+      write_anchor:
+        normalizeText(writeAnchors.hosted_access_upsert) ||
+        normalizeText(writeAnchors.context_upsert) ||
+        null,
+      truth_surface: "/v1/channels/:channelId/context",
+    },
+    hosted_workbench: {
+      home: {
+        hosted_home_url: hostedHomeUrl,
+        title: normalizeText(statusSource?.home_title) || "OpenShock Hosted Workbench",
+        channel_id: resolvedChannelId,
+      },
+      unified_inbox: {
+        pending_approvals: pendingApprovals,
+        notification_signals: inboxSignals,
+        intervention_actions: interventionActions,
+      },
+      default_flow: {
+        topic_id: normalizeText(topicId) || null,
+        channel_id: resolvedChannelId,
+        thread_id: resolvedThreadId,
+        task_id: resolvedWorkitemId,
+        assignment_source: normalizeText(primaryAssignment?.status) || "runtime_projection",
+        write_anchors: {
+          work_assignment: normalizeText(writeAnchors.work_assignment_upsert) || null,
+          operator_action: normalizeText(writeAnchors.operator_action) || null,
+        },
+      },
+    },
+    deploy_runtime: {
+      status: deployRuntimeStatus,
+      runtime_name: normalizeText(runtimeConfig?.runtimeName) || null,
+      daemon_name: normalizeText(runtimeConfig?.daemonName) || null,
+      shell_url: normalizeText(runtimeConfig?.shellUrl) || null,
+      server_port: Number.isFinite(Number(runtimeConfig?.serverPort)) ? Number(runtimeConfig.serverPort) : null,
+      sample_topic_ready: runtimeSmoke?.sampleTopicReady === true,
+      write_anchor: normalizeText(writeAnchors.hosted_deploy_runtime_upsert) || null,
+      health_anchor: "/health",
+      readiness_anchor: "/runtime/smoke",
+    },
+    delivery_contract: {
+      local_entry_root: localEntryRoot,
+      hosted_entry_url: hostedEntryUrl,
+      adapter_entry: "/api/v0a/shell-state",
+      truth_surface: "/v1/*",
+      single_delivery_path: Boolean(localEntryRoot && hostedEntryUrl),
+    },
+  };
+}
+
+function resolvePrimaryStage5aAssignment(channelWorkAssignments, channelId) {
+  if (!Array.isArray(channelWorkAssignments) || channelWorkAssignments.length === 0) {
+    return null;
+  }
+  const normalizedChannelId = normalizeText(channelId);
+  if (normalizedChannelId) {
+    for (const item of channelWorkAssignments) {
+      if (normalizeText(item?.assigned_channel_id) === normalizedChannelId) {
+        return item;
+      }
+    }
+  }
+  return channelWorkAssignments[0];
+}
+
+function summarizeStage5aInboxSignals(topicNotifications) {
+  const summary = {
+    total: 0,
+    blocked: 0,
+    approval_required: 0,
+    mention: 0,
+    pr_pending_review: 0,
+  };
+  if (!Array.isArray(topicNotifications)) {
+    return summary;
+  }
+  for (const item of topicNotifications) {
+    const kind = normalizeText(item?.kind);
+    if (!kind) {
+      continue;
+    }
+    summary.total += 1;
+    if (kind.includes("blocked")) {
+      summary.blocked += 1;
+    }
+    if (kind.includes("approval")) {
+      summary.approval_required += 1;
+    }
+    if (kind.includes("mention")) {
+      summary.mention += 1;
+    }
+    if (kind.includes("pr") && kind.includes("review")) {
+      summary.pr_pending_review += 1;
+    }
+  }
+  return summary;
+}
+
+function countStage5aInterventionActions(channelOperatorActions) {
+  if (!Array.isArray(channelOperatorActions)) {
+    return 0;
+  }
+  let total = 0;
+  for (const item of channelOperatorActions) {
+    const actionType = normalizeText(item?.action_type);
+    if (actionType === "intervention") {
+      total += 1;
+    }
+  }
+  return total;
+}
+
+function findStage5aStatusSource({ context, governance }) {
+  return (
+    pickFirstDefinedValue([
+      governance.stage5a,
+      governance.stage5a_hosted_workbench,
+      governance.hosted_workbench,
+      governance.hostedWorkbench,
+      governance.hosted_access,
+      governance.hostedAccess,
+      context.stage5a,
+      context.stage5a_hosted_workbench,
+      context.hosted_workbench,
+      context.hostedWorkbench,
+      context.hosted_access,
+      context.hostedAccess,
+    ]) || {}
+  );
+}
+
+function resolveStage5aDeployRuntimeStatus(statusSource, runtimeSmoke) {
+  const explicitStatus =
+    normalizeText(statusSource?.deploy_runtime_status) ||
+    normalizeText(statusSource?.deploy_status) ||
+    normalizeText(statusSource?.runtime_status);
+  if (explicitStatus) {
+    return explicitStatus;
+  }
+  if (runtimeSmoke?.sampleTopicReady === true) {
+    return "ok";
+  }
+  return "pending";
+}
+
+function isNonLocalHttpUrl(rawUrl) {
+  const normalized = normalizeText(rawUrl);
+  if (!normalized) {
+    return false;
+  }
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeStage4bExternalMemoryProviderContract(raw) {
