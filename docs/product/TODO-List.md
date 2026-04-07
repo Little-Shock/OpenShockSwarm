@@ -26,7 +26,7 @@
 - issue -> room -> run -> session -> worktree lane 主链已存在
 - daemon bridge 可执行本地 prompt
 - memory 列表/详情、version/governance contract 和文件写回已存在
-- auth session / workspace members 基础读取面已存在
+- auth session / workspace members / owner-side roster mutation surface 已存在
 - state SSE 初始快照已存在
 
 这些能力的详细验收见 [Product Checklist](./Checklist.md) 中的 `CHK-01/03/05/10/13/15`。
@@ -64,7 +64,8 @@
 
 - 现状:
   - login / logout / session persistence foundation 已站住，`/access` 已消费 live auth/member/role truth
-  - invite、角色变更、设备授权与 action-level authz 仍未完成
+  - owner-side invite、member role/status mutation 已接进 `/access`
+  - 设备授权与跨 issue / room / run / inbox / repo / runtime 的 action-level authz matrix 仍未完成
 - 相关合同:
   - `CHK-12`
   - `CHK-13`

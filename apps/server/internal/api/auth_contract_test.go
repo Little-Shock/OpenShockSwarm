@@ -153,6 +153,116 @@ func TestWorkspaceMembersRoutesEnforceOwnerRoleContract(t *testing.T) {
 	}
 }
 
+func TestWorkspaceMemberRoutesReflectRoleAndStatusMutationsInSessionContract(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	inviteResp, err := http.Post(server.URL+"/v1/workspace/members", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","name":"Reviewer","role":"viewer"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/workspace/members error = %v", err)
+	}
+	if inviteResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/workspace/members status = %d, want %d", inviteResp.StatusCode, http.StatusCreated)
+	}
+
+	var invitePayload struct {
+		Member store.WorkspaceMember `json:"member"`
+		State  store.State           `json:"state"`
+	}
+	decodeJSON(t, inviteResp, &invitePayload)
+	if invitePayload.Member.Role != "viewer" || invitePayload.Member.Status != "invited" {
+		t.Fatalf("invite payload member = %#v, want invited viewer", invitePayload.Member)
+	}
+
+	roleReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/"+invitePayload.Member.ID, bytes.NewReader([]byte(`{"role":"member"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH role request error = %v", err)
+	}
+	roleReq.Header.Set("Content-Type", "application/json")
+
+	roleResp, err := http.DefaultClient.Do(roleReq)
+	if err != nil {
+		t.Fatalf("PATCH /v1/workspace/members/:id role error = %v", err)
+	}
+	if roleResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace/members/:id role status = %d, want %d", roleResp.StatusCode, http.StatusOK)
+	}
+
+	var rolePayload struct {
+		Member store.WorkspaceMember `json:"member"`
+		State  store.State           `json:"state"`
+	}
+	decodeJSON(t, roleResp, &rolePayload)
+	if rolePayload.Member.Role != "member" || rolePayload.Member.Status != "invited" {
+		t.Fatalf("role payload member = %#v, want invited member", rolePayload.Member)
+	}
+
+	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session reviewer login error = %v", err)
+	}
+	if loginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session reviewer login status = %d, want %d", loginResp.StatusCode, http.StatusOK)
+	}
+
+	var loginPayload struct {
+		Session store.AuthSession `json:"session"`
+		State   store.State       `json:"state"`
+	}
+	decodeJSON(t, loginResp, &loginPayload)
+	if loginPayload.Session.Email != "reviewer@openshock.dev" || loginPayload.Session.Role != "member" {
+		t.Fatalf("login payload session = %#v, want reviewer member", loginPayload.Session)
+	}
+	if !containsPermission(loginPayload.Session.Permissions, "run.execute") || containsPermission(loginPayload.Session.Permissions, "members.manage") {
+		t.Fatalf("login payload permissions = %#v, want member permissions without members.manage", loginPayload.Session.Permissions)
+	}
+
+	authMember := findWorkspaceMember(loginPayload.State.Auth.Members, invitePayload.Member.ID)
+	if authMember == nil || authMember.Status != "active" || authMember.Role != "member" {
+		t.Fatalf("reviewer member after login = %#v, want active member", authMember)
+	}
+
+	restoreOwnerResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session owner restore error = %v", err)
+	}
+	if restoreOwnerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session owner restore status = %d, want %d", restoreOwnerResp.StatusCode, http.StatusOK)
+	}
+
+	suspendReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/"+invitePayload.Member.ID, bytes.NewReader([]byte(`{"status":"suspended"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH suspended request error = %v", err)
+	}
+	suspendReq.Header.Set("Content-Type", "application/json")
+
+	suspendResp, err := http.DefaultClient.Do(suspendReq)
+	if err != nil {
+		t.Fatalf("PATCH /v1/workspace/members/:id suspended error = %v", err)
+	}
+	if suspendResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace/members/:id suspended status = %d, want %d", suspendResp.StatusCode, http.StatusOK)
+	}
+
+	var suspendPayload struct {
+		Member store.WorkspaceMember `json:"member"`
+		State  store.State           `json:"state"`
+	}
+	decodeJSON(t, suspendResp, &suspendPayload)
+	if suspendPayload.Member.Status != "suspended" {
+		t.Fatalf("suspend payload member = %#v, want suspended", suspendPayload.Member)
+	}
+
+	blockedLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session suspended reviewer error = %v", err)
+	}
+	if blockedLoginResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /v1/auth/session suspended reviewer status = %d, want %d", blockedLoginResp.StatusCode, http.StatusForbidden)
+	}
+}
+
 func TestStateRouteExposesAuthContract(t *testing.T) {
 	root := t.TempDir()
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
@@ -188,4 +298,13 @@ func containsPermission(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func findWorkspaceMember(items []store.WorkspaceMember, memberID string) *store.WorkspaceMember {
+	for index := range items {
+		if items[index].ID == memberID {
+			return &items[index]
+		}
+	}
+	return nil
 }

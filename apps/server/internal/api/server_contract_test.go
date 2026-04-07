@@ -280,6 +280,37 @@ func TestReadOnlySurfaceEndpointsServeSnapshotAndRejectMutations(t *testing.T) {
 	}
 }
 
+func TestWorkspaceMembersCORSPreflightAllowsPatch(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, server.URL+"/v1/workspace/members/member-larkspur", nil)
+	if err != nil {
+		t.Fatalf("new OPTIONS /v1/workspace/members/:id request error = %v", err)
+	}
+	req.Header.Set("Origin", "http://127.0.0.1:3000")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPatch)
+	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /v1/workspace/members/:id error = %v", err)
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("OPTIONS /v1/workspace/members/:id status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+	if allowOrigin := resp.Header.Get("Access-Control-Allow-Origin"); allowOrigin != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want *", allowOrigin)
+	}
+	if allowMethods := resp.Header.Get("Access-Control-Allow-Methods"); !strings.Contains(allowMethods, http.MethodPatch) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want PATCH included", allowMethods)
+	}
+	if allowHeaders := resp.Header.Get("Access-Control-Allow-Headers"); !strings.Contains(allowHeaders, "Content-Type") {
+		t.Fatalf("Access-Control-Allow-Headers = %q, want Content-Type included", allowHeaders)
+	}
+}
+
 func TestMemoryDetailRouteExposesContentAndVersions(t *testing.T) {
 	root := t.TempDir()
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")

@@ -220,11 +220,13 @@
   - [x] auth session 与 workspace members API 可读取
   - [x] `/access` 已消费 live auth session / members / roles truth，并提供 email login / logout 入口
   - [x] auth session persistence 已有 store test 与 browser reload evidence
+  - [x] owner 已可在 `/access` 直接 invite 成员，并 live 调整 member role / status
+  - [x] invited member 首次登录会转成 `active`，role 变化会同步反映到 session / permissions / browser probes
 - 当前 GAP:
-  - [ ] invite、成员管理、角色变更和 action-level authz 仍未站住
+  - [ ] issue / room / run / inbox / repo / runtime 的 action-level authz matrix 仍未站住
   - [ ] 设备授权与完整邮箱验证流程仍未产品化
   - [ ] GitHub 仍主要是 readiness probe，不是完整授权模型
-- 对应 Test Cases: `TC-014` `TC-016`
+- 对应 Test Cases: `TC-014` `TC-016` `TC-024`
 
 ### CHK-14 Runtime 注册、心跳与调度
 

@@ -1,11 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import type { AuthSession, WorkspaceMember, WorkspaceRole } from "@/lib/mock-data";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+
+const MEMBER_STATUS_OPTIONS = [
+  { value: "active", label: "在线成员", summary: "成员已可正常登录并使用对应角色权限。" },
+  { value: "invited", label: "待接受", summary: "邀请已发出，成员下次登录时会从 invited 进入 active。" },
+  { value: "suspended", label: "已暂停", summary: "成员仍保留在 roster，但登录与活跃权限会被阻断。" },
+] as const;
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -21,6 +27,10 @@ function sessionIsActive(session: AuthSession) {
 
 function hasPermission(session: AuthSession, permission: string) {
   return session.permissions.includes(permission);
+}
+
+function canManageMembers(session: AuthSession) {
+  return sessionIsActive(session) && hasPermission(session, "members.manage");
 }
 
 function sessionStatusLabel(session: AuthSession) {
@@ -57,6 +67,10 @@ function memberStatusLabel(status: string) {
   }
 }
 
+function defaultInviteRoleID(roles: WorkspaceRole[]) {
+  return roles.find((role) => role.id === "viewer")?.id ?? roles[0]?.id ?? "viewer";
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
@@ -88,6 +102,39 @@ function PermissionChip({ permission }: { permission: string }) {
     <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]">
       {permission}
     </span>
+  );
+}
+
+function MutationFeedback({
+  error,
+  success,
+  errorTestID,
+  successTestID,
+}: {
+  error: string | null;
+  success: string | null;
+  errorTestID: string;
+  successTestID: string;
+}) {
+  return (
+    <>
+      {error ? (
+        <p
+          data-testid={errorTestID}
+          className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 font-mono text-[11px] text-white"
+        >
+          {error}
+        </p>
+      ) : null}
+      {success ? (
+        <p
+          data-testid={successTestID}
+          className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px]"
+        >
+          {success}
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -162,12 +209,246 @@ function RoleCard({ role }: { role: WorkspaceRole }) {
   );
 }
 
+function InviteMemberPanel({
+  session,
+  roles,
+}: {
+  session: AuthSession;
+  roles: WorkspaceRole[];
+}) {
+  const { inviteWorkspaceMember } = usePhaseZeroState();
+  const manageAllowed = canManageMembers(session);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState(defaultInviteRoleID(roles));
+  const [pending, setPending] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mutationSuccess, setMutationSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRole((currentRole) => (roles.some((item) => item.id === currentRole) ? currentRole : defaultInviteRoleID(roles)));
+  }, [roles]);
+
+  async function handleInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setMutationError(null);
+    setMutationSuccess(null);
+    try {
+      await inviteWorkspaceMember({ email, name, role });
+      setMutationSuccess(`${email.trim().toLowerCase()} invited as ${roleLabel(role)}`);
+      setEmail("");
+      setName("");
+      setRole(defaultInviteRoleID(roles));
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : "invite failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Panel tone={manageAllowed ? "yellow" : "paper"}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">owner-side roster mutation</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">邀请成员，把 roster / role / status 真正做成可操作能力</h2>
+        </div>
+        <span
+          data-testid="access-members-manage-status"
+          className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+        >
+          {manageAllowed ? "owner can mutate" : "read-only session"}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
+        这层直接走 live `POST /v1/workspace/members` 和 `PATCH /v1/workspace/members/:id`。当前票只把 owner invite、member role/status
+        变更和登录激活收平；完整 action-level authz matrix 继续留给 `TKT-09`。
+      </p>
+      {!manageAllowed ? (
+        <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p data-testid="access-members-manage-boundary" className="font-mono text-[11px] uppercase tracking-[0.16em]">
+            当前 session 没有 `members.manage`。切回 Owner 后才可 invite / update role / suspend。
+          </p>
+        </div>
+      ) : null}
+      <form onSubmit={handleInvite} className="mt-5 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_220px]">
+          <input
+            data-testid="access-invite-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            disabled={!manageAllowed || pending}
+            className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+            placeholder="reviewer@openshock.dev"
+            required
+          />
+          <input
+            data-testid="access-invite-name"
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            disabled={!manageAllowed || pending}
+            className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+            placeholder="Reviewer"
+          />
+          <select
+            data-testid="access-invite-role"
+            value={role}
+            onChange={(event) => setRole(event.target.value)}
+            disabled={!manageAllowed || pending}
+            className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+          >
+            {roles.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            data-testid="access-invite-submit"
+            type="submit"
+            disabled={!manageAllowed || pending}
+            className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+          >
+            {pending ? "inviting..." : "invite member"}
+          </button>
+          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.7)]">
+            默认以 Viewer 发邀请，后续可在 roster 中继续调 role / status。
+          </p>
+        </div>
+        <MutationFeedback
+          error={mutationError}
+          success={mutationSuccess}
+          errorTestID="access-invite-error"
+          successTestID="access-invite-success"
+        />
+      </form>
+    </Panel>
+  );
+}
+
+function MemberManagementControls({
+  member,
+  roles,
+  visible,
+}: {
+  member: WorkspaceMember;
+  roles: WorkspaceRole[];
+  visible: boolean;
+}) {
+  const { updateWorkspaceMember } = usePhaseZeroState();
+  const [role, setRole] = useState(member.role);
+  const [status, setStatus] = useState(member.status);
+  const [pending, setPending] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mutationSuccess, setMutationSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRole(member.role);
+    setStatus(member.status);
+  }, [member.role, member.status]);
+
+  if (!visible) {
+    return null;
+  }
+
+  const changed = role !== member.role || status !== member.status;
+
+  async function handleUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setMutationError(null);
+    setMutationSuccess(null);
+    try {
+      await updateWorkspaceMember(member.id, { role, status });
+      setMutationSuccess(`${roleLabel(role)} / ${memberStatusLabel(status)} 已同步到 live roster`);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : "member update failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleUpdate} className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">role / status mutation</p>
+          <h4 className="mt-2 font-display text-xl font-bold">直接对齐 server roster 合同</h4>
+        </div>
+        <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
+          live patch
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="grid gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">role</span>
+          <select
+            data-testid={`access-member-role-select-${member.id}`}
+            value={role}
+            onChange={(event) => setRole(event.target.value)}
+            disabled={pending}
+            className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+          >
+            {roles.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">status</span>
+          <select
+            data-testid={`access-member-status-select-${member.id}`}
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            disabled={pending}
+            className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+          >
+            {MEMBER_STATUS_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          data-testid={`access-member-update-${member.id}`}
+          type="submit"
+          disabled={pending || !changed}
+          className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+        >
+          {pending ? "syncing..." : "save member"}
+        </button>
+        <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.7)]">
+          `active / invited / suspended` 会直接影响后续登录与 session 权限。
+        </p>
+      </div>
+      <MutationFeedback
+        error={mutationError}
+        success={mutationSuccess}
+        errorTestID={`access-member-error-${member.id}`}
+        successTestID={`access-member-success-${member.id}`}
+      />
+    </form>
+  );
+}
+
 function MemberCard({
   member,
   currentSession,
+  roles,
 }: {
   member: WorkspaceMember;
   currentSession: AuthSession;
+  roles: WorkspaceRole[];
 }) {
   const activeSession = currentSession.memberId === member.id && sessionIsActive(currentSession);
 
@@ -186,18 +467,28 @@ function MemberCard({
           <p className="mt-1 break-all font-mono text-[11px] text-[color:rgba(24,20,14,0.62)]">{member.email}</p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          <span
+            data-testid={`access-member-role-${member.id}`}
+            className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+          >
             {roleLabel(member.role)}
           </span>
-          <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+          <span
+            data-testid={`access-member-status-${member.id}`}
+            className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]"
+          >
             {memberStatusLabel(member.status)}
           </span>
         </div>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">permissions</p>
           <p className="mt-2 text-sm leading-6">{member.permissions.length}</p>
+        </div>
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">source</p>
+          <p className="mt-2 text-sm leading-6">{valueOrPlaceholder(member.source, "未返回")}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">added at</p>
@@ -211,6 +502,7 @@ function MemberCard({
       {activeSession ? (
         <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">current session</p>
       ) : null}
+      <MemberManagementControls member={member} roles={roles} visible={canManageMembers(currentSession)} />
     </div>
   );
 }
@@ -343,7 +635,7 @@ function SessionActionPanel({
 
         <div className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">quick login</p>
-          <h3 className="mt-2 font-display text-2xl font-bold">用 seed 身份快速切角色</h3>
+          <h3 className="mt-2 font-display text-2xl font-bold">用 roster 身份快速回放 invite / role / status 变化</h3>
           <div className="mt-4 grid gap-3">
             {members.map((member) => (
               <button
@@ -360,9 +652,14 @@ function SessionActionPanel({
                     {member.email}
                   </p>
                 </div>
-                <span className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                  {roleLabel(member.role)}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
+                    {roleLabel(member.role)}
+                  </span>
+                  <span className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
+                    {memberStatusLabel(member.status)}
+                  </span>
+                </div>
               </button>
             ))}
           </div>
@@ -448,8 +745,8 @@ export function LiveAccessOverview() {
   if (loading) {
     return (
       <AccessStateNotice
-        title="正在同步 login / session 真值"
-        message="等待 server 返回当前 auth session、workspace members 和 role truth；这页不会再退回假壳。"
+        title="正在同步 invite / member / role 真值"
+        message="等待 server 返回当前 auth session、workspace members 和 role truth；这页现在会直接显示 live roster，也会把 owner-side member mutation 摆出来。"
         tone="yellow"
       />
     );
@@ -464,6 +761,8 @@ export function LiveAccessOverview() {
   const roles = state.auth.roles;
   const activeMembers = members.filter((member) => member.status === "active").length;
   const invitedMembers = members.filter((member) => member.status === "invited").length;
+  const suspendedMembers = members.filter((member) => member.status === "suspended").length;
+  const manageAllowed = canManageMembers(session);
 
   return (
     <div className="space-y-4">
@@ -474,15 +773,15 @@ export function LiveAccessOverview() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">permission boundary</p>
-              <h2 className="mt-2 font-display text-3xl font-bold">登录态和未登录态现在能被明确区分</h2>
+              <h2 className="mt-2 font-display text-3xl font-bold">登录态、成员管理态和未登录态现在能被明确区分</h2>
             </div>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
               {session.permissions.length} active permissions
             </span>
           </div>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这层直接按当前 session permissions 读，不再把 auth/session/member 继续当成“下一拍才有”的占位说明。完整 invite / role mutation
-            留给 `TKT-08`，action-level authz matrix 留给 `TKT-09`。
+            `TKT-08` 把 owner-side member mutation 接到 live API，当前 session 是否具备 `members.manage` 会直接决定 roster 是否可变更。更大范围的
+            issue / room / run / inbox / repo / runtime 动作矩阵，继续留给 `TKT-09`。
           </p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <PermissionProbe
@@ -519,27 +818,32 @@ export function LiveAccessOverview() {
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em]">current scope boundary</p>
           <ol className="mt-4 space-y-3 text-sm leading-6 text-white/78">
-            <li>1. `TKT-07` 先收 login / logout / session persistence 和 access live truth。</li>
-            <li>2. `TKT-08` 再补 invite、member mutation 和 role management UI。</li>
+            <li>1. `TKT-07` 已收住 login / logout / session persistence 和 access live truth。</li>
+            <li>2. `TKT-08` 当前收 invite、member roster mutation、role/status management。</li>
             <li>3. `TKT-09` 再把 issue / room / run / inbox / repo / runtime 动作全部接上 action-level authz matrix。</li>
           </ol>
           <div className="mt-5 grid gap-3">
             <Metric label="active members" value={String(activeMembers)} />
             <Metric label="invited members" value={String(invitedMembers)} />
-            <Metric label="role definitions" value={String(roles.length)} />
+            <Metric label="suspended members" value={String(suspendedMembers)} />
+            <Metric label="member management" value={manageAllowed ? "owner active" : "read only"} />
           </div>
         </Panel>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_1.08fr]">
-        <Panel tone="yellow">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">workspace roles</p>
-          <div className="mt-4 space-y-3">
-            {roles.map((role) => (
-              <RoleCard key={role.id} role={role} />
-            ))}
-          </div>
-        </Panel>
+        <div className="space-y-4">
+          <InviteMemberPanel session={session} roles={roles} />
+
+          <Panel tone="yellow">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em]">workspace roles</p>
+            <div className="mt-4 space-y-3">
+              {roles.map((role) => (
+                <RoleCard key={role.id} role={role} />
+              ))}
+            </div>
+          </Panel>
+        </div>
 
         <Panel tone="paper">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -547,16 +851,20 @@ export function LiveAccessOverview() {
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">member roster</p>
               <h2 className="mt-2 font-display text-3xl font-bold">当前 workspace 成员真值</h2>
             </div>
-            <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-              read-live / mutate-later
+            <span
+              data-testid="access-roster-mode"
+              className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+            >
+              {manageAllowed ? "owner-mutate-live" : "read-live"}
             </span>
           </div>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            roster / role / permissions 已经能从 live state 读到；invite / suspend / role change 仍留给后续票，不在 `TKT-07` 里提前扩 scope。
+            roster / role / status 现在直接走 live state + live member mutation。invite / role change / suspend 的 exact evidence 会在这张票里收平；
+            完整 action-level authz matrix 仍不在当前 scope。
           </p>
           <div className="mt-5 space-y-3">
             {members.map((member) => (
-              <MemberCard key={member.id} member={member} currentSession={session} />
+              <MemberCard key={member.id} member={member} currentSession={session} roles={roles} />
             ))}
           </div>
         </Panel>

@@ -83,6 +83,8 @@ type PhaseZeroContextValue = {
   refresh: () => Promise<void>;
   loginAuthSession: (input: { email: string; name?: string }) => Promise<StateMutationResponse>;
   logoutAuthSession: () => Promise<StateMutationResponse>;
+  inviteWorkspaceMember: (input: { email: string; name?: string; role: string }) => Promise<StateMutationResponse>;
+  updateWorkspaceMember: (memberId: string, input: { role?: string; status?: string }) => Promise<StateMutationResponse>;
   createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
   postRoomMessage: (roomId: string, prompt: string, provider?: string) => Promise<StateMutationResponse>;
   streamRoomMessage: (
@@ -253,6 +255,30 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
   async function logoutAuthSession() {
     const payload = await readJSON<StateMutationResponse>("/v1/auth/session", {
       method: "DELETE",
+    });
+
+    if (payload.state) {
+      commitState(payload.state);
+    }
+    return payload;
+  }
+
+  async function inviteWorkspaceMember(input: { email: string; name?: string; role: string }) {
+    const payload = await readJSON<StateMutationResponse>("/v1/workspace/members", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitState(payload.state);
+    }
+    return payload;
+  }
+
+  async function updateWorkspaceMember(memberId: string, input: { role?: string; status?: string }) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/workspace/members/${memberId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
     });
 
     if (payload.state) {
@@ -432,6 +458,8 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     refresh,
     loginAuthSession,
     logoutAuthSession,
+    inviteWorkspaceMember,
+    updateWorkspaceMember,
     createIssue,
     postRoomMessage,
     streamRoomMessage,

@@ -185,15 +185,15 @@
 ## TC-014 邮箱登录、成员角色、邀请
 
 - 业务目标: 确认团队级身份体系已经产品化。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-02` `CHK-13`
-- 前置条件: 存在完整 auth / invite / role management 实现。
+- 前置条件: server 在线，当前 session 具备 owner 身份。
 - 测试步骤:
-  1. 邀请成员加入 workspace。
-  2. 走邮箱验证与登录。
-  3. 调整角色并验证访问权限。
-- 预期结果: 团队成员身份链路完整闭环。
-- 业务结论: 2026 年 4 月 7 日 `TKT-07` 已补上 email login / logout / session persistence foundation，并在 `/access` 上给出真实 session/member/role surface；但 invite、成员管理、角色变更和 action-level authz 仍未在同一票内收平，所以这条完整团队身份链路继续保持 Blocked。
+  1. 在 `/access` 以 owner 邀请成员加入 workspace。
+  2. 调整其 role / status，并用 quick login 验证首次登录激活。
+  3. 验证 suspended 成员会被 fail-closed 挡回，而不是静默放行。
+- 预期结果: 团队成员 invite / role / status / login 生命周期形成真实闭环。
+- 业务结论: 2026 年 4 月 7 日 `TKT-08` 新增 `pnpm test:headed-workspace-member-role`，在浏览器里完成 `invite -> role change -> member login activation -> suspend blocked` 回放；owner-side `/access` roster mutation 已直接接到 live API，invited member 首次登录会转成 `active`，suspended login 会显式返回 `workspace member is suspended`。设备授权与完整邮箱验证流程继续留在后续范围，但这条团队成员基础生命周期当前已可独立复核并通过。
 
 ## TC-015 GitHub App 安装与 Webhook
 
@@ -320,7 +320,7 @@
   1. 分别以三种角色访问关键写接口和对应前端入口。
   2. 检查允许、拒绝、禁用状态是否一致。
 - 预期结果: 权限矩阵在 UI 和 API 两侧一致，不存在越权写入。
-- 业务结论: 作为 `TKT-08/TKT-09` 的 gate，当前还未执行。
+- 业务结论: 2026 年 4 月 7 日 `TKT-08` 已把 `members.manage` 这条 owner-side slice 做成 live `/access` surface，并用 browser + targeted auth contract 验证了 invite / role / status 相关边界；但这条用例定义的是跨 issue / room / run / inbox / repo / runtime 的完整动作矩阵，所以当前仍保持 `Not Run`，继续留给 `TKT-09`。
 
 ## TC-025 GitHub Webhook Replay / Review Sync
 

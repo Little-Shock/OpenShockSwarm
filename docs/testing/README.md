@@ -8,6 +8,8 @@
   - `TKT-05` 的 webhook replay / review sync exact replay evidence
 - [Test Report 2026-04-07 Login Session Foundation](./Test-Report-2026-04-07-login-session-foundation.md)
   - `TKT-07` 的 login / logout / session persistence browser evidence
+- [Test Report 2026-04-07 Workspace Invite Member Role](./Test-Report-2026-04-07-workspace-invite-member-role.md)
+  - `TKT-08` 的 owner-side invite / member role-status mutation browser evidence
 - [Test Report 2026-04-07 Remote PR Browser Loop](./Test-Report-2026-04-07-remote-pr-browser-loop.md)
   - `TKT-06` 的真实远端 PR create / merge browser-level exact evidence
 
