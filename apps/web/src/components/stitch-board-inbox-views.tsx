@@ -208,7 +208,7 @@ export function StitchBoardView() {
               ) : liveIssues.length === 0 ? (
                 <SurfaceStateMessage title="当前还没有任务卡" message="等第一条 Issue 创建后，Board 会直接显示 live lane truth。" />
               ) : (
-                <div className="grid min-w-[1320px] gap-4 xl:grid-cols-5">
+                <div className="grid min-w-[1560px] gap-4 xl:grid-cols-6">
                   {columns.map((column) => (
                     <section key={column.title}>
                       <div className="mb-3 flex items-center justify-between">
@@ -224,7 +224,8 @@ export function StitchBoardView() {
                             href={`/issues/${card.key}`}
                             className={cn(
                               "block rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[2px_2px_0_0_var(--shock-ink)]",
-                              card.state === "running" && "bg-[var(--shock-yellow)]"
+                              card.state === "running" && "bg-[var(--shock-yellow)]",
+                              card.state === "paused" && "bg-[var(--shock-paper)]"
                             )}
                           >
                             <div className="flex items-start justify-between gap-2">

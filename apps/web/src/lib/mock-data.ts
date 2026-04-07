@@ -1,7 +1,7 @@
 export type AppTab = "chat" | "rooms" | "inbox" | "board";
 
 export type Priority = "critical" | "high" | "medium";
-export type RunStatus = "queued" | "running" | "blocked" | "review" | "done";
+export type RunStatus = "queued" | "running" | "paused" | "blocked" | "review" | "done";
 export type PresenceState = "running" | "idle" | "blocked";
 export type MachineState = "online" | "busy" | "offline";
 export type InboxKind = "blocked" | "approval" | "review" | "status";
@@ -134,6 +134,8 @@ export type Run = {
   roomId: string;
   topicId: string;
   status: RunStatus;
+  followThread?: boolean;
+  controlNote?: string;
   runtime: string;
   machine: string;
   provider: string;
@@ -278,6 +280,8 @@ export type Session = {
   topicId: string;
   activeRunId: string;
   status: RunStatus;
+  followThread?: boolean;
+  controlNote?: string;
   runtime: string;
   machine: string;
   provider: string;
@@ -1145,6 +1149,7 @@ export function buildBoardColumns(issueList: Issue[]) {
     { title: "Backlog", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
     { title: "Todo", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
     { title: "In Progress", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
+    { title: "Paused", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "paused") },
     { title: "In Review", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
     { title: "Done", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
   ];
@@ -1160,7 +1165,7 @@ export function getGlobalStats() {
 
 export function buildGlobalStats(state: PhaseZeroState) {
   const activeRuns = state.runs.filter((run) => run.status === "running" || run.status === "review").length;
-  const blockedCount = state.runs.filter((run) => run.status === "blocked").length;
+  const blockedCount = state.runs.filter((run) => run.status === "blocked" || run.status === "paused").length;
   return [
     { label: "活跃 Run", value: String(activeRuns).padStart(2, "0"), tone: "yellow" as const },
     { label: "阻塞", value: String(blockedCount).padStart(2, "0"), tone: "pink" as const },

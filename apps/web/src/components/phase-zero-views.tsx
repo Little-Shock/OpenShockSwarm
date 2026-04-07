@@ -48,6 +48,8 @@ function statusTone(status: RunStatus) {
   switch (status) {
     case "running":
       return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
+    case "paused":
+      return "bg-[var(--shock-paper)] text-[var(--shock-ink)]";
     case "blocked":
       return "bg-[var(--shock-pink)] text-white";
     case "review":
@@ -65,6 +67,8 @@ function runStatusLabel(status: RunStatus) {
       return "排队中";
     case "running":
       return "执行中";
+    case "paused":
+      return "已暂停";
     case "blocked":
       return "阻塞";
     case "review":
@@ -365,7 +369,13 @@ export function RoomOverview({ room }: { room: Room }) {
   );
 }
 
-export function RunDetailView({ run }: { run: Run }) {
+export function RunDetailView({
+  run,
+  statusTestId,
+}: {
+  run: Run;
+  statusTestId?: string;
+}) {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -377,7 +387,10 @@ export function RunDetailView({ run }: { run: Run }) {
               </p>
               <h3 className="mt-2 font-display text-3xl font-bold">{run.summary}</h3>
             </div>
-            <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(run.status))}>
+            <span
+              data-testid={statusTestId}
+              className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(run.status))}
+            >
               {runStatusLabel(run.status)}
             </span>
           </div>

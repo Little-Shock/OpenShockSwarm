@@ -91,6 +91,8 @@ type Run struct {
 	RoomID           string     `json:"roomId"`
 	TopicID          string     `json:"topicId"`
 	Status           string     `json:"status"`
+	FollowThread     bool       `json:"followThread"`
+	ControlNote      string     `json:"controlNote,omitempty"`
 	Runtime          string     `json:"runtime"`
 	Machine          string     `json:"machine"`
 	Provider         string     `json:"provider"`
@@ -207,6 +209,8 @@ type Session struct {
 	TopicID      string   `json:"topicId"`
 	ActiveRunID  string   `json:"activeRunId"`
 	Status       string   `json:"status"`
+	FollowThread bool     `json:"followThread"`
+	ControlNote  string   `json:"controlNote,omitempty"`
 	Runtime      string   `json:"runtime"`
 	Machine      string   `json:"machine"`
 	Provider     string   `json:"provider"`

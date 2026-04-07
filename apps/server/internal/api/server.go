@@ -76,6 +76,11 @@ type UpdatePullRequestRequest struct {
 	Status string `json:"status"`
 }
 
+type RunControlRequest struct {
+	Action string `json:"action"`
+	Note   string `json:"note,omitempty"`
+}
+
 type RuntimeSnapshotResponse struct {
 	RuntimeID          string                  `json:"runtimeId,omitempty"`
 	DaemonURL          string                  `json:"daemonUrl,omitempty"`
@@ -448,10 +453,63 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, snapshot.Runs)
 		return
 	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
+	if strings.HasSuffix(path, "/control") {
+		runID := strings.TrimSuffix(path, "/control")
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if !runExecuteGuard(s, w) {
+			return
+		}
+		var req RunControlRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		nextState, err := s.store.ControlRun(runID, store.RunControlInput{
+			Action: req.Action,
+			Note:   req.Note,
+			Actor:  currentAuthActor(s.store.Snapshot().Auth.Session),
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrRunControlRunNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			case errors.Is(err, store.ErrRunControlUnsupportedAction), errors.Is(err, store.ErrRunControlImmutableFinalStatus):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			default:
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			return
+		}
+		var updatedRun *store.Run
+		var updatedSession *store.Session
+		for index := range nextState.Runs {
+			if nextState.Runs[index].ID == runID {
+				updatedRun = &nextState.Runs[index]
+				break
+			}
+		}
+		for index := range nextState.Sessions {
+			if nextState.Sessions[index].ActiveRunID == runID {
+				updatedSession = &nextState.Sessions[index]
+				break
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"action":  strings.TrimSpace(req.Action),
+			"state":   nextState,
+			"run":     updatedRun,
+			"session": updatedSession,
+		})
+		return
+	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	runID := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
+	runID := path
 	for _, candidate := range snapshot.Runs {
 		if candidate.ID == runID {
 			writeJSON(w, http.StatusOK, candidate)

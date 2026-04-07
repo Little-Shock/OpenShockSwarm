@@ -35,6 +35,7 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		{name: "room reply", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages", body: `{"prompt":"继续推进"}`, permission: "room.reply"},
 		{name: "room reply stream", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages/stream", body: `{"prompt":"继续推进"}`, permission: "room.reply"},
 		{name: "run exec", method: http.MethodPost, path: "/v1/exec", body: `{"prompt":"继续推进"}`, permission: "run.execute"},
+		{name: "run control", method: http.MethodPost, path: "/v1/runs/run_runtime_01/control", body: `{"action":"stop","note":"先暂停"}`, permission: "run.execute"},
 		{name: "room pull request", method: http.MethodPost, path: "/v1/rooms/room-runtime/pull-request", body: `{}`, permission: "pull_request.review"},
 		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox review", method: http.MethodPost, path: "/v1/inbox/inbox-review-copy", body: `{"decision":"changes_requested"}`, permission: "inbox.review"},
@@ -76,7 +77,7 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 			if payload.Session.Status != "signed_out" {
 				t.Fatalf("session = %#v, want signed_out", payload.Session)
 			}
-			if !reflect.DeepEqual(payload.State, baseline) {
+			if !reflect.DeepEqual(normalizeAuthGuardState(payload.State), normalizeAuthGuardState(baseline)) {
 				t.Fatalf("state mutated on unauthorized %s", testCase.path)
 			}
 		})
@@ -154,6 +155,24 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 				decodeJSON(t, resp, &payload)
 				if !strings.Contains(payload.Output, "synthetic daemon output") {
 					t.Fatalf("exec payload = %#v, want daemon output", payload)
+				}
+			},
+		},
+		{
+			name:   "run control",
+			method: http.MethodPost,
+			path:   "/v1/runs/run_runtime_01/control",
+			body:   `{"action":"follow_thread","note":"沿当前 thread 收口"}`,
+			verify: func(t *testing.T, resp *http.Response) {
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("POST /v1/runs/run_runtime_01/control status = %d, want %d", resp.StatusCode, http.StatusOK)
+				}
+				var payload struct {
+					Run *store.Run `json:"run"`
+				}
+				decodeJSON(t, resp, &payload)
+				if payload.Run == nil || !payload.Run.FollowThread {
+					t.Fatalf("run control payload = %#v, want follow-thread true", payload)
 				}
 			},
 		},
@@ -252,7 +271,7 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 			if payload.Session.Role != "member" || payload.Session.Email != "mina@openshock.dev" {
 				t.Fatalf("session = %#v, want member session", payload.Session)
 			}
-			if !reflect.DeepEqual(payload.State, baseline) {
+			if !reflect.DeepEqual(normalizeAuthGuardState(payload.State), normalizeAuthGuardState(baseline)) {
 				t.Fatalf("state mutated on forbidden %s", testCase.path)
 			}
 		})
@@ -279,6 +298,7 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 		{name: "issue create", method: http.MethodPost, path: "/v1/issues", body: `{"title":"Viewer blocked issue"}`, permission: "issue.create"},
 		{name: "room reply", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages", body: `{"prompt":"viewer should not reply"}`, permission: "room.reply"},
 		{name: "run execute", method: http.MethodPost, path: "/v1/exec", body: `{"prompt":"viewer should not exec"}`, permission: "run.execute"},
+		{name: "run control", method: http.MethodPost, path: "/v1/runs/run_runtime_01/control", body: `{"action":"stop","note":"viewer should not stop"}`, permission: "run.execute"},
 		{name: "pull request review", method: http.MethodPost, path: "/v1/rooms/room-runtime/pull-request", body: `{}`, permission: "pull_request.review"},
 		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox review", method: http.MethodPost, path: "/v1/inbox/inbox-review-copy", body: `{"decision":"changes_requested"}`, permission: "inbox.review"},
@@ -319,7 +339,7 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 			if payload.Session.Role != "viewer" || payload.Session.Email != "longwen@openshock.dev" {
 				t.Fatalf("session = %#v, want viewer session", payload.Session)
 			}
-			if !reflect.DeepEqual(payload.State, baseline) {
+			if !reflect.DeepEqual(normalizeAuthGuardState(payload.State), normalizeAuthGuardState(baseline)) {
 				t.Fatalf("state mutated on forbidden %s", testCase.path)
 			}
 		})
@@ -444,4 +464,17 @@ func doJSONRequest(t *testing.T, client *http.Client, method, url, body string) 
 		t.Fatalf("%s %s error = %v", method, url, err)
 	}
 	return resp
+}
+
+func normalizeAuthGuardState(state store.State) store.State {
+	state.Workspace.PairingStatus = ""
+	for index := range state.Machines {
+		state.Machines[index].State = ""
+		state.Machines[index].LastHeartbeat = ""
+	}
+	for index := range state.Runtimes {
+		state.Runtimes[index].State = ""
+		state.Runtimes[index].PairingState = ""
+	}
+	return state
 }

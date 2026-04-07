@@ -93,15 +93,14 @@
   - `CHK-14`
 - 优先级: P1
 
-### GAP-06 Stop / Resume / Skill Promotion
+### GAP-06 Long-term Memory Hardening
 
 - 现状:
-  - 当前已有 run 可见性、memory contract、injection preview 与 skill/policy promotion flow
-  - stop/resume/follow-thread 与更重的长期记忆整理引擎仍未完成
+  - 当前已有 run stop/resume/follow-thread 人类接管闭环，以及 memory contract、injection preview 与 skill/policy promotion flow
+  - 更重的长期记忆整理引擎、TTL、去重压缩与外部 provider 编排仍未完成
 - 相关合同:
-  - `CHK-09`
   - `CHK-10`
-- 优先级: P1/P2
+- 优先级: P2
 
 ---
 
@@ -110,7 +109,7 @@
 1. 先修 `GAP-01`，同时补 `ops:smoke`，把 Setup 主链和回归门收稳。
 2. 再推进 `GAP-02`，把 GitHub 线从“探测/本地状态”升级到“远端闭环”。
 3. 然后处理 `GAP-03` 与 `GAP-04`，补团队级身份与通知能力。
-4. 最后推进 `GAP-05` 与 `GAP-06`，扩到多 runtime 调度和更完整的人类接管能力。
+4. 最后推进 `GAP-05` 与 `GAP-06`，扩到多 runtime 调度和更重的长期记忆增强。
 
 ---
 

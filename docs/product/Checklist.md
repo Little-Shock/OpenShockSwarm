@@ -43,7 +43,7 @@
   - 邮箱登录 / 完整成员角色权限
   - 生产级通知与恢复触达
   - 多 runtime 调度器与 failover
-  - stop / resume / follow-thread / skill promotion
+  - 长期记忆整理与外部 provider 编排
 
 ---
 
@@ -58,9 +58,10 @@
   - [x] `Chat / Board / Inbox / Issues / Rooms / Runs / Agents / Setup / Settings` 已有真实页面
   - [x] OpenShock 已经是 chat-first 壳，而不是单页看板
   - [x] 主要页面可在浏览器走查中打开
+  - [x] room / run 现在已有真实的 `stop / resume / follow-thread` 控制面，不再只停在协作文案
 - 当前 GAP:
   - [ ] `DM / Machine / Topic` 仍未形成完整的一等入口
-  - [ ] Slock 式 presence、暂停/恢复、follow thread 还未产品化
+  - [ ] Slock 式 presence 与跨 channel/room 的 follow-thread 编排还未完整产品化
 - 对应 Test Cases: `TC-001` `TC-007` `TC-018`
 
 ### CHK-02 Agent 一等公民模型
@@ -126,9 +127,10 @@
 - 已落地:
   - [x] run detail 能展示 runtime、branch/worktree、执行日志等信息
   - [x] bridge 执行链已能跑通同步 prompt
+  - [x] room / run 已能真实 stop / resume / follow-thread，并把 paused state 回写到同一条执行真相
 - 当前 GAP:
   - [ ] Topic 仍主要隐含在 room/run 中，未形成明确产品对象
-  - [ ] stop / resume / follow-thread / token-quota 可观测性尚未完成
+  - [ ] token-quota 与更细粒度执行可观测性尚未完成
 - 对应 Test Cases: `TC-006` `TC-007` `TC-018`
 
 ### CHK-07 工作流 D: PR 与 Review 闭环
@@ -164,11 +166,14 @@
 
 - PRD 来源: 十.工作流 F
 - 优先级: P1
-- 当前状态: 未完成
+- 当前状态: 已完成
 - 已落地:
-  - [ ] 暂无可验收的完整 stop / resume / recover 产品闭环
+  - [x] `POST /v1/runs/:id/control` 已支持 `stop / resume / follow_thread`
+  - [x] room / run 控制面会把 run / session / issue / room / inbox 同步写回同一条状态链
+  - [x] paused run 会冻结普通 room composer，避免普通消息把暂停态悄悄恢复
+  - [x] `pnpm test:headed-stop-resume-follow-thread` 已完成 browser exact replay，并验证 `/inbox` recent ledger 写回
 - 当前 GAP:
-  - [ ] 缺少 stop / resume 控制面、UI 入口、状态事件和恢复语义
+  - [ ] 更重的 multi-runtime scheduler / failover / recover 继续留在 `CHK-14`，不回灌当前 stop/resume contract
 - 对应 Test Cases: `TC-018`
 
 ### CHK-10 工作流 G: 记忆回收、注入与提升
@@ -267,7 +272,7 @@
 1. 先修 `CHK-04/CHK-14` 的 runtime pairing 冷启动一致性。
 2. 再把 `CHK-15` 的 smoke gate 补到能识别 pairing 漂移。
 3. 然后按 `CHK-07/CHK-13/CHK-11` 推进 GitHub 授权、成员权限、通知链。
-4. 最后再做 `CHK-09/CHK-10` 这类 stop/resume、skill promotion、长期记忆增强。
+4. 最后再做 `CHK-14/CHK-15` 这类多 runtime 调度与安全 guard，以及更重的长期记忆增强。
 
 ---
 

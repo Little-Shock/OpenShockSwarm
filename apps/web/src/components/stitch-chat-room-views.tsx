@@ -9,6 +9,7 @@ import {
 } from "@/lib/mock-data";
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
+import { RunControlSurface } from "@/components/run-control-surface";
 import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -47,6 +48,8 @@ function runStatusLabel(status?: string) {
   switch (status) {
     case "running":
       return "执行中";
+    case "paused":
+      return "已暂停";
     case "review":
       return "评审中";
     case "blocked":
@@ -413,19 +416,26 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 }
 
 export function StitchDiscussionView({ roomId }: { roomId: string }) {
-  const { state, loading, error, streamRoomMessage, createPullRequest, updatePullRequest } = usePhaseZeroState();
+  const { state, loading, error, streamRoomMessage, createPullRequest, updatePullRequest, controlRun } = usePhaseZeroState();
   const room = state.rooms.find((item) => item.id === roomId);
   const run = room ? state.runs.find((item) => item.id === room.runId) : undefined;
   const session = room ? state.sessions.find((item) => item.roomId === room.id) : undefined;
   const authSession = state.auth.session;
+  const currentRunStatus = session?.status ?? run?.status;
+  const runPaused = currentRunStatus === "paused";
   const messages = room ? state.roomMessages[room.id] ?? [] : [];
   const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
   const [prLoading, setPrLoading] = useState(false);
   const [prError, setPrError] = useState<string | null>(null);
   const canMerge = pullRequest && pullRequest.status !== "merged";
-  const canReply = !loading && !error && hasSessionPermission(authSession, "room.reply");
-  const roomReplyStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "room.reply");
-  const roomReplyBoundary = permissionBoundaryCopy(authSession, "room.reply");
+  const canReply = !loading && !error && !runPaused && hasSessionPermission(authSession, "room.reply");
+  const roomReplyStatus = loading ? "syncing" : error ? "sync_failed" : runPaused ? "paused" : permissionStatus(authSession, "room.reply");
+  const roomReplyBoundary = runPaused
+    ? "当前 run 已暂停。先在右侧 Run Control 里 Resume，或先锁定 follow-thread 再恢复执行。"
+    : permissionBoundaryCopy(authSession, "room.reply");
+  const canControlRun = !loading && !error && hasSessionPermission(authSession, "run.execute");
+  const runControlStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "run.execute");
+  const runControlBoundary = permissionBoundaryCopy(authSession, "run.execute");
   const canReviewPullRequest = hasSessionPermission(authSession, "pull_request.review");
   const canMergePullRequest = hasSessionPermission(authSession, "pull_request.merge");
   const activeAgents =
@@ -480,6 +490,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     } finally {
       setPrLoading(false);
     }
+  }
+
+  async function handleRunControl(action: "stop" | "resume" | "follow_thread", note: string) {
+    if (!run) return;
+    await controlRun(run.id, { action, note });
   }
 
   let pullRequestActionLabel = "发起 PR";
@@ -587,14 +602,38 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                             <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Current Branch</p>
                             <p className="mt-2 font-display text-2xl font-bold">{session?.branch ?? run.branch}</p>
                           </div>
-                          <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]">
-                            {runStatusLabel(session?.status ?? run.status)}
+                          <span
+                            data-testid="room-run-status"
+                            className={cn(
+                              "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px]",
+                              currentRunStatus === "paused"
+                                ? "bg-[var(--shock-paper)]"
+                                : currentRunStatus === "blocked"
+                                  ? "bg-[var(--shock-pink)] text-white"
+                                  : currentRunStatus === "review"
+                                    ? "bg-[var(--shock-lime)]"
+                                    : currentRunStatus === "done"
+                                      ? "bg-[var(--shock-ink)] text-white"
+                                      : "bg-[var(--shock-yellow)]"
+                            )}
+                          >
+                            {runStatusLabel(currentRunStatus)}
                           </span>
                         </div>
                         <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Worktree {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}</p>
                         <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">Last Sync {session?.updatedAt || run.startedAt}</p>
                       </div>
                     </section>
+
+                    <RunControlSurface
+                      scope="room"
+                      run={run}
+                      session={session}
+                      canControl={canControlRun}
+                      controlStatus={runControlStatus}
+                      controlBoundary={runControlBoundary}
+                      onControl={handleRunControl}
+                    />
 
                     <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4">
                       <div className="flex items-center justify-between gap-3">

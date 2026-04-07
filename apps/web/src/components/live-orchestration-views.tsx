@@ -45,6 +45,8 @@ function runStatusLabel(status: Run["status"]) {
       return "排队中";
     case "running":
       return "执行中";
+    case "paused":
+      return "已暂停";
     case "blocked":
       return "阻塞";
     case "review":
@@ -84,6 +86,7 @@ function agentTone(state: AgentStatus["state"]) {
 
 function runTone(status: Run["status"]) {
   if (status === "running") return "bg-[var(--shock-yellow)]";
+  if (status === "paused") return "bg-[var(--shock-paper)]";
   if (status === "blocked") return "bg-[var(--shock-pink)] text-white";
   if (status === "review") return "bg-[var(--shock-lime)]";
   return "bg-white";

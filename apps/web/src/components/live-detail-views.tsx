@@ -17,7 +17,9 @@ import {
   Panel,
   RunDetailView,
 } from "@/components/phase-zero-views";
+import { RunControlSurface } from "@/components/run-control-surface";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import {
   type AgentStatus,
   type Issue,
@@ -44,6 +46,8 @@ function runStatusLabel(status: Run["status"]) {
       return "排队中";
     case "running":
       return "执行中";
+    case "paused":
+      return "已暂停";
     case "blocked":
       return "阻塞";
     case "review":
@@ -57,6 +61,8 @@ function panelToneForStatus(status: Run["status"]): PanelTone {
   switch (status) {
     case "running":
       return "yellow";
+    case "paused":
+      return "paper";
     case "blocked":
       return "pink";
     case "review":
@@ -72,6 +78,8 @@ function statusBadgeTone(status: Run["status"]) {
   switch (status) {
     case "running":
       return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
+    case "paused":
+      return "bg-[var(--shock-paper)] text-[var(--shock-ink)]";
     case "blocked":
       return "bg-[var(--shock-pink)] text-white";
     case "review":
@@ -284,7 +292,7 @@ export function LiveRoomsPageContent() {
   const issues = loading || error ? [] : state.issues;
   const runs = loading || error ? [] : state.runs;
   const activeRooms = rooms.filter((room) => room.topic.status === "running" || room.topic.status === "review").length;
-  const blockedRooms = rooms.filter((room) => room.topic.status === "blocked").length;
+  const blockedRooms = rooms.filter((room) => room.topic.status === "blocked" || room.topic.status === "paused").length;
   const unreadCount = rooms.reduce((total, room) => total + room.unread, 0);
 
   return (
@@ -491,7 +499,7 @@ export function LiveRunsPageContent() {
   const issues = loading || error ? [] : state.issues;
   const runs = loading || error ? [] : state.runs;
   const activeRuns = runs.filter((run) => run.status === "running" || run.status === "review").length;
-  const blockedRuns = runs.filter((run) => run.status === "blocked").length;
+  const blockedRuns = runs.filter((run) => run.status === "blocked" || run.status === "paused").length;
   const approvalRuns = runs.filter((run) => run.approvalRequired).length;
 
   return (
@@ -624,7 +632,7 @@ export function LiveRunPageContent({
   roomId?: string;
   runId: string;
 }) {
-  const { state, loading, error } = usePhaseZeroState();
+  const { state, loading, error, controlRun } = usePhaseZeroState();
 
   if (loading) {
     return (
@@ -660,6 +668,11 @@ export function LiveRunPageContent({
 
   const run = state.runs.find((candidate) => candidate.id === runId && (!roomId || candidate.roomId === roomId));
   const room = state.rooms.find((candidate) => candidate.id === (roomId ?? run?.roomId));
+  const session = state.sessions.find((candidate) => candidate.activeRunId === runId);
+  const authSession = state.auth.session;
+  const canControlRun = hasSessionPermission(authSession, "run.execute");
+  const runControlStatus = permissionStatus(authSession, "run.execute");
+  const runControlBoundary = permissionBoundaryCopy(authSession, "run.execute");
 
   if (!room || !run) {
     return (
@@ -677,6 +690,13 @@ export function LiveRunPageContent({
         </div>
       </OpenShockShell>
     );
+  }
+
+  const currentRun = run;
+  const currentSession = session;
+
+  async function handleRunControl(action: "stop" | "resume" | "follow_thread", note: string) {
+    await controlRun(currentRun.id, { action, note });
   }
 
   return (
@@ -700,7 +720,18 @@ export function LiveRunPageContent({
         />
       }
     >
-      <RunDetailView run={run} />
+      <div className="space-y-4">
+        <RunControlSurface
+          scope="run"
+          run={currentRun}
+          session={currentSession}
+          canControl={canControlRun}
+          controlStatus={runControlStatus}
+          controlBoundary={runControlBoundary}
+          onControl={handleRunControl}
+        />
+        <RunDetailView run={currentRun} statusTestId="run-detail-status" />
+      </div>
     </OpenShockShell>
   );
 }

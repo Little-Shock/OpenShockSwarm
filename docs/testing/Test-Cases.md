@@ -237,7 +237,7 @@
 ## TC-018 Stop / Resume / Follow Thread
 
 - 业务目标: 确认人类可以在执行中真正接管、暂停和恢复。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-01` `CHK-06` `CHK-09`
 - 前置条件: 存在 stop / resume / follow-thread UI 与后端状态机。
 - 测试步骤:
@@ -245,7 +245,7 @@
   2. 执行暂停、恢复、接续线程。
   3. 检查 room、run、inbox 是否同步更新。
 - 预期结果: 人类纠偏能力成为产品能力，而不是文案。
-- 业务结论: 当前尚无完整闭环。
+- 业务结论: 2026 年 4 月 7 日 `TKT-13` 新增 `POST /v1/runs/:id/control`、room / run 控制面与 `pnpm test:headed-stop-resume-follow-thread`。当前浏览器 exact replay 已在 `/rooms/room-runtime` 和 `/runs/run_runtime_01` 上独立验证 `stop -> follow_thread -> resume`，并确认 paused run 会冻结普通 room composer、follow-thread 会跨 resume 保持、`/inbox` recent ledger 会按顺序写回 `Run 已暂停` / `已锁定当前线程` / `Run 已恢复`。这条人类接管闭环当前已可独立复核并通过。
 
 ## TC-019 记忆注入与 Skill / Policy 提升
 

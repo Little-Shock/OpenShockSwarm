@@ -57,6 +57,11 @@ type UpdatePullRequestInput = {
   status: "draft" | "open" | "in_review" | "changes_requested" | "merged";
 };
 
+type RunControlInput = {
+  action: "stop" | "resume" | "follow_thread";
+  note?: string;
+};
+
 type PhaseZeroStreamPresence = {
   onlineMachines: number;
   busyMachines: number;
@@ -97,6 +102,7 @@ type PhaseZeroContextValue = {
   ) => Promise<RoomStreamEvent | null>;
   createPullRequest: (roomId: string) => Promise<StateMutationResponse>;
   updatePullRequest: (pullRequestId: string, input: UpdatePullRequestInput) => Promise<StateMutationResponse>;
+  controlRun: (runId: string, input: RunControlInput) => Promise<StateMutationResponse>;
   applyInboxDecision: (inboxItemId: string, decision: InboxDecision) => Promise<StateMutationResponse>;
 };
 
@@ -495,6 +501,25 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     }
   }
 
+  async function controlRun(runId: string, input: RunControlInput) {
+    try {
+      const payload = await readJSON<StateMutationResponse>(`/v1/runs/${runId}/control`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+
+      if (payload.state) {
+        commitStateAndRefreshApprovalCenter(payload.state);
+      }
+      return payload;
+    } catch (mutationError) {
+      if (mutationError instanceof StateMutationError && mutationError.payload.state) {
+        commitStateAndRefreshApprovalCenter(mutationError.payload.state);
+      }
+      throw mutationError;
+    }
+  }
+
   async function applyInboxDecision(inboxItemId: string, decision: InboxDecision) {
     try {
       const payload = await readJSON<StateMutationResponse>(`/v1/inbox/${inboxItemId}`, {
@@ -532,6 +557,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     streamRoomMessage,
     createPullRequest,
     updatePullRequest,
+    controlRun,
     applyInboxDecision,
   };
 }
