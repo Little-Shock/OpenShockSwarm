@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f0df;
+  --background: #fff8e7;
   --foreground: #18140e;
   --shock-yellow: #ffd500;
   --shock-purple: #8127cf;
@@ -10,10 +10,14 @@
   --shock-cyan: #b9e9ff;
   --shock-orange: #ffb547;
   --shock-ink: #18140e;
-  --shock-paper: #f5f0df;
+  --shock-paper: #fff8e7;
   --shock-cream: #fff8e6;
-  --shock-card: #fffdf7;
+  --shock-card: #fffdf8;
+  --shock-status: #fde2c0;
   --shock-grid: rgba(24, 20, 14, 0.08);
+  --shock-shadow: 3px 3px 0 0 var(--shock-ink);
+  --shock-shadow-sm: 2px 2px 0 0 var(--shock-ink);
+  --shock-border: 2px solid var(--shock-ink);
 }
 
 @theme inline {
@@ -28,22 +32,20 @@
   box-sizing: border-box;
 }
 
-html {
+html,
+body {
+  height: 100%;
   min-height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  background:
-    linear-gradient(90deg, transparent 0, transparent 95px, var(--shock-grid) 95px, var(--shock-grid) 96px),
-    linear-gradient(transparent 0, transparent 95px, var(--shock-grid) 95px, var(--shock-grid) 96px),
-    linear-gradient(180deg, #fffbea 0%, #f7f0dd 46%, #efe5cb 100%);
-  background-size: 96px 96px, 96px 96px, 100% 100%;
+}
+
+html {
+  overflow: hidden;
+  background: var(--shock-yellow);
 }
 
 body {
-  min-height: 100%;
   margin: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--background);
   color: var(--foreground);
   font-family:
@@ -53,6 +55,10 @@ body {
     "Microsoft YaHei",
     "Noto Sans CJK SC",
     sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .font-display {
@@ -80,4 +86,21 @@ button {
 ::selection {
   background: var(--shock-yellow);
   color: var(--shock-ink);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--shock-paper);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(24, 20, 14, 0.42);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 20, 14, 0.62);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
   type Message,
@@ -11,7 +11,11 @@ import {
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import { RunControlSurface } from "@/components/run-control-surface";
-import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
+import {
+  StitchSidebar,
+  StitchTopBar,
+  WorkspaceStatusStrip,
+} from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -77,6 +81,126 @@ function DiscussionStateMessage({
   );
 }
 
+const MARKER_PATTERN =
+  /(PR\s?#\d+|#\d+|TC-\d+|TKT-\d+|CHK-\d+|TS\d+|@[A-Za-z0-9_\u4e00-\u9fa5-]+|origin\/[A-Za-z0-9._/-]+|feat\/[A-Za-z0-9._/-]+|verify:[A-Za-z0-9._/-]+|in_progress|in_review|todo|done|MERGED|PASS|FAIL|OPEN|CLEAN|MERGEABLE)/g;
+
+function renderMarkedMessage(text: string) {
+  return text.split(MARKER_PATTERN).map((part, index) => {
+    if (!part) return null;
+    const matched = part.match(MARKER_PATTERN);
+    if (matched) {
+      return (
+        <span
+          key={`${part}-${index}`}
+          className="inline-block border border-[var(--shock-ink)] bg-[#f4df7f] px-1.5 py-[1px] font-mono text-[11px] leading-5"
+        >
+          {part}
+        </span>
+      );
+    }
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
+}
+
+function messageBadgeTone(message: Message) {
+  if (message.tone === "blocked") return "bg-[var(--shock-pink)] text-white";
+  if (message.role === "agent") return "bg-[var(--shock-cyan)]";
+  if (message.role === "human") return "bg-[var(--shock-yellow)]";
+  return "bg-white";
+}
+
+function messageGlyph(message: Message) {
+  if (message.role === "human") return "人";
+  if (message.role === "agent") return "AI";
+  return "SYS";
+}
+
+function MessageStreamRow({
+  message,
+  replyCount,
+}: {
+  message: Message;
+  replyCount?: number;
+}) {
+  return (
+    <article className="border-b border-[color:rgba(24,20,14,0.12)] px-4 py-4 last:border-b-0">
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "mt-0.5 flex h-8 min-w-8 items-center justify-center border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
+            messageBadgeTone(message)
+          )}
+        >
+          {messageGlyph(message)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-[15px] font-bold leading-none">{message.speaker}</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.42)]">
+              {roleLabel(message.role)}
+            </span>
+            <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.5)]">{message.time}</span>
+          </div>
+          <div className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-7 text-[color:rgba(24,20,14,0.9)]">
+            {renderMarkedMessage(message.message)}
+          </div>
+          {typeof replyCount === "number" && replyCount > 0 ? (
+            <div className="mt-3">
+              <span className="inline-flex items-center gap-1 border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                {replyCount} {replyCount > 1 ? "replies" : "reply"}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function useStickyMessageScroll(scopeId: string, messageCount: number, latestMessageSize: number) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+
+    const updateStickiness = () => {
+      const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+      shouldStickToBottomRef.current = distanceFromBottom <= 72;
+    };
+
+    updateStickiness();
+    node.addEventListener("scroll", updateStickiness, { passive: true });
+    return () => node.removeEventListener("scroll", updateStickiness);
+  }, [scopeId]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node || !shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [scopeId, messageCount, latestMessageSize]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+
+    shouldStickToBottomRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [scopeId]);
+
+  return scrollRef;
+}
+
 function ClaudeCompactComposer({
   room,
   initialMessages,
@@ -100,6 +224,8 @@ function ClaudeCompactComposer({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [draft, setDraft] = useState("先给我一句结论：这个讨论间现在该先做哪一步？");
   const [loading, setLoading] = useState(false);
+  const latestMessage = messages[messages.length - 1];
+  const scrollRef = useStickyMessageScroll(room.id, messages.length, latestMessage?.message.length ?? 0);
 
   useEffect(() => {
     setMessages(initialMessages);
@@ -184,53 +310,49 @@ function ClaudeCompactComposer({
 
   return (
     <>
-      <div className="flex-1 overflow-y-auto bg-[#fbfbfb] p-6">
-        <div className="space-y-6">
-          {messages.map((message, index) => (
-            <article key={message.id} className={cn("max-w-[90%]", index > 0 && message.role === "human" && "ml-auto")}>
-              <div
-                className={cn(
-                  "rounded-[6px] border-2 border-[var(--shock-ink)] px-4 py-4 shadow-[2px_2px_0_0_var(--shock-ink)]",
-                  message.role === "human" ? "inline-block bg-white text-left" : "bg-[#ececec]",
-                  message.role === "agent" && "bg-[#ead7ff]",
-                  message.tone === "blocked" && "bg-[#ffdce7]"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-display text-sm font-bold">{message.speaker}</span>
-                  <span className="bg-black px-1 py-0.5 font-mono text-[10px] text-white">{roleLabel(message.role)}</span>
-                </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{message.message}</p>
-              </div>
-            </article>
+      <div
+        ref={scrollRef}
+        data-testid="room-message-list"
+        className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)]"
+      >
+        <div className="mx-auto max-w-[1100px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec]">
+          {messages.map((message) => (
+            <MessageStreamRow key={message.id} message={message} />
           ))}
         </div>
       </div>
 
-      <div className="border-t-2 border-[var(--shock-ink)] bg-white px-3 py-2">
-        <form onSubmit={(event) => void handleSubmit(event)} className="flex items-center gap-2">
+      <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+        <form onSubmit={(event) => void handleSubmit(event)} className="mx-auto flex max-w-[1100px] items-center gap-2">
+          <button
+            type="button"
+            aria-label="attach room context"
+            className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)]"
+          >
+            +
+          </button>
           <input
             data-testid="room-message-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             disabled={!canSend || loading}
-            className="h-11 flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[11px] outline-none"
+            className="h-10 flex-1 border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[12px] outline-none"
             placeholder="输入指令、问题或新的约束..."
           />
           <button
             type="submit"
             data-testid="room-send-message"
             disabled={loading || !canSend}
-            className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-base disabled:opacity-60"
+            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
           >
-            ↗
+            {loading ? "..." : "Send"}
           </button>
         </form>
-        <p data-testid="room-reply-authz" className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+        <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1100px] font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
           {sendStatus}
         </p>
         {!canSend ? (
-          <p className="mt-2 text-sm leading-6 text-[var(--shock-pink)]">{sendBoundary}</p>
+          <p className="mx-auto mt-2 max-w-[1100px] text-sm leading-6 text-[var(--shock-pink)]">{sendBoundary}</p>
         ) : null}
       </div>
     </>
@@ -251,6 +373,11 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const messageScrollRef = useStickyMessageScroll(
+    channelId,
+    messages.length,
+    latestMessage?.message.length ?? 0
+  );
   const inboxCount = loading || error ? 0 : approvalCenter.openCount;
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
@@ -277,8 +404,8 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
-      <div className="grid min-h-screen w-full border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+    <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active="channels"
           channels={sidebarChannels}
@@ -291,9 +418,13 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
           inboxCount={inboxCount}
         />
         <section className="flex min-h-0 flex-col bg-white">
+          <WorkspaceStatusStrip
+            workspaceName={workspaceName}
+            disconnected={loading || Boolean(error) || sidebarMachines.every((machine) => machine.state === "offline")}
+          />
           <StitchTopBar
             eyebrow="Workspace Channel"
-            title={loading ? "频道同步中" : error ? "频道同步失败" : channel?.name ?? `#${channelId}`}
+            title={loading ? "频道同步中" : error ? "频道同步失败" : `# ${channel?.name ?? channelId}`}
             description={
               loading
                 ? "等待 live channel state 返回。"
@@ -305,58 +436,39 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             tabs={["Chat", "Thread", "Saved"]}
             activeTab="Chat"
           />
-          <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-5 py-3">
+          <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {workspaceName || "OpenShock"}
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-cyan)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-[var(--shock-cyan)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {sidebarMachines.length} machines
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-[var(--shock-lime)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {runningAgents} active citizens
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {blockedAgents} blocked
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {inboxCount} inbox
               </span>
             </div>
           </div>
-          <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex min-h-0 flex-col border-r-2 border-[var(--shock-ink)]">
-              <div className="flex-1 overflow-y-auto bg-[radial-gradient(var(--shock-grid)_1px,transparent_1px)] [background-size:20px_20px] p-6">
-                <div className="mx-auto max-w-5xl space-y-6">
-                  <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-[var(--shock-paper)] p-5 shadow-[5px_5px_0_0_var(--shock-ink)]">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[color:rgba(17,17,17,0.56)]">
-                          Channel Brief
-                        </p>
-                        <h2 className="mt-2 font-display text-4xl font-bold leading-none">
-                          {channel?.name ?? "等待同步"}
-                        </h2>
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:rgba(17,17,17,0.7)]">
-                          {channel?.summary ?? "当前还没有拿到这条频道的摘要。"}
-                        </p>
-                      </div>
-                      <div className="grid min-w-[210px] grid-cols-2 gap-2">
-                        <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                          <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(17,17,17,0.52)]">
-                            Messages
-                          </p>
-                          <p className="mt-2 font-display text-3xl font-bold">{messages.length}</p>
-                        </div>
-                        <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                          <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(17,17,17,0.52)]">
-                            Unread
-                          </p>
-                          <p className="mt-2 font-display text-3xl font-bold">{channel?.unread ?? 0}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
+              <div
+                ref={messageScrollRef}
+                data-testid="channel-message-list"
+                className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)]"
+              >
+                <div className="mx-auto max-w-[1100px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec]">
+                  <div className="border-b-2 border-[var(--shock-ink)] px-4 py-3">
+                    <p className="font-display text-[18px] font-bold">{channel?.name ?? "等待同步"}</p>
+                    <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.64)]">
+                      {channel?.summary ?? channel?.purpose ?? "当前还没有拿到这条频道的 live purpose。"}
+                    </p>
+                  </div>
                   {loading ? (
                     <DiscussionStateMessage
                       title="正在同步频道真值"
@@ -375,76 +487,17 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                       message="等第一条 live channel message 出现后，这里会直接显示真实频道流。"
                     />
                   ) : (
-                    messages.map((message) => {
-                      const isHuman = message.role === "human";
-                      const isAgent = message.role === "agent";
-                      const blockedTone = message.tone === "blocked";
-
-                      return (
-                        <article
-                          key={message.id}
-                          className={cn("flex items-start gap-4", isHuman && "flex-row-reverse")}
-                        >
-                          <div
-                            className={cn(
-                              "flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] shadow-[2px_2px_0_0_var(--shock-ink)]",
-                              blockedTone
-                                ? "bg-[var(--shock-pink)] text-white"
-                                : isAgent
-                                  ? "bg-[var(--shock-purple)] text-white"
-                                  : isHuman
-                                    ? "bg-[var(--shock-yellow)]"
-                                    : "bg-white"
-                            )}
-                          >
-                            {message.role === "human" ? "人" : message.role === "agent" ? "A" : "S"}
-                          </div>
-                          <div className={cn("flex-1", isHuman && "text-right")}>
-                            <div className={cn("mb-2 flex items-center gap-3", isHuman && "justify-end")}>
-                              <span
-                                className={cn(
-                                  "font-display text-lg font-bold",
-                                  blockedTone
-                                    ? "text-[var(--shock-pink)]"
-                                    : isAgent
-                                      ? "text-[var(--shock-purple)]"
-                                      : undefined
-                                )}
-                              >
-                                {message.speaker}
-                              </span>
-                              <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">
-                                {message.time}
-                              </span>
-                            </div>
-                            <div
-                              className={cn(
-                                "relative rounded-[18px] border-2 border-[var(--shock-ink)] p-5 shadow-[4px_4px_0_0_var(--shock-ink)]",
-                                blockedTone
-                                  ? "bg-[var(--shock-pink)] text-white"
-                                  : isAgent
-                                    ? "bg-[#ead7ff]"
-                                    : isHuman
-                                      ? "ml-auto max-w-[90%] bg-white text-left"
-                                      : "bg-[var(--shock-paper)]"
-                              )}
-                            >
-                              <p className="whitespace-pre-wrap text-sm leading-7">{message.message}</p>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })
+                    messages.map((message) => <MessageStreamRow key={message.id} message={message} />)
                   )}
                 </div>
               </div>
 
-              <div className="border-t-2 border-[var(--shock-ink)] bg-white px-6 py-4">
-                <form onSubmit={(event) => void handleChannelSubmit(event)} className="mx-auto flex max-w-5xl items-center gap-3">
+              <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <form onSubmit={(event) => void handleChannelSubmit(event)} className="mx-auto flex max-w-[1100px] items-center gap-2">
                   <button
                     type="button"
                     aria-label="attach message context"
-                    className="flex h-11 w-11 items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] bg-white text-xl"
+                    className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)]"
                   >
                     +
                   </button>
@@ -453,13 +506,13 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     disabled={!channel || loading || Boolean(error) || sending}
-                    className="h-11 flex-1 rounded-[10px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-4 py-3 font-mono text-[11px] outline-none"
+                    className="h-10 flex-1 border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[12px] outline-none"
                     placeholder={channel ? `发送消息到 ${channel.name}...` : "等待频道同步..."}
                   />
                   <button
                     type="button"
                     aria-label="mention teammate"
-                    className="flex h-11 w-11 items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] bg-white"
+                    className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]"
                   >
                     @
                   </button>
@@ -467,13 +520,13 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     type="submit"
                     data-testid="channel-send-message"
                     disabled={!channel || loading || Boolean(error) || sending || !draft.trim()}
-                    className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-3 font-mono text-[11px] tracking-[0.14em] disabled:opacity-60"
+                    className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
                   >
-                    {sending ? "发送中..." : "发送 ↗"}
+                    {sending ? "..." : "Send"}
                   </button>
                 </form>
                 {sendError ? (
-                  <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-5xl text-sm leading-6 text-[var(--shock-pink)]">
+                  <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-[1100px] text-sm leading-6 text-[var(--shock-pink)]">
                     {sendError}
                   </p>
                 ) : null}
@@ -710,8 +763,8 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
-      <div className="grid min-h-screen w-full border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+    <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active="rooms"
           channels={sidebarChannels}
@@ -724,6 +777,10 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
           inboxCount={inboxCount}
         />
         <section className="flex min-h-0 flex-col bg-white">
+          <WorkspaceStatusStrip
+            workspaceName={workspaceName}
+            disconnected={loading || Boolean(error) || sidebarMachines.every((machine) => machine.state === "offline")}
+          />
           <StitchTopBar
             eyebrow="Issue Room"
             title={loading ? "讨论间同步中" : error ? "讨论间同步失败" : room?.title ?? roomId}
@@ -738,47 +795,47 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
             tabs={["Chat", "Topic", "Run", "PR", "Board"]}
             activeTab="Chat"
           />
-          <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-5 py-3">
+          <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {room?.issueKey ?? "issue"}
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 topic {room?.topic.status ?? "syncing"}
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-cyan)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-[var(--shock-cyan)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 run {currentRunStatus ?? "syncing"}
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {activeAgents.length} agents
               </span>
-              <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 {room?.boardCount ?? 0} board cards
               </span>
             </div>
           </div>
           <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_380px]">
             <div className="flex min-h-0 flex-col border-r-2 border-[var(--shock-ink)]">
-              <div className="border-b-2 border-[var(--shock-ink)] bg-white px-5 py-4">
+              <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
                       Live Collaboration
                     </p>
-                    <p className="mt-2 font-display text-2xl font-bold">
+                    <p className="mt-1 font-display text-[18px] font-bold">
                       {room?.topic.title ?? "等待讨论间同步"}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={room ? `/issues/${room.issueKey}` : "/issues"}
-                      className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                      className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
                     >
                       Issue
                     </Link>
                     <Link
                       href="/board"
-                      className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                      className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
                     >
                       Board
                     </Link>

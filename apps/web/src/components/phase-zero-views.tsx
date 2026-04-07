@@ -149,7 +149,7 @@ export function Panel({
   return (
     <section
       className={cn(
-        "rounded-[28px] border-2 border-[var(--shock-ink)] p-5 shadow-[6px_6px_0_0_var(--shock-ink)]",
+        "border-2 border-[var(--shock-ink)] p-4 shadow-[var(--shock-shadow-sm)]",
         toneClass(tone),
         className
       )}
@@ -167,15 +167,15 @@ export function DetailRail({
   items: Array<{ label: string; value: string }>;
 }) {
   return (
-    <Panel tone="paper" className="shadow-[8px_8px_0_0_var(--shock-yellow)]">
-      <p className="font-mono text-[11px] uppercase tracking-[0.24em]">{label}</p>
-      <dl className="mt-4 space-y-3">
+    <Panel tone="paper">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{label}</p>
+      <dl className="mt-3 space-y-2">
         {items.map((item) => (
-          <div key={item.label} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">
+          <div key={item.label} className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+            <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.6)]">
               {item.label}
             </dt>
-            <dd className="mt-2 font-display text-xl font-semibold">{item.value}</dd>
+            <dd className="mt-2 font-display text-[18px] font-semibold leading-6">{item.value}</dd>
           </div>
         ))}
       </dl>
@@ -185,9 +185,9 @@ export function DetailRail({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
-      <p className="mt-2 font-display text-xl font-semibold">{value}</p>
+    <div className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
+      <p className="mt-2 font-display text-[18px] font-semibold leading-6">{value}</p>
     </div>
   );
 }

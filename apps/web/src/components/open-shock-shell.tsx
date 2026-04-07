@@ -12,6 +12,7 @@ import {
   type PresenceState,
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 
 type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access";
 type Tone = "yellow" | "pink" | "lime";
@@ -169,60 +170,234 @@ export function OpenShockShell({
         ? "server workspace truth unavailable"
         : "local-first os";
   const stats = buildGlobalStats(resolvedState);
+  const chatModeActive = activeTab !== null;
+  const disconnected = loading || Boolean(error) || resolvedState.machines.every((machine) => machine.state === "offline");
 
   return (
-    <main className="min-h-screen bg-[var(--shock-paper)] text-[var(--shock-ink)]">
-      <div className="mx-auto flex min-h-screen max-w-[1860px] flex-col px-2 py-2 md:px-3 md:py-3">
-        <div className="grid min-h-[calc(100vh-1rem)] gap-0 rounded-[12px] border-2 border-[var(--shock-ink)] bg-white shadow-[6px_6px_0_0_var(--shock-ink)] xl:h-[calc(100vh-1rem)] xl:min-h-0 xl:grid-cols-[220px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-card)]">
-            <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-[6px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] font-mono text-sm font-bold">
-                  OS
-                </div>
-                <div>
-                  <p className="font-display text-lg font-bold leading-none">{workspaceTitle}</p>
-                  <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                    {workspaceSubtitle}
-                  </p>
-                </div>
+    <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+        <aside className="hidden h-full min-h-0 flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
+          <div className="border-b-2 border-[var(--shock-ink)] px-2 py-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-black px-3 py-1.5 font-display text-base font-bold text-[var(--shock-yellow)] shadow-[var(--shock-shadow-sm)]"
+            >
+              <span className="truncate">{workspaceTitle}</span>
+              <span className="font-mono text-[10px]">v</span>
+            </button>
+            <p className="mt-2 truncate px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+              {workspaceSubtitle}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 border-b-2 border-[var(--shock-ink)] bg-white">
+            <Link
+              href="/chat/all"
+              className={cn(
+                "flex items-center justify-center border-r-2 border-[var(--shock-ink)] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
+                chatModeActive ? "bg-[var(--shock-yellow)]" : "bg-white text-[color:rgba(24,20,14,0.72)]"
+              )}
+            >
+              Chat
+            </Link>
+            <Link
+              href="/setup"
+              className={cn(
+                "flex items-center justify-center px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
+                chatModeActive ? "bg-white text-[color:rgba(24,20,14,0.72)]" : "bg-[var(--shock-yellow)]"
+              )}
+            >
+              Work
+            </Link>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-2 py-2">
+            <section className="space-y-1">
+              {tabs.map((tab) => (
+                <Link
+                  key={tab.id}
+                  href={tab.href}
+                  className={cn(
+                    "flex items-center justify-between border-2 px-2 py-2 text-sm",
+                    activeTab === tab.id
+                      ? "border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]"
+                      : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span className="font-mono text-[10px]">
+                    {tab.id === "chat"
+                      ? resolvedState.channels.length
+                      : tab.id === "rooms"
+                        ? resolvedState.rooms.length
+                        : tab.id === "inbox"
+                          ? resolvedState.inbox.length
+                          : resolvedState.issues.length}
+                  </span>
+                </Link>
+              ))}
+            </section>
+
+            <section className="mt-3">
+              <div className="mb-2 flex items-center justify-between gap-2 px-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
+                  Work Views
+                </p>
+                <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">
+                  {shellUtilityLinks.length}
+                </span>
               </div>
-            </div>
-
-            <div className="border-b-2 border-[var(--shock-ink)] px-4 py-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
-                OpenShock.ai
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                聊天在频道，认真干活进讨论间。
-              </p>
-            </div>
-
-            <div className="border-b-2 border-[var(--shock-ink)] px-3 py-3">
-              <nav className="space-y-2">
-                {tabs.map((tab) => (
-                  <Link
-                    key={tab.id}
-                    href={tab.href}
-                    className={cn(
-                      "block rounded-[8px] border-2 border-[var(--shock-ink)] px-3 py-2 text-left font-mono text-[11px] uppercase tracking-[0.18em] transition-transform duration-150 hover:-translate-y-0.5",
-                      activeTab === tab.id
-                        ? "bg-[var(--shock-yellow)] shadow-[4px_4px_0_0_var(--shock-ink)]"
-                        : "bg-white"
-                    )}
-                  >
-                    {tab.label}
-                  </Link>
-                ))}
-              </nav>
-              <div className="mt-3 space-y-2">
+              <div className="space-y-1">
                 {shellUtilityLinks.map((link) => (
                   <Link
                     key={link.id}
                     href={link.href}
                     className={cn(
-                      "block rounded-[8px] border-2 border-[var(--shock-ink)] px-3 py-2 text-left font-mono text-[10px] uppercase tracking-[0.16em] transition-transform hover:-translate-y-0.5",
-                      view === link.id ? "bg-[var(--shock-pink)] text-white" : "bg-[var(--shock-paper)]"
+                      "block border-2 px-2 py-2 text-sm transition-colors",
+                      view === link.id
+                        ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white shadow-[var(--shock-shadow-sm)]"
+                        : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{link.label}</span>
+                      <span className="font-mono text-[10px] uppercase">
+                        {view === link.id ? "open" : "view"}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            <section className="mt-3">
+              <div className="mb-2 flex items-center justify-between gap-2 px-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
+                  Channels
+                </p>
+                <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">
+                  {resolvedState.channels.length}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {resolvedState.channels.map((channel) => (
+                  <Link
+                    key={channel.id}
+                    href={`/chat/${channel.id}`}
+                    className={cn(
+                      "block border-2 px-2 py-2 text-sm transition-colors",
+                      selectedChannelId === channel.id
+                        ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white shadow-[var(--shock-shadow-sm)]"
+                        : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{channel.name}</span>
+                      {channel.unread > 0 ? (
+                        <span className="ml-auto min-w-5 border border-[var(--shock-ink)] bg-white px-1 text-center font-mono text-[10px] text-[var(--shock-ink)]">
+                          {channel.unread}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className={cn("mt-1 truncate text-[11px]", selectedChannelId === channel.id ? "text-white/80" : "text-[color:rgba(24,20,14,0.56)]")}>
+                      {channel.summary}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            <section className="mt-3">
+              <div className="mb-2 flex items-center justify-between gap-2 px-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
+                  Rooms
+                </p>
+                <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">
+                  {resolvedState.rooms.length}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {resolvedState.rooms.map((room) => (
+                  <Link
+                    key={room.id}
+                    href={`/rooms/${room.id}`}
+                    className={cn(
+                      "block border-2 px-2 py-2 text-sm transition-colors",
+                      selectedRoomId === room.id
+                        ? "border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]"
+                        : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate font-medium">{room.title}</span>
+                      <span className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-1.5 py-0.5 font-mono text-[9px] uppercase">
+                        {room.issueKey}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                      {room.topic.status}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="border-t-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-2">
+            <div className="border-2 border-[var(--shock-ink)] bg-white px-2 py-2 text-[11px] shadow-[var(--shock-shadow-sm)]">
+              <div className="flex items-center justify-between">
+                <span>Repo</span>
+                <span className="font-mono text-[10px] uppercase">{resolvedState.workspace.branch || "syncing"}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <span>Runtime</span>
+                <span className="font-mono text-[10px] uppercase">{resolvedState.workspace.pairedRuntime || "none"}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <span>Agents</span>
+                <span className="font-mono">{resolvedState.agents.length}</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section className="flex min-h-0 flex-col bg-white">
+          <WorkspaceStatusStrip workspaceName={workspaceTitle} disconnected={disconnected} />
+
+          <header className="border-b-2 border-[var(--shock-ink)] bg-white">
+            <div className="grid gap-3 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_minmax(260px,340px)_auto] xl:items-center">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">
+                  {eyebrow}
+                </p>
+                <h1 className="mt-1 truncate font-display text-[26px] font-bold leading-none">{title}</h1>
+                <p className="mt-2 max-w-3xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
+                  {description}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2">
+                <span className="flex h-7 w-7 items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] font-mono text-[10px] font-bold">
+                  K
+                </span>
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
+                    Quick Search
+                  </p>
+                  <p className="truncate font-medium text-[12px]">
+                    Search issue / run / agent / machine
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {shellUtilityLinks.slice(0, 4).map((link) => (
+                  <Link
+                    key={link.id}
+                    href={link.href}
+                    className={cn(
+                      "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]",
+                      view === link.id ? "bg-[var(--shock-yellow)]" : "bg-white hover:bg-[var(--shock-paper)]"
                     )}
                   >
                     {link.label}
@@ -230,233 +405,99 @@ export function OpenShockShell({
                 ))}
               </div>
             </div>
+          </header>
 
-            <div className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
-              <section>
-                <div className="mb-3 flex items-center justify-between px-2">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                    频道
-                  </p>
-                  <span className="rounded-[6px] border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    公屏
+          <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+              <div>
+                <p className="font-display text-[18px] font-bold">{contextTitle}</p>
+                <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
+                  {contextDescription}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {stats.map((stat) => (
+                  <span
+                    key={stat.label}
+                    className={cn(
+                      "border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                      statTone(stat.tone)
+                    )}
+                  >
+                    {stat.label} {stat.value}
                   </span>
-                </div>
-                <div className="space-y-2">
-                  {resolvedState.channels.map((channel) => (
-                    <Link
-                      key={channel.id}
-                      href={`/chat/${channel.id}`}
-                      className={cn(
-                        "block rounded-[8px] border-2 border-[var(--shock-ink)] px-3 py-3 transition-all duration-150 hover:-translate-y-0.5",
-                        selectedChannelId === channel.id
-                          ? "bg-[var(--shock-yellow)] shadow-[4px_4px_0_0_var(--shock-ink)]"
-                          : "bg-white"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-display text-lg font-semibold">{channel.name}</p>
-                          <p className="mt-1 text-sm leading-5 text-[color:rgba(24,20,14,0.74)]">
-                            {channel.summary}
-                          </p>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-h-0 overflow-y-auto bg-white p-4 xl:min-h-0">{children}</div>
+            <aside className="hidden min-h-0 border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex xl:flex-col">
+              <div className="flex-1 overflow-y-auto p-4">
+                {contextBody ?? (
+                  <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">MVP Contract</p>
+                    <ul className="mt-3 space-y-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.76)]">
+                      <li>频道负责轻松讨论，不直接背负执行压力。</li>
+                      <li>严肃工作必须进入讨论间，并和 Run 保持绑定。</li>
+                      <li>Topic 可见，Session 继续留在系统内部。</li>
+                      <li>任务板只做辅助，不取代聊天和房间。</li>
+                    </ul>
+                  </section>
+                )}
+
+                <section className="mt-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Live Machines</p>
+                    <span className="font-mono text-[10px] uppercase">{resolvedState.machines.length}</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {resolvedState.machines.map((machine) => (
+                      <div key={machine.id} className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold">{machine.name}</p>
+                          <span className={cn("border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", machineTone(machine.state))}>
+                            {machineStateLabel(machine.state)}
+                          </span>
                         </div>
-                        <span className="min-w-9 rounded-[6px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-2 py-1 text-center font-mono text-[11px]">
-                          {channel.unread}
-                        </span>
+                        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                          {machine.cli}
+                        </p>
                       </div>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-center justify-between px-2">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                    讨论间
-                  </p>
-                  <span className="rounded-[6px] border border-[var(--shock-ink)] bg-[var(--shock-pink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white">
-                    干活
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {resolvedState.rooms.map((room) => (
-                    <Link
-                      key={room.id}
-                      href={`/rooms/${room.id}`}
-                      className={cn(
-                        "block rounded-[8px] border-2 border-[var(--shock-ink)] px-3 py-3 transition-all duration-150 hover:-translate-y-0.5",
-                        selectedRoomId === room.id
-                          ? "bg-white shadow-[4px_4px_0_0_var(--shock-pink)]"
-                          : "bg-[var(--shock-cream)]"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-display text-lg font-semibold">{room.title}</p>
-                          <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.68)]">
-                            {room.issueKey}
-                          </p>
-                        </div>
-                        <span className="min-w-9 rounded-[6px] border-2 border-[var(--shock-ink)] bg-white px-2 py-1 text-center font-mono text-[11px]">
-                          {room.unread}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <div className="space-y-3 border-t-2 border-[var(--shock-ink)] px-3 py-3">
-              <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-3">
-                <div className="space-y-2">
-                  {resolvedState.machines.map((machine) => (
-                    <div key={machine.id} className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-display text-base">{machine.name}</p>
-                        <span className={cn("rounded-full px-2 py-1 font-mono text-[10px] uppercase", machineTone(machine.state))}>
-                          {machineStateLabel(machine.state)}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-[color:rgba(24,20,14,0.72)]">{machine.cli}</p>
-                      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        {machine.os} / {machine.lastHeartbeat}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <button className="w-full rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[4px_4px_0_0_var(--shock-ink)]">
-                新工作区
-              </button>
-
-              <div className="px-1">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                  repo
-                </p>
-                <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.68)]">
-                  {hasWorkspaceTruth
-                    ? resolvedState.workspace.repo || "当前 workspace 还没绑定 repo"
-                    : loading
-                      ? "等待同步当前仓库..."
-                      : error
-                        ? "当前拿不到 workspace repo 真值"
-                        : "当前 workspace 尚未返回 repo 信息"}
-                </p>
-                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                  runtime
-                </p>
-                <p className="mt-2 text-xs leading-5 text-[color:rgba(24,20,14,0.68)]">
-                  {hasWorkspaceTruth
-                    ? `${resolvedState.workspace.pairedRuntime || "未选择"} / ${resolvedState.workspace.pairingStatus || "待同步"} / ${resolvedState.machines.length} runtimes`
-                    : loading
-                      ? "等待同步当前 runtime..."
-                      : error
-                        ? "当前拿不到 runtime pairing 真值"
-                        : "当前 workspace 尚未返回 runtime 信息"}
-                </p>
-              </div>
-
-              <div className="hidden rounded-[8px] border-2 border-[var(--shock-ink)] bg-white p-3 xl:block">
-                <div className="mb-3 flex items-center justify-between">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.24em]">公民 Agent</p>
-                    <span className="rounded-full bg-[var(--shock-yellow)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--shock-ink)]">
-                    {resolvedState.agents.length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {resolvedState.agents.map((agent) => (
-                    <Link
-                      key={agent.id}
-                      href={`/agents/${agent.id}`}
-                      className="block rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 transition-transform hover:-translate-y-0.5"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-display text-base">{agent.name}</p>
-                        <span className={cn("rounded-full px-2 py-1 font-mono text-[10px] uppercase", agentTone(agent.state))}>
-                          {agentStateLabel(agent.state)}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-[color:rgba(24,20,14,0.72)]">{agent.mood}</p>
-                      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        泳道 {agent.lane}
-                      </p>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </aside>
-
-          <section className="flex min-h-0 flex-col bg-white">
-            <div className="border-b-2 border-[var(--shock-ink)] px-4 py-3">
-              <div className="grid gap-3 xl:grid-cols-[180px_minmax(0,1fr)_auto] xl:items-center">
-                <div className="font-display text-xl font-bold">OPENSHOCK.AI</div>
-                <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
-                  <p className="font-mono text-[11px] text-[color:rgba(24,20,14,0.52)]">Search workspace...</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] bg-white font-mono text-[10px]">⚙</div>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] bg-white font-mono text-[10px]">◎</div>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] font-mono text-[10px]">你</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-end">
-                <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                    {eyebrow}
-                  </p>
-                  <h2 className="mt-2 font-display text-3xl font-bold leading-none">{title}</h2>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                    {description}
-                  </p>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {stats.map((stat) => (
-                    <div
-                      key={stat.label}
-                      className={cn(
-                        "rounded-[8px] border-2 border-[var(--shock-ink)] px-4 py-3",
-                        statTone(stat.tone)
-                      )}
-                    >
-                      <p className="font-mono text-[11px] uppercase tracking-[0.18em]">{stat.label}</p>
-                      <p className="mt-2 font-display text-3xl font-bold">{stat.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[color:rgba(24,20,14,0.68)]">
-                  当前上下文
-                </p>
-                <h3 className="mt-2 font-display text-2xl font-bold">{contextTitle}</h3>
-                <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{contextDescription}</p>
-              </div>
-              {contextBody ?? (
-                <section className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] p-4">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em]">MVP 契约</p>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-                    <li>频道负责轻松讨论，不直接背负执行压力。</li>
-                    <li>严肃工作必须进入讨论间，和 Run 保持绑定。</li>
-                    <li>Topic 可见，Session 继续留在系统内部。</li>
-                    <li>任务板只做辅助，不取代聊天和房间。</li>
-                  </ul>
+                    ))}
+                  </div>
                 </section>
-              )}
-            </div>
 
-            <div className="flex-1 overflow-y-auto bg-white p-4 xl:min-h-0">{children}</div>
-          </section>
-        </div>
+                <section className="mt-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Agents</p>
+                    <span className="font-mono text-[10px] uppercase">{resolvedState.agents.length}</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {resolvedState.agents.slice(0, 5).map((agent) => (
+                      <Link
+                        key={agent.id}
+                        href={`/agents/${agent.id}`}
+                        className="block border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="min-w-0 flex-1 truncate font-semibold">{agent.name}</p>
+                          <span className={cn("border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", agentTone(agent.state))}>
+                            {agentStateLabel(agent.state)}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                          {agent.lane}
+                        </p>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </aside>
+          </div>
+        </section>
       </div>
     </main>
   );

@@ -12,7 +12,11 @@ import {
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionStatus } from "@/lib/session-authz";
-import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
+import {
+  StitchSidebar,
+  StitchTopBar,
+  WorkspaceStatusStrip,
+} from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -163,6 +167,7 @@ export function StitchBoardView() {
   const inboxCount = loading || error ? 0 : approvalCenter.openCount;
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
+  const disconnected = loading || Boolean(error) || liveMachines.every((machine) => machine.state === "offline");
 
   async function handleCreateIssue() {
     if (!title.trim() || creating || !canCreateIssue) return;
@@ -194,6 +199,7 @@ export function StitchBoardView() {
           inboxCount={inboxCount}
         />
         <section className="flex min-h-0 flex-col">
+          <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
             eyebrow="Planning Surface"
             title="Board"
@@ -216,8 +222,8 @@ export function StitchBoardView() {
             </div>
           </div>
 
-          <div className="grid flex-1 min-h-0 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="overflow-x-auto bg-[#f7f7f7] px-4 py-4">
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-h-0 overflow-auto bg-[var(--shock-paper)] px-4 py-4">
               {loading ? (
                 <SurfaceStateMessage
                   title="正在同步任务板"
@@ -228,7 +234,7 @@ export function StitchBoardView() {
               ) : liveIssues.length === 0 ? (
                 <SurfaceStateMessage title="当前还没有任务卡" message="等第一条 Issue 创建后，Board 会直接显示 live lane truth。" />
               ) : (
-                <div className="grid min-w-[1560px] gap-4 xl:grid-cols-6">
+                <div className="grid min-w-[1500px] gap-4 xl:grid-cols-6">
                   {columns.map((column) => (
                     <section key={column.title}>
                       <div className="mb-3 flex items-center justify-between">
@@ -243,7 +249,7 @@ export function StitchBoardView() {
                             key={card.id}
                             href={`/issues/${card.key}`}
                             className={cn(
-                              "block rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[2px_2px_0_0_var(--shock-ink)]",
+                              "block border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[var(--shock-shadow-sm)]",
                               card.state === "running" && "bg-[var(--shock-yellow)]",
                               card.state === "paused" && "bg-[var(--shock-paper)]"
                             )}
@@ -266,19 +272,21 @@ export function StitchBoardView() {
               )}
             </div>
 
-            <aside className="hidden border-l-2 border-[var(--shock-ink)] bg-white p-4 xl:block">
-              <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[#fff8e6] p-4 shadow-[3px_3px_0_0_var(--shock-ink)]">
-                <p className="font-mono text-[10px] tracking-[0.16em]">创建新 Issue Room</p>
+            <aside className="hidden min-h-0 border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:block">
+              <div className="h-full overflow-y-auto p-4">
+                <div className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                  <p className="font-mono text-[10px] tracking-[0.16em]">创建新 Issue Room</p>
                 <div className="mt-4 space-y-3">
-                  <input data-testid="board-create-issue-title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!canCreateIssue} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求标题" />
-                  <textarea data-testid="board-create-issue-summary" value={summary} onChange={(event) => setSummary(event.target.value)} disabled={!canCreateIssue} className="min-h-[120px] w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求摘要" />
-                  <button data-testid="board-create-issue-submit" onClick={handleCreateIssue} disabled={creating || !canCreateIssue} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] disabled:opacity-60">
+                  <input data-testid="board-create-issue-title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!canCreateIssue} className="w-full border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求标题" />
+                  <textarea data-testid="board-create-issue-summary" value={summary} onChange={(event) => setSummary(event.target.value)} disabled={!canCreateIssue} className="min-h-[120px] w-full border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求摘要" />
+                  <button data-testid="board-create-issue-submit" onClick={handleCreateIssue} disabled={creating || !canCreateIssue} className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] shadow-[var(--shock-shadow-sm)] disabled:opacity-60">
                     {creating ? "创建中..." : "创建并进入讨论间"}
                   </button>
                   <p data-testid="board-create-issue-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
                     {createIssueStatus}
                   </p>
                 </div>
+              </div>
               </div>
             </aside>
           </div>
@@ -313,6 +321,7 @@ export function StitchInboxView() {
   const inboxCount = loading || error ? 0 : approvalCenter.openCount;
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
+  const disconnected = loading || Boolean(error) || sidebarMachines.every((machine) => machine.state === "offline");
 
   function findPullRequestForItem(item: Pick<ApprovalCenterItem, "href" | "roomId" | "runId">) {
     return state.pullRequests.find(
@@ -376,6 +385,7 @@ export function StitchInboxView() {
           inboxCount={inboxCount}
         />
         <section className="flex min-h-0 flex-col">
+          <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
             eyebrow="Human Decision Surface"
             title="Approval Center"
@@ -384,45 +394,37 @@ export function StitchInboxView() {
             activeTab="Inbox"
             searchPlaceholder="Search approval / review / block"
           />
-          <div className="flex-1 overflow-y-auto bg-white px-10 py-8">
-            <div className="mx-auto max-w-5xl">
-              <p className="inline-flex rounded-[4px] bg-[#ead7ff] px-2 py-1 font-mono text-[9px] text-[var(--shock-purple)]">HUMAN INTELLIGENCE REQUIRED</p>
-              <div className="mt-4 flex items-end justify-between gap-6">
-                <div>
-                  <h1 className="font-display text-6xl font-bold">Approval Center</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.62)]">
-                    `/inbox` 现在直接消费 `/v1/approval-center`，把 approval / blocked / review 的 open lifecycle、unread 热点和 recent resolution 明面化，不再停在裸卡片列表。
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-6 text-right xl:grid-cols-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)] px-4 py-4">
+            <div className="mx-auto max-w-[1180px]">
+              <div className="border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
                   <div>
-                    <p data-testid="approval-center-open-count" className="font-display text-4xl font-bold">
-                      {centerLoading || error ? "…" : approvalCenter.openCount}
+                    <p className="inline-flex border border-[var(--shock-ink)] bg-[#ead7ff] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[var(--shock-purple)]">
+                      Human Intelligence Required
                     </p>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Open Signals</p>
+                    <p className="mt-3 font-display text-[20px] font-bold">Approval Center</p>
+                    <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.62)]">
+                      `/inbox` 直接消费 `/v1/approval-center`，把 approval / blocked / review 的 open lifecycle、unread 热点和 recent resolution 明面化。
+                    </p>
                   </div>
-                  <div>
-                    <p data-testid="approval-center-unread-count" className="font-display text-4xl font-bold">
-                      {centerLoading || error ? "…" : approvalCenter.unreadCount}
-                    </p>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Unread Hotspots</p>
-                  </div>
-                  <div>
-                    <p data-testid="approval-center-recent-count" className="font-display text-4xl font-bold">
-                      {centerLoading || error ? "…" : approvalCenter.recentCount}
-                    </p>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Recent Resolutions</p>
-                  </div>
-                  <div>
-                    <p data-testid="approval-center-blocked-count" className="font-display text-4xl font-bold">
-                      {centerLoading || error ? "…" : blockedCount}
-                    </p>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Critical Blocks</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]" data-testid="approval-center-open-count">
+                      {centerLoading || error ? "…" : approvalCenter.openCount} open
+                    </span>
+                    <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]" data-testid="approval-center-unread-count">
+                      {centerLoading || error ? "…" : approvalCenter.unreadCount} unread
+                    </span>
+                    <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]" data-testid="approval-center-recent-count">
+                      {centerLoading || error ? "…" : approvalCenter.recentCount} recent
+                    </span>
+                    <span className="border border-[var(--shock-ink)] bg-[var(--shock-pink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white" data-testid="approval-center-blocked-count">
+                      {centerLoading || error ? "…" : blockedCount} blocked
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-4 flex flex-wrap gap-2">
                 {[
                   { id: "all", label: "All", count: approvalCenter.openCount },
                   { id: "approval", label: "Approvals", count: approvalCenter.approvalCount },
@@ -436,8 +438,8 @@ export function StitchInboxView() {
                     data-testid={`approval-center-filter-${filter.id}`}
                     onClick={() => setActiveFilter(filter.id as ApprovalCenterFilter)}
                     className={cn(
-                      "rounded-full border-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
-                      activeFilter === filter.id ? "bg-[var(--shock-yellow)] shadow-[3px_3px_0_0_var(--shock-ink)]" : "bg-white"
+                      "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]",
+                      activeFilter === filter.id ? "bg-[var(--shock-yellow)] shadow-[var(--shock-shadow-sm)]" : "bg-white"
                     )}
                   >
                     {filter.label} · {centerLoading || error ? "…" : filter.count}
@@ -445,7 +447,7 @@ export function StitchInboxView() {
                 ))}
               </div>
 
-              <div className="mt-8 space-y-5">
+              <div className="mt-4 space-y-3">
                 {centerLoading ? (
                   <SurfaceStateMessage title="正在同步审批中心" message="等待 server 返回当前 `/v1/state + /v1/approval-center` 真值。" />
                 ) : error ? (
@@ -468,12 +470,12 @@ export function StitchInboxView() {
                       key={item.id}
                       data-testid={`approval-center-signal-${item.id}`}
                       className={cn(
-                        "grid gap-4 rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[3px_3px_0_0_var(--shock-ink)] xl:grid-cols-[56px_minmax(0,1fr)_200px]",
+                        "grid gap-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)] xl:grid-cols-[48px_minmax(0,1fr)_180px]",
                         index === 0 && "border-l-[6px] border-l-[var(--shock-yellow)]",
                         index === 1 && "border-l-[6px] border-l-[var(--shock-purple)]"
                       )}
                     >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] text-lg">
+                      <div className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-[#f7f7f7] text-base">
                         {signalIcon(item.kind)}
                       </div>
                       <div>
@@ -501,13 +503,13 @@ export function StitchInboxView() {
                             <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{pullRequestStatusLabel(pullRequest.status)}</span>
                           ) : null}
                         </div>
-                        <h3 className="mt-2 font-display text-2xl font-bold">{item.title}</h3>
-                        <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{item.summary}</p>
+                        <h3 className="mt-2 font-display text-[18px] font-bold leading-6">{item.title}</h3>
+                        <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{item.summary}</p>
                         <div className="mt-4 flex flex-wrap gap-2">
                           <Link
                             data-testid={`approval-center-room-link-${item.id}`}
                             href={roomHref}
-                            className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px]"
+                            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px]"
                           >
                             Room
                           </Link>
@@ -515,7 +517,7 @@ export function StitchInboxView() {
                             <Link
                               data-testid={`approval-center-run-link-${item.id}`}
                               href={runHref}
-                              className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                             >
                               Run
                             </Link>
@@ -526,7 +528,7 @@ export function StitchInboxView() {
                               href={pullRequest.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
+                              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
                             >
                               PR
                             </a>
@@ -541,7 +543,7 @@ export function StitchInboxView() {
                             disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, decision))}
                             onClick={() => void handleInboxDecision(item, decision)}
                             className={cn(
-                              "inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] px-4 py-3 font-mono text-[10px] disabled:opacity-60",
+                              "inline-flex min-w-[140px] items-center justify-center border-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60",
                               decisionTone(decision)
                             )}
                           >
@@ -561,11 +563,11 @@ export function StitchInboxView() {
                 )}
               </div>
 
-              <div className="mt-10 rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] p-5 shadow-[3px_3px_0_0_var(--shock-ink)]">
+              <div className="mt-6 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Recent Resolution Ledger</p>
-                    <h2 className="mt-2 font-display text-3xl font-bold">最近状态回写</h2>
+                    <h2 className="mt-2 font-display text-[20px] font-bold">最近状态回写</h2>
                   </div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
                     {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} items`}
@@ -581,7 +583,7 @@ export function StitchInboxView() {
                       <article
                         key={item.id}
                         data-testid={`approval-center-recent-${item.id}`}
-                        className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+                        className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4"
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
@@ -590,12 +592,12 @@ export function StitchInboxView() {
                           <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.room}</span>
                           <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.time}</span>
                         </div>
-                        <h3 className="mt-2 font-display text-2xl font-bold">{item.title}</h3>
-                        <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{item.summary}</p>
+                        <h3 className="mt-2 font-display text-[18px] font-bold">{item.title}</h3>
+                        <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{item.summary}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Link
                             href={item.href}
-                            className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                            className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                           >
                             打开上下文
                           </Link>
