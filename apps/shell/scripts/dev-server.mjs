@@ -581,6 +581,45 @@ async function handleOperatorChannelContextUpsert(req, res) {
     const docPaths = normalizeStringArray(input.doc_paths);
     const runtimeEntries = normalizeStringArray(input.runtime_entries);
     const ruleEntries = normalizeStringArray(input.rule_entries);
+    const hostedAccessInput =
+      input.hosted_access && typeof input.hosted_access === "object" && !Array.isArray(input.hosted_access)
+        ? input.hosted_access
+        : {};
+    const hostedWebUrl = normalizeText(hostedAccessInput.hosted_web_url) || normalizeText(input.hosted_web_url) || null;
+    const accessMode = normalizeText(hostedAccessInput.access_mode) || normalizeText(input.access_mode) || null;
+    const stableLoginState =
+      normalizeText(hostedAccessInput.stable_login_state) || normalizeText(input.stable_login_state) || null;
+    const loginProvider = normalizeText(hostedAccessInput.login_provider) || normalizeText(input.login_provider) || null;
+    const nonLocalAccessEnabledValue =
+      hostedAccessInput.non_local_access_enabled ?? input.non_local_access_enabled ?? undefined;
+    const nonLocalAccessEnabled =
+      typeof nonLocalAccessEnabledValue === "boolean" ? nonLocalAccessEnabledValue : undefined;
+    const sessionTtlMinutesValue = hostedAccessInput.session_ttl_minutes ?? input.session_ttl_minutes ?? undefined;
+    const sessionTtlMinutes =
+      sessionTtlMinutesValue === null
+        ? null
+        : Number.isInteger(sessionTtlMinutesValue) && sessionTtlMinutesValue > 0
+          ? sessionTtlMinutesValue
+          : undefined;
+    const hostedAccessPayload = {};
+    if (hostedWebUrl) {
+      hostedAccessPayload.hosted_web_url = hostedWebUrl;
+    }
+    if (accessMode) {
+      hostedAccessPayload.access_mode = accessMode;
+    }
+    if (nonLocalAccessEnabled !== undefined) {
+      hostedAccessPayload.non_local_access_enabled = nonLocalAccessEnabled;
+    }
+    if (stableLoginState) {
+      hostedAccessPayload.stable_login_state = stableLoginState;
+    }
+    if (loginProvider) {
+      hostedAccessPayload.login_provider = loginProvider;
+    }
+    if (sessionTtlMinutes !== undefined) {
+      hostedAccessPayload.session_ttl_minutes = sessionTtlMinutes;
+    }
     const result = await fetchUpstreamJson(`/v1/channels/${encodeURIComponent(channelId)}/context`, {
       method: "PUT",
       body: {
@@ -592,6 +631,7 @@ async function handleOperatorChannelContextUpsert(req, res) {
         doc_paths: docPaths.length > 0 ? docPaths : undefined,
         runtime_entries: runtimeEntries.length > 0 ? runtimeEntries : undefined,
         rule_entries: ruleEntries.length > 0 ? ruleEntries : undefined,
+        hosted_access: Object.keys(hostedAccessPayload).length > 0 ? hostedAccessPayload : undefined,
         policy_snapshot: {
           mode: "single_human_multi_agent",
           boundary: "channel_aligned_entry",
@@ -2748,6 +2788,7 @@ function buildStage5aHostedWorkbenchProjection({
     null;
 
   const hostedEntryUrl =
+    normalizeText(statusSource?.hosted_web_url) ||
     normalizeText(statusSource?.hosted_entry_url) ||
     normalizeText(statusSource?.entry_url) ||
     normalizeText(statusSource?.hosted_url) ||
@@ -2758,9 +2799,15 @@ function buildStage5aHostedWorkbenchProjection({
     hostedEntryUrl ||
     null;
   const hostedHomeNonLocal = isNonLocalHttpUrl(hostedHomeUrl);
-  const nonLocalAccess = isNonLocalHttpUrl(hostedEntryUrl);
+  const nonLocalAccess =
+    typeof statusSource?.non_local_access_enabled === "boolean"
+      ? statusSource.non_local_access_enabled
+      : isNonLocalHttpUrl(hostedEntryUrl);
+  const stableLoginState =
+    normalizeText(statusSource?.stable_login_state) || normalizeText(statusSource?.login_state) || "pending";
   const loginReady =
-    normalizeText(statusSource?.login_state) === "ready" ||
+    stableLoginState === "stable" ||
+    stableLoginState === "ready" ||
     normalizeText(statusSource?.session_state) === "ready" ||
     (normalizeText(chain?.identity_link_status) === "ready" && normalizeText(chain?.installation_status) === "ready");
   const pendingApprovals = Array.isArray(approvalHolds)
@@ -2797,6 +2844,19 @@ function buildStage5aHostedWorkbenchProjection({
     hosted_access: {
       hosted_entry_url: hostedEntryUrl,
       non_local_access: nonLocalAccess,
+      hosted_web_url: hostedEntryUrl,
+      access_mode: normalizeText(statusSource?.access_mode) || "hosted_web",
+      non_local_access_enabled: nonLocalAccess,
+      stable_login_state: stableLoginState || (loginReady ? "stable" : "pending"),
+      login_provider: normalizeText(statusSource?.login_provider) || null,
+      session_ttl_minutes:
+        Number.isInteger(statusSource?.session_ttl_minutes) && statusSource.session_ttl_minutes > 0
+          ? statusSource.session_ttl_minutes
+          : null,
+      source:
+        normalizeText(statusSource?.source) ||
+        (statusSource && typeof statusSource === "object" ? "channel_context_projection" : "runtime_projection"),
+      payload: statusSource && typeof statusSource === "object" ? statusSource : {},
       login_state: loginReady ? "ready" : "pending",
       workspace_id: normalizeText(channelContextContract?.workspace?.workspace_id) || null,
       channel_id: resolvedChannelId,

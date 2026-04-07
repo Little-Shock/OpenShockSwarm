@@ -210,6 +210,8 @@ const APPROVAL_NOTIFICATION_TRIGGER_EVENTS = Object.freeze([
 ]);
 const SKILL_POLICY_PLUGIN_SCOPES = new Set(["channel", "workspace"]);
 const TOKEN_QUOTA_STATES = new Set(["healthy", "near_limit", "blocked"]);
+const HOSTED_ACCESS_MODES = new Set(["hosted_web", "local_hosted_bridge"]);
+const STABLE_LOGIN_STATES = new Set(["stable", "pending", "degraded"]);
 const EXTERNAL_MEMORY_PROVIDER_STATUSES = new Set(["active", "disabled"]);
 const DIGITAL_TWIN_STATUSES = new Set(["active", "paused", "disabled"]);
 const DIGITAL_TWIN_MODES = new Set(["advisory", "delegate", "simulate"]);
@@ -3301,6 +3303,7 @@ export class ServerCoordinator {
         secretsBinding: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_secrets_binding_upsert")),
         skillPolicyPlugin: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_skill_policy_plugin_upsert")),
         tokenQuotaContext: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_token_quota_context_upsert")),
+        hostedAccess: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_hosted_access_upsert")),
         digitalTwin: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_digital_twin_upsert")),
         operationalCapability: mapEntry(
           this.findLatestChannelAuditByAction(channel, "channel_operational_capability_upsert")
@@ -4290,9 +4293,10 @@ export class ServerCoordinator {
         baselineRef: null,
         fixedDirectory: null,
         docPaths: [],
-          runtimeEntries: [],
-          ruleEntries: []
-        },
+        runtimeEntries: [],
+        ruleEntries: [],
+        hostedAccess: null
+      },
       governance: {
         authIdentity: channel.governance.authIdentity,
         member: channel.governance.member,
@@ -4334,6 +4338,7 @@ export class ServerCoordinator {
       "secretsBinding",
       "skillPolicyPlugin",
       "tokenQuotaContext",
+      "hostedAccess",
       "digitalTwin",
       "operationalCapability",
       "policySnapshot"
@@ -4358,7 +4363,8 @@ export class ServerCoordinator {
           fixedDirectory: null,
           docPaths: [],
           runtimeEntries: [],
-          ruleEntries: []
+          ruleEntries: [],
+          hostedAccess: null
         },
         governance: createEmptyChannelGovernance(),
         orchestrationUpgrade: createEmptyChannelOrchestrationUpgrade(),
@@ -4410,6 +4416,106 @@ export class ServerCoordinator {
         .filter((item) => typeof item === "string" && item.trim().length > 0)
         .map((item) => item.trim());
     }
+    if (input.hostedAccess !== undefined) {
+      const hostedAccessInput = input.hostedAccess;
+      assertOrThrow(
+        hostedAccessInput && typeof hostedAccessInput === "object" && !Array.isArray(hostedAccessInput),
+        "invalid_hosted_access",
+        "hosted_access payload must be object"
+      );
+      const allowedHostedAccessKeys = new Set([
+        "hostedWebUrl",
+        "accessMode",
+        "nonLocalAccessEnabled",
+        "stableLoginState",
+        "loginProvider",
+        "sessionTtlMinutes"
+      ]);
+      for (const key of Object.keys(hostedAccessInput)) {
+        assertOrThrow(
+          allowedHostedAccessKeys.has(key),
+          "invalid_hosted_access_field",
+          `unsupported hosted_access field: ${key}`
+        );
+      }
+      const existingHostedAccess =
+        channel.context.hostedAccess && typeof channel.context.hostedAccess === "object"
+          ? channel.context.hostedAccess
+          : null;
+      const hostedWebUrl =
+        normalizeOptionalScopeId(hostedAccessInput.hostedWebUrl) ??
+        normalizeOptionalScopeId(existingHostedAccess?.hostedWebUrl);
+      assertOrThrow(hostedWebUrl, "hosted_web_url_required", "hosted_access.hosted_web_url is required");
+
+      const accessMode =
+        normalizeOptionalScopeId(hostedAccessInput.accessMode) ??
+        normalizeOptionalScopeId(existingHostedAccess?.accessMode) ??
+        "hosted_web";
+      assertOrThrow(HOSTED_ACCESS_MODES.has(accessMode), "invalid_hosted_access_mode", "hosted_access.access_mode is invalid");
+
+      let nonLocalAccessEnabled = existingHostedAccess?.nonLocalAccessEnabled ?? false;
+      if (hostedAccessInput.nonLocalAccessEnabled !== undefined) {
+        assertOrThrow(
+          typeof hostedAccessInput.nonLocalAccessEnabled === "boolean",
+          "invalid_non_local_access_enabled",
+          "hosted_access.non_local_access_enabled must be boolean"
+        );
+        nonLocalAccessEnabled = hostedAccessInput.nonLocalAccessEnabled;
+      }
+
+      const stableLoginState =
+        normalizeOptionalScopeId(hostedAccessInput.stableLoginState) ??
+        normalizeOptionalScopeId(existingHostedAccess?.stableLoginState) ??
+        "pending";
+      assertOrThrow(
+        STABLE_LOGIN_STATES.has(stableLoginState),
+        "invalid_stable_login_state",
+        "hosted_access.stable_login_state is invalid"
+      );
+
+      const loginProvider =
+        normalizeOptionalScopeId(hostedAccessInput.loginProvider) ??
+        normalizeOptionalScopeId(existingHostedAccess?.loginProvider);
+      let sessionTtlMinutes = existingHostedAccess?.sessionTtlMinutes ?? null;
+      if (hostedAccessInput.sessionTtlMinutes !== undefined) {
+        if (hostedAccessInput.sessionTtlMinutes === null || hostedAccessInput.sessionTtlMinutes === "") {
+          sessionTtlMinutes = null;
+        } else {
+          const normalizedSessionTtl = Number(hostedAccessInput.sessionTtlMinutes);
+          assertOrThrow(
+            Number.isInteger(normalizedSessionTtl) && normalizedSessionTtl > 0,
+            "invalid_session_ttl_minutes",
+            "hosted_access.session_ttl_minutes must be positive integer"
+          );
+          sessionTtlMinutes = normalizedSessionTtl;
+        }
+      }
+      const hostedAccessUpdatedAt = nowIso();
+      channel.context.hostedAccess = {
+        hostedWebUrl,
+        accessMode,
+        nonLocalAccessEnabled,
+        stableLoginState,
+        loginProvider,
+        sessionTtlMinutes,
+        updatedAt: hostedAccessUpdatedAt,
+        updatedBy: operatorId
+      };
+      this.appendChannelAuditEntry(channel, {
+        actorId: operatorId,
+        action: "channel_hosted_access_upsert",
+        target: `channel:${normalizedChannelId}`,
+        policySnapshot: input.policySnapshot,
+        details: {
+          hosted_web_url: channel.context.hostedAccess.hostedWebUrl,
+          access_mode: channel.context.hostedAccess.accessMode,
+          non_local_access_enabled: channel.context.hostedAccess.nonLocalAccessEnabled,
+          stable_login_state: channel.context.hostedAccess.stableLoginState,
+          login_provider: channel.context.hostedAccess.loginProvider,
+          session_ttl_minutes: channel.context.hostedAccess.sessionTtlMinutes
+        }
+      });
+    }
     this.upsertChannelGovernance(
       channel,
       {
@@ -4449,6 +4555,12 @@ export class ServerCoordinator {
         token_quota_state: channel.governance.tokenQuotaContext?.quotaState ?? null,
         token_used: channel.governance.tokenQuotaContext?.tokenUsed ?? null,
         token_limit: channel.governance.tokenQuotaContext?.tokenLimit ?? null,
+        hosted_access_mode: channel.context.hostedAccess?.accessMode ?? null,
+        hosted_web_url: channel.context.hostedAccess?.hostedWebUrl ?? null,
+        non_local_access_enabled: channel.context.hostedAccess?.nonLocalAccessEnabled ?? null,
+        stable_login_state: channel.context.hostedAccess?.stableLoginState ?? null,
+        login_provider: channel.context.hostedAccess?.loginProvider ?? null,
+        session_ttl_minutes: channel.context.hostedAccess?.sessionTtlMinutes ?? null,
         digital_twin_status: channel.governance.digitalTwin?.status ?? null,
         digital_twin_mode: channel.governance.digitalTwin?.mode ?? null,
         operational_capability_level: channel.governance.operationalCapability?.capabilityLevel ?? null

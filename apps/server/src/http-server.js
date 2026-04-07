@@ -1009,7 +1009,19 @@ function serializeChannelContextContract(input = {}) {
       fixed_directory: input.context?.fixedDirectory ?? null,
       doc_paths: deepClone(input.context?.docPaths ?? []),
       runtime_entries: deepClone(input.context?.runtimeEntries ?? []),
-      rule_entries: deepClone(input.context?.ruleEntries ?? [])
+      rule_entries: deepClone(input.context?.ruleEntries ?? []),
+      hosted_access: input.context?.hostedAccess
+        ? {
+            hosted_web_url: input.context.hostedAccess.hostedWebUrl ?? null,
+            access_mode: input.context.hostedAccess.accessMode ?? "hosted_web",
+            non_local_access_enabled: input.context.hostedAccess.nonLocalAccessEnabled === true,
+            stable_login_state: input.context.hostedAccess.stableLoginState ?? "pending",
+            login_provider: input.context.hostedAccess.loginProvider ?? null,
+            session_ttl_minutes: input.context.hostedAccess.sessionTtlMinutes ?? null,
+            updated_at: input.context.hostedAccess.updatedAt ?? null,
+            updated_by: input.context.hostedAccess.updatedBy ?? null
+          }
+        : null
     },
     governance: {
       auth_identity: input.governance?.authIdentity
@@ -1222,6 +1234,7 @@ function serializeChannelContextContract(input = {}) {
       github_installation_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       skill_policy_plugin_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       token_quota_context_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      hosted_access_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       digital_twin_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       operational_capability_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       orchestration_upgrade_upsert: `/v1/channels/${encodeURIComponent(channelId)}/orchestration-upgrade`,
@@ -1291,6 +1304,13 @@ function serializeChannelContextContract(input = {}) {
               audit_id: input.auditAnchor.latest.tokenQuotaContext.auditId ?? null,
               action: input.auditAnchor.latest.tokenQuotaContext.action ?? null,
               at: input.auditAnchor.latest.tokenQuotaContext.at ?? null
+            }
+          : null,
+        hosted_access: input.auditAnchor?.latest?.hostedAccess
+          ? {
+              audit_id: input.auditAnchor.latest.hostedAccess.auditId ?? null,
+              action: input.auditAnchor.latest.hostedAccess.action ?? null,
+              at: input.auditAnchor.latest.hostedAccess.at ?? null
             }
           : null,
         digital_twin: input.auditAnchor?.latest?.digitalTwin
@@ -2939,6 +2959,7 @@ export function createHttpServer(coordinator, options = {}) {
           "secrets_binding",
           "skill_policy_plugin",
           "token_quota_context",
+          "hosted_access",
           "digital_twin",
           "operational_capability",
           "policy_snapshot"
@@ -3113,6 +3134,69 @@ export function createHttpServer(coordinator, options = {}) {
             }
           }
         }
+        if (body.hosted_access !== undefined) {
+          assertObjectBody(body.hosted_access, "invalid_hosted_access", "hosted_access payload must be object");
+          const allowedHostedAccessFields = new Set([
+            "hosted_web_url",
+            "access_mode",
+            "non_local_access_enabled",
+            "stable_login_state",
+            "login_provider",
+            "session_ttl_minutes"
+          ]);
+          for (const key of Object.keys(body.hosted_access)) {
+            if (!allowedHostedAccessFields.has(key)) {
+              throw new CoordinatorError("invalid_hosted_access_field", `unsupported hosted_access field: ${key}`);
+            }
+          }
+          if (
+            body.hosted_access.hosted_web_url !== undefined &&
+            (typeof body.hosted_access.hosted_web_url !== "string" || body.hosted_access.hosted_web_url.trim().length === 0)
+          ) {
+            throw new CoordinatorError("hosted_web_url_required", "hosted_access.hosted_web_url is required");
+          }
+          if (
+            body.hosted_access.access_mode !== undefined &&
+            (typeof body.hosted_access.access_mode !== "string" || body.hosted_access.access_mode.trim().length === 0)
+          ) {
+            throw new CoordinatorError("invalid_hosted_access_mode", "hosted_access.access_mode must be non-empty string");
+          }
+          if (
+            body.hosted_access.non_local_access_enabled !== undefined &&
+            typeof body.hosted_access.non_local_access_enabled !== "boolean"
+          ) {
+            throw new CoordinatorError(
+              "invalid_non_local_access_enabled",
+              "hosted_access.non_local_access_enabled must be boolean"
+            );
+          }
+          if (
+            body.hosted_access.stable_login_state !== undefined &&
+            (typeof body.hosted_access.stable_login_state !== "string" ||
+              body.hosted_access.stable_login_state.trim().length === 0)
+          ) {
+            throw new CoordinatorError(
+              "invalid_stable_login_state",
+              "hosted_access.stable_login_state must be non-empty string"
+            );
+          }
+          if (
+            body.hosted_access.login_provider !== undefined &&
+            (typeof body.hosted_access.login_provider !== "string" || body.hosted_access.login_provider.trim().length === 0)
+          ) {
+            throw new CoordinatorError("invalid_hosted_access_field", "hosted_access.login_provider must be non-empty string");
+          }
+          if (
+            body.hosted_access.session_ttl_minutes !== undefined &&
+            body.hosted_access.session_ttl_minutes !== null &&
+            (!Number.isInteger(body.hosted_access.session_ttl_minutes) || body.hosted_access.session_ttl_minutes <= 0)
+          ) {
+            throw new CoordinatorError(
+              "invalid_session_ttl_minutes",
+              "hosted_access.session_ttl_minutes must be positive integer"
+            );
+          }
+        }
         if (body.digital_twin !== undefined) {
           assertObjectBody(body.digital_twin, "invalid_digital_twin", "digital_twin payload must be object");
           const allowedDigitalTwinFields = new Set([
@@ -3283,6 +3367,16 @@ export function createHttpServer(coordinator, options = {}) {
                 recallSource: body.token_quota_context.recall_source,
                 recallHits: body.token_quota_context.recall_hits,
                 degradeReason: body.token_quota_context.degrade_reason
+              }
+            : undefined,
+          hostedAccess: body.hosted_access
+            ? {
+                hostedWebUrl: body.hosted_access.hosted_web_url,
+                accessMode: body.hosted_access.access_mode,
+                nonLocalAccessEnabled: body.hosted_access.non_local_access_enabled,
+                stableLoginState: body.hosted_access.stable_login_state,
+                loginProvider: body.hosted_access.login_provider,
+                sessionTtlMinutes: body.hosted_access.session_ttl_minutes
               }
             : undefined,
           digitalTwin: body.digital_twin

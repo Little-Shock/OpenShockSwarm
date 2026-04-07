@@ -5955,6 +5955,190 @@ test("v1 stage4c orchestration and upgrade arbitration contract keeps formal tru
   });
 });
 
+test("v1 stage5a hosted access contract keeps hosted entry/login truth on channel context without shadow state", async () => {
+  const channelId = "channel_stage5a_hosted_access_contract";
+  const operatorId = "human_operator_stage5a";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const seeded = await requestJson({
+      port,
+      method: "POST",
+      path: "/runtime/fixtures/seed",
+      body: {}
+    });
+    assert.equal(seeded.statusCode, 200);
+
+    const upsertContext = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        workspace_id: "workspace_stage5a",
+        workspace_root: "/Users/atou/.slock/agents",
+        baseline_ref: "feat/initial-implementation@acf5766",
+        fixed_directory: "/Users/atou/OpenShockSwarm",
+        hosted_access: {
+          hosted_web_url: "https://openshock.dev/workbench",
+          access_mode: "hosted_web",
+          non_local_access_enabled: true,
+          stable_login_state: "stable",
+          login_provider: "github_oauth",
+          session_ttl_minutes: 480
+        },
+        policy_snapshot: {
+          mode: "stage5a_hosted_access",
+          boundary: "reuse_v1_channel_context_truth"
+        }
+      }
+    });
+    assert.equal(upsertContext.statusCode, 200);
+    assert.equal(
+      upsertContext.body.context.context.hosted_access.hosted_web_url,
+      "https://openshock.dev/workbench"
+    );
+    assert.equal(upsertContext.body.context.context.hosted_access.access_mode, "hosted_web");
+    assert.equal(upsertContext.body.context.context.hosted_access.non_local_access_enabled, true);
+    assert.equal(upsertContext.body.context.context.hosted_access.stable_login_state, "stable");
+    assert.equal(upsertContext.body.context.context.hosted_access.login_provider, "github_oauth");
+    assert.equal(upsertContext.body.context.context.hosted_access.session_ttl_minutes, 480);
+    assert.equal(
+      upsertContext.body.context.write_anchors.hosted_access_upsert,
+      `/v1/channels/${encodeURIComponent(channelId)}/context`
+    );
+    assert.equal(
+      upsertContext.body.context.audit_anchor.latest.hosted_access.action,
+      "channel_hosted_access_upsert"
+    );
+
+    const readContext = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+    });
+    assert.equal(readContext.statusCode, 200);
+    assert.equal(
+      readContext.body.context.context.hosted_access.hosted_web_url,
+      "https://openshock.dev/workbench"
+    );
+    assert.equal(readContext.body.context.context.hosted_access.non_local_access_enabled, true);
+
+    const auditTrail = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/audit-trail?limit=60`
+    });
+    assert.equal(auditTrail.statusCode, 200);
+    assert.equal(
+      auditTrail.body.items.some(
+        (item) =>
+          item.action === "channel_hosted_access_upsert" &&
+          item.details.hosted_web_url === "https://openshock.dev/workbench" &&
+          item.details.non_local_access_enabled === true
+      ),
+      true
+    );
+
+    const invalidHostedAccessField = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        hosted_access: {
+          hosted_web_url: "https://openshock.dev/workbench",
+          unsupported_field: true
+        }
+      }
+    });
+    assert.equal(invalidHostedAccessField.statusCode, 400);
+    assert.equal(invalidHostedAccessField.body.error.code, "invalid_hosted_access_field");
+
+    const invalidHostedAccessMode = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        hosted_access: {
+          hosted_web_url: "https://openshock.dev/workbench",
+          access_mode: "free_debate_social"
+        }
+      }
+    });
+    assert.equal(invalidHostedAccessMode.statusCode, 400);
+    assert.equal(invalidHostedAccessMode.body.error.code, "invalid_hosted_access_mode");
+
+    const invalidStableLoginState = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        hosted_access: {
+          hosted_web_url: "https://openshock.dev/workbench",
+          stable_login_state: "floating"
+        }
+      }
+    });
+    assert.equal(invalidStableLoginState.statusCode, 400);
+    assert.equal(invalidStableLoginState.body.error.code, "invalid_stable_login_state");
+
+    const invalidNonLocalAccess = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        hosted_access: {
+          hosted_web_url: "https://openshock.dev/workbench",
+          non_local_access_enabled: "true"
+        }
+      }
+    });
+    assert.equal(invalidNonLocalAccess.statusCode, 400);
+    assert.equal(invalidNonLocalAccess.body.error.code, "invalid_non_local_access_enabled");
+
+    const invalidSessionTtl = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        hosted_access: {
+          hosted_web_url: "https://openshock.dev/workbench",
+          session_ttl_minutes: 0
+        }
+      }
+    });
+    assert.equal(invalidSessionTtl.statusCode, 400);
+    assert.equal(invalidSessionTtl.body.error.code, "invalid_session_ttl_minutes");
+
+    const missingHostedWebUrl = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(`${channelId}_missing`)}/context`,
+      body: {
+        operator_id: operatorId,
+        workspace_id: "workspace_stage5a",
+        workspace_root: "/Users/atou/.slock/agents",
+        hosted_access: {
+          access_mode: "hosted_web"
+        }
+      }
+    });
+    assert.equal(missingHostedWebUrl.statusCode, 422);
+    assert.equal(missingHostedWebUrl.body.error.code, "hosted_web_url_required");
+
+    const payload = JSON.stringify({
+      context: readContext.body.context,
+      auditTrail: auditTrail.body
+    });
+    assert.equal(payload.includes("\"local_hosted_access_shadow\""), false);
+    assert.equal(payload.includes("\"stage4c\""), false);
+  });
+});
+
 test("v1 stage2 batch2 runtime recovery contract supports assignment enforcement and operator-triggered recoveries", async () => {
   const operatorId = "human_operator_stage2_batch2";
   const channelId = "channel_open_shock_batch2";
