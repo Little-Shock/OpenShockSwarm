@@ -189,12 +189,14 @@
 
 - PRD 来源: 十.工作流 H、十三.5
 - 优先级: P1
-- 当前状态: 未完成
+- 当前状态: 部分完成
 - 已落地:
   - [x] notifications 基础对象和接口已经出现
+  - [x] `/settings` 现在直接消费 `/v1/notifications`，可写 workspace browser/email policy、current browser subscriber、email subscriber，并展示 latest worker receipts
+  - [x] browser push / email fanout 已能把 blocked / review / approval 信号主动推出去，失败 / retry 也有 explicit `lastError` / receipt truth
 - 当前 GAP:
-  - [ ] 邀请、邮箱验证、密码重置、Browser Push、邮件通知都未成产品闭环
-  - [ ] 高优先级升级和恢复触达机制缺少真实发送链
+  - [ ] 邀请、邮箱验证、密码重置仍未接到同一 notification template / delivery chain
+  - [ ] @提及、mailbox 新消息、跨设备恢复触达等更细粒度通知策略仍未补齐
 - 对应 Test Cases: `TC-017`
 
 ### CHK-12 工作流 I: 执行隔离与权限控制

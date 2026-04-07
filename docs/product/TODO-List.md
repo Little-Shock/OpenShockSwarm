@@ -77,7 +77,8 @@
 - 现状:
   - notifications 对象存在
   - approval center lifecycle 已落到 `/inbox`
-  - 浏览器 push、邮件通知与真实 subscriber / delivery worker 仍未完成
+  - `/settings` 已接上 browser push / email policy、subscriber model、fanout receipts 与 retry truth
+  - 邀请 / verify / reset password mail template 仍未接到同一 delivery chain
 - 相关合同:
   - `CHK-08`
   - `CHK-11`
