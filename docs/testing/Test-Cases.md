@@ -263,7 +263,7 @@
 ## TC-020 多 Runtime 调度与 Failover
 
 - 业务目标: 确认系统可以管理多个 runtime，而不是只有单机配对。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-12` `CHK-14`
 - 前置条件: 存在多个活跃 runtime、scheduler 与 selection 策略。
 - 测试步骤:
@@ -271,7 +271,7 @@
   2. 创建 run 并观察调度决策。
   3. 模拟一个 runtime offline，检查 failover。
 - 预期结果: 调度、离线态、切换都可见且可验证。
-- 业务结论: 当前仅有 registry/pairing 基线，离完整调度还有距离。
+- 业务结论: 2026 年 4 月 7 日 `TKT-14` 新增 lease-aware runtime scheduler、显式 failover summary，以及 `pnpm test:headed-multi-runtime-scheduler-failover` 浏览器级回放；当前 `/setup` 与 `/agents` 已能直接展示 next-lane、active leases、scheduler strategy，selected runtime offline 时也会显式 failover 到 least-loaded runtime，并把 failover reason 回写到 run detail truth，所以这条 multi-runtime scheduler / failover 验证当前已可独立复核并通过。
 
 ## TC-021 Release Gate 对 pairing 漂移的拦截
 

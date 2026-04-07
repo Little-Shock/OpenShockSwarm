@@ -158,6 +158,47 @@ type RuntimeRecord struct {
 	HeartbeatTimeoutS  int               `json:"heartbeatTimeoutSeconds,omitempty"`
 }
 
+type RuntimeLease struct {
+	LeaseID      string `json:"leaseId"`
+	SessionID    string `json:"sessionId,omitempty"`
+	RunID        string `json:"runId,omitempty"`
+	RoomID       string `json:"roomId,omitempty"`
+	Runtime      string `json:"runtime"`
+	Machine      string `json:"machine"`
+	Owner        string `json:"owner,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	WorktreeName string `json:"worktreeName,omitempty"`
+	WorktreePath string `json:"worktreePath,omitempty"`
+	Cwd          string `json:"cwd,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+}
+
+type RuntimeSchedulerCandidate struct {
+	Runtime          string `json:"runtime"`
+	Machine          string `json:"machine"`
+	State            string `json:"state"`
+	PairingState     string `json:"pairingState"`
+	Schedulable      bool   `json:"schedulable"`
+	Selected         bool   `json:"selected"`
+	Preferred        bool   `json:"preferred"`
+	Assigned         bool   `json:"assigned"`
+	ActiveLeaseCount int    `json:"activeLeaseCount"`
+	Reason           string `json:"reason,omitempty"`
+}
+
+type RuntimeScheduler struct {
+	SelectedRuntime  string                      `json:"selectedRuntime"`
+	PreferredRuntime string                      `json:"preferredRuntime"`
+	AssignedRuntime  string                      `json:"assignedRuntime"`
+	AssignedMachine  string                      `json:"assignedMachine"`
+	Strategy         string                      `json:"strategy"`
+	FailoverFrom     string                      `json:"failoverFrom,omitempty"`
+	Summary          string                      `json:"summary"`
+	Candidates       []RuntimeSchedulerCandidate `json:"candidates"`
+}
+
 type InboxItem struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
@@ -300,22 +341,24 @@ type MemoryArtifactDetail struct {
 }
 
 type State struct {
-	Workspace       WorkspaceSnapshot                  `json:"workspace"`
-	Channels        []Channel                          `json:"channels"`
-	ChannelMessages map[string][]Message               `json:"channelMessages"`
-	Issues          []Issue                            `json:"issues"`
-	Rooms           []Room                             `json:"rooms"`
-	RoomMessages    map[string][]Message               `json:"roomMessages"`
-	Runs            []Run                              `json:"runs"`
-	Agents          []Agent                            `json:"agents"`
-	Machines        []Machine                          `json:"machines"`
-	Runtimes        []RuntimeRecord                    `json:"runtimes"`
-	Inbox           []InboxItem                        `json:"inbox"`
-	PullRequests    []PullRequest                      `json:"pullRequests"`
-	Sessions        []Session                          `json:"sessions"`
-	Auth            AuthSnapshot                       `json:"auth"`
-	Memory          []MemoryArtifact                   `json:"memory"`
-	MemoryVersions  map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`
+	Workspace        WorkspaceSnapshot                  `json:"workspace"`
+	Channels         []Channel                          `json:"channels"`
+	ChannelMessages  map[string][]Message               `json:"channelMessages"`
+	Issues           []Issue                            `json:"issues"`
+	Rooms            []Room                             `json:"rooms"`
+	RoomMessages     map[string][]Message               `json:"roomMessages"`
+	Runs             []Run                              `json:"runs"`
+	Agents           []Agent                            `json:"agents"`
+	Machines         []Machine                          `json:"machines"`
+	Runtimes         []RuntimeRecord                    `json:"runtimes"`
+	Inbox            []InboxItem                        `json:"inbox"`
+	PullRequests     []PullRequest                      `json:"pullRequests"`
+	Sessions         []Session                          `json:"sessions"`
+	RuntimeLeases    []RuntimeLease                     `json:"runtimeLeases,omitempty"`
+	RuntimeScheduler RuntimeScheduler                   `json:"runtimeScheduler"`
+	Auth             AuthSnapshot                       `json:"auth"`
+	Memory           []MemoryArtifact                   `json:"memory"`
+	MemoryVersions   map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`
 }
 
 type RoomDetail struct {

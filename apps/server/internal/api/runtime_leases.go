@@ -7,23 +7,6 @@ import (
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
 
-type RuntimeLease struct {
-	LeaseID      string `json:"leaseId"`
-	SessionID    string `json:"sessionId,omitempty"`
-	RunID        string `json:"runId,omitempty"`
-	RoomID       string `json:"roomId,omitempty"`
-	Runtime      string `json:"runtime"`
-	Machine      string `json:"machine"`
-	Owner        string `json:"owner,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Status       string `json:"status,omitempty"`
-	Branch       string `json:"branch,omitempty"`
-	WorktreeName string `json:"worktreeName,omitempty"`
-	WorktreePath string `json:"worktreePath,omitempty"`
-	Cwd          string `json:"cwd,omitempty"`
-	Summary      string `json:"summary,omitempty"`
-}
-
 type daemonLeaseConflict struct {
 	LeaseID       string `json:"leaseId,omitempty"`
 	RunID         string `json:"runId,omitempty"`
@@ -55,24 +38,13 @@ func (e *daemonHTTPError) Error() string {
 	return e.Message
 }
 
-func buildRuntimeLeases(snapshot store.State) []RuntimeLease {
-	leases := make([]RuntimeLease, 0, len(snapshot.Sessions))
-	for _, session := range snapshot.Sessions {
-		lease, ok := runtimeLeaseFromSession(snapshot, session)
-		if !ok {
-			continue
-		}
-		leases = append(leases, lease)
-	}
-	return leases
-}
-
 func runtimeRegistryResponse(snapshot store.State) map[string]any {
 	return map[string]any{
-		"pairedRuntime": snapshot.Workspace.PairedRuntime,
-		"pairingStatus": snapshot.Workspace.PairingStatus,
-		"runtimes":      snapshot.Runtimes,
-		"leases":        buildRuntimeLeases(snapshot),
+		"pairedRuntime":    snapshot.Workspace.PairedRuntime,
+		"pairingStatus":    snapshot.Workspace.PairingStatus,
+		"runtimes":         snapshot.Runtimes,
+		"leases":           snapshot.RuntimeLeases,
+		"runtimeScheduler": snapshot.RuntimeScheduler,
 	}
 }
 
@@ -92,61 +64,24 @@ func attachRoomRuntimeLease(req *ExecRequest, snapshot store.State, roomID, work
 	}
 }
 
-func findRoomRuntimeLease(snapshot store.State, roomID string) (RuntimeLease, bool) {
-	for _, session := range snapshot.Sessions {
-		if session.RoomID != roomID {
+func findRoomRuntimeLease(snapshot store.State, roomID string) (store.RuntimeLease, bool) {
+	for _, lease := range snapshot.RuntimeLeases {
+		if lease.RoomID != roomID {
 			continue
 		}
-		return runtimeLeaseFromSession(snapshot, session)
+		return lease, true
 	}
-	return RuntimeLease{}, false
+	return store.RuntimeLease{}, false
 }
 
-func findRunRuntimeLease(snapshot store.State, runID string) (RuntimeLease, bool) {
-	for _, session := range snapshot.Sessions {
-		if session.ActiveRunID != runID {
+func findRunRuntimeLease(snapshot store.State, runID string) (store.RuntimeLease, bool) {
+	for _, lease := range snapshot.RuntimeLeases {
+		if lease.RunID != runID {
 			continue
 		}
-		return runtimeLeaseFromSession(snapshot, session)
+		return lease, true
 	}
-	return RuntimeLease{}, false
-}
-
-func runtimeLeaseFromSession(snapshot store.State, session store.Session) (RuntimeLease, bool) {
-	run, _ := findRuntimeLeaseRunByID(snapshot, session.ActiveRunID)
-	runtimeName := defaultString(strings.TrimSpace(session.Runtime), strings.TrimSpace(run.Runtime))
-	machine := defaultString(strings.TrimSpace(session.Machine), strings.TrimSpace(run.Machine))
-	if runtimeName == "" && machine == "" {
-		return RuntimeLease{}, false
-	}
-	worktreePath := defaultString(strings.TrimSpace(session.WorktreePath), strings.TrimSpace(run.WorktreePath))
-	lease := RuntimeLease{
-		LeaseID:      defaultString(strings.TrimSpace(session.ID), defaultString(strings.TrimSpace(run.ID), strings.TrimSpace(session.RoomID))),
-		SessionID:    strings.TrimSpace(session.ID),
-		RunID:        defaultString(strings.TrimSpace(session.ActiveRunID), strings.TrimSpace(run.ID)),
-		RoomID:       strings.TrimSpace(session.RoomID),
-		Runtime:      defaultString(runtimeName, machine),
-		Machine:      defaultString(machine, runtimeName),
-		Owner:        strings.TrimSpace(run.Owner),
-		Provider:     defaultString(strings.TrimSpace(session.Provider), strings.TrimSpace(run.Provider)),
-		Status:       defaultString(strings.TrimSpace(session.Status), strings.TrimSpace(run.Status)),
-		Branch:       defaultString(strings.TrimSpace(session.Branch), strings.TrimSpace(run.Branch)),
-		WorktreeName: defaultString(strings.TrimSpace(session.Worktree), strings.TrimSpace(run.Worktree)),
-		WorktreePath: worktreePath,
-		Cwd:          worktreePath,
-		Summary:      defaultString(strings.TrimSpace(session.Summary), strings.TrimSpace(run.Summary)),
-	}
-	return lease, true
-}
-
-func findRuntimeLeaseRunByID(snapshot store.State, runID string) (store.Run, bool) {
-	runID = strings.TrimSpace(runID)
-	for _, item := range snapshot.Runs {
-		if item.ID == runID {
-			return item, true
-		}
-	}
-	return store.Run{}, false
+	return store.RuntimeLease{}, false
 }
 
 func buildConflictRoomMessage(prefix string, err error) string {

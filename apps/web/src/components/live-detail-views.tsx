@@ -360,6 +360,19 @@ export function LiveAgentsPageContent() {
   const pullRequests = loading || error ? [] : state.pullRequests;
   const runtimes = loading || error ? [] : readRuntimeRegistry(state);
   const sessions = loading || error ? [] : state.sessions;
+  const runtimeLeases = loading || error ? [] : state.runtimeLeases;
+  const runtimeScheduler =
+    loading || error
+      ? {
+          selectedRuntime: "",
+          preferredRuntime: "",
+          assignedRuntime: "",
+          assignedMachine: "",
+          strategy: "unavailable",
+          summary: "",
+          candidates: [],
+        }
+      : state.runtimeScheduler;
 
   return (
     <OpenShockShell
@@ -368,7 +381,7 @@ export function LiveAgentsPageContent() {
       title="把公民名录推进成 orchestration board"
       description="Agent 不只要可见，还要能把调度泳道、runtime 压力、人工闸门和 auto-merge 候选摆在同一个前台。"
       contextTitle="Agent Loop Surface"
-      contextDescription="这张票先把 orchestration board / agent control / auto-merge surface 收进 `/agents`，真正的 planner / lease / merge action 仍由 `#61/#62` 合同提供。"
+      contextDescription="这页现在直接消费 live scheduler / runtime lease / failover truth，把 orchestration board 上的 next-lane 与人工 gate 收成同一个前台。"
       contextBody={
         <DetailRail
           label="调度基线"
@@ -397,6 +410,8 @@ export function LiveAgentsPageContent() {
             pullRequests={pullRequests}
             runtimes={runtimes}
             sessions={sessions}
+            leases={runtimeLeases}
+            scheduler={runtimeScheduler}
           />
           <AgentsListView agentsList={agents} />
         </div>

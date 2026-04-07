@@ -145,6 +145,16 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
   inbox: [],
   pullRequests: [],
   sessions: [],
+  runtimeLeases: [],
+  runtimeScheduler: {
+    selectedRuntime: "",
+    preferredRuntime: "",
+    assignedRuntime: "",
+    assignedMachine: "",
+    strategy: "unavailable",
+    summary: "",
+    candidates: [],
+  },
   memory: [],
 };
 

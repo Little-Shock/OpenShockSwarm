@@ -8,6 +8,8 @@ import type {
   Room,
   Run,
   Session,
+  RuntimeLeaseRecord,
+  RuntimeScheduler,
 } from "@/lib/mock-data";
 
 type RuntimeProviderRecord = {
@@ -76,6 +78,25 @@ function runtimeTone(runtime: RuntimeRegistryRecord) {
   if (runtime.state === "offline" || runtime.pairingState === "degraded") return "bg-[var(--shock-pink)] text-white";
   if (runtime.pairingState === "paired") return "bg-[var(--shock-lime)]";
   return "bg-white";
+}
+
+function runtimeSchedulerStrategyLabel(strategy: string) {
+  switch (strategy) {
+    case "selected_runtime":
+      return "沿用 Selection";
+    case "agent_preference":
+      return "按 Owner 偏好";
+    case "least_loaded":
+      return "按 Lease 压力";
+    case "failover":
+      return "自动 Failover";
+    default:
+      return "待调度";
+  }
+}
+
+function runtimeLeaseIsActive(status?: string) {
+  return Boolean(status && status.trim() && status !== "done");
 }
 
 function agentTone(state: AgentStatus["state"]) {
@@ -183,7 +204,7 @@ function autoMergeSummary(
   }
 
   return {
-    headline: "等待 #61 / #62 合同",
+    headline: "等待人工合并门",
     detail: "前台先把 auto-merge 候选面与人工闸门摆明，不伪造实际 merge 控制。",
     tone: "bg-white",
   };
@@ -290,6 +311,8 @@ export function LiveOrchestrationBoard({
   pullRequests,
   runtimes,
   sessions,
+  leases,
+  scheduler,
 }: {
   agents: AgentStatus[];
   runs: Run[];
@@ -298,11 +321,14 @@ export function LiveOrchestrationBoard({
   pullRequests: PullRequest[];
   runtimes: RuntimeRegistryRecord[];
   sessions: Session[];
+  leases: RuntimeLeaseRecord[];
+  scheduler: RuntimeScheduler;
 }) {
   const runningAgents = agents.filter((agent) => agent.state === "running");
   const blockedAgents = agents.filter((agent) => agent.state === "blocked");
   const idleAgents = agents.filter((agent) => agent.state === "idle");
   const busyRuntimes = runtimes.filter((runtime) => runtime.state === "busy");
+  const activeLeases = leases.filter((lease) => runtimeLeaseIsActive(lease.status));
   const mergeCandidates = pullRequests.filter((pullRequest) => pullRequest.status !== "merged");
   const approvalGates = inbox.filter((item) => item.kind === "approval");
   const blockedGates = inbox.filter((item) => item.kind === "blocked");
@@ -313,14 +339,22 @@ export function LiveOrchestrationBoard({
         <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Orchestration Board</p>
         <h2 className="mt-3 font-display text-4xl font-bold">把公民、运行队列和 merge guard 收进同一个前台</h2>
         <p className="mt-3 max-w-4xl text-base leading-7">
-          这层只消费当前 live `agents / runs / runtimes / inbox / pullRequests / sessions` 真值，把调度态、人工闸门和 auto-merge 候选摆清楚，不越权伪造 `#61/#62` 还没落下来的控制 contract。
+          这层只消费当前 live `agents / runs / runtimes / leases / inbox / pullRequests / sessions` 真值，把调度态、failover、人工闸门和 auto-merge 候选摆清楚，不再回退到旧的 placeholder 注释窗口。
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-5">
           <MetricTile label="Running Agents" value={String(runningAgents.length)} detail="当前正在占用调度泳道的公民数" />
           <MetricTile label="Blocked Agents" value={String(blockedAgents.length)} detail="等待人类决策或外部输入的公民数" />
-          <MetricTile label="Busy Runtimes" value={String(busyRuntimes.length)} detail="当前已经被占用的 runtime / lease 位" />
+          <MetricTile label="Busy Runtimes" value={String(busyRuntimes.length)} detail="当前被占用或处于压力态的 runtime 数" />
           <MetricTile label="Active Sessions" value={String(sessions.length)} detail="当前控制面公开的 session / queue 对象数" />
-          <MetricTile label="Merge Candidates" value={String(mergeCandidates.length)} detail="仍需要 merge guard 判断的 PR 数" />
+          <MetricTile label="Active Leases" value={String(activeLeases.length)} detail="当前仍持有 worktree/runtime lane 的会话数" />
+        </div>
+        <div className="mt-4 rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Scheduler Truth</p>
+          <p className="mt-2 text-base leading-7">{scheduler.summary || "当前还没有 scheduler truth。"}</p>
+          <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+            strategy: {runtimeSchedulerStrategyLabel(scheduler.strategy)} · next lane:{" "}
+            {scheduler.assignedMachine || scheduler.assignedRuntime || "未分配"} · merge candidates: {mergeCandidates.length}
+          </p>
         </div>
       </Panel>
 
@@ -373,35 +407,47 @@ export function LiveOrchestrationBoard({
             <h3 className="mt-3 font-display text-3xl font-bold">runtime / lease 压力</h3>
             <div className="mt-5 space-y-3">
               {runtimes.length === 0 ? (
-                <SurfaceNotice title="当前没有 runtime truth" message="等 `#62` 把 lease / conflict guard 落下后，这里会继续从控制面读更细的占用态。" />
+                <SurfaceNotice title="当前没有 runtime truth" message="等 server 返回 runtime registry 后，这里会继续展开 lease 与 failover 真值。" />
               ) : (
-                runtimes.map((runtime) => (
-                  <article
-                    key={runtime.id}
-                    className={cn(
-                      "rounded-[20px] border-2 border-[var(--shock-ink)] px-4 py-4 shadow-[4px_4px_0_0_var(--shock-ink)]",
-                      runtimeTone(runtime)
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-                          {runtime.id}
-                        </p>
-                        <h4 className="mt-2 font-display text-2xl font-bold">{runtime.machine}</h4>
+                runtimes.map((runtime) => {
+                  const candidate =
+                    scheduler.candidates.find((item) => item.runtime === runtime.id || item.machine === runtime.machine) ?? null;
+                  const runtimeLeaseCount = activeLeases.filter(
+                    (lease) => lease.runtime === runtime.id || lease.machine === runtime.machine
+                  ).length;
+                  const assigned = runtime.machine === scheduler.assignedMachine || runtime.id === scheduler.assignedRuntime;
+                  return (
+                    <article
+                      key={runtime.id}
+                      className={cn(
+                        "rounded-[20px] border-2 border-[var(--shock-ink)] px-4 py-4 shadow-[4px_4px_0_0_var(--shock-ink)]",
+                        assigned ? "bg-[var(--shock-lime)]" : runtimeTone(runtime)
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+                            {runtime.id}
+                          </p>
+                          <h4 className="mt-2 font-display text-2xl font-bold">{runtime.machine}</h4>
+                        </div>
+                        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--shock-ink)]">
+                          {assigned ? "next lane" : `${runtime.state} / ${runtime.pairingState}`}
+                        </span>
                       </div>
-                      <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--shock-ink)]">
-                        {runtime.state} / {runtime.pairingState}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6">
-                      daemon: {runtime.daemonUrl || "未上报"} · providers: {(runtime.providers ?? []).map((provider: RuntimeProviderRecord) => provider.label).join(" / ") || "未上报"}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                      当前仍只公开 runtime registry truth；真正 lease owner / conflict resolution 继续留给 `#62`。
-                    </p>
-                  </article>
-                ))
+                      <p className="mt-3 text-sm leading-6">
+                        daemon: {runtime.daemonUrl || "未上报"} · providers: {(runtime.providers ?? []).map((provider: RuntimeProviderRecord) => provider.label).join(" / ") || "未上报"}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
+                        active lease: {runtimeLeaseCount} · schedulable: {candidate?.schedulable ? "yes" : "no"} · strategy:{" "}
+                        {runtimeSchedulerStrategyLabel(scheduler.strategy)}
+                      </p>
+                      {candidate?.reason ? (
+                        <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p>
+                      ) : null}
+                    </article>
+                  );
+                })
               )}
             </div>
           </Panel>
@@ -527,13 +573,13 @@ export function AgentControlSurface({
         <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Agent Control Surface</p>
         <h3 className="mt-3 font-display text-3xl font-bold">控制按钮先显式 fail-closed</h3>
         <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-          前台先把调度控制面摆出来，但真正的 pause / reassign / auto-merge action 仍由 `#61/#62` server contract 决定；这里不伪造可点就生效的按钮。
+          前台先把 scheduler / failover truth 摆出来，但真正的 pause / reassign / auto-merge action 仍继续保持 fail-closed；这里不伪造可点就生效的按钮。
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {[
-            { label: "暂停调度", detail: "待 #61 planner / assignment contract" },
-            { label: "切换 runtime", detail: "待 #62 lease / conflict guard contract" },
-            { label: "申请 auto-merge", detail: "待 #61 auto-merge guard + 权限边界" },
+            { label: "暂停调度", detail: "当前仍保持 fail-closed，避免伪造 planner mutation" },
+            { label: "切换 runtime", detail: "自动 scheduler / failover 已 live；手动 override 继续留后续" },
+            { label: "申请 auto-merge", detail: "merge guard 与 destructive boundary 继续留人工 gate" },
           ].map((action) => (
             <button
               key={action.label}
@@ -609,7 +655,7 @@ export function AgentControlSurface({
             <p className="mt-2 text-sm leading-6">{relatedPullRequests.length} 条</p>
           </div>
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这位公民当前的前台控制面已经可见，但动作仍需等 `#61/#62` 让 planner / lease / merge guard 真正可执行。
+            这位公民当前的 runtime / lease / merge gate 都已可见，但动作入口仍保持 fail-closed，避免把后续手动 override / merge 权限借写成已完成。
           </p>
         </div>
       </Panel>

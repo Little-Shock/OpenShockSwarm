@@ -3,7 +3,12 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 import { usePhaseZeroState } from "@/lib/live-phase0";
-import type { RuntimeProviderStatus, RuntimeRegistryRecord } from "@/lib/mock-data";
+import type {
+  RuntimeLeaseRecord,
+  RuntimeProviderStatus,
+  RuntimeRegistryRecord,
+  RuntimeScheduler,
+} from "@/lib/mock-data";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
 
@@ -49,6 +54,8 @@ type RuntimeRegistryResponse = {
   pairedRuntime: string;
   pairingStatus: string;
   runtimes: RuntimeRegistryRecord[];
+  leases: RuntimeLeaseRecord[];
+  runtimeScheduler: RuntimeScheduler;
 };
 
 type RuntimeMutationPayload = {
@@ -65,6 +72,8 @@ type LiveRuntimeContextValue = {
   registry: RuntimeRegistryResponse | null;
   runtime: LiveRuntimeSnapshot | null;
   runtimes: RuntimeRegistryRecord[];
+  leases: RuntimeLeaseRecord[];
+  scheduler: RuntimeScheduler;
   selectedRuntimeName: string;
   selectedRuntimeRecord: RuntimeRegistryRecord | null;
   pairedRuntimeRecord: RuntimeRegistryRecord | null;
@@ -150,6 +159,8 @@ function stateRegistryTruth(
     pairedRuntime: pairing.pairedRuntime,
     pairingStatus: pairing.pairingStatus,
     runtimes: state.runtimes,
+    leases: state.runtimeLeases,
+    runtimeScheduler: state.runtimeScheduler,
   };
 }
 
@@ -287,6 +298,8 @@ export function LiveRuntimeProvider({ children }: { children: ReactNode }) {
         registry,
         runtime,
         runtimes: registry.runtimes,
+        leases: registry.leases,
+        scheduler: registry.runtimeScheduler,
         selectedRuntimeName,
         selectedRuntimeRecord,
         pairedRuntimeRecord,

@@ -305,6 +305,8 @@ func cloneState(state State) State {
 		return state
 	}
 	applyRuntimeDerivedTruth(&clone, time.Now())
+	clone.RuntimeLeases = buildRuntimeLeases(clone)
+	clone.RuntimeScheduler = buildRuntimeScheduler(clone, "").Scheduler
 	return clone
 }
 

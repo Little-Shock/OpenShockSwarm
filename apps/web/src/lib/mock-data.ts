@@ -200,6 +200,47 @@ export type RuntimeRegistryRecord = {
   heartbeatTimeoutSeconds?: number;
 };
 
+export type RuntimeLeaseRecord = {
+  leaseId: string;
+  sessionId?: string;
+  runId?: string;
+  roomId?: string;
+  runtime: string;
+  machine: string;
+  owner?: string;
+  provider?: string;
+  status?: string;
+  branch?: string;
+  worktreeName?: string;
+  worktreePath?: string;
+  cwd?: string;
+  summary?: string;
+};
+
+export type RuntimeSchedulerCandidate = {
+  runtime: string;
+  machine: string;
+  state: string;
+  pairingState: string;
+  schedulable: boolean;
+  selected: boolean;
+  preferred: boolean;
+  assigned: boolean;
+  activeLeaseCount: number;
+  reason?: string;
+};
+
+export type RuntimeScheduler = {
+  selectedRuntime: string;
+  preferredRuntime: string;
+  assignedRuntime: string;
+  assignedMachine: string;
+  strategy: string;
+  failoverFrom?: string;
+  summary: string;
+  candidates: RuntimeSchedulerCandidate[];
+};
+
 export type InboxItem = {
   id: string;
   title: string;
@@ -346,6 +387,8 @@ export type PhaseZeroState = {
   inbox: InboxItem[];
   pullRequests: PullRequest[];
   sessions: Session[];
+  runtimeLeases: RuntimeLeaseRecord[];
+  runtimeScheduler: RuntimeScheduler;
   memory: MemoryArtifact[];
 };
 
@@ -1188,5 +1231,15 @@ export const fallbackState: PhaseZeroState = {
   inbox: inboxItems,
   pullRequests,
   sessions: [],
+  runtimeLeases: [],
+  runtimeScheduler: {
+    selectedRuntime: workspace.pairedRuntime,
+    preferredRuntime: workspace.pairedRuntime,
+    assignedRuntime: workspace.pairedRuntime,
+    assignedMachine: workspace.pairedRuntime,
+    strategy: "selected_runtime",
+    summary: "当前 fallback state 仍按 workspace selection 指向 shock-main。",
+    candidates: [],
+  },
   memory: [],
 };

@@ -64,6 +64,25 @@ function pairingStateLabel(state: string) {
   }
 }
 
+function runtimeSchedulerStrategyLabel(strategy: string) {
+  switch (strategy) {
+    case "selected_runtime":
+      return "沿用 Selection";
+    case "agent_preference":
+      return "按 Owner 偏好";
+    case "least_loaded":
+      return "按 Lease 压力";
+    case "failover":
+      return "自动 Failover";
+    default:
+      return "待调度";
+  }
+}
+
+function runtimeLeaseIsActive(status?: string) {
+  return Boolean(status && status.trim() && status !== "done");
+}
+
 function WorkspaceMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
@@ -186,7 +205,9 @@ export function LiveSetupOverview() {
     error: runtimeError,
     pairing,
     selection,
+    leases,
     runtimes,
+    scheduler,
     selectedRuntimeName,
     selectedRuntimeRecord,
   } = useLiveRuntimeTruth();
@@ -207,6 +228,8 @@ export function LiveSetupOverview() {
     selectedRuntimeTruth?.heartbeatIntervalSeconds,
     selectedRuntimeTruth?.heartbeatTimeoutSeconds
   );
+  const activeLeases = leases.filter((item) => runtimeLeaseIsActive(item.status));
+  const assignedRuntimeLabel = valueOrPlaceholder(scheduler.assignedMachine || scheduler.assignedRuntime, "暂无");
 
   if (loading || runtimeLoading) {
     return (
@@ -244,7 +267,7 @@ export function LiveSetupOverview() {
           title="Runtime 配对"
           summary={
             registryRuntimes.length > 0
-              ? `runtime registry 当前已登记 ${registryRuntimes.length} 台，其中 ${onlineRuntimes} 台在线${staleRuntimes > 0 ? `、${staleRuntimes} 台心跳陈旧` : ""}；当前 selection 是 ${selectedRuntimeLabel}，配对状态为 ${pairingStatusLabel(pairingStatus)}，心跳节奏为 ${selectedHeartbeatCadence}。`
+              ? `runtime registry 当前已登记 ${registryRuntimes.length} 台，其中 ${onlineRuntimes} 台在线${staleRuntimes > 0 ? `、${staleRuntimes} 台心跳陈旧` : ""}；当前 selection 是 ${selectedRuntimeLabel}，配对状态为 ${pairingStatusLabel(pairingStatus)}，下一条 lane 目标是 ${assignedRuntimeLabel}。`
               : "当前还没有已登记的 runtime registry；先完成 daemon pairing，再继续验证 selection 与 bridge。"
           }
           active={registryRuntimes.length > 0 && pairingStatus !== "unpaired"}
@@ -276,6 +299,8 @@ export function LiveSetupOverview() {
             <WorkspaceMetric label="仓库" value={valueOrPlaceholder(workspace.repo, "当前未返回 repo")} />
             <WorkspaceMetric label="分支" value={valueOrPlaceholder(workspace.branch, "当前未返回 branch")} />
             <WorkspaceMetric label="Runtime" value={`${selectedRuntimeLabel} / ${pairingStatusLabel(pairingStatus)}`} />
+            <WorkspaceMetric label="下一条 Lane" value={assignedRuntimeLabel} />
+            <WorkspaceMetric label="调度策略" value={runtimeSchedulerStrategyLabel(scheduler.strategy)} />
             <WorkspaceMetric label="心跳节奏" value={selectedHeartbeatCadence} />
             <WorkspaceMetric label="记忆" value={valueOrPlaceholder(workspace.memoryMode, "当前未返回 memory mode")} />
           </dl>
@@ -283,6 +308,9 @@ export function LiveSetupOverview() {
             当前 runtime control plane 已把 registry、selection 与 pairing 拆开：主状态里已收下 {state.runtimes.length} 条 runtime truth，
             当前有 {selectableRuntimes} 台可调度，默认指向 {selectedRuntimeLabel}
             {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}。
+          </p>
+          <p className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
+            {scheduler.summary || "当前还没有 scheduler truth。"}
           </p>
         </Panel>
         <Panel tone="paper">
@@ -295,13 +323,19 @@ export function LiveSetupOverview() {
             ) : (
               registryRuntimes.map((runtime) => {
                 const selected = runtime.machine === selectedRuntimeName || runtime.id === selectedRuntimeName;
+                const assigned = runtime.machine === scheduler.assignedMachine || runtime.id === scheduler.assignedRuntime;
                 const machine = runtimeMachines.find((item) => item.name === runtime.machine || item.id === runtime.id);
+                const candidate =
+                  scheduler.candidates.find((item) => item.runtime === runtime.id || item.machine === runtime.machine) ?? null;
+                const activeLeaseCount = activeLeases.filter(
+                  (lease) => lease.runtime === runtime.id || lease.machine === runtime.machine
+                ).length;
                 return (
                   <div
                     key={runtime.id}
                     className={cn(
                       "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-3",
-                      selected ? "bg-[var(--shock-yellow)]" : "bg-white"
+                      assigned ? "bg-[var(--shock-lime)]" : selected ? "bg-[var(--shock-yellow)]" : "bg-white"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -312,14 +346,18 @@ export function LiveSetupOverview() {
                         </p>
                       </div>
                       <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
-                        {selected ? "selected" : runtimeStatusLabel(runtime.state)}
+                        {assigned ? "next lane" : selected ? "selected" : runtimeStatusLabel(runtime.state)}
                       </span>
                     </div>
                     <div className="mt-3 space-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
                       <p>{machine?.os || "Local"} / {machine?.lastHeartbeat || runtime.lastHeartbeatAt || "未返回心跳"}</p>
                       <p>{runtime.daemonUrl || "未配对 daemon"} / {pairingStateLabel(runtime.pairingState)}</p>
                       <p>{formatHeartbeatCadence(runtime.heartbeatIntervalSeconds, runtime.heartbeatTimeoutSeconds)}</p>
+                      <p>active leases: {activeLeaseCount} / schedulable: {candidate?.schedulable ? "yes" : "no"}</p>
                     </div>
+                    {candidate?.reason ? (
+                      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p>
+                    ) : null}
                   </div>
                 );
               })
@@ -332,7 +370,7 @@ export function LiveSetupOverview() {
             <li>1. Workspace 直接显示 live repo / branch / runtime selection 真值。</li>
             <li>2. Setup 不再把静态步骤卡当成当前环境状态。</li>
             <li>3. 当前工作区已有 {state.issues.length} 条 live issue、{state.runs.length} 条 live run。</li>
-            <li>4. 当前已注册 {registryRuntimes.length} 台 runtime，selection 为 {selectedRuntimeLabel}，配对状态为 {pairingStatusLabel(pairingStatus)}，心跳节奏为 {selectedHeartbeatCadence}。</li>
+            <li>4. 当前已注册 {registryRuntimes.length} 台 runtime，selection 为 {selectedRuntimeLabel}，下一条 lane 指向 {assignedRuntimeLabel}，active lease 为 {activeLeases.length} 条。</li>
           </ol>
         </Panel>
       </div>

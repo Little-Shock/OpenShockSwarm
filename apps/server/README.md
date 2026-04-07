@@ -20,7 +20,7 @@ Still not complete:
 - GitHub App onboarding and browser-level live verification
 - full auth/member/role management
 - production notification delivery
-- full multi-runtime scheduler/failover
+- runtime pairing cold-start consistency across non-default daemon ports
 
 Run:
 

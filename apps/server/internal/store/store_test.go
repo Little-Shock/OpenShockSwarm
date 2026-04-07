@@ -186,6 +186,150 @@ func TestCreateIssueRejectsWhenAllRuntimesOffline(t *testing.T) {
 	}
 }
 
+func TestCreateIssueFailsOverToLeastLoadedRuntimeWhenPreferredRuntimeIsOffline(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := s.UpdateRuntimePairing(RuntimePairingInput{
+		RuntimeID:  "shock-main",
+		DaemonURL:  "http://127.0.0.1:8090",
+		Machine:    "shock-main",
+		State:      "online",
+		ReportedAt: now.Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing(main) error = %v", err)
+	}
+	for _, runtime := range []struct {
+		id        string
+		daemonURL string
+	}{
+		{id: "shock-sidecar", daemonURL: "http://127.0.0.1:8091"},
+		{id: "shock-spare", daemonURL: "http://127.0.0.1:8092"},
+	} {
+		if _, err := s.UpsertRuntimeHeartbeat(RuntimeHeartbeatInput{
+			RuntimeID:          runtime.id,
+			DaemonURL:          runtime.daemonURL,
+			Machine:            runtime.id,
+			State:              "online",
+			ReportedAt:         now.Format(time.RFC3339),
+			HeartbeatIntervalS: 10,
+			HeartbeatTimeoutS:  45,
+		}); err != nil {
+			t.Fatalf("UpsertRuntimeHeartbeat(%s) error = %v", runtime.id, err)
+		}
+	}
+
+	sidecarLoad, err := s.CreateIssue(CreateIssueInput{
+		Title:    "Sidecar Load",
+		Summary:  "occupy sidecar lease so failover has to choose spare",
+		Owner:    "Claude Review Runner",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue(sidecar load) error = %v", err)
+	}
+	var sidecarRun *Run
+	for index := range sidecarLoad.State.Runs {
+		if sidecarLoad.State.Runs[index].ID == sidecarLoad.RunID {
+			sidecarRun = &sidecarLoad.State.Runs[index]
+			break
+		}
+	}
+	if sidecarRun == nil || sidecarRun.Runtime != "shock-sidecar" {
+		t.Fatalf("sidecar load runtime = %#v, want shock-sidecar", sidecarRun)
+	}
+
+	if _, err := s.UpsertRuntimeHeartbeat(RuntimeHeartbeatInput{
+		RuntimeID:          "shock-main",
+		DaemonURL:          "http://127.0.0.1:8090",
+		Machine:            "shock-main",
+		State:              "online",
+		ReportedAt:         now.Add(-2 * time.Minute).Format(time.RFC3339),
+		HeartbeatIntervalS: 10,
+		HeartbeatTimeoutS:  45,
+	}); err != nil {
+		t.Fatalf("UpsertRuntimeHeartbeat(shock-main offline) error = %v", err)
+	}
+
+	snapshot := s.Snapshot()
+	if snapshot.RuntimeScheduler.Strategy != runtimeSchedulerStrategyFailover {
+		t.Fatalf("scheduler strategy = %q, want %q", snapshot.RuntimeScheduler.Strategy, runtimeSchedulerStrategyFailover)
+	}
+	if snapshot.RuntimeScheduler.AssignedRuntime != "shock-spare" {
+		t.Fatalf("scheduler assigned runtime = %q, want shock-spare", snapshot.RuntimeScheduler.AssignedRuntime)
+	}
+	if snapshot.RuntimeScheduler.FailoverFrom != "shock-main" {
+		t.Fatalf("scheduler failoverFrom = %q, want shock-main", snapshot.RuntimeScheduler.FailoverFrom)
+	}
+	var sidecarCandidate *RuntimeSchedulerCandidate
+	for index := range snapshot.RuntimeScheduler.Candidates {
+		if snapshot.RuntimeScheduler.Candidates[index].Runtime == "shock-sidecar" {
+			sidecarCandidate = &snapshot.RuntimeScheduler.Candidates[index]
+			break
+		}
+	}
+	if sidecarCandidate == nil || sidecarCandidate.ActiveLeaseCount < 1 {
+		t.Fatalf("sidecar candidate = %#v, want active lease pressure", sidecarCandidate)
+	}
+	var spareCandidate *RuntimeSchedulerCandidate
+	for index := range snapshot.RuntimeScheduler.Candidates {
+		if snapshot.RuntimeScheduler.Candidates[index].Runtime == "shock-spare" {
+			spareCandidate = &snapshot.RuntimeScheduler.Candidates[index]
+			break
+		}
+	}
+	if spareCandidate == nil || sidecarCandidate.ActiveLeaseCount <= spareCandidate.ActiveLeaseCount {
+		t.Fatalf("scheduler candidates = %#v, want sidecar pressure greater than spare", snapshot.RuntimeScheduler.Candidates)
+	}
+
+	failoverResult, err := s.CreateIssue(CreateIssueInput{
+		Title:    "Offline Failover Lane",
+		Summary:  "verify scheduler chooses least-loaded runtime during failover",
+		Owner:    "Codex Dockmaster",
+		Priority: "critical",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue(failover) error = %v", err)
+	}
+
+	var failoverRun *Run
+	for index := range failoverResult.State.Runs {
+		if failoverResult.State.Runs[index].ID == failoverResult.RunID {
+			failoverRun = &failoverResult.State.Runs[index]
+			break
+		}
+	}
+	if failoverRun == nil {
+		t.Fatalf("failover run %q missing from state", failoverResult.RunID)
+	}
+	if failoverRun.Runtime != "shock-spare" || failoverRun.Machine != "shock-spare" {
+		t.Fatalf("failover runtime = %#v, want shock-spare", failoverRun)
+	}
+	if !strings.Contains(failoverRun.NextAction, "failover") {
+		t.Fatalf("run next action = %q, want failover wording", failoverRun.NextAction)
+	}
+	if len(failoverRun.Timeline) < 2 || failoverRun.Timeline[1].Label != "Runtime 已 failover 到 shock-spare" {
+		t.Fatalf("run timeline = %#v, want failover event", failoverRun.Timeline)
+	}
+
+	var failoverSession *Session
+	for index := range failoverResult.State.Sessions {
+		if failoverResult.State.Sessions[index].ActiveRunID == failoverResult.RunID {
+			failoverSession = &failoverResult.State.Sessions[index]
+			break
+		}
+	}
+	if failoverSession == nil || !strings.Contains(failoverSession.Summary, "failover") {
+		t.Fatalf("failover session = %#v, want failover summary", failoverSession)
+	}
+}
+
 func TestSelectRuntimePersistsSelectedDaemon(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

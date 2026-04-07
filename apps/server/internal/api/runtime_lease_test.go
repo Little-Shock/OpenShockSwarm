@@ -76,14 +76,14 @@ func TestRuntimeRegistryIncludesDerivedLeases(t *testing.T) {
 	var payload struct {
 		PairedRuntime string                `json:"pairedRuntime"`
 		Runtimes      []store.RuntimeRecord `json:"runtimes"`
-		Leases        []RuntimeLease        `json:"leases"`
+		Leases        []store.RuntimeLease  `json:"leases"`
 	}
 	decodeJSON(t, resp, &payload)
 
 	if payload.PairedRuntime != "shock-main" {
 		t.Fatalf("paired runtime = %q, want shock-main", payload.PairedRuntime)
 	}
-	var lease *RuntimeLease
+	var lease *store.RuntimeLease
 	for index := range payload.Leases {
 		if payload.Leases[index].SessionID == created.SessionID {
 			lease = &payload.Leases[index]
@@ -95,6 +95,99 @@ func TestRuntimeRegistryIncludesDerivedLeases(t *testing.T) {
 	}
 	if lease.Runtime != "shock-main" || lease.WorktreePath != lanePath || lease.Cwd != lanePath {
 		t.Fatalf("lease payload = %#v, want shock-main with lane path %q", lease, lanePath)
+	}
+}
+
+func TestRuntimeRegistryExposesSchedulerFailoverTruth(t *testing.T) {
+	root := t.TempDir()
+	s, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	now := time.Now().UTC()
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		RuntimeID:  "shock-main",
+		DaemonURL:  "http://127.0.0.1:8090",
+		Machine:    "shock-main",
+		State:      "online",
+		ReportedAt: now.Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing(main) error = %v", err)
+	}
+	for _, runtime := range []struct {
+		id        string
+		daemonURL string
+	}{
+		{id: "shock-sidecar", daemonURL: "http://127.0.0.1:8091"},
+		{id: "shock-spare", daemonURL: "http://127.0.0.1:8092"},
+	} {
+		if _, err := s.UpsertRuntimeHeartbeat(store.RuntimeHeartbeatInput{
+			RuntimeID:          runtime.id,
+			DaemonURL:          runtime.daemonURL,
+			Machine:            runtime.id,
+			State:              "online",
+			ReportedAt:         now.Format(time.RFC3339),
+			HeartbeatIntervalS: 10,
+			HeartbeatTimeoutS:  45,
+		}); err != nil {
+			t.Fatalf("UpsertRuntimeHeartbeat(%s) error = %v", runtime.id, err)
+		}
+	}
+	if _, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Runtime Load For Registry",
+		Summary:  "occupy sidecar so registry can expose least-loaded failover",
+		Owner:    "Claude Review Runner",
+		Priority: "high",
+	}); err != nil {
+		t.Fatalf("CreateIssue(sidecar load) error = %v", err)
+	}
+	if _, err := s.UpsertRuntimeHeartbeat(store.RuntimeHeartbeatInput{
+		RuntimeID:          "shock-main",
+		DaemonURL:          "http://127.0.0.1:8090",
+		Machine:            "shock-main",
+		State:              "online",
+		ReportedAt:         now.Add(-2 * time.Minute).Format(time.RFC3339),
+		HeartbeatIntervalS: 10,
+		HeartbeatTimeoutS:  45,
+	}); err != nil {
+		t.Fatalf("UpsertRuntimeHeartbeat(shock-main offline) error = %v", err)
+	}
+
+	resp, err := http.Get(server.URL + "/v1/runtime/registry")
+	if err != nil {
+		t.Fatalf("GET runtime registry error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("registry status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Leases           []store.RuntimeLease   `json:"leases"`
+		RuntimeScheduler store.RuntimeScheduler `json:"runtimeScheduler"`
+	}
+	decodeJSON(t, resp, &payload)
+
+	if payload.RuntimeScheduler.Strategy != "failover" {
+		t.Fatalf("scheduler strategy = %q, want failover", payload.RuntimeScheduler.Strategy)
+	}
+	if payload.RuntimeScheduler.AssignedRuntime != "shock-spare" {
+		t.Fatalf("scheduler assigned runtime = %q, want shock-spare", payload.RuntimeScheduler.AssignedRuntime)
+	}
+	if payload.RuntimeScheduler.FailoverFrom != "shock-main" {
+		t.Fatalf("scheduler failoverFrom = %q, want shock-main", payload.RuntimeScheduler.FailoverFrom)
+	}
+	if len(payload.Leases) == 0 {
+		t.Fatalf("registry leases missing from payload")
+	}
+	var sidecarLease *store.RuntimeLease
+	for index := range payload.Leases {
+		if payload.Leases[index].Runtime == "shock-sidecar" {
+			sidecarLease = &payload.Leases[index]
+			break
+		}
+	}
+	if sidecarLease == nil {
+		t.Fatalf("registry leases missing active sidecar lease: %#v", payload.Leases)
 	}
 }
 

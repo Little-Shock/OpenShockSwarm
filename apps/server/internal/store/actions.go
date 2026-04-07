@@ -62,7 +62,7 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 		},
 	}
 
-	scheduledMachine, provider, err := s.scheduleRuntimeLocked(owner)
+	scheduledMachine, provider, scheduler, err := s.scheduleRuntimeLocked(owner)
 	if err != nil {
 		return IssueCreationResult{}, err
 	}
@@ -94,12 +94,18 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 		StartedAt:    now,
 		Duration:     "0m",
 		Summary:      summary,
-		NextAction:   "进入讨论间并发送第一条指令。",
+		NextAction:   fmt.Sprintf("等待 worktree lane；%s", scheduler.Summary),
 		PullRequest:  "未创建",
-		Stdout:       []string{fmt.Sprintf("[%s] 已创建 Issue Room 与默认 Topic", now)},
-		Stderr:       []string{},
-		ToolCalls:    []ToolCall{{ID: fmt.Sprintf("%s-tool-1", runID), Tool: "openshock", Summary: "自动创建房间与执行 lane", Result: "成功"}},
-		Timeline:     []RunEvent{{ID: fmt.Sprintf("%s-ev-1", runID), Label: "Issue 已创建", At: now, Tone: "yellow"}},
+		Stdout: []string{
+			fmt.Sprintf("[%s] 已创建 Issue Room 与默认 Topic", now),
+			fmt.Sprintf("[%s] %s", now, scheduler.Summary),
+		},
+		Stderr:    []string{},
+		ToolCalls: []ToolCall{{ID: fmt.Sprintf("%s-tool-1", runID), Tool: "openshock", Summary: "自动创建房间与执行 lane", Result: "成功"}},
+		Timeline: []RunEvent{
+			{ID: fmt.Sprintf("%s-ev-1", runID), Label: "Issue 已创建", At: now, Tone: "yellow"},
+			{ID: fmt.Sprintf("%s-ev-2", runID), Label: runtimeSchedulerTimelineLabel(scheduler), At: now, Tone: "lime"},
+		},
 	}
 
 	newSession := Session{
@@ -115,7 +121,7 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 		Branch:       newRun.Branch,
 		Worktree:     newRun.Worktree,
 		WorktreePath: "",
-		Summary:      "Session 已创建，等待 worktree lane 就绪。",
+		Summary:      scheduler.Summary,
 		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),
 		MemoryPaths:  defaultSessionMemoryPaths(roomID, issueKey),
 	}
@@ -132,7 +138,7 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 		Speaker: "System",
 		Role:    "system",
 		Tone:    "system",
-		Message: fmt.Sprintf("%s 已创建讨论间和默认 Topic，可以直接开始安排 Agent。", issueKey),
+		Message: fmt.Sprintf("%s 已创建讨论间和默认 Topic，可以直接开始安排 Agent。%s", issueKey, scheduler.Summary),
 		Time:    now,
 	}}
 	s.state.Inbox = append([]InboxItem{{
@@ -451,27 +457,20 @@ func (s *Store) CreatePullRequest(roomID string) (State, string, error) {
 	return s.CreatePullRequestFromRemote(roomID, PullRequestRemoteSnapshot{})
 }
 
-func (s *Store) scheduleRuntimeLocked(owner string) (Machine, string, error) {
+func (s *Store) scheduleRuntimeLocked(owner string) (Machine, string, RuntimeScheduler, error) {
 	applyRuntimeDerivedTruth(&s.state, time.Now())
-
-	provider := "Claude Code CLI"
-	if agentIndex := s.findAgentIndexLocked(owner); agentIndex != -1 {
-		agent := s.state.Agents[agentIndex]
-		if text := strings.TrimSpace(agent.Provider); text != "" {
-			provider = text
-		}
-		if machineIndex := s.findSchedulableMachineIndexLocked(agent.RuntimePreference); machineIndex != -1 {
-			return s.state.Machines[machineIndex], provider, nil
-		}
+	result := buildRuntimeScheduler(s.state, owner)
+	if strings.TrimSpace(result.Scheduler.AssignedMachine) == "" && strings.TrimSpace(result.Scheduler.AssignedRuntime) == "" {
+		return Machine{}, result.Provider, result.Scheduler, ErrNoSchedulableRuntime
 	}
-
-	if machineIndex := s.findSchedulableMachineIndexLocked(s.state.Workspace.PairedRuntime); machineIndex != -1 {
-		return s.state.Machines[machineIndex], provider, nil
+	machineIndex := s.findMachineIndexLocked(result.Scheduler.AssignedMachine)
+	if machineIndex == -1 {
+		machineIndex = s.findMachineIndexLocked(result.Scheduler.AssignedRuntime)
 	}
-	if machineIndex := s.firstSchedulableMachineIndexLocked(); machineIndex != -1 {
-		return s.state.Machines[machineIndex], provider, nil
+	if machineIndex == -1 {
+		return Machine{}, result.Provider, result.Scheduler, ErrNoSchedulableRuntime
 	}
-	return Machine{}, provider, ErrNoSchedulableRuntime
+	return s.state.Machines[machineIndex], result.Provider, result.Scheduler, nil
 }
 
 func (s *Store) findAgentIndexLocked(owner string) int {

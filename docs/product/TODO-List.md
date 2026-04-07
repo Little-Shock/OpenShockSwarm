@@ -87,8 +87,8 @@
 ### GAP-05 多 Runtime 调度与 Failover
 
 - 现状:
-  - registry / pairing / selection 已出现
-  - scheduler、lease、failover、offline handling 未完成
+  - registry / pairing / selection / scheduler / lease / failover handling 已落地
+  - 当前剩余的 runtime 风险已收敛到 `GAP-01` 的 pairing 冷启动一致性，不再是独立的 scheduler blocker
 - 相关合同:
   - `CHK-14`
 - 优先级: P1

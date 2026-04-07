@@ -20,6 +20,8 @@
   - `TKT-12` 的 memory injection preview, skill/policy promotion, governed ledger evidence
 - [Test Report 2026-04-07 Stop Resume Follow-thread](./Test-Report-2026-04-07-stop-resume-follow-thread.md)
   - `TKT-13` 的 stop / resume / follow-thread browser exact replay evidence
+- [Test Report 2026-04-07 Multi-runtime Scheduler Failover](./Test-Report-2026-04-07-multi-runtime-scheduler-failover.md)
+  - `TKT-14` 的 multi-runtime scheduler / active lease / offline failover browser exact evidence
 - [Test Report 2026-04-07 Remote PR Browser Loop](./Test-Report-2026-04-07-remote-pr-browser-loop.md)
   - `TKT-06` 的真实远端 PR create / merge browser-level exact evidence
 

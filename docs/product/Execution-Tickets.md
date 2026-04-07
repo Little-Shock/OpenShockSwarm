@@ -249,7 +249,7 @@
 
 ## TKT-14 Multi-runtime Scheduler / Failover
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 从 registry/pairing 基线升级到真实调度器、lease 和 failover。
 - 范围:

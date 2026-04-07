@@ -246,9 +246,11 @@
 - 已落地:
   - [x] runtime registry、selection、pairing 接口存在
   - [x] daemon heartbeat 已接入 server 状态
+  - [x] server 现在会按 active lease 压力给出显式 runtime scheduler 决策，并把 next-lane truth 带进 `/v1/state` 与 `/v1/runtime/registry`
+  - [x] `/setup` 与 `/agents` 现在会直接消费 runtime scheduler / lease / failover truth，不再停在旧的 placeholder 注释窗口
+  - [x] offline selected runtime 现在会显式 failover 到可调度的 least-loaded runtime，并把 failover reason 回写到 run / session truth
 - 当前 GAP:
   - [ ] pairing 冷启动一致性存在缺口
-  - [ ] 多 runtime 调度、failover、lease/conflict guard 尚未完成
 - 对应 Test Cases: `TC-003` `TC-004` `TC-020`
 
 ### CHK-15 成功指标、验收门与观测
