@@ -5548,6 +5548,150 @@ test("v1 stage4c digital twin and operational capability contract keeps twin-as-
   });
 });
 
+test("v1 stage5a hosted deploy-runtime contract keeps deployment and handoff truth with stable read path plus write/audit/timeline anchors", async () => {
+  const operatorId = "human_operator_stage5a";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const defaultContract = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/runtime/deploy-runtime"
+    });
+    assert.equal(defaultContract.statusCode, 200);
+    assert.equal(defaultContract.body.deploy_runtime.contract_version, "v1.stage5a");
+    assert.equal(defaultContract.body.deploy_runtime.write_anchors.deploy_runtime_upsert, "/v1/runtime/deploy-runtime");
+    assert.equal(defaultContract.body.deploy_runtime.timeline_anchor.runtime_smoke, "/runtime/smoke");
+    assert.equal(defaultContract.body.deploy_runtime.timeline_anchor.health, "/health");
+    assert.equal(defaultContract.body.deploy_runtime.deployment.status, "not_deployed");
+    assert.equal(defaultContract.body.projection_meta.resource, "runtime_deploy_runtime_projection");
+
+    const upsert = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        hosted_access: {
+          hosted_entry_url: "https://openshock.example.app",
+          non_local_access: true,
+          access_mode: "hosted_web",
+          login_state: "stable",
+          session_binding: "persistent",
+          auth_provider: "github",
+          status: "ready"
+        },
+        deployment: {
+          deployment_id: "deploy_stage5a_001",
+          target_ref: "hosted_prod_cn",
+          release_channel: "stable",
+          runtime_version: "2026.04.08",
+          status: "ready",
+          health_endpoint: "/health",
+          readiness_endpoint: "/runtime/smoke"
+        },
+        environment: {
+          environment_id: "env_stage5a_prod",
+          config_profile: "hosted_prod",
+          config_refs: ["cfg.hosted.base", "cfg.hosted.prod"],
+          secret_refs: ["secret.hosted.session", "secret.hosted.db"],
+          release_ref: "release/stage5a_001",
+          recovery_ref: "runbook/recovery/stage5a",
+          upgrade_ref: "runbook/upgrade/stage5a",
+          handoff_ref: "docs/handoff/stage5a"
+        },
+        health_readiness: {
+          health_status: "healthy",
+          readiness_status: "ready",
+          checked_at: "2026-04-08T05:40:00.000Z",
+          check_ref: "/runtime/smoke",
+          notes: "smoke green"
+        },
+        release_recovery_upgrade_handoff: {
+          status: "ready",
+          release_ref: "release/stage5a_001",
+          recovery_ref: "runbook/recovery/stage5a",
+          upgrade_ref: "runbook/upgrade/stage5a",
+          handoff_ref: "docs/handoff/stage5a",
+          runbook_ref: "runbook/stage5a",
+          last_drill_at: "2026-04-08T05:35:00.000Z"
+        }
+      }
+    });
+    assert.equal(upsert.statusCode, 200);
+    assert.equal(upsert.body.deploy_runtime.hosted_access.status, "ready");
+    assert.equal(upsert.body.deploy_runtime.hosted_access.login_state, "stable");
+    assert.equal(upsert.body.deploy_runtime.deployment.status, "ready");
+    assert.equal(upsert.body.deploy_runtime.environment.config_refs.length, 2);
+    assert.equal(upsert.body.deploy_runtime.environment.secret_refs.length, 2);
+    assert.equal(upsert.body.deploy_runtime.health_readiness.readiness_status, "ready");
+    assert.equal(upsert.body.deploy_runtime.release_recovery_upgrade_handoff.status, "ready");
+    assert.equal(
+      upsert.body.deploy_runtime.audit_anchor.latest.deploy_runtime.action,
+      "runtime_deploy_runtime_upsert"
+    );
+    assert.equal(upsert.body.deploy_runtime.audit_anchor.latest.deploy_runtime.operator_id, operatorId);
+
+    const readback = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/runtime/deploy-runtime"
+    });
+    assert.equal(readback.statusCode, 200);
+    assert.equal(readback.body.deploy_runtime.hosted_access.hosted_entry_url, "https://openshock.example.app");
+    assert.equal(readback.body.deploy_runtime.environment.handoff_ref, "docs/handoff/stage5a");
+    assert.equal(readback.body.deploy_runtime.release_recovery_upgrade_handoff.runbook_ref, "runbook/stage5a");
+
+    const invalidField = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        unknown_field: true
+      }
+    });
+    assert.equal(invalidField.statusCode, 400);
+    assert.equal(invalidField.body.error.code, "invalid_runtime_deploy_runtime_field");
+
+    const invalidDeploymentStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        deployment: {
+          status: "fleet_auto_scale"
+        }
+      }
+    });
+    assert.equal(invalidDeploymentStatus.statusCode, 400);
+    assert.equal(invalidDeploymentStatus.body.error.code, "invalid_runtime_deployment_status");
+
+    const shellCompatibility = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/compatibility/shell-adapter"
+    });
+    assert.equal(shellCompatibility.statusCode, 200);
+    assert.equal(
+      shellCompatibility.body.backend_derived_projection.projection_surfaces.includes("/v1/runtime/deploy-runtime"),
+      true
+    );
+    assert.equal(
+      shellCompatibility.body.backend_derived_projection.lineage_anchors.runtime_deploy_runtime,
+      "/v1/runtime/deploy-runtime"
+    );
+
+    const payload = JSON.stringify({
+      deployRuntime: readback.body.deploy_runtime,
+      shellCompatibility: shellCompatibility.body
+    });
+    assert.equal(payload.includes("\"remote_daemon_pairing\""), false);
+    assert.equal(payload.includes("\"machine_fleet\""), false);
+    assert.equal(payload.includes("\"stage4_reopen\""), false);
+  });
+});
+
 test("v1 stage4c orchestration and upgrade arbitration contract keeps formal truth with explainable human upgrade chain", async () => {
   const channelId = "channel_stage4c_orchestration_contract";
   const operatorId = "human_operator_stage4c";

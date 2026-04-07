@@ -633,6 +633,13 @@ function matchRoute(method, pathName) {
     return { route: "V1_POST_RUNTIME_WORKTREE_RELEASE", claimKey: v1RuntimeWorktreeReleaseMatch[1] };
   }
 
+  if (method === "GET" && pathName === "/v1/runtime/deploy-runtime") {
+    return { route: "V1_GET_RUNTIME_DEPLOY_RUNTIME" };
+  }
+  if (method === "PUT" && pathName === "/v1/runtime/deploy-runtime") {
+    return { route: "V1_PUT_RUNTIME_DEPLOY_RUNTIME" };
+  }
+
   if (method === "GET" && pathName === "/runtime/config") {
     return { route: "GET_RUNTIME_CONFIG" };
   }
@@ -893,6 +900,94 @@ function serializeRuntimeRecoveryAction(action) {
       agent: action.result?.agent ? serializeRuntimeAgent(action.result.agent) : null,
       claim: action.result?.claim ? serializeRuntimeWorktreeClaim(action.result.claim) : null
     }
+  };
+}
+
+function serializeRuntimeDeployRuntimeContract(input = {}) {
+  return {
+    projection: "runtime_deploy_runtime_contract",
+    contract_version: input.contractVersion ?? "v1.stage5a",
+    owner_operator_id: input.ownerOperatorId ?? null,
+    hosted_access: {
+      hosted_entry_url: input.hostedAccess?.hostedEntryUrl ?? null,
+      non_local_access: input.hostedAccess?.nonLocalAccess !== false,
+      access_mode: input.hostedAccess?.accessMode ?? "hosted_web",
+      login_state: input.hostedAccess?.loginState ?? "unknown",
+      session_binding: input.hostedAccess?.sessionBinding ?? "unstable",
+      auth_provider: input.hostedAccess?.authProvider ?? null,
+      status: input.hostedAccess?.status ?? "not_ready",
+      updated_at: input.hostedAccess?.updatedAt ?? null,
+      updated_by: input.hostedAccess?.updatedBy ?? null
+    },
+    deployment: {
+      deployment_id: input.deployment?.deploymentId ?? null,
+      target_ref: input.deployment?.targetRef ?? null,
+      release_channel: input.deployment?.releaseChannel ?? "stable",
+      runtime_version: input.deployment?.runtimeVersion ?? null,
+      status: input.deployment?.status ?? "not_deployed",
+      health_endpoint: input.deployment?.healthEndpoint ?? "/health",
+      readiness_endpoint: input.deployment?.readinessEndpoint ?? "/runtime/smoke",
+      updated_at: input.deployment?.updatedAt ?? null,
+      updated_by: input.deployment?.updatedBy ?? null
+    },
+    environment: {
+      environment_id: input.environment?.environmentId ?? null,
+      config_profile: input.environment?.configProfile ?? null,
+      config_refs: deepClone(input.environment?.configRefs ?? []),
+      secret_refs: deepClone(input.environment?.secretRefs ?? []),
+      release_ref: input.environment?.releaseRef ?? null,
+      recovery_ref: input.environment?.recoveryRef ?? null,
+      upgrade_ref: input.environment?.upgradeRef ?? null,
+      handoff_ref: input.environment?.handoffRef ?? null,
+      updated_at: input.environment?.updatedAt ?? null,
+      updated_by: input.environment?.updatedBy ?? null
+    },
+    health_readiness: {
+      health_status: input.healthReadiness?.healthStatus ?? "unknown",
+      readiness_status: input.healthReadiness?.readinessStatus ?? "not_ready",
+      checked_at: input.healthReadiness?.checkedAt ?? null,
+      check_ref: input.healthReadiness?.checkRef ?? null,
+      notes: input.healthReadiness?.notes ?? null,
+      updated_at: input.healthReadiness?.updatedAt ?? null,
+      updated_by: input.healthReadiness?.updatedBy ?? null
+    },
+    release_recovery_upgrade_handoff: {
+      status: input.releaseRecoveryUpgradeHandoff?.status ?? "draft",
+      release_ref: input.releaseRecoveryUpgradeHandoff?.releaseRef ?? null,
+      recovery_ref: input.releaseRecoveryUpgradeHandoff?.recoveryRef ?? null,
+      upgrade_ref: input.releaseRecoveryUpgradeHandoff?.upgradeRef ?? null,
+      handoff_ref: input.releaseRecoveryUpgradeHandoff?.handoffRef ?? null,
+      runbook_ref: input.releaseRecoveryUpgradeHandoff?.runbookRef ?? null,
+      last_drill_at: input.releaseRecoveryUpgradeHandoff?.lastDrillAt ?? null,
+      updated_at: input.releaseRecoveryUpgradeHandoff?.updatedAt ?? null,
+      updated_by: input.releaseRecoveryUpgradeHandoff?.updatedBy ?? null
+    },
+    write_anchors: {
+      deploy_runtime_upsert: input.writeAnchors?.deployRuntimeUpsert ?? "/v1/runtime/deploy-runtime",
+      runtime_recovery_action:
+        input.writeAnchors?.runtimeRecoveryAction ?? "/v1/runtime/agents/:agentId/recovery-actions"
+    },
+    audit_anchor: {
+      trail: input.auditAnchor?.trail ?? "/v1/runtime/deploy-runtime",
+      latest: {
+        deploy_runtime: input.auditAnchor?.latest?.deployRuntime
+          ? {
+              audit_id: input.auditAnchor.latest.deployRuntime.auditId ?? null,
+              action: input.auditAnchor.latest.deployRuntime.action ?? null,
+              at: input.auditAnchor.latest.deployRuntime.at ?? null,
+              operator_id: input.auditAnchor.latest.deployRuntime.operatorId ?? null
+            }
+          : null
+      }
+    },
+    timeline_anchor: {
+      runtime_config: input.timelineAnchor?.runtimeConfig ?? "/runtime/config",
+      runtime_smoke: input.timelineAnchor?.runtimeSmoke ?? "/runtime/smoke",
+      health: input.timelineAnchor?.health ?? "/health",
+      runtime_registry: input.timelineAnchor?.runtimeRegistry ?? "/v1/runtime/registry",
+      runtime_recovery_actions: input.timelineAnchor?.runtimeRecoveryActions ?? "/v1/runtime/recovery-actions"
+    },
+    updated_at: input.updatedAt ?? null
   };
 }
 
@@ -5395,6 +5490,41 @@ export function createHttpServer(coordinator, options = {}) {
           worktree_claims: registry.worktreeClaims.map((claim) => serializeRuntimeWorktreeClaim(claim)),
           projection_meta: integrationProjectionMeta({
             resource: "runtime_registry_projection",
+            sourcePlane: "operator_runtime_projection"
+          }),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_GET_RUNTIME_DEPLOY_RUNTIME") {
+        const contract = coordinator.getRuntimeDeployRuntimeContract();
+        sendJson(response, 200, {
+          deploy_runtime: serializeRuntimeDeployRuntimeContract(contract),
+          projection_meta: integrationProjectionMeta({
+            resource: "runtime_deploy_runtime_projection",
+            sourcePlane: "operator_runtime_projection"
+          }),
+          request_id: requestId
+        });
+        return;
+      }
+
+      if (route.route === "V1_PUT_RUNTIME_DEPLOY_RUNTIME") {
+        const body = await readJsonBody(request);
+        assertObjectBody(body, "invalid_runtime_deploy_runtime", "runtime deploy-runtime payload must be object");
+        const contract = coordinator.upsertRuntimeDeployRuntimeContract({
+          ...body,
+          operatorId: body.operator_id,
+          hostedAccess: body.hosted_access,
+          healthReadiness: body.health_readiness,
+          releaseRecoveryUpgradeHandoff: body.release_recovery_upgrade_handoff,
+          policySnapshot: body.policy_snapshot
+        });
+        sendJson(response, 200, {
+          deploy_runtime: serializeRuntimeDeployRuntimeContract(contract),
+          projection_meta: integrationProjectionMeta({
+            resource: "runtime_deploy_runtime_projection",
             sourcePlane: "operator_runtime_projection"
           }),
           request_id: requestId

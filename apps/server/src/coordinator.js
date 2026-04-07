@@ -220,6 +220,12 @@ const MULTI_AGENT_ORCHESTRATION_STATUSES = new Set(["draft", "active", "paused",
 const UPGRADE_ARBITRATION_STATUSES = new Set(["pending", "human_review_required", "approved", "rejected", "rolled_back"]);
 const UPGRADE_ARBITRATION_TARGET_MODES = new Set(["runtime_rebind", "policy_hardened", "manual_takeover"]);
 const HUMAN_UPGRADE_CHAIN_STATUSES = new Set(["pending", "approved", "rejected", "rolled_back"]);
+const HOSTED_ACCESS_STATUSES = new Set(["not_ready", "ready", "degraded"]);
+const HOSTED_LOGIN_STATES = new Set(["unknown", "stable", "expiring", "degraded"]);
+const DEPLOY_RUNTIME_DEPLOYMENT_STATUSES = new Set(["not_deployed", "deploying", "ready", "degraded", "failed"]);
+const DEPLOY_RUNTIME_HEALTH_STATUSES = new Set(["unknown", "healthy", "degraded", "down"]);
+const DEPLOY_RUNTIME_READINESS_STATUSES = new Set(["not_ready", "warming", "ready", "blocked"]);
+const DEPLOY_RUNTIME_HANDOFF_STATUSES = new Set(["draft", "ready", "in_progress", "completed", "blocked"]);
 const EXTERNAL_MEMORY_PROVIDER_CAPABILITIES = Object.freeze({
   memory_search: true,
   memory_get: true,
@@ -346,6 +352,67 @@ function createEmptyChannelOrchestrationUpgrade() {
   return {
     multiAgentOrchestration: null,
     upgradeArbitration: null
+  };
+}
+
+function createEmptyRuntimeDeployRuntimeContract() {
+  return {
+    ownerOperatorId: null,
+    hostedAccess: {
+      hostedEntryUrl: null,
+      nonLocalAccess: true,
+      accessMode: "hosted_web",
+      loginState: "unknown",
+      sessionBinding: "unstable",
+      authProvider: null,
+      status: "not_ready",
+      updatedAt: null,
+      updatedBy: null
+    },
+    deployment: {
+      deploymentId: null,
+      targetRef: null,
+      releaseChannel: "stable",
+      runtimeVersion: null,
+      status: "not_deployed",
+      healthEndpoint: "/health",
+      readinessEndpoint: "/runtime/smoke",
+      updatedAt: null,
+      updatedBy: null
+    },
+    environment: {
+      environmentId: null,
+      configProfile: null,
+      configRefs: [],
+      secretRefs: [],
+      releaseRef: null,
+      recoveryRef: null,
+      upgradeRef: null,
+      handoffRef: null,
+      updatedAt: null,
+      updatedBy: null
+    },
+    healthReadiness: {
+      healthStatus: "unknown",
+      readinessStatus: "not_ready",
+      checkedAt: null,
+      checkRef: null,
+      notes: null,
+      updatedAt: null,
+      updatedBy: null
+    },
+    releaseRecoveryUpgradeHandoff: {
+      status: "draft",
+      releaseRef: null,
+      recoveryRef: null,
+      upgradeRef: null,
+      handoffRef: null,
+      runbookRef: null,
+      lastDrillAt: null,
+      updatedAt: null,
+      updatedBy: null
+    },
+    updatedAt: null
   };
 }
 
@@ -1572,6 +1639,8 @@ export class ServerCoordinator {
     this.runtimeAgents = new Map();
     this.runtimeWorktreeClaims = new Map();
     this.runtimeRecoveryActions = [];
+    this.runtimeDeployRuntime = createEmptyRuntimeDeployRuntimeContract();
+    this.runtimeDeployRuntimeAuditTrail = [];
     this.escalationMs = Number(options.escalationMs ?? 120000);
     this.runtimeLivenessMs = parseRuntimeLivenessMs(options.runtimeLivenessMs);
     this.conflictSweepOnRead = options.conflictSweepOnRead ?? true;
@@ -2526,6 +2595,468 @@ export class ServerCoordinator {
       agents,
       worktreeClaims
     };
+  }
+
+  appendRuntimeDeployRuntimeAuditEntry(input = {}) {
+    const entry = {
+      auditId: generateId("audit"),
+      action: input.action ?? "runtime_deploy_runtime_upsert",
+      operatorId: input.operatorId ?? null,
+      at: nowIso(),
+      policySnapshot:
+        input.policySnapshot !== undefined
+          ? deepClone(input.policySnapshot)
+          : {
+              mode: "stage5a"
+            },
+      details: input.details !== undefined ? deepClone(input.details) : {}
+    };
+    this.runtimeDeployRuntimeAuditTrail.push(entry);
+    if (this.runtimeDeployRuntimeAuditTrail.length > 500) {
+      this.runtimeDeployRuntimeAuditTrail.shift();
+    }
+    return deepClone(entry);
+  }
+
+  findLatestRuntimeDeployRuntimeAuditByAction(action) {
+    for (let index = this.runtimeDeployRuntimeAuditTrail.length - 1; index >= 0; index -= 1) {
+      const entry = this.runtimeDeployRuntimeAuditTrail[index];
+      if (entry.action === action) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  buildRuntimeDeployRuntimeAuditAnchor() {
+    const mapEntry = (entry) =>
+      entry
+        ? {
+            auditId: entry.auditId,
+            action: entry.action,
+            at: entry.at,
+            operatorId: entry.operatorId ?? null
+          }
+        : null;
+    return {
+      trail: "/v1/runtime/deploy-runtime",
+      latest: {
+        deployRuntime: mapEntry(this.findLatestRuntimeDeployRuntimeAuditByAction("runtime_deploy_runtime_upsert"))
+      }
+    };
+  }
+
+  getRuntimeDeployRuntimeContract() {
+    const contract = this.runtimeDeployRuntime ?? createEmptyRuntimeDeployRuntimeContract();
+    return deepClone({
+      contractVersion: "v1.stage5a",
+      ownerOperatorId: contract.ownerOperatorId ?? null,
+      hostedAccess: contract.hostedAccess,
+      deployment: contract.deployment,
+      environment: contract.environment,
+      healthReadiness: contract.healthReadiness,
+      releaseRecoveryUpgradeHandoff: contract.releaseRecoveryUpgradeHandoff,
+      writeAnchors: {
+        deployRuntimeUpsert: "/v1/runtime/deploy-runtime",
+        runtimeRecoveryAction: "/v1/runtime/agents/:agentId/recovery-actions"
+      },
+      auditAnchor: this.buildRuntimeDeployRuntimeAuditAnchor(),
+      timelineAnchor: {
+        runtimeConfig: "/runtime/config",
+        runtimeSmoke: "/runtime/smoke",
+        health: "/health",
+        runtimeRegistry: "/v1/runtime/registry",
+        runtimeRecoveryActions: "/v1/runtime/recovery-actions"
+      },
+      updatedAt: contract.updatedAt ?? null
+    });
+  }
+
+  upsertRuntimeDeployRuntimeContract(input = {}) {
+    assertOrThrow(
+      input && typeof input === "object" && !Array.isArray(input),
+      "invalid_runtime_deploy_runtime",
+      "runtime deploy-runtime payload must be object"
+    );
+    const allowedKeys = new Set([
+      "operatorId",
+      "operator_id",
+      "hostedAccess",
+      "hosted_access",
+      "deployment",
+      "environment",
+      "healthReadiness",
+      "health_readiness",
+      "releaseRecoveryUpgradeHandoff",
+      "release_recovery_upgrade_handoff",
+      "policySnapshot",
+      "policy_snapshot"
+    ]);
+    for (const key of Object.keys(input)) {
+      assertOrThrow(
+        allowedKeys.has(key),
+        "invalid_runtime_deploy_runtime_field",
+        `unsupported runtime deploy-runtime field: ${key}`
+      );
+    }
+
+    const hostedAccessInput = input.hostedAccess ?? input.hosted_access;
+    const deploymentInput = input.deployment;
+    const environmentInput = input.environment;
+    const healthReadinessInput = input.healthReadiness ?? input.health_readiness;
+    const handoffInput = input.releaseRecoveryUpgradeHandoff ?? input.release_recovery_upgrade_handoff;
+
+    assertOrThrow(
+      hostedAccessInput !== undefined ||
+        deploymentInput !== undefined ||
+        environmentInput !== undefined ||
+        healthReadinessInput !== undefined ||
+        handoffInput !== undefined,
+      "invalid_runtime_deploy_runtime",
+      "runtime deploy-runtime payload must include hosted_access/deployment/environment/health_readiness/release_recovery_upgrade_handoff"
+    );
+
+    const operatorId = normalizeOptionalScopeId(input.operatorId ?? input.operator_id);
+    assertOrThrow(operatorId, "invalid_operator_id", "operator_id is required");
+
+    const pick = (source, camelKey, snakeKey) => {
+      if (!source || typeof source !== "object" || Array.isArray(source)) {
+        return undefined;
+      }
+      if (source[camelKey] !== undefined) {
+        return source[camelKey];
+      }
+      return source[snakeKey];
+    };
+    const normalizeStringList = (value, code, label) => {
+      if (value === undefined) {
+        return null;
+      }
+      assertOrThrow(Array.isArray(value), code, `${label} must be string[]`);
+      return Array.from(
+        new Set(
+          value
+            .filter((item) => typeof item === "string" && item.trim().length > 0)
+            .map((item) => item.trim())
+        )
+      );
+    };
+
+    const contract = this.runtimeDeployRuntime ?? createEmptyRuntimeDeployRuntimeContract();
+    const now = nowIso();
+    const updatedSections = [];
+
+    if (hostedAccessInput !== undefined) {
+      assertOrThrow(
+        hostedAccessInput && typeof hostedAccessInput === "object" && !Array.isArray(hostedAccessInput),
+        "invalid_hosted_access",
+        "hosted_access payload must be object"
+      );
+      const allowedHostedKeys = new Set([
+        "hostedEntryUrl",
+        "hosted_entry_url",
+        "nonLocalAccess",
+        "non_local_access",
+        "accessMode",
+        "access_mode",
+        "loginState",
+        "login_state",
+        "sessionBinding",
+        "session_binding",
+        "authProvider",
+        "auth_provider",
+        "status"
+      ]);
+      for (const key of Object.keys(hostedAccessInput)) {
+        assertOrThrow(
+          allowedHostedKeys.has(key),
+          "invalid_hosted_access_field",
+          `unsupported hosted_access field: ${key}`
+        );
+      }
+      const status = normalizeOptionalScopeId(pick(hostedAccessInput, "status", "status")) ?? contract.hostedAccess.status;
+      assertOrThrow(HOSTED_ACCESS_STATUSES.has(status), "invalid_hosted_access_status", "hosted_access.status is invalid");
+      const loginState =
+        normalizeOptionalScopeId(pick(hostedAccessInput, "loginState", "login_state")) ?? contract.hostedAccess.loginState;
+      assertOrThrow(HOSTED_LOGIN_STATES.has(loginState), "invalid_hosted_login_state", "hosted_access.login_state is invalid");
+      const nonLocalAccessInput = pick(hostedAccessInput, "nonLocalAccess", "non_local_access");
+      if (nonLocalAccessInput !== undefined) {
+        assertOrThrow(typeof nonLocalAccessInput === "boolean", "invalid_hosted_non_local_access", "hosted_access.non_local_access must be boolean");
+      }
+      contract.hostedAccess = {
+        hostedEntryUrl:
+          normalizeOptionalScopeId(pick(hostedAccessInput, "hostedEntryUrl", "hosted_entry_url")) ??
+          contract.hostedAccess.hostedEntryUrl,
+        nonLocalAccess: nonLocalAccessInput === undefined ? contract.hostedAccess.nonLocalAccess : nonLocalAccessInput,
+        accessMode:
+          normalizeOptionalScopeId(pick(hostedAccessInput, "accessMode", "access_mode")) ?? contract.hostedAccess.accessMode,
+        loginState,
+        sessionBinding:
+          normalizeOptionalScopeId(pick(hostedAccessInput, "sessionBinding", "session_binding")) ??
+          contract.hostedAccess.sessionBinding,
+        authProvider:
+          normalizeOptionalScopeId(pick(hostedAccessInput, "authProvider", "auth_provider")) ?? contract.hostedAccess.authProvider,
+        status,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("hosted_access");
+    }
+
+    if (deploymentInput !== undefined) {
+      assertOrThrow(
+        deploymentInput && typeof deploymentInput === "object" && !Array.isArray(deploymentInput),
+        "invalid_runtime_deployment",
+        "deployment payload must be object"
+      );
+      const allowedDeploymentKeys = new Set([
+        "deploymentId",
+        "deployment_id",
+        "targetRef",
+        "target_ref",
+        "releaseChannel",
+        "release_channel",
+        "runtimeVersion",
+        "runtime_version",
+        "status",
+        "healthEndpoint",
+        "health_endpoint",
+        "readinessEndpoint",
+        "readiness_endpoint"
+      ]);
+      for (const key of Object.keys(deploymentInput)) {
+        assertOrThrow(
+          allowedDeploymentKeys.has(key),
+          "invalid_runtime_deployment_field",
+          `unsupported deployment field: ${key}`
+        );
+      }
+      const status = normalizeOptionalScopeId(pick(deploymentInput, "status", "status")) ?? contract.deployment.status;
+      assertOrThrow(
+        DEPLOY_RUNTIME_DEPLOYMENT_STATUSES.has(status),
+        "invalid_runtime_deployment_status",
+        "deployment.status is invalid"
+      );
+      contract.deployment = {
+        deploymentId:
+          normalizeOptionalScopeId(pick(deploymentInput, "deploymentId", "deployment_id")) ?? contract.deployment.deploymentId,
+        targetRef: normalizeOptionalScopeId(pick(deploymentInput, "targetRef", "target_ref")) ?? contract.deployment.targetRef,
+        releaseChannel:
+          normalizeOptionalScopeId(pick(deploymentInput, "releaseChannel", "release_channel")) ??
+          contract.deployment.releaseChannel,
+        runtimeVersion:
+          normalizeOptionalScopeId(pick(deploymentInput, "runtimeVersion", "runtime_version")) ??
+          contract.deployment.runtimeVersion,
+        status,
+        healthEndpoint:
+          normalizeOptionalScopeId(pick(deploymentInput, "healthEndpoint", "health_endpoint")) ??
+          contract.deployment.healthEndpoint,
+        readinessEndpoint:
+          normalizeOptionalScopeId(pick(deploymentInput, "readinessEndpoint", "readiness_endpoint")) ??
+          contract.deployment.readinessEndpoint,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("deployment");
+    }
+
+    if (environmentInput !== undefined) {
+      assertOrThrow(
+        environmentInput && typeof environmentInput === "object" && !Array.isArray(environmentInput),
+        "invalid_runtime_environment",
+        "environment payload must be object"
+      );
+      const allowedEnvironmentKeys = new Set([
+        "environmentId",
+        "environment_id",
+        "configProfile",
+        "config_profile",
+        "configRefs",
+        "config_refs",
+        "secretRefs",
+        "secret_refs",
+        "releaseRef",
+        "release_ref",
+        "recoveryRef",
+        "recovery_ref",
+        "upgradeRef",
+        "upgrade_ref",
+        "handoffRef",
+        "handoff_ref"
+      ]);
+      for (const key of Object.keys(environmentInput)) {
+        assertOrThrow(
+          allowedEnvironmentKeys.has(key),
+          "invalid_runtime_environment_field",
+          `unsupported environment field: ${key}`
+        );
+      }
+      const configRefs = normalizeStringList(
+        pick(environmentInput, "configRefs", "config_refs"),
+        "invalid_runtime_environment_config_refs",
+        "environment.config_refs"
+      );
+      const secretRefs = normalizeStringList(
+        pick(environmentInput, "secretRefs", "secret_refs"),
+        "invalid_runtime_environment_secret_refs",
+        "environment.secret_refs"
+      );
+      contract.environment = {
+        environmentId:
+          normalizeOptionalScopeId(pick(environmentInput, "environmentId", "environment_id")) ??
+          contract.environment.environmentId,
+        configProfile:
+          normalizeOptionalScopeId(pick(environmentInput, "configProfile", "config_profile")) ??
+          contract.environment.configProfile,
+        configRefs: configRefs ?? contract.environment.configRefs,
+        secretRefs: secretRefs ?? contract.environment.secretRefs,
+        releaseRef:
+          normalizeOptionalScopeId(pick(environmentInput, "releaseRef", "release_ref")) ?? contract.environment.releaseRef,
+        recoveryRef:
+          normalizeOptionalScopeId(pick(environmentInput, "recoveryRef", "recovery_ref")) ??
+          contract.environment.recoveryRef,
+        upgradeRef:
+          normalizeOptionalScopeId(pick(environmentInput, "upgradeRef", "upgrade_ref")) ?? contract.environment.upgradeRef,
+        handoffRef:
+          normalizeOptionalScopeId(pick(environmentInput, "handoffRef", "handoff_ref")) ?? contract.environment.handoffRef,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("environment");
+    }
+
+    if (healthReadinessInput !== undefined) {
+      assertOrThrow(
+        healthReadinessInput && typeof healthReadinessInput === "object" && !Array.isArray(healthReadinessInput),
+        "invalid_runtime_health_readiness",
+        "health_readiness payload must be object"
+      );
+      const allowedHealthKeys = new Set([
+        "healthStatus",
+        "health_status",
+        "readinessStatus",
+        "readiness_status",
+        "checkedAt",
+        "checked_at",
+        "checkRef",
+        "check_ref",
+        "notes"
+      ]);
+      for (const key of Object.keys(healthReadinessInput)) {
+        assertOrThrow(
+          allowedHealthKeys.has(key),
+          "invalid_runtime_health_readiness_field",
+          `unsupported health_readiness field: ${key}`
+        );
+      }
+      const healthStatus =
+        normalizeOptionalScopeId(pick(healthReadinessInput, "healthStatus", "health_status")) ??
+        contract.healthReadiness.healthStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_HEALTH_STATUSES.has(healthStatus),
+        "invalid_runtime_health_status",
+        "health_readiness.health_status is invalid"
+      );
+      const readinessStatus =
+        normalizeOptionalScopeId(pick(healthReadinessInput, "readinessStatus", "readiness_status")) ??
+        contract.healthReadiness.readinessStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_READINESS_STATUSES.has(readinessStatus),
+        "invalid_runtime_readiness_status",
+        "health_readiness.readiness_status is invalid"
+      );
+      contract.healthReadiness = {
+        healthStatus,
+        readinessStatus,
+        checkedAt:
+          normalizeOptionalScopeId(pick(healthReadinessInput, "checkedAt", "checked_at")) ??
+          contract.healthReadiness.checkedAt,
+        checkRef:
+          normalizeOptionalScopeId(pick(healthReadinessInput, "checkRef", "check_ref")) ?? contract.healthReadiness.checkRef,
+        notes: normalizeOptionalScopeId(pick(healthReadinessInput, "notes", "notes")) ?? contract.healthReadiness.notes,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("health_readiness");
+    }
+
+    if (handoffInput !== undefined) {
+      assertOrThrow(
+        handoffInput && typeof handoffInput === "object" && !Array.isArray(handoffInput),
+        "invalid_runtime_release_recovery_upgrade_handoff",
+        "release_recovery_upgrade_handoff payload must be object"
+      );
+      const allowedHandoffKeys = new Set([
+        "status",
+        "releaseRef",
+        "release_ref",
+        "recoveryRef",
+        "recovery_ref",
+        "upgradeRef",
+        "upgrade_ref",
+        "handoffRef",
+        "handoff_ref",
+        "runbookRef",
+        "runbook_ref",
+        "lastDrillAt",
+        "last_drill_at"
+      ]);
+      for (const key of Object.keys(handoffInput)) {
+        assertOrThrow(
+          allowedHandoffKeys.has(key),
+          "invalid_runtime_release_recovery_upgrade_handoff_field",
+          `unsupported release_recovery_upgrade_handoff field: ${key}`
+        );
+      }
+      const status = normalizeOptionalScopeId(pick(handoffInput, "status", "status")) ?? contract.releaseRecoveryUpgradeHandoff.status;
+      assertOrThrow(
+        DEPLOY_RUNTIME_HANDOFF_STATUSES.has(status),
+        "invalid_runtime_release_recovery_upgrade_handoff_status",
+        "release_recovery_upgrade_handoff.status is invalid"
+      );
+      contract.releaseRecoveryUpgradeHandoff = {
+        status,
+        releaseRef:
+          normalizeOptionalScopeId(pick(handoffInput, "releaseRef", "release_ref")) ??
+          contract.releaseRecoveryUpgradeHandoff.releaseRef,
+        recoveryRef:
+          normalizeOptionalScopeId(pick(handoffInput, "recoveryRef", "recovery_ref")) ??
+          contract.releaseRecoveryUpgradeHandoff.recoveryRef,
+        upgradeRef:
+          normalizeOptionalScopeId(pick(handoffInput, "upgradeRef", "upgrade_ref")) ??
+          contract.releaseRecoveryUpgradeHandoff.upgradeRef,
+        handoffRef:
+          normalizeOptionalScopeId(pick(handoffInput, "handoffRef", "handoff_ref")) ??
+          contract.releaseRecoveryUpgradeHandoff.handoffRef,
+        runbookRef:
+          normalizeOptionalScopeId(pick(handoffInput, "runbookRef", "runbook_ref")) ??
+          contract.releaseRecoveryUpgradeHandoff.runbookRef,
+        lastDrillAt:
+          normalizeOptionalScopeId(pick(handoffInput, "lastDrillAt", "last_drill_at")) ??
+          contract.releaseRecoveryUpgradeHandoff.lastDrillAt,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("release_recovery_upgrade_handoff");
+    }
+
+    contract.ownerOperatorId = contract.ownerOperatorId ?? operatorId;
+    contract.updatedAt = now;
+    this.runtimeDeployRuntime = contract;
+    this.appendRuntimeDeployRuntimeAuditEntry({
+      action: "runtime_deploy_runtime_upsert",
+      operatorId,
+      policySnapshot: input.policySnapshot ?? input.policy_snapshot,
+      details: {
+        updated_sections: updatedSections,
+        hosted_access_status: contract.hostedAccess.status,
+        deployment_status: contract.deployment.status,
+        health_status: contract.healthReadiness.healthStatus,
+        readiness_status: contract.healthReadiness.readinessStatus,
+        handoff_status: contract.releaseRecoveryUpgradeHandoff.status
+      }
+    });
+    return this.getRuntimeDeployRuntimeContract();
   }
 
   requireChannelContext(channelId) {
@@ -6284,7 +6815,8 @@ export class ServerCoordinator {
         "/v1/channels/:channelId/memory/write",
         "/v1/channels/:channelId/memory/feedback",
         "/v1/channels/:channelId/memory/promote",
-        "/v1/channels/:channelId/memory/forget"
+        "/v1/channels/:channelId/memory/forget",
+        "/v1/runtime/deploy-runtime"
       ],
       lineage_anchors: {
         topic_status: "/v1/topics/:topicId/status",
@@ -6311,7 +6843,8 @@ export class ServerCoordinator {
         channel_notification_endpoint: "/v1/channels/:channelId/notification-endpoint",
         channel_orchestration_upgrade: "/v1/channels/:channelId/orchestration-upgrade",
         channel_external_memory_provider: "/v1/channels/:channelId/external-memory-provider",
-        channel_memory_viewer: "/v1/channels/:channelId/memory-viewer"
+        channel_memory_viewer: "/v1/channels/:channelId/memory-viewer",
+        runtime_deploy_runtime: "/v1/runtime/deploy-runtime"
       }
     };
     if (!topicId) {
