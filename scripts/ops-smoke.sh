@@ -68,6 +68,90 @@ probe() {
   preview_body "$last_body"
 }
 
+normalize_url() {
+  local value="$1"
+  while [[ "$value" == */ ]]; do
+    value="${value%/}"
+  done
+  printf '%s\n' "$value"
+}
+
+assert_runtime_pairing_truth() {
+  local pairing_body="$1"
+  local registry_body="$2"
+  local runtime_body="$3"
+  local daemon_body="$4"
+
+  PAIRING_BODY="$pairing_body" \
+  REGISTRY_BODY="$registry_body" \
+  RUNTIME_BODY="$runtime_body" \
+  DAEMON_BODY="$daemon_body" \
+  EXPECTED_DAEMON_URL="$(normalize_url "$DAEMON_URL")" \
+    node <<'NODE'
+const fail = (message) => {
+  console.error(message)
+  process.exit(1)
+}
+
+const normalize = (value) => String(value ?? "").trim().replace(/\/+$/, "")
+const parse = (name) => {
+  try {
+    return JSON.parse(process.env[name] || "{}")
+  } catch (error) {
+    fail(`${name} invalid json: ${error.message}`)
+  }
+}
+
+const expectedDaemonURL = normalize(process.env.EXPECTED_DAEMON_URL)
+const pairing = parse("PAIRING_BODY")
+const registry = parse("REGISTRY_BODY")
+const runtime = parse("RUNTIME_BODY")
+const daemon = parse("DAEMON_BODY")
+
+const pairingURL = normalize(pairing.daemonUrl)
+if (!pairingURL) {
+  fail("Server runtime pairing missing daemonUrl")
+}
+if (pairingURL !== expectedDaemonURL) {
+  fail(`Server runtime pairing daemonUrl mismatch: got ${pairingURL}, want ${expectedDaemonURL}`)
+}
+
+const runtimeURL = normalize(runtime.daemonUrl)
+if (!runtimeURL) {
+  fail("Server runtime snapshot missing daemonUrl")
+}
+if (runtimeURL !== expectedDaemonURL) {
+  fail(`Server runtime snapshot daemonUrl mismatch: got ${runtimeURL}, want ${expectedDaemonURL}`)
+}
+
+const daemonURL = normalize(daemon.daemonUrl || expectedDaemonURL)
+if (daemonURL !== expectedDaemonURL) {
+  fail(`Daemon runtime daemonUrl mismatch: got ${daemonURL}, want ${expectedDaemonURL}`)
+}
+
+const pairedRuntime = String(registry.pairedRuntime || "").trim()
+const runtimes = Array.isArray(registry.runtimes) ? registry.runtimes : []
+if (!pairedRuntime) {
+  fail("Server runtime registry missing pairedRuntime")
+}
+const pairedRecord = runtimes.find((item) => {
+  const id = String(item?.id || "").trim()
+  const machine = String(item?.machine || "").trim()
+  return id === pairedRuntime || machine === pairedRuntime
+})
+if (!pairedRecord) {
+  fail(`Server runtime registry missing paired runtime ${pairedRuntime}`)
+}
+const registryURL = normalize(pairedRecord.daemonUrl)
+if (!registryURL) {
+  fail(`Server runtime registry paired runtime ${pairedRuntime} missing daemonUrl`)
+}
+if (registryURL !== expectedDaemonURL) {
+  fail(`Server runtime registry paired daemonUrl mismatch: got ${registryURL}, want ${expectedDaemonURL}`)
+}
+NODE
+}
+
 probe_github_connection() {
   local url="$1"
 
@@ -82,14 +166,42 @@ probe_github_connection() {
 }
 
 require_cmd curl
+require_cmd node
 
 probe "Server healthz" "$SERVER_URL/healthz" '"service":"openshock-server"'
 probe "Daemon healthz" "$DAEMON_URL/healthz" '"service":"openshock-daemon"'
 probe "Server state" "$SERVER_URL/v1/state" '"workspace"'
-probe "Server runtime registry" "$SERVER_URL/v1/runtime/registry" '"runtimes"'
-probe "Server runtime pairing" "$SERVER_URL/v1/runtime/pairing" '"pairingStatus"'
 probe "Server repo binding" "$SERVER_URL/v1/repo/binding" '"bindingStatus"'
-probe "Daemon runtime" "$DAEMON_URL/v1/runtime" '"providers"'
 probe_github_connection "$SERVER_URL/v1/github/connection"
+
+echo "==> Server runtime registry"
+request_json "$SERVER_URL/v1/runtime/registry"
+assert_status "200" "Server runtime registry"
+assert_contains '"runtimes"' "Server runtime registry"
+registry_body="$last_body"
+preview_body "$registry_body"
+
+echo "==> Server runtime pairing"
+request_json "$SERVER_URL/v1/runtime/pairing"
+assert_status "200" "Server runtime pairing"
+assert_contains '"pairingStatus"' "Server runtime pairing"
+pairing_body="$last_body"
+preview_body "$pairing_body"
+
+echo "==> Server runtime bridge"
+request_json "$SERVER_URL/v1/runtime"
+assert_status "200" "Server runtime bridge"
+assert_contains '"daemonUrl"' "Server runtime bridge"
+runtime_body="$last_body"
+preview_body "$runtime_body"
+
+echo "==> Daemon runtime"
+request_json "$DAEMON_URL/v1/runtime"
+assert_status "200" "Daemon runtime"
+assert_contains '"providers"' "Daemon runtime"
+daemon_body="$last_body"
+preview_body "$daemon_body"
+
+assert_runtime_pairing_truth "$pairing_body" "$registry_body" "$runtime_body" "$daemon_body"
 
 echo "ops smoke passed"

@@ -50,7 +50,7 @@ OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke
 | daemon liveness | `GET /healthz` | `"service":"openshock-daemon"` | daemon 进程是否存活 |
 | control-plane state | `GET /v1/state` | `"workspace"` | workspace / issue / room / run / inbox 是否还能读 |
 | runtime registry | `GET /v1/runtime/registry` | `"runtimes"` | heartbeat / lease truth 是否继续写回 |
-| runtime pairing | `GET /v1/runtime/pairing` | `"pairingStatus"` | server 当前是否仍指向正确 daemon |
+| runtime pairing | `GET /v1/runtime/pairing` + `GET /v1/runtime` + daemon `GET /v1/runtime` | `"daemonUrl"` | server pairing URL、runtime registry 与 live daemon truth 是否一致 |
 | repo binding | `GET /v1/repo/binding` | `"bindingStatus"` | repo / branch / auth mode / install truth |
 | GitHub connection | `GET /v1/github/connection` | `"ready"` | GitHub App 或 gh auth readiness |
 | daemon runtime snapshot | `GET /v1/runtime` | `"providers"` | daemon 当前看到的 provider / heartbeat truth |
@@ -116,6 +116,7 @@ pnpm ops:smoke
 - round-end live sanity check
 - 本地拉起 stack 后快速确认 control plane 没掉
 - reviewer 在 live 环境里复核当前栈是否还通
+- 想确认 pairing URL 没有只停留在“字段存在”，而是真正和 registry / live daemon 对齐
 
 ### strict smoke
 
@@ -154,6 +155,7 @@ cd apps/daemon
 5. 如果是 runtime / GitHub 面：
    - `GET /v1/runtime/registry`
    - `GET /v1/runtime/pairing`
+   - `GET /v1/runtime`
    - `GET /v1/github/connection`
 
 ---

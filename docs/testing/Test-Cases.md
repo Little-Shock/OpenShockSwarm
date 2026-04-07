@@ -275,14 +275,14 @@
 ## TC-021 Release Gate 对 pairing 漂移的拦截
 
 - 业务目标: 确认工程回归门能识别 Setup 主链上的真实失败，而不是假绿。
-- 当前执行状态: Fail
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-15`
 - 前置条件: `ops:smoke` 与真实 daemon 运行在非默认端口。
 - 测试步骤:
   1. 执行 `pnpm ops:smoke`。
   2. 对比 pairing URL 与 runtime registry/实际 bridge 结果。
 - 预期结果: smoke 失败并指出 pairing 漂移。
-- 业务结论: 当前 smoke 只检查字段存在，不检查 URL 真值，属于 false-green。
+- 业务结论: 当前 smoke 会显式比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 daemon URL；pairing 漂移时会 fail-closed 并指出 mismatch。
 
 ## TC-022 GitHub App Effective Auth PR Contract
 

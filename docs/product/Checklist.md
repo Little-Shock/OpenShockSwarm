@@ -244,8 +244,8 @@
   - [x] `pnpm verify:release` 与 `pnpm ops:smoke` 提供基础回归门
   - [x] 浏览器走查、API 检查、SSE 验证已经有一轮实际结果
   - [x] 2026 年 4 月 7 日针对 GitHub App effective auth path 和 memory contract 的 go tests / release verify 已通过
+  - [x] `ops:smoke` 已会比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 URL 真值
 - 当前 GAP:
-  - [ ] `ops:smoke` 对 runtime pairing 存在 false-green
   - [ ] 产品指标、体验指标、设计指标尚未形成持续观测
 - 对应 Test Cases: `TC-011` `TC-021`
 
