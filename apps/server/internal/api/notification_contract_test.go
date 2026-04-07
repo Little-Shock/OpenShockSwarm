@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
+	githubsvc "github.com/Larkspur-Wang/OpenShock/apps/server/internal/github"
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
 
@@ -235,6 +238,74 @@ func TestNotificationRoutesRejectUnsupportedMethodsAndExposeSubscriberDetail(t *
 	}
 }
 
+func TestApprovalCenterLifecycleTracksInboxDecisions(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub: &fakeGitHubClient{
+			synced: map[int]githubsvc.PullRequest{
+				22: {
+					Number:         22,
+					URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/22",
+					Title:          "inbox: unify approval, blocked, and review cards",
+					State:          "OPEN",
+					HeadRefName:    "feat/inbox-decision-cards",
+					BaseRefName:    "main",
+					Author:         "ClaudeReviewRunner",
+					ReviewDecision: "CHANGES_REQUESTED",
+				},
+			},
+		},
+	}).Handler())
+	defer server.Close()
+
+	center := mustFetchApprovalCenter(t, server.URL)
+	if center.OpenCount != 3 || center.ApprovalCount != 1 || center.BlockedCount != 1 || center.ReviewCount != 1 || center.UnreadCount != 3 {
+		t.Fatalf("initial approval center malformed: %#v", center)
+	}
+	if center.RecentCount < 1 || !approvalRecentContains(center, "Runtime lane 完成第一轮壳层接线") {
+		t.Fatalf("initial recent lifecycle malformed: %#v", center.Recent)
+	}
+
+	mustApplyInboxDecision(t, server.URL, "inbox-approval-runtime", "approved")
+	center = mustFetchApprovalCenter(t, server.URL)
+	if center.OpenCount != 2 || center.ApprovalCount != 0 || center.BlockedCount != 1 || center.ReviewCount != 1 {
+		t.Fatalf("approval decision did not shrink approval center: %#v", center)
+	}
+	if _, ok := findApprovalSignalByID(center, "inbox-approval-runtime"); ok {
+		t.Fatalf("approved signal still present in approval center: %#v", center.Signals)
+	}
+	if !approvalRecentContains(center, "高风险动作已批准") {
+		t.Fatalf("recent lifecycle missing approval status writeback: %#v", center.Recent)
+	}
+
+	mustApplyInboxDecision(t, server.URL, "inbox-blocked-memory", "resolved")
+	center = mustFetchApprovalCenter(t, server.URL)
+	if center.OpenCount != 1 || center.ApprovalCount != 0 || center.BlockedCount != 0 || center.ReviewCount != 1 {
+		t.Fatalf("blocked resolve did not shrink approval center: %#v", center)
+	}
+	if !approvalRecentContains(center, "阻塞已解除") {
+		t.Fatalf("recent lifecycle missing blocked resolution writeback: %#v", center.Recent)
+	}
+
+	mustApplyInboxDecision(t, server.URL, "inbox-review-copy", "changes_requested")
+	center = mustFetchApprovalCenter(t, server.URL)
+	if center.OpenCount != 1 || center.ApprovalCount != 0 || center.BlockedCount != 1 || center.ReviewCount != 0 {
+		t.Fatalf("review lifecycle did not convert into blocked follow-up: %#v", center)
+	}
+	blockedSignal, ok := findApprovalSignal(center, "blocked")
+	if !ok || blockedSignal.Title != "PR #22 需要补充修改" || blockedSignal.RoomID != "room-inbox" || !blockedSignal.Unread {
+		t.Fatalf("review follow-up blocked signal malformed: %#v", blockedSignal)
+	}
+}
+
 func findApprovalSignal(center store.ApprovalCenterState, kind string) (store.ApprovalCenterItem, bool) {
 	for _, item := range center.Signals {
 		if item.Kind == kind {
@@ -265,4 +336,55 @@ func countInboxKinds(items []store.InboxItem, kinds ...string) int {
 		}
 	}
 	return count
+}
+
+func findApprovalSignalByID(center store.ApprovalCenterState, id string) (store.ApprovalCenterItem, bool) {
+	for _, item := range center.Signals {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return store.ApprovalCenterItem{}, false
+}
+
+func approvalRecentContains(center store.ApprovalCenterState, title string) bool {
+	for _, item := range center.Recent {
+		if item.Title == title {
+			return true
+		}
+	}
+	return false
+}
+
+func mustFetchApprovalCenter(t *testing.T, serverURL string) store.ApprovalCenterState {
+	t.Helper()
+
+	resp, err := http.Get(serverURL + "/v1/approval-center")
+	if err != nil {
+		t.Fatalf("GET /v1/approval-center error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/approval-center status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var center store.ApprovalCenterState
+	decodeJSON(t, resp, &center)
+	return center
+}
+
+func mustApplyInboxDecision(t *testing.T, serverURL, inboxItemID, decision string) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"decision": decision})
+	if err != nil {
+		t.Fatalf("Marshal inbox decision %q error = %v", decision, err)
+	}
+
+	resp, err := http.Post(serverURL+"/v1/inbox/"+inboxItemID, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/inbox/%s error = %v", inboxItemID, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/inbox/%s status = %d, want %d", inboxItemID, resp.StatusCode, http.StatusOK)
+	}
 }

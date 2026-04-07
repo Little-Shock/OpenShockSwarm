@@ -135,7 +135,7 @@
 ## TC-010 Inbox 决策与 PR 收口
 
 - 业务目标: 确认 blocked / approval / review 卡片可以成为人类收口面。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-07` `CHK-08`
 - 前置条件: 系统中存在 inbox 卡片，且不会触发真实远端 GitHub 变更。
 - 测试步骤:
@@ -143,7 +143,7 @@
   2. 对本地安全的卡片执行 `Approve`、`Defer` 或 `Resolve`。
   3. 检查状态是否回写到相关对象。
 - 预期结果: Inbox 能完成本地决策闭环，并能跳回上下文。
-- 业务结论: 需要下一轮安全自动化回放。
+- 业务结论: 2026 年 4 月 7 日 `TKT-10` 新增 `pnpm test:headed-approval-center-lifecycle`，在本地安全 state 上完成 approval / blocked / review lifecycle 的浏览器级回放；报告记录了 `/inbox` 直接消费 `/v1/approval-center`、Room / Run / PR back-link、recent resolution ledger，以及 `run_runtime_01`、`run_memory_01`、`pr-inbox-22` / `OPS-19` 的状态回写，因此这条本地决策闭环当前已可独立复核并通过。
 
 ## TC-011 未登录/低权限写入保护
 

@@ -1,8 +1,13 @@
 "use client";
 
-import { createContext, createElement, startTransition, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, createElement, startTransition, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
-import type { AuthSession, PhaseZeroState } from "@/lib/mock-data";
+import type {
+  ApprovalCenterState,
+  AuthSession,
+  InboxDecision,
+  PhaseZeroState,
+} from "@/lib/mock-data";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
 const STATE_STREAM_PATH = "/v1/state/stream";
@@ -52,13 +57,6 @@ type UpdatePullRequestInput = {
   status: "draft" | "open" | "in_review" | "changes_requested" | "merged";
 };
 
-type InboxDecision =
-  | "approved"
-  | "deferred"
-  | "resolved"
-  | "merged"
-  | "changes_requested";
-
 type PhaseZeroStreamPresence = {
   onlineMachines: number;
   busyMachines: number;
@@ -78,9 +76,13 @@ type PhaseZeroStreamEvent = {
 
 type PhaseZeroContextValue = {
   state: PhaseZeroState;
+  approvalCenter: ApprovalCenterState;
   loading: boolean;
   error: string | null;
+  approvalCenterLoading: boolean;
+  approvalCenterError: string | null;
   refresh: () => Promise<void>;
+  refreshApprovalCenter: () => Promise<void>;
   loginAuthSession: (input: { email: string; name?: string }) => Promise<StateMutationResponse>;
   logoutAuthSession: () => Promise<StateMutationResponse>;
   inviteWorkspaceMember: (input: { email: string; name?: string; role: string }) => Promise<StateMutationResponse>;
@@ -140,6 +142,17 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
   memory: [],
 };
 
+const EMPTY_APPROVAL_CENTER_STATE: ApprovalCenterState = {
+  openCount: 0,
+  approvalCount: 0,
+  blockedCount: 0,
+  reviewCount: 0,
+  unreadCount: 0,
+  recentCount: 0,
+  signals: [],
+  recent: [],
+};
+
 const PhaseZeroContext = createContext<PhaseZeroContextValue | null>(null);
 
 async function readJSON<T>(path: string, init?: RequestInit) {
@@ -162,48 +175,98 @@ async function readJSON<T>(path: string, init?: RequestInit) {
 
 function useProvidePhaseZeroState(): PhaseZeroContextValue {
   const [state, setState] = useState<PhaseZeroState>(EMPTY_PHASE_ZERO_STATE);
+  const [approvalCenter, setApprovalCenter] = useState<ApprovalCenterState>(EMPTY_APPROVAL_CENTER_STATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [approvalCenterLoading, setApprovalCenterLoading] = useState(true);
+  const [approvalCenterError, setApprovalCenterError] = useState<string | null>(null);
 
-  function commitState(next: PhaseZeroState) {
+  const commitState = useCallback((next: PhaseZeroState) => {
     startTransition(() => {
       setState(next);
       setError(null);
       setLoading(false);
     });
-  }
+  }, []);
 
-  function commitRequestError(nextError: unknown) {
+  const commitApprovalCenter = useCallback((next: ApprovalCenterState) => {
+    startTransition(() => {
+      setApprovalCenter(next);
+      setApprovalCenterError(null);
+      setApprovalCenterLoading(false);
+    });
+  }, []);
+
+  const commitRequestError = useCallback((nextError: unknown) => {
     setError(nextError instanceof Error ? nextError.message : "state fetch failed");
     setLoading(false);
-  }
+  }, []);
+
+  const commitApprovalCenterError = useCallback((nextError: unknown) => {
+    setApprovalCenterError(nextError instanceof Error ? nextError.message : "approval center fetch failed");
+    setApprovalCenterLoading(false);
+  }, []);
 
   async function refresh() {
+    const [stateResult, approvalCenterResult] = await Promise.allSettled([
+      readJSON<PhaseZeroState>("/v1/state"),
+      readJSON<ApprovalCenterState>("/v1/approval-center"),
+    ]);
+
+    if (approvalCenterResult.status === "fulfilled") {
+      commitApprovalCenter(approvalCenterResult.value);
+    } else {
+      commitApprovalCenterError(approvalCenterResult.reason);
+    }
+
+    if (stateResult.status === "fulfilled") {
+      commitState(stateResult.value);
+      return;
+    }
+
+    commitRequestError(stateResult.reason);
+    throw stateResult.reason;
+  }
+
+  const refreshApprovalCenter = useCallback(async () => {
     try {
-      const next = await readJSON<PhaseZeroState>("/v1/state");
-      commitState(next);
+      const next = await readJSON<ApprovalCenterState>("/v1/approval-center");
+      commitApprovalCenter(next);
     } catch (fetchError) {
-      commitRequestError(fetchError);
+      commitApprovalCenterError(fetchError);
       throw fetchError;
     }
-  }
+  }, [commitApprovalCenter, commitApprovalCenterError]);
+
+  const commitStateAndRefreshApprovalCenter = useCallback((next: PhaseZeroState) => {
+    commitState(next);
+    void refreshApprovalCenter().catch(() => {});
+  }, [commitState, refreshApprovalCenter]);
 
   useEffect(() => {
     let cancelled = false;
     let source: EventSource | null = null;
 
     async function hydrateInitialState() {
-      try {
-        const next = await readJSON<PhaseZeroState>("/v1/state");
-        if (cancelled) {
-          return;
-        }
-        commitState(next);
-      } catch (fetchError) {
-        if (cancelled) {
-          return;
-        }
-        commitRequestError(fetchError);
+      const [stateResult, approvalCenterResult] = await Promise.allSettled([
+        readJSON<PhaseZeroState>("/v1/state"),
+        readJSON<ApprovalCenterState>("/v1/approval-center"),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (stateResult.status === "fulfilled") {
+        commitState(stateResult.value);
+      } else {
+        commitRequestError(stateResult.reason);
+      }
+
+      if (approvalCenterResult.status === "fulfilled") {
+        commitApprovalCenter(approvalCenterResult.value);
+      } else {
+        commitApprovalCenterError(approvalCenterResult.reason);
       }
     }
 
@@ -222,7 +285,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       }
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroStreamEvent;
-        commitState(payload.state);
+        commitStateAndRefreshApprovalCenter(payload.state);
       } catch {
         // Ignore malformed stream payloads and wait for the next reconnect/update.
       }
@@ -238,7 +301,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       cancelled = true;
       source?.close();
     };
-  }, []);
+  }, [commitApprovalCenter, commitApprovalCenterError, commitRequestError, commitState, commitStateAndRefreshApprovalCenter]);
 
   async function loginAuthSession(input: { email: string; name?: string }) {
     const payload = await readJSON<StateMutationResponse>("/v1/auth/session", {
@@ -247,7 +310,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     });
 
     if (payload.state) {
-      commitState(payload.state);
+      commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
   }
@@ -258,7 +321,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     });
 
     if (payload.state) {
-      commitState(payload.state);
+      commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
   }
@@ -270,7 +333,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     });
 
     if (payload.state) {
-      commitState(payload.state);
+      commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
   }
@@ -282,7 +345,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     });
 
     if (payload.state) {
-      commitState(payload.state);
+      commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
   }
@@ -294,7 +357,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     });
 
     if (payload.state) {
-      commitState(payload.state);
+      commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
   }
@@ -306,7 +369,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     });
 
     if (payload.state) {
-      commitState(payload.state);
+      commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
   }
@@ -369,7 +432,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
           streamError = event.error;
         }
         if (event.state) {
-          commitState(event.state);
+          commitStateAndRefreshApprovalCenter(event.state);
           finalPayload = event;
         }
         onEvent?.(event);
@@ -383,7 +446,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
         streamError = event.error;
       }
       if (event.state) {
-        commitState(event.state);
+        commitStateAndRefreshApprovalCenter(event.state);
         finalPayload = event;
       }
       onEvent?.(event);
@@ -402,12 +465,12 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       });
 
       if (payload.state) {
-        commitState(payload.state);
+        commitStateAndRefreshApprovalCenter(payload.state);
       }
       return payload;
     } catch (mutationError) {
       if (mutationError instanceof StateMutationError && mutationError.payload.state) {
-        commitState(mutationError.payload.state);
+        commitStateAndRefreshApprovalCenter(mutationError.payload.state);
       }
       throw mutationError;
     }
@@ -421,12 +484,12 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       });
 
       if (payload.state) {
-        commitState(payload.state);
+        commitStateAndRefreshApprovalCenter(payload.state);
       }
       return payload;
     } catch (mutationError) {
       if (mutationError instanceof StateMutationError && mutationError.payload.state) {
-        commitState(mutationError.payload.state);
+        commitStateAndRefreshApprovalCenter(mutationError.payload.state);
       }
       throw mutationError;
     }
@@ -440,12 +503,12 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       });
 
       if (payload.state) {
-        commitState(payload.state);
+        commitStateAndRefreshApprovalCenter(payload.state);
       }
       return payload;
     } catch (mutationError) {
       if (mutationError instanceof StateMutationError && mutationError.payload.state) {
-        commitState(mutationError.payload.state);
+        commitStateAndRefreshApprovalCenter(mutationError.payload.state);
       }
       throw mutationError;
     }
@@ -453,9 +516,13 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
 
   return {
     state,
+    approvalCenter,
     loading,
     error,
+    approvalCenterLoading,
+    approvalCenterError,
     refresh,
+    refreshApprovalCenter,
     loginAuthSession,
     logoutAuthSession,
     inviteWorkspaceMember,

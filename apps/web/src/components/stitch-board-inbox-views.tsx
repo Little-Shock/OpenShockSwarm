@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { buildBoardColumns, type InboxItem } from "@/lib/mock-data";
+import {
+  buildBoardColumns,
+  type ApprovalCenterItem,
+  type InboxDecision,
+  type InboxItem,
+} from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionStatus } from "@/lib/session-authz";
 import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
@@ -43,15 +48,83 @@ function pullRequestStatusLabel(status?: string) {
   }
 }
 
+function deliveryStatusLabel(status: ApprovalCenterItem["deliveryStatus"]) {
+  switch (status) {
+    case "ready":
+      return "delivery ready";
+    case "blocked":
+      return "delivery blocked";
+    case "suppressed":
+      return "delivery suppressed";
+    default:
+      return "delivery unrouted";
+  }
+}
+
+function deliveryStatusTone(status: ApprovalCenterItem["deliveryStatus"]) {
+  switch (status) {
+    case "ready":
+      return "bg-[var(--shock-lime)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    case "suppressed":
+      return "bg-[#f3e5b8]";
+    default:
+      return "bg-white";
+  }
+}
+
+function decisionLabel(decision: InboxDecision) {
+  switch (decision) {
+    case "approved":
+      return "Approve";
+    case "deferred":
+      return "Defer";
+    case "resolved":
+      return "Resolve";
+    case "merged":
+      return "Merge";
+    default:
+      return "Request Changes";
+  }
+}
+
+function decisionTone(decision: InboxDecision) {
+  switch (decision) {
+    case "approved":
+    case "merged":
+      return "bg-[var(--shock-yellow)]";
+    case "resolved":
+      return "bg-[var(--shock-purple)] text-white";
+    default:
+      return "bg-white";
+  }
+}
+
+function signalIcon(kind: InboxItem["kind"]) {
+  switch (kind) {
+    case "approval":
+      return "⌘";
+    case "blocked":
+      return "⇡";
+    case "review":
+      return "🖼";
+    default:
+      return "●";
+  }
+}
+
 function permissionForInboxAction(
-  item: InboxItem,
-  decision: "approved" | "deferred" | "resolved" | "merged" | "changes_requested"
+  item: Pick<InboxItem, "kind">,
+  decision: InboxDecision
 ) {
   if (item.kind === "review" && decision === "changes_requested") {
     return "inbox.review";
   }
   return "inbox.decide";
 }
+
+type ApprovalCenterFilter = "all" | "approval" | "blocked" | "review" | "unread";
 
 function SurfaceStateMessage({
   title,
@@ -195,23 +268,59 @@ export function StitchBoardView() {
 }
 
 export function StitchInboxView() {
-  const { state, loading, error, applyInboxDecision } = usePhaseZeroState();
-  const inboxItems = loading || error ? [] : state.inbox;
+  const {
+    state,
+    approvalCenter,
+    loading,
+    error,
+    approvalCenterLoading,
+    approvalCenterError,
+    applyInboxDecision,
+  } = usePhaseZeroState();
+  const openSignals = loading || error ? [] : approvalCenter.signals.filter((item) => item.kind !== "status");
+  const recentSignals = loading || error ? [] : approvalCenter.recent;
   const session = state.auth.session;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const [activeFilter, setActiveFilter] = useState<ApprovalCenterFilter>("all");
   const sidebarChannels = loading || error ? [] : state.channels;
   const sidebarMachines = loading || error ? [] : state.machines;
   const sidebarAgents = loading || error ? [] : state.agents;
-  const blockedCount = inboxItems.filter((item) => item.kind === "blocked").length;
+  const centerLoading = loading || approvalCenterLoading;
+  const blockedCount = loading || error ? 0 : approvalCenter.blockedCount;
 
-  function findPullRequestForItem(item: InboxItem) {
-    return state.pullRequests.find((pullRequest) => item.href.includes(pullRequest.runId) || item.href.includes(pullRequest.roomId));
+  function findPullRequestForItem(item: Pick<ApprovalCenterItem, "href" | "roomId" | "runId">) {
+    return state.pullRequests.find(
+      (pullRequest) =>
+        (item.runId && pullRequest.runId === item.runId) ||
+        (item.roomId && pullRequest.roomId === item.roomId) ||
+        item.href.includes(pullRequest.runId) ||
+        item.href.includes(pullRequest.roomId)
+    );
   }
 
+  function findRoomForItem(item: Pick<ApprovalCenterItem, "room" | "roomId">) {
+    return state.rooms.find(
+      (room) => (item.roomId ? room.id === item.roomId : room.title === item.room)
+    );
+  }
+
+  const filteredSignals = openSignals.filter((item) => {
+    switch (activeFilter) {
+      case "approval":
+      case "blocked":
+      case "review":
+        return item.kind === activeFilter;
+      case "unread":
+        return item.unread;
+      default:
+        return true;
+    }
+  });
+
   async function handleInboxDecision(
-    item: InboxItem,
-    decision: "approved" | "deferred" | "resolved" | "merged" | "changes_requested"
+    item: ApprovalCenterItem,
+    decision: InboxDecision
   ) {
     if (busyId) return;
     setBusyId(item.id);
@@ -239,32 +348,84 @@ export function StitchInboxView() {
               <p className="inline-flex rounded-[4px] bg-[#ead7ff] px-2 py-1 font-mono text-[9px] text-[var(--shock-purple)]">HUMAN INTELLIGENCE REQUIRED</p>
               <div className="mt-4 flex items-end justify-between gap-6">
                 <div>
-                  <h1 className="font-display text-6xl font-bold">Human Inbox</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.62)]">只显示真正需要你独特判断的事项。这里绕过自动过滤器，只保留高价值的人类干预。</p>
+                  <h1 className="font-display text-6xl font-bold">Approval Center</h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.62)]">
+                    `/inbox` 现在直接消费 `/v1/approval-center`，把 approval / blocked / review 的 open lifecycle、unread 热点和 recent resolution 明面化，不再停在裸卡片列表。
+                  </p>
                 </div>
-                <div className="grid grid-cols-2 gap-6 text-right">
+                <div className="grid grid-cols-2 gap-6 text-right xl:grid-cols-4">
                   <div>
-                    <p className="font-display text-4xl font-bold">{blockedCount}</p>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Critical Blocks</p>
+                    <p data-testid="approval-center-open-count" className="font-display text-4xl font-bold">
+                      {centerLoading || error ? "…" : approvalCenter.openCount}
+                    </p>
+                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Open Signals</p>
                   </div>
                   <div>
-                    <p className="font-display text-4xl font-bold">{inboxItems.length}</p>
-                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Awaiting Replies</p>
+                    <p data-testid="approval-center-unread-count" className="font-display text-4xl font-bold">
+                      {centerLoading || error ? "…" : approvalCenter.unreadCount}
+                    </p>
+                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Unread Hotspots</p>
+                  </div>
+                  <div>
+                    <p data-testid="approval-center-recent-count" className="font-display text-4xl font-bold">
+                      {centerLoading || error ? "…" : approvalCenter.recentCount}
+                    </p>
+                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Recent Resolutions</p>
+                  </div>
+                  <div>
+                    <p data-testid="approval-center-blocked-count" className="font-display text-4xl font-bold">
+                      {centerLoading || error ? "…" : blockedCount}
+                    </p>
+                    <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Critical Blocks</p>
                   </div>
                 </div>
               </div>
 
+              <div className="mt-8 flex flex-wrap gap-3">
+                {[
+                  { id: "all", label: "All", count: approvalCenter.openCount },
+                  { id: "approval", label: "Approvals", count: approvalCenter.approvalCount },
+                  { id: "blocked", label: "Blocks", count: approvalCenter.blockedCount },
+                  { id: "review", label: "Reviews", count: approvalCenter.reviewCount },
+                  { id: "unread", label: "Unread", count: approvalCenter.unreadCount },
+                ].map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    data-testid={`approval-center-filter-${filter.id}`}
+                    onClick={() => setActiveFilter(filter.id as ApprovalCenterFilter)}
+                    className={cn(
+                      "rounded-full border-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+                      activeFilter === filter.id ? "bg-[var(--shock-yellow)] shadow-[3px_3px_0_0_var(--shock-ink)]" : "bg-white"
+                    )}
+                  >
+                    {filter.label} · {centerLoading || error ? "…" : filter.count}
+                  </button>
+                ))}
+              </div>
+
               <div className="mt-8 space-y-5">
-                {loading ? (
-                  <SurfaceStateMessage title="正在同步收件箱" message="等待 server 返回当前需要人类处理的 live inbox items。" />
+                {centerLoading ? (
+                  <SurfaceStateMessage title="正在同步审批中心" message="等待 server 返回当前 `/v1/state + /v1/approval-center` 真值。" />
                 ) : error ? (
                   <SurfaceStateMessage title="收件箱同步失败" message={error} />
-                ) : inboxItems.length === 0 ? (
-                  <SurfaceStateMessage title="收件箱当前为空" message="这表示当前没有需要人工判断的 approval / blocked / review 信号。" />
+                ) : approvalCenterError ? (
+                  <SurfaceStateMessage title="审批中心同步失败" message={approvalCenterError} />
+                ) : openSignals.length === 0 ? (
+                  <SurfaceStateMessage title="审批中心当前为空" message="这表示当前没有需要人工判断的 approval / blocked / review 信号。" />
+                ) : filteredSignals.length === 0 ? (
+                  <SurfaceStateMessage title="当前筛选下没有打开信号" message="换一个 filter，或继续处理现有 open lifecycle。" />
                 ) : (
-                  inboxItems.map((item, index) => (
+                  filteredSignals.map((item, index) => {
+                    const pullRequest = findPullRequestForItem(item);
+                    const room = findRoomForItem(item);
+                    const roomHref = room ? `/rooms/${room.id}` : item.roomId ? `/rooms/${item.roomId}` : item.href;
+                    const runHref = item.roomId && item.runId ? `/rooms/${item.roomId}/runs/${item.runId}` : item.runId ? `/runs/${item.runId}` : null;
+
+                    return (
                     <article
                       key={item.id}
+                      data-testid={`approval-center-signal-${item.id}`}
                       className={cn(
                         "grid gap-4 rounded-[6px] border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[3px_3px_0_0_var(--shock-ink)] xl:grid-cols-[56px_minmax(0,1fr)_200px]",
                         index === 0 && "border-l-[6px] border-l-[var(--shock-yellow)]",
@@ -272,94 +433,136 @@ export function StitchInboxView() {
                       )}
                     >
                       <div className="flex h-12 w-12 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] text-lg">
-                        {item.kind === "approval" ? "⌘" : item.kind === "blocked" ? "⇡" : "🖼"}
+                        {signalIcon(item.kind)}
                       </div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{inboxKindLabel(item.kind)}</span>
                           <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{item.room}</span>
-                          {findPullRequestForItem(item) ? (
-                            <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{pullRequestStatusLabel(findPullRequestForItem(item)?.status)}</span>
+                          <span
+                            data-testid={`approval-center-delivery-${item.id}`}
+                            className={cn(
+                              "rounded-full border border-[var(--shock-ink)] px-2 py-0.5 font-mono text-[9px]",
+                              deliveryStatusTone(item.deliveryStatus)
+                            )}
+                          >
+                            {deliveryStatusLabel(item.deliveryStatus)}
+                          </span>
+                          {item.unread ? (
+                            <span
+                              data-testid={`approval-center-unread-${item.id}`}
+                              className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-pink)] px-2 py-0.5 font-mono text-[9px] text-white"
+                            >
+                              unread
+                            </span>
+                          ) : null}
+                          {pullRequest ? (
+                            <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{pullRequestStatusLabel(pullRequest.status)}</span>
                           ) : null}
                         </div>
                         <h3 className="mt-2 font-display text-2xl font-bold">{item.title}</h3>
                         <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{item.summary}</p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Link
+                            data-testid={`approval-center-room-link-${item.id}`}
+                            href={roomHref}
+                            className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px]"
+                          >
+                            Room
+                          </Link>
+                          {runHref ? (
+                            <Link
+                              data-testid={`approval-center-run-link-${item.id}`}
+                              href={runHref}
+                              className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                            >
+                              Run
+                            </Link>
+                          ) : null}
+                          {pullRequest?.url ? (
+                            <a
+                              data-testid={`approval-center-pr-link-${item.id}`}
+                              href={pullRequest.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
+                            >
+                              PR
+                            </a>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex flex-col gap-2 xl:items-end">
-                        {item.kind === "review" && findPullRequestForItem(item) ? (
-                          <>
-                            <button
-                              data-testid={`inbox-action-merged-${item.id}`}
-                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "merged"))}
-                              onClick={() => void handleInboxDecision(item, "merged")}
-                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
-                            >
-                              Merge
-                            </button>
-                            <button
-                              data-testid={`inbox-action-changes_requested-${item.id}`}
-                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "changes_requested"))}
-                              onClick={() => void handleInboxDecision(item, "changes_requested")}
-                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
-                            >
-                              Request Changes
-                            </button>
-                          </>
-                        ) : item.kind === "approval" ? (
-                          <>
-                            <button
-                              data-testid={`inbox-action-approved-${item.id}`}
-                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "approved"))}
-                              onClick={() => void handleInboxDecision(item, "approved")}
-                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              data-testid={`inbox-action-deferred-${item.id}`}
-                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "deferred"))}
-                              onClick={() => void handleInboxDecision(item, "deferred")}
-                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
-                            >
-                              Defer
-                            </button>
-                          </>
-                        ) : item.kind === "blocked" ? (
-                          <>
-                            <button
-                              data-testid={`inbox-action-resolved-${item.id}`}
-                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "resolved"))}
-                              onClick={() => void handleInboxDecision(item, "resolved")}
-                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] px-4 py-3 font-mono text-[10px] text-white disabled:opacity-60"
-                            >
-                              Resolve
-                            </button>
-                            <button
-                              data-testid={`inbox-action-deferred-${item.id}`}
-                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "deferred"))}
-                              onClick={() => void handleInboxDecision(item, "deferred")}
-                              className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
-                            >
-                              Defer
-                            </button>
-                          </>
-                        ) : (
-                          <Link href={item.href} className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px]">
-                            View
-                          </Link>
-                        )}
-                        {item.kind !== "status" ? (
-                          <Link href={item.href} className="font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2">
-                            Open Context
-                          </Link>
-                        ) : null}
+                        {item.decisionOptions.map((decision) => (
+                          <button
+                            key={decision}
+                            data-testid={`approval-center-action-${decision}-${item.id}`}
+                            disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, decision))}
+                            onClick={() => void handleInboxDecision(item, decision)}
+                            className={cn(
+                              "inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] px-4 py-3 font-mono text-[10px] disabled:opacity-60",
+                              decisionTone(decision)
+                            )}
+                          >
+                            {decisionLabel(decision)}
+                          </button>
+                        ))}
+                        <Link href={item.href} className="font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2">
+                          Open Context
+                        </Link>
                         {actionError?.id === item.id ? (
                           <p className="max-w-[200px] text-right font-mono text-[10px] text-[var(--shock-pink)]">{actionError.message}</p>
                         ) : null}
                       </div>
                     </article>
-                  ))
+                    );
+                  })
                 )}
+              </div>
+
+              <div className="mt-10 rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#f7f7f7] p-5 shadow-[3px_3px_0_0_var(--shock-ink)]">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Recent Resolution Ledger</p>
+                    <h2 className="mt-2 font-display text-3xl font-bold">最近状态回写</h2>
+                  </div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
+                    {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} items`}
+                  </p>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {centerLoading ? (
+                    <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">等待 approval center recent lifecycle 真值。</p>
+                  ) : recentSignals.length === 0 ? (
+                    <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 recent resolution/status 回写。</p>
+                  ) : (
+                    recentSignals.slice(0, 6).map((item) => (
+                      <article
+                        key={item.id}
+                        data-testid={`approval-center-recent-${item.id}`}
+                        className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
+                            status
+                          </span>
+                          <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.room}</span>
+                          <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.time}</span>
+                        </div>
+                        <h3 className="mt-2 font-display text-2xl font-bold">{item.title}</h3>
+                        <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{item.summary}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Link
+                            href={item.href}
+                            className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                          >
+                            打开上下文
+                          </Link>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>

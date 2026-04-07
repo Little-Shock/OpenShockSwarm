@@ -76,7 +76,8 @@
 
 - 现状:
   - notifications 对象存在
-  - 浏览器 push、邮件通知、完整 approval center 未完成
+  - approval center lifecycle 已落到 `/inbox`
+  - 浏览器 push、邮件通知与真实 subscriber / delivery worker 仍未完成
 - 相关合同:
   - `CHK-08`
   - `CHK-11`

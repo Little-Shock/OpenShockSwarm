@@ -209,6 +209,49 @@ export type InboxItem = {
   href: string;
 };
 
+export type InboxDecision =
+  | "approved"
+  | "deferred"
+  | "resolved"
+  | "merged"
+  | "changes_requested";
+
+export type ApprovalCenterDeliveryStatus =
+  | "ready"
+  | "suppressed"
+  | "blocked"
+  | "unrouted";
+
+export type ApprovalCenterItem = {
+  id: string;
+  kind: InboxKind;
+  priority: "critical" | "high" | "info";
+  room: string;
+  roomId?: string;
+  runId?: string;
+  title: string;
+  summary: string;
+  action: string;
+  href: string;
+  time: string;
+  unread: boolean;
+  decisionOptions: InboxDecision[];
+  deliveryStatus: ApprovalCenterDeliveryStatus;
+  deliveryTargets: number;
+  blockedDeliveries: number;
+};
+
+export type ApprovalCenterState = {
+  openCount: number;
+  approvalCount: number;
+  blockedCount: number;
+  reviewCount: number;
+  unreadCount: number;
+  recentCount: number;
+  signals: ApprovalCenterItem[];
+  recent: ApprovalCenterItem[];
+};
+
 export type PullRequest = {
   id: string;
   number: number;
@@ -219,7 +262,11 @@ export type PullRequest = {
   roomId: string;
   runId: string;
   branch: string;
+  baseBranch?: string;
   author: string;
+  provider?: string;
+  url?: string;
+  reviewDecision?: string;
   reviewSummary: string;
   updatedAt: string;
 };
@@ -978,6 +1025,7 @@ export const pullRequests: PullRequest[] = [
     runId: "run_runtime_01",
     branch: "feat/runtime-state-shell",
     author: "Codex Dockmaster",
+    url: "https://github.com/Larkspur-Wang/OpenShock/pull/18",
     reviewSummary: "等待产品确认 destructive git cleanup 的审批边界。",
     updatedAt: "2 分钟前",
   },
@@ -992,6 +1040,7 @@ export const pullRequests: PullRequest[] = [
     runId: "run_inbox_01",
     branch: "feat/inbox-decision-cards",
     author: "Claude Review Runner",
+    url: "https://github.com/Larkspur-Wang/OpenShock/pull/22",
     reviewSummary: "等待人类确认卡片语气和默认动作。",
     updatedAt: "12 分钟前",
   },
@@ -1006,6 +1055,7 @@ export const pullRequests: PullRequest[] = [
     runId: "run_memory_01",
     branch: "feat/memory-writeback",
     author: "Memory Clerk",
+    url: "https://github.com/Larkspur-Wang/OpenShock/pull/27",
     reviewSummary: "等待记忆优先级规则敲定后再进入评审。",
     updatedAt: "7 分钟前",
   },

@@ -252,7 +252,7 @@ export function LiveSettingsView() {
           <h2 className="mt-3 font-display text-3xl font-bold">Web 面先把真值、偏好和注册态摆明</h2>
           <div className="mt-4 space-y-3 text-sm leading-6 text-white/82">
             <p>当前 web 已经能读 live inbox/unread，并把浏览器权限、service worker registration 和本地偏好摆到前台。</p>
-            <p>邮件订阅者、审批中心状态模型和实际 browser push/email fanout 仍待 `#56 / #58` 接上。</p>
+            <p>approval center lifecycle 已在 `/inbox` 收口；邮件订阅者和实际 browser push/email fanout 仍待后续票接上。</p>
           </div>
           <div className="mt-5 grid gap-3">
             <StatusRow label="工作区默认值" value={serverPolicy} tone="white" />
@@ -493,9 +493,9 @@ export function LiveSettingsView() {
             <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Next Contracts</p>
             <h3 className="mt-3 font-display text-3xl font-bold">还没接上的部分</h3>
             <div className="mt-5 space-y-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              <p>1. `#56` 负责 subscriber / approval center state model，让通知偏好真正写入后端契约。</p>
+              <p>1. `#56` 负责 subscriber / notification preference 持久化，让浏览器与邮箱订阅者真正成为后端契约。</p>
               <p>2. `#58` 负责 browser push / email fanout worker，让这页的 registration surface 接上真实投递链。</p>
-              <p>3. 这页当前只消费 live state，并把本地浏览器 readiness 明面化，不假装 server 已经记录 push subscriber。</p>
+              <p>3. approval center lifecycle 现在已在 `/inbox` 明面化；这页继续只负责通知偏好与浏览器 readiness，不假装 server 已经完成 push delivery。</p>
             </div>
           </Panel>
         </div>

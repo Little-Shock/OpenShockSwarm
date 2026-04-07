@@ -91,6 +91,7 @@ type ApprovalCenterItem struct {
 	Action            string   `json:"action"`
 	Href              string   `json:"href"`
 	Time              string   `json:"time"`
+	Unread            bool     `json:"unread"`
 	DecisionOptions   []string `json:"decisionOptions"`
 	DeliveryStatus    string   `json:"deliveryStatus"`
 	DeliveryTargets   int      `json:"deliveryTargets"`
@@ -102,7 +103,10 @@ type ApprovalCenterState struct {
 	ApprovalCount int                  `json:"approvalCount"`
 	BlockedCount  int                  `json:"blockedCount"`
 	ReviewCount   int                  `json:"reviewCount"`
+	UnreadCount   int                  `json:"unreadCount"`
+	RecentCount   int                  `json:"recentCount"`
 	Signals       []ApprovalCenterItem `json:"signals"`
+	Recent        []ApprovalCenterItem `json:"recent"`
 }
 
 type NotificationCenter struct {
@@ -143,6 +147,7 @@ func defaultNotificationCenter(now string) NotificationCenter {
 		Deliveries:  []NotificationDelivery{},
 		ApprovalCenter: ApprovalCenterState{
 			Signals: []ApprovalCenterItem{},
+			Recent:  []ApprovalCenterItem{},
 		},
 	}
 }
@@ -465,11 +470,15 @@ func buildNotificationCenter(snapshot State, state notificationStateFile) Notifi
 
 	approval := ApprovalCenterState{
 		Signals: []ApprovalCenterItem{},
+		Recent:  []ApprovalCenterItem{},
+	}
+	roomUnread := make(map[string]int, len(snapshot.Rooms))
+	roomUnreadByTitle := make(map[string]int, len(snapshot.Rooms))
+	for _, room := range snapshot.Rooms {
+		roomUnread[room.ID] = room.Unread
+		roomUnreadByTitle[room.Title] = room.Unread
 	}
 	for _, inboxItem := range snapshot.Inbox {
-		if inboxItem.Kind == "status" {
-			continue
-		}
 		signal := ApprovalCenterItem{
 			ID:              inboxItem.ID,
 			Kind:            inboxItem.Kind,
@@ -484,6 +493,11 @@ func buildNotificationCenter(snapshot State, state notificationStateFile) Notifi
 			DeliveryStatus:  notificationDeliveryStatusUnrouted,
 		}
 		signal.RoomID, signal.RunID = parseInboxTargetIDs(inboxItem.Href)
+		if signal.RoomID != "" {
+			signal.Unread = roomUnread[signal.RoomID] > 0
+		} else {
+			signal.Unread = roomUnreadByTitle[inboxItem.Room] > 0
+		}
 		for _, delivery := range deliveries {
 			if delivery.InboxItemID != inboxItem.ID {
 				continue
@@ -505,6 +519,12 @@ func buildNotificationCenter(snapshot State, state notificationStateFile) Notifi
 			signal.DeliveryStatus = notificationDeliveryStatusSuppressed
 		}
 
+		if inboxItem.Kind == "status" {
+			approval.Recent = append(approval.Recent, signal)
+			approval.RecentCount++
+			continue
+		}
+
 		switch inboxItem.Kind {
 		case "approval":
 			approval.ApprovalCount++
@@ -514,6 +534,9 @@ func buildNotificationCenter(snapshot State, state notificationStateFile) Notifi
 			approval.ReviewCount++
 		}
 		approval.OpenCount++
+		if signal.Unread {
+			approval.UnreadCount++
+		}
 		approval.Signals = append(approval.Signals, signal)
 	}
 

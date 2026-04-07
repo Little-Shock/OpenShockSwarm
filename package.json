@@ -21,6 +21,7 @@
     "test:headed-session-foundation": "node ./scripts/headed-session-foundation.mjs",
     "test:headed-workspace-member-role": "node ./scripts/headed-workspace-member-role.mjs",
     "test:headed-action-authz-matrix": "node ./scripts/headed-action-authz-matrix.mjs",
+    "test:headed-approval-center-lifecycle": "node ./scripts/headed-approval-center-lifecycle.mjs",
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
     "test:webhook-replay": "node ./scripts/github-webhook-replay.mjs",
     "verify:server": "bash -lc 'root=$(pwd); cd apps/server && OPENSHOCK_WORKSPACE_ROOT=\"${OPENSHOCK_WORKSPACE_ROOT:-$root}\" \"$root/scripts/go.sh\" test ./...'",

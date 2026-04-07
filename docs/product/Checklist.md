@@ -154,9 +154,9 @@
 - 当前状态: 部分完成
 - 已落地:
   - [x] Inbox 已能展示 blocked / approval / review 类卡片
+  - [x] `/inbox` 已升级成 approval center，直接消费 `/v1/approval-center` 的 filter / unread / recent lifecycle，并能跳回 Room / Run / PR context
   - [x] 未登录与 viewer 权限已验证 401/403 保护
 - 当前 GAP:
-  - [ ] 本轮没有完整回放 Inbox 决策 mutation
   - [ ] review change-request / merge 仍需避免远端副作用并补充安全测试
 - 对应 Test Cases: `TC-010` `TC-012`
 
