@@ -890,6 +890,28 @@ async function handleOperatorAction(req, res) {
     const agentId = normalizeText(input.agent_id || input.target_agent_id) || null;
     const threadId = normalizeText(input.thread_id) || normalizeText(scope.threadId) || null;
     const workitemId = normalizeText(input.workitem_id) || normalizeText(scope.workitemId) || null;
+    const basePayload =
+      input.payload && typeof input.payload === "object" && !Array.isArray(input.payload)
+        ? { ...input.payload }
+        : {};
+    const runId = normalizeText(input.run_id);
+    const approvalId = normalizeText(input.approval_id);
+    const sandboxProfile = normalizeText(input.sandbox_profile);
+    const secretRefs = Array.isArray(input.secret_refs)
+      ? input.secret_refs.filter((item) => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+      : null;
+    if (runId) {
+      basePayload.run_id = runId;
+    }
+    if (approvalId) {
+      basePayload.approval_id = approvalId;
+    }
+    if (sandboxProfile) {
+      basePayload.sandbox_profile = sandboxProfile;
+    }
+    if (secretRefs && secretRefs.length > 0) {
+      basePayload.secret_refs = secretRefs;
+    }
     const result = await fetchUpstreamJson(`/v1/channels/${encodeURIComponent(channelId)}/operator-actions`, {
       method: "POST",
       body: {
@@ -899,9 +921,7 @@ async function handleOperatorAction(req, res) {
         thread_id: threadId,
         workitem_id: workitemId,
         note: normalizeNote(input.note),
-        payload: {
-          run_id: normalizeText(input.run_id) || null,
-        },
+        payload: basePayload,
         policy_snapshot: {
           mode: "single_human_multi_agent",
           source: "shell_operator_console",
@@ -3354,6 +3374,12 @@ function normalizeChannelOperatorActions(items) {
     thread_id: normalizeText(item?.thread_id) || null,
     workitem_id: normalizeText(item?.workitem_id) || null,
     note: normalizeText(item?.note) || null,
+    approval_id:
+      normalizeText(item?.approval_id) ||
+      normalizeText(item?.approvalId) ||
+      normalizeText(item?.payload?.approval_id) ||
+      normalizeText(item?.payload?.approvalId) ||
+      null,
     payload: item?.payload && typeof item.payload === "object" ? item.payload : {},
     enforcement: item?.enforcement && typeof item.enforcement === "object" ? item.enforcement : null,
     target: normalizeText(item?.target) || null,
