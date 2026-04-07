@@ -211,6 +211,10 @@ const APPROVAL_NOTIFICATION_TRIGGER_EVENTS = Object.freeze([
 const SKILL_POLICY_PLUGIN_SCOPES = new Set(["channel", "workspace"]);
 const TOKEN_QUOTA_STATES = new Set(["healthy", "near_limit", "blocked"]);
 const EXTERNAL_MEMORY_PROVIDER_STATUSES = new Set(["active", "disabled"]);
+const DIGITAL_TWIN_STATUSES = new Set(["active", "paused", "disabled"]);
+const DIGITAL_TWIN_MODES = new Set(["advisory", "delegate", "simulate"]);
+const OPERATIONAL_CAPABILITY_LEVELS = new Set(["managed", "advanced", "autonomous"]);
+const OPERATIONAL_CAPABILITY_MODES = new Set(["campaign", "incident", "escalation", "optimization"]);
 const EXTERNAL_MEMORY_PROVIDER_CAPABILITIES = Object.freeze({
   memory_search: true,
   memory_get: true,
@@ -294,7 +298,9 @@ function createEmptyChannelGovernance() {
     sandboxProfile: null,
     secretsBinding: null,
     skillPolicyPlugin: null,
-    tokenQuotaContext: null
+    tokenQuotaContext: null,
+    digitalTwin: null,
+    operationalCapability: null
   };
 }
 
@@ -2583,6 +2589,12 @@ export class ServerCoordinator {
     if (!Object.prototype.hasOwnProperty.call(channel.governance, "tokenQuotaContext")) {
       channel.governance.tokenQuotaContext = null;
     }
+    if (!Object.prototype.hasOwnProperty.call(channel.governance, "digitalTwin")) {
+      channel.governance.digitalTwin = null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(channel.governance, "operationalCapability")) {
+      channel.governance.operationalCapability = null;
+    }
     return channel.governance;
   }
 
@@ -2721,6 +2733,10 @@ export class ServerCoordinator {
         secretsBinding: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_secrets_binding_upsert")),
         skillPolicyPlugin: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_skill_policy_plugin_upsert")),
         tokenQuotaContext: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_token_quota_context_upsert")),
+        digitalTwin: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_digital_twin_upsert")),
+        operationalCapability: mapEntry(
+          this.findLatestChannelAuditByAction(channel, "channel_operational_capability_upsert")
+        ),
         repoBinding: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_repo_binding_upsert")),
         notificationEndpoint: mapEntry(this.findLatestChannelAuditByAction(channel, "channel_notification_endpoint_upsert")),
         externalMemoryProvider: mapEntry(
@@ -3276,6 +3292,174 @@ export class ServerCoordinator {
         }
       });
     }
+
+    if (input.digitalTwin !== undefined) {
+      const digitalTwinInput = input.digitalTwin;
+      assertOrThrow(
+        digitalTwinInput && typeof digitalTwinInput === "object" && !Array.isArray(digitalTwinInput),
+        "invalid_digital_twin",
+        "digital_twin payload must be object"
+      );
+      const allowedKeys = new Set(["twinId", "agentId", "personaRef", "mode", "status", "memoryScope"]);
+      for (const key of Object.keys(digitalTwinInput)) {
+        assertOrThrow(allowedKeys.has(key), "invalid_digital_twin_field", `unsupported digital_twin field: ${key}`);
+      }
+      const existing = governance.digitalTwin;
+      const agentId =
+        normalizeOptionalScopeId(digitalTwinInput.agentId) ?? normalizeOptionalScopeId(existing?.agentId);
+      assertOrThrow(agentId, "invalid_digital_twin_agent_id", "digital_twin.agent_id is required");
+      assertOrThrow(
+        agentId.startsWith("agent_"),
+        "invalid_digital_twin_agent_id",
+        "digital_twin.agent_id must reference agent identity"
+      );
+      const mode = normalizeOptionalScopeId(digitalTwinInput.mode) ?? normalizeOptionalScopeId(existing?.mode) ?? "advisory";
+      assertOrThrow(DIGITAL_TWIN_MODES.has(mode), "invalid_digital_twin_mode", "digital_twin.mode is invalid");
+      const status = normalizeOptionalScopeId(digitalTwinInput.status) ?? normalizeOptionalScopeId(existing?.status) ?? "active";
+      assertOrThrow(DIGITAL_TWIN_STATUSES.has(status), "invalid_digital_twin_status", "digital_twin.status is invalid");
+      const now = nowIso();
+      governance.digitalTwin = {
+        twinId: normalizeOptionalScopeId(digitalTwinInput.twinId) ?? normalizeOptionalScopeId(existing?.twinId) ?? generateId("digital_twin"),
+        agentId,
+        personaRef: normalizeOptionalScopeId(digitalTwinInput.personaRef) ?? normalizeOptionalScopeId(existing?.personaRef),
+        mode,
+        status,
+        memoryScope:
+          normalizeOptionalScopeId(digitalTwinInput.memoryScope) ??
+          normalizeOptionalScopeId(existing?.memoryScope) ??
+          "channel",
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      this.appendChannelAuditEntry(channel, {
+        actorId: operatorId,
+        action: "channel_digital_twin_upsert",
+        target: `channel:${channel.channelId}:digital_twin`,
+        policySnapshot,
+        details: {
+          twin_id: governance.digitalTwin.twinId,
+          agent_id: governance.digitalTwin.agentId,
+          persona_ref: governance.digitalTwin.personaRef,
+          mode: governance.digitalTwin.mode,
+          status: governance.digitalTwin.status,
+          memory_scope: governance.digitalTwin.memoryScope
+        }
+      });
+    }
+
+    if (input.operationalCapability !== undefined) {
+      const operationalCapabilityInput = input.operationalCapability;
+      assertOrThrow(
+        operationalCapabilityInput &&
+          typeof operationalCapabilityInput === "object" &&
+          !Array.isArray(operationalCapabilityInput),
+        "invalid_operational_capability",
+        "operational_capability payload must be object"
+      );
+      const allowedKeys = new Set([
+        "enabled",
+        "capabilityLevel",
+        "operationModes",
+        "humanEscalationRequired",
+        "timelineEvidenceRequired",
+        "auditEvidenceRequired"
+      ]);
+      for (const key of Object.keys(operationalCapabilityInput)) {
+        assertOrThrow(
+          allowedKeys.has(key),
+          "invalid_operational_capability_field",
+          `unsupported operational_capability field: ${key}`
+        );
+      }
+      if (operationalCapabilityInput.enabled !== undefined) {
+        assertOrThrow(
+          typeof operationalCapabilityInput.enabled === "boolean",
+          "invalid_operational_capability_enabled",
+          "operational_capability.enabled must be boolean"
+        );
+      }
+      const existing = governance.operationalCapability;
+      const capabilityLevel =
+        normalizeOptionalScopeId(operationalCapabilityInput.capabilityLevel) ??
+        normalizeOptionalScopeId(existing?.capabilityLevel) ??
+        "managed";
+      assertOrThrow(
+        OPERATIONAL_CAPABILITY_LEVELS.has(capabilityLevel),
+        "invalid_operational_capability_level",
+        "operational_capability.capability_level is invalid"
+      );
+      if (operationalCapabilityInput.operationModes !== undefined) {
+        assertOrThrow(
+          Array.isArray(operationalCapabilityInput.operationModes),
+          "invalid_operational_capability_modes",
+          "operational_capability.operation_modes must be string[]"
+        );
+      }
+      const operationModes = Array.from(
+        new Set(
+          (operationalCapabilityInput.operationModes ?? existing?.operationModes ?? ["campaign"])
+            .filter((item) => typeof item === "string" && item.trim().length > 0)
+            .map((item) => item.trim())
+        )
+      );
+      assertOrThrow(operationModes.length > 0, "invalid_operational_capability_modes", "operation_modes cannot be empty");
+      for (const mode of operationModes) {
+        assertOrThrow(
+          OPERATIONAL_CAPABILITY_MODES.has(mode),
+          "invalid_operational_capability_mode",
+          `operational_capability operation_mode is invalid: ${mode}`
+        );
+      }
+      if (operationalCapabilityInput.humanEscalationRequired !== undefined) {
+        assertOrThrow(
+          typeof operationalCapabilityInput.humanEscalationRequired === "boolean",
+          "invalid_operational_capability_escalation",
+          "operational_capability.human_escalation_required must be boolean"
+        );
+      }
+      if (operationalCapabilityInput.timelineEvidenceRequired !== undefined) {
+        assertOrThrow(
+          typeof operationalCapabilityInput.timelineEvidenceRequired === "boolean",
+          "invalid_operational_capability_timeline",
+          "operational_capability.timeline_evidence_required must be boolean"
+        );
+      }
+      if (operationalCapabilityInput.auditEvidenceRequired !== undefined) {
+        assertOrThrow(
+          typeof operationalCapabilityInput.auditEvidenceRequired === "boolean",
+          "invalid_operational_capability_audit",
+          "operational_capability.audit_evidence_required must be boolean"
+        );
+      }
+      const now = nowIso();
+      governance.operationalCapability = {
+        enabled: operationalCapabilityInput.enabled ?? existing?.enabled ?? true,
+        capabilityLevel,
+        operationModes,
+        humanEscalationRequired:
+          operationalCapabilityInput.humanEscalationRequired ?? existing?.humanEscalationRequired ?? true,
+        timelineEvidenceRequired:
+          operationalCapabilityInput.timelineEvidenceRequired ?? existing?.timelineEvidenceRequired ?? true,
+        auditEvidenceRequired:
+          operationalCapabilityInput.auditEvidenceRequired ?? existing?.auditEvidenceRequired ?? true,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      this.appendChannelAuditEntry(channel, {
+        actorId: operatorId,
+        action: "channel_operational_capability_upsert",
+        target: `channel:${channel.channelId}:operational_capability`,
+        policySnapshot,
+        details: {
+          enabled: governance.operationalCapability.enabled,
+          capability_level: governance.operationalCapability.capabilityLevel,
+          operation_mode_count: governance.operationalCapability.operationModes.length,
+          human_escalation_required: governance.operationalCapability.humanEscalationRequired,
+          timeline_evidence_required: governance.operationalCapability.timelineEvidenceRequired,
+          audit_evidence_required: governance.operationalCapability.auditEvidenceRequired
+        }
+      });
+    }
   }
 
   findChannelContextByTopicId(topicId) {
@@ -3544,6 +3728,8 @@ export class ServerCoordinator {
         secretsBinding: channel.governance.secretsBinding,
         skillPolicyPlugin: channel.governance.skillPolicyPlugin,
         tokenQuotaContext: channel.governance.tokenQuotaContext,
+        digitalTwin: channel.governance.digitalTwin,
+        operationalCapability: channel.governance.operationalCapability,
         permissionMatrix: WORKSPACE_GOVERNANCE_PERMISSION_MATRIX,
         stateGraph: WORKSPACE_GOVERNANCE_STATE_GRAPH
       },
@@ -3575,6 +3761,8 @@ export class ServerCoordinator {
       "secretsBinding",
       "skillPolicyPlugin",
       "tokenQuotaContext",
+      "digitalTwin",
+      "operationalCapability",
       "policySnapshot"
     ]);
     for (const key of Object.keys(input)) {
@@ -3657,7 +3845,9 @@ export class ServerCoordinator {
         sandboxProfile: input.sandboxProfile,
         secretsBinding: input.secretsBinding,
         skillPolicyPlugin: input.skillPolicyPlugin,
-        tokenQuotaContext: input.tokenQuotaContext
+        tokenQuotaContext: input.tokenQuotaContext,
+        digitalTwin: input.digitalTwin,
+        operationalCapability: input.operationalCapability
       },
       operatorId,
       input.policySnapshot
@@ -3684,7 +3874,10 @@ export class ServerCoordinator {
         skill_policy_plugin_binding_count: channel.governance.skillPolicyPlugin?.bindings?.length ?? 0,
         token_quota_state: channel.governance.tokenQuotaContext?.quotaState ?? null,
         token_used: channel.governance.tokenQuotaContext?.tokenUsed ?? null,
-        token_limit: channel.governance.tokenQuotaContext?.tokenLimit ?? null
+        token_limit: channel.governance.tokenQuotaContext?.tokenLimit ?? null,
+        digital_twin_status: channel.governance.digitalTwin?.status ?? null,
+        digital_twin_mode: channel.governance.digitalTwin?.mode ?? null,
+        operational_capability_level: channel.governance.operationalCapability?.capabilityLevel ?? null
       }
     });
     this.channelContexts.set(normalizedChannelId, channel);

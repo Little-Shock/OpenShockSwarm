@@ -8,11 +8,11 @@ For Stage 3 release/handoff entry, start from repo-level files:
 - `docs/stage3-delivery-ops-entry.md`
 - `docs/stage3-release-gate.md`
 
-Current stage focus is Stage 4B memory/governance contract, with boundaries locked to:
+Current stage focus is Stage 4C contract entry on top of settled 4A/4B truth, with boundaries locked to:
 
-- `external_memory_provider` contract (`search/get/write/feedback/promote/forget`) and explicit scope/policy boundary
-- `memory_viewer` read surface with correction/forget/promote and audit traceability
-- no second local memory truth source, no 4A backflow, no 4C pre-introduction
+- `digital_twin` truth (agent identity only, no second human clone)
+- higher-order `operational_capability` read/write model with explainable audit/timeline anchors
+- no 4A/4B backflow, no local shadow truth
 
 ## Run
 
@@ -34,7 +34,7 @@ Representative surfaces used by shell and gates:
 - execution plane: `/v1/runs/*`, `/v1/execution/runs/*`, `/v1/runtime/*`
 - integration projections: `/v1/compatibility/shell-adapter`, `/v1/debug/*`
 
-Stage 4A1 + 4A2 + 4B governance contract is carried by:
+Stage 4A1 + 4A2 + 4B + 4C governance contract is carried by:
 
 - `GET /v1/channels/:channelId/context`
 - `PUT /v1/channels/:channelId/context`
@@ -53,7 +53,8 @@ Stage 4A1 + 4A2 + 4B governance contract is carried by:
 - `POST /v1/channels/:channelId/memory/forget`
 
 These contract projections include `auth_identity`, `member`, `github_installation`, `repo_binding`,
-`notification_endpoint`, `external_memory_provider`, `memory_viewer` operations and trace anchors,
+`notification_endpoint`, `external_memory_provider`, `memory_viewer`, `digital_twin`,
+`operational_capability` operations and trace anchors,
 permission matrix, state graph, and channel audit anchors.
 
 ## Compatibility Alias Boundary

@@ -5386,6 +5386,168 @@ test("v1 stage4b external memory provider and memory viewer contract keeps provi
   });
 });
 
+test("v1 stage4c digital twin and operational capability contract keeps twin-as-agent boundary with explainable governance anchors", async () => {
+  const channelId = "channel_stage4c_digital_twin_contract";
+  const operatorId = "human_operator_stage4c";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const seeded = await requestJson({
+      port,
+      method: "POST",
+      path: "/runtime/fixtures/seed",
+      body: {}
+    });
+    assert.equal(seeded.statusCode, 200);
+
+    const context = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        workspace_id: "workspace_stage4c",
+        workspace_root: "/Users/atou/.slock/agents",
+        member: {
+          member_id: "member_stage4c_owner",
+          role: "owner",
+          status: "active"
+        },
+        digital_twin: {
+          twin_id: "digital_twin_stage4c_001",
+          agent_id: "agent_stage4c_twin",
+          persona_ref: "persona.stage4c.owner_guard",
+          mode: "advisory",
+          status: "active",
+          memory_scope: "channel"
+        },
+        operational_capability: {
+          enabled: true,
+          capability_level: "advanced",
+          operation_modes: ["campaign", "escalation"],
+          human_escalation_required: true,
+          timeline_evidence_required: true,
+          audit_evidence_required: true
+        },
+        policy_snapshot: {
+          mode: "stage4c",
+          boundary: "digital_twin_and_operational_capability_only"
+        }
+      }
+    });
+    assert.equal(context.statusCode, 200);
+    assert.equal(context.body.context.governance.digital_twin.agent_id, "agent_stage4c_twin");
+    assert.equal(context.body.context.governance.digital_twin.mode, "advisory");
+    assert.equal(context.body.context.governance.operational_capability.capability_level, "advanced");
+    assert.equal(context.body.context.governance.operational_capability.operation_modes.length, 2);
+    assert.equal(
+      context.body.context.write_anchors.digital_twin_upsert,
+      `/v1/channels/${encodeURIComponent(channelId)}/context`
+    );
+    assert.equal(
+      context.body.context.write_anchors.operational_capability_upsert,
+      `/v1/channels/${encodeURIComponent(channelId)}/context`
+    );
+    assert.equal(
+      context.body.context.audit_anchor.latest.digital_twin.action,
+      "channel_digital_twin_upsert"
+    );
+    assert.equal(
+      context.body.context.audit_anchor.latest.operational_capability.action,
+      "channel_operational_capability_upsert"
+    );
+
+    const contextRead = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+    });
+    assert.equal(contextRead.statusCode, 200);
+    assert.equal(
+      contextRead.body.context.governance.digital_twin.persona_ref,
+      "persona.stage4c.owner_guard"
+    );
+    assert.equal(
+      contextRead.body.context.governance.operational_capability.human_escalation_required,
+      true
+    );
+
+    const auditTrail = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/audit-trail?limit=40`
+    });
+    assert.equal(auditTrail.statusCode, 200);
+    assert.equal(
+      auditTrail.body.items.some(
+        (item) =>
+          item.action === "channel_digital_twin_upsert" &&
+          item.details.agent_id === "agent_stage4c_twin" &&
+          item.details.status === "active"
+      ),
+      true
+    );
+    assert.equal(
+      auditTrail.body.items.some(
+        (item) =>
+          item.action === "channel_operational_capability_upsert" &&
+          item.details.capability_level === "advanced" &&
+          item.details.human_escalation_required === true
+      ),
+      true
+    );
+
+    const invalidDigitalTwinField = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        digital_twin: {
+          agent_id: "agent_stage4c_twin",
+          unsupported_field: true
+        }
+      }
+    });
+    assert.equal(invalidDigitalTwinField.statusCode, 400);
+    assert.equal(invalidDigitalTwinField.body.error.code, "invalid_digital_twin_field");
+
+    const invalidDigitalTwinHumanIdentity = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        digital_twin: {
+          agent_id: "human_clone_stage4c"
+        }
+      }
+    });
+    assert.equal(invalidDigitalTwinHumanIdentity.statusCode, 400);
+    assert.equal(invalidDigitalTwinHumanIdentity.body.error.code, "invalid_digital_twin_agent_id");
+
+    const invalidOperationalCapabilityMode = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        operational_capability: {
+          operation_modes: ["free_debate_agent_social"]
+        }
+      }
+    });
+    assert.equal(invalidOperationalCapabilityMode.statusCode, 400);
+    assert.equal(invalidOperationalCapabilityMode.body.error.code, "invalid_operational_capability_mode");
+
+    const payload = JSON.stringify({
+      context: contextRead.body.context,
+      auditTrail: auditTrail.body
+    });
+    assert.equal(payload.includes("\"phase4b\""), false);
+    assert.equal(payload.includes("\"human_second_clone\""), false);
+  });
+});
+
 test("v1 stage2 batch2 runtime recovery contract supports assignment enforcement and operator-triggered recoveries", async () => {
   const operatorId = "human_operator_stage2_batch2";
   const channelId = "channel_open_shock_batch2";

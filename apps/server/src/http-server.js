@@ -989,6 +989,30 @@ function serializeChannelContextContract(input = {}) {
             updated_by: input.governance.tokenQuotaContext.updatedBy ?? null
           }
         : null,
+      digital_twin: input.governance?.digitalTwin
+        ? {
+            twin_id: input.governance.digitalTwin.twinId ?? null,
+            agent_id: input.governance.digitalTwin.agentId ?? null,
+            persona_ref: input.governance.digitalTwin.personaRef ?? null,
+            mode: input.governance.digitalTwin.mode ?? "advisory",
+            status: input.governance.digitalTwin.status ?? "active",
+            memory_scope: input.governance.digitalTwin.memoryScope ?? "channel",
+            updated_at: input.governance.digitalTwin.updatedAt ?? null,
+            updated_by: input.governance.digitalTwin.updatedBy ?? null
+          }
+        : null,
+      operational_capability: input.governance?.operationalCapability
+        ? {
+            enabled: input.governance.operationalCapability.enabled !== false,
+            capability_level: input.governance.operationalCapability.capabilityLevel ?? "managed",
+            operation_modes: deepClone(input.governance.operationalCapability.operationModes ?? []),
+            human_escalation_required: input.governance.operationalCapability.humanEscalationRequired !== false,
+            timeline_evidence_required: input.governance.operationalCapability.timelineEvidenceRequired !== false,
+            audit_evidence_required: input.governance.operationalCapability.auditEvidenceRequired !== false,
+            updated_at: input.governance.operationalCapability.updatedAt ?? null,
+            updated_by: input.governance.operationalCapability.updatedBy ?? null
+          }
+        : null,
       permission_matrix: deepClone(input.governance?.permissionMatrix ?? {}),
       state_graph: deepClone(input.governance?.stateGraph ?? {})
     },
@@ -1089,6 +1113,8 @@ function serializeChannelContextContract(input = {}) {
       github_installation_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       skill_policy_plugin_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       token_quota_context_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      digital_twin_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      operational_capability_upsert: `/v1/channels/${encodeURIComponent(channelId)}/context`,
       repo_binding_upsert: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
       notification_endpoint_upsert: `/v1/channels/${encodeURIComponent(channelId)}/notification-endpoint`,
       external_memory_provider_upsert: `/v1/channels/${encodeURIComponent(channelId)}/external-memory-provider`,
@@ -1155,6 +1181,20 @@ function serializeChannelContextContract(input = {}) {
               audit_id: input.auditAnchor.latest.tokenQuotaContext.auditId ?? null,
               action: input.auditAnchor.latest.tokenQuotaContext.action ?? null,
               at: input.auditAnchor.latest.tokenQuotaContext.at ?? null
+            }
+          : null,
+        digital_twin: input.auditAnchor?.latest?.digitalTwin
+          ? {
+              audit_id: input.auditAnchor.latest.digitalTwin.auditId ?? null,
+              action: input.auditAnchor.latest.digitalTwin.action ?? null,
+              at: input.auditAnchor.latest.digitalTwin.at ?? null
+            }
+          : null,
+        operational_capability: input.auditAnchor?.latest?.operationalCapability
+          ? {
+              audit_id: input.auditAnchor.latest.operationalCapability.auditId ?? null,
+              action: input.auditAnchor.latest.operationalCapability.action ?? null,
+              at: input.auditAnchor.latest.operationalCapability.at ?? null
             }
           : null,
         repo_binding: input.auditAnchor?.latest?.repoBinding
@@ -2625,6 +2665,8 @@ export function createHttpServer(coordinator, options = {}) {
           "secrets_binding",
           "skill_policy_plugin",
           "token_quota_context",
+          "digital_twin",
+          "operational_capability",
           "policy_snapshot"
         ]);
         for (const key of Object.keys(body)) {
@@ -2797,6 +2839,101 @@ export function createHttpServer(coordinator, options = {}) {
             }
           }
         }
+        if (body.digital_twin !== undefined) {
+          assertObjectBody(body.digital_twin, "invalid_digital_twin", "digital_twin payload must be object");
+          const allowedDigitalTwinFields = new Set([
+            "twin_id",
+            "agent_id",
+            "persona_ref",
+            "mode",
+            "status",
+            "memory_scope"
+          ]);
+          for (const key of Object.keys(body.digital_twin)) {
+            if (!allowedDigitalTwinFields.has(key)) {
+              throw new CoordinatorError("invalid_digital_twin_field", `unsupported digital_twin field: ${key}`);
+            }
+          }
+          if (body.digital_twin.agent_id !== undefined && (typeof body.digital_twin.agent_id !== "string" || body.digital_twin.agent_id.trim().length === 0)) {
+            throw new CoordinatorError("invalid_digital_twin_agent_id", "digital_twin.agent_id must be non-empty string");
+          }
+          if (body.digital_twin.mode !== undefined && (typeof body.digital_twin.mode !== "string" || body.digital_twin.mode.trim().length === 0)) {
+            throw new CoordinatorError("invalid_digital_twin_mode", "digital_twin.mode must be non-empty string");
+          }
+          if (body.digital_twin.status !== undefined && (typeof body.digital_twin.status !== "string" || body.digital_twin.status.trim().length === 0)) {
+            throw new CoordinatorError("invalid_digital_twin_status", "digital_twin.status must be non-empty string");
+          }
+          if (
+            body.digital_twin.memory_scope !== undefined &&
+            (typeof body.digital_twin.memory_scope !== "string" || body.digital_twin.memory_scope.trim().length === 0)
+          ) {
+            throw new CoordinatorError("invalid_digital_twin_memory_scope", "digital_twin.memory_scope must be non-empty string");
+          }
+        }
+        if (body.operational_capability !== undefined) {
+          assertObjectBody(
+            body.operational_capability,
+            "invalid_operational_capability",
+            "operational_capability payload must be object"
+          );
+          const allowedOperationalCapabilityFields = new Set([
+            "enabled",
+            "capability_level",
+            "operation_modes",
+            "human_escalation_required",
+            "timeline_evidence_required",
+            "audit_evidence_required"
+          ]);
+          for (const key of Object.keys(body.operational_capability)) {
+            if (!allowedOperationalCapabilityFields.has(key)) {
+              throw new CoordinatorError(
+                "invalid_operational_capability_field",
+                `unsupported operational_capability field: ${key}`
+              );
+            }
+          }
+          if (
+            body.operational_capability.enabled !== undefined &&
+            typeof body.operational_capability.enabled !== "boolean"
+          ) {
+            throw new CoordinatorError(
+              "invalid_operational_capability_enabled",
+              "operational_capability.enabled must be boolean"
+            );
+          }
+          if (
+            body.operational_capability.capability_level !== undefined &&
+            (typeof body.operational_capability.capability_level !== "string" ||
+              body.operational_capability.capability_level.trim().length === 0)
+          ) {
+            throw new CoordinatorError(
+              "invalid_operational_capability_level",
+              "operational_capability.capability_level must be non-empty string"
+            );
+          }
+          if (
+            body.operational_capability.operation_modes !== undefined &&
+            !Array.isArray(body.operational_capability.operation_modes)
+          ) {
+            throw new CoordinatorError(
+              "invalid_operational_capability_modes",
+              "operational_capability.operation_modes must be string[]"
+            );
+          }
+          const booleanFields = [
+            "human_escalation_required",
+            "timeline_evidence_required",
+            "audit_evidence_required"
+          ];
+          for (const key of booleanFields) {
+            if (body.operational_capability[key] !== undefined && typeof body.operational_capability[key] !== "boolean") {
+              throw new CoordinatorError(
+                `invalid_operational_capability_${key}`,
+                `operational_capability.${key} must be boolean`
+              );
+            }
+          }
+        }
         const context = coordinator.upsertChannelContextContract(route.channelId, {
           operatorId: body.operator_id,
           workspaceId: body.workspace_id,
@@ -2872,6 +3009,26 @@ export function createHttpServer(coordinator, options = {}) {
                 recallSource: body.token_quota_context.recall_source,
                 recallHits: body.token_quota_context.recall_hits,
                 degradeReason: body.token_quota_context.degrade_reason
+              }
+            : undefined,
+          digitalTwin: body.digital_twin
+            ? {
+                twinId: body.digital_twin.twin_id,
+                agentId: body.digital_twin.agent_id,
+                personaRef: body.digital_twin.persona_ref,
+                mode: body.digital_twin.mode,
+                status: body.digital_twin.status,
+                memoryScope: body.digital_twin.memory_scope
+              }
+            : undefined,
+          operationalCapability: body.operational_capability
+            ? {
+                enabled: body.operational_capability.enabled,
+                capabilityLevel: body.operational_capability.capability_level,
+                operationModes: body.operational_capability.operation_modes,
+                humanEscalationRequired: body.operational_capability.human_escalation_required,
+                timelineEvidenceRequired: body.operational_capability.timeline_evidence_required,
+                auditEvidenceRequired: body.operational_capability.audit_evidence_required
               }
             : undefined,
           policySnapshot: body.policy_snapshot
