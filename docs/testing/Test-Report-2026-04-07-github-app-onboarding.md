@@ -63,7 +63,7 @@
 - 实际结果:
   - headed Chromium 稳定打开 `/setup`。
   - GitHub readiness 区块显示:
-    - readiness: `可进远端 PR`
+    - readiness: `仅本地闭环`
     - message: `GitHub App 已配置，但 installation 还未完成；当前仍退回 gh CLI。`
     - missing fields: `installationId`
   - repo binding 区块显示:
@@ -71,7 +71,7 @@
     - binding status: `待补安装`
     - blocked message / error: `GitHub App 已配置，但 installation 还未完成；当前仍退回 gh CLI。`
     - installation link 与回流步骤均可见
-- 业务结论: headed Setup harness 现在不仅能回放 happy path，也能覆盖 GitHub App onboarding 的 blocked-path 入口，确保用户在进入 Issue / Room 之前先看到真实 gate。
+  - 业务结论: headed Setup harness 现在不仅能回放 happy path，也能覆盖 GitHub App onboarding 的 blocked-path 入口；installation 未完成时，Setup 会明确保持在 `仅本地闭环`，而不是把 fallback 误写成 GitHub-ready 绿灯。
 
 ## TC-015 GitHub App 安装与 Webhook
 

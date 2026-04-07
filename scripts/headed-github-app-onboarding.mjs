@@ -355,6 +355,10 @@ async function main() {
   const githubInstallLink = (await page.getByTestId("setup-github-install-link").getAttribute("href"))?.trim() ?? "";
   const githubReturnSteps = (await page.getByTestId("setup-github-return-steps").textContent())?.trim() ?? "";
 
+  assert(
+    githubReadinessStatus === "仅本地闭环",
+    `expected GitHub readiness status to stay local-only until installation completes, got: ${githubReadinessStatus}`
+  );
   assert(githubMessage.includes("installation"), `expected github message to mention installation, got: ${githubMessage}`);
   assert(githubInstallLink === installURL, `expected github install link ${installURL}, got ${githubInstallLink}`);
   await capture(page, "github-app-onboarding");

@@ -131,20 +131,22 @@ func (s *Service) Probe(workspaceRoot string) (Status, error) {
 
 	appReady := status.RemoteConfigured && status.AppConfigured && status.AppInstalled && status.Provider == "github"
 	ghReady := status.RemoteConfigured && status.GHCLIInstalled && status.GHAuthenticated
-	status.Ready = appReady || ghReady
 
 	switch {
 	case appReady:
+		status.Ready = true
 		status.AuthMode = "github-app"
 		status.PreferredAuthMode = "github-app"
 		status.Message = githubAppProbeMessage(status, appReady, ghReady)
 	case ghReady:
 		status.AuthMode = "gh-cli"
 		if appStatus.Enabled {
+			status.Ready = false
 			status.PreferredAuthMode = "github-app"
 			status.Message = githubAppProbeMessage(status, appReady, ghReady)
 			break
 		}
+		status.Ready = true
 		status.PreferredAuthMode = "gh-cli"
 		switch {
 		case !status.RemoteConfigured:
@@ -155,9 +157,11 @@ func (s *Service) Probe(workspaceRoot string) (Status, error) {
 			status.Message = "origin 已存在，但 GitHub CLI 尚未认证。"
 		}
 	case appStatus.Enabled:
+		status.Ready = false
 		status.PreferredAuthMode = "github-app"
 		status.Message = githubAppProbeMessage(status, appReady, ghReady)
 	case status.GHCLIInstalled:
+		status.Ready = false
 		status.PreferredAuthMode = "gh-cli"
 		switch {
 		case !status.RemoteConfigured:
@@ -168,6 +172,7 @@ func (s *Service) Probe(workspaceRoot string) (Status, error) {
 			status.Message = "origin 已存在，但 GitHub CLI 尚未认证。"
 		}
 	default:
+		status.Ready = false
 		switch {
 		case !status.RemoteConfigured:
 			status.Message = "当前仓库还没有 origin remote，无法进入真实 GitHub 闭环。"
