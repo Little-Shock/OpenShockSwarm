@@ -4619,12 +4619,12 @@ test("v1 stage2 batch2 control-plane work assignment/operator action/recent acti
       assert.equal(recentActions.body.projection, "channel_recent_actions_projection");
       assert.equal(recentActions.body.summary.operator_action_count >= 2, true);
       assert.equal(recentActions.body.summary.work_assignment_count >= 1, true);
-      assert.equal(
-        recentActions.body.items.some(
-          (item) => item.action_family === "work_assignment" && item.operator_scope.agent_id === "agent_stage2_batch2_alpha"
-        ),
-        true
+      const workAssignmentRecent = recentActions.body.items.find(
+        (item) => item.action_family === "work_assignment" && item.operator_scope.agent_id === "agent_stage2_batch2_alpha"
       );
+      assert.ok(workAssignmentRecent);
+      assert.equal(workAssignmentRecent.operator_scope.thread_id, "thread_stage2_batch2");
+      assert.equal(workAssignmentRecent.operator_scope.workitem_id, "workitem_stage2_batch2");
 
       const invalidActionType = await requestJson({
         port,

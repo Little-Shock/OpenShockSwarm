@@ -2882,8 +2882,9 @@ export class ServerCoordinator {
           at: entry.at,
           operatorScope: {
             agentId: normalizeOptionalScopeId(details.agent_id),
-            threadId: normalizeOptionalScopeId(details.thread_id),
-            workitemId: normalizeOptionalScopeId(details.workitem_id)
+            threadId: normalizeOptionalScopeId(details.thread_id) ?? normalizeOptionalScopeId(details.assigned_thread_id),
+            workitemId:
+              normalizeOptionalScopeId(details.workitem_id) ?? normalizeOptionalScopeId(details.assigned_workitem_id)
           },
           policySnapshot: deepClone(entry.policySnapshot ?? {}),
           details: deepClone(details)
