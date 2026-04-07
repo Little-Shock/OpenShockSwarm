@@ -18,6 +18,13 @@ const configuredChannelId =
   typeof process.env.SHELL_CHANNEL_ID === "string" && process.env.SHELL_CHANNEL_ID.trim().length > 0
     ? process.env.SHELL_CHANNEL_ID.trim()
     : "";
+const configuredChannelCandidates =
+  typeof process.env.SHELL_CHANNEL_CANDIDATES === "string" && process.env.SHELL_CHANNEL_CANDIDATES.trim().length > 0
+    ? process.env.SHELL_CHANNEL_CANDIDATES
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    : ["channel_stage4a1_review", "channel_open_shock_stage4a1"];
 
 const mimeByExt = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -269,10 +276,20 @@ async function writeShellState(res) {
       runtimeRegistry: runtimeRegistryRead ?? null,
       runtimeAgents,
     });
-    const channelId = normalizeText(scope.channelId);
+    const channelCandidates = buildChannelIdCandidates({
+      scopeChannelId: scope.channelId,
+      configuredChannelId,
+      configuredChannelCandidates,
+      topicRepoBindingProjection: repoBindingRead?.repo_binding ?? null,
+    });
+    const resolvedChannelContext = await resolveChannelContextFromCandidates(channelCandidates);
+    const channelId = normalizeText(resolvedChannelContext.channelId);
+    const effectiveScope = {
+      ...scope,
+      channelId,
+    };
     const encodedChannelId = channelId ? encodeURIComponent(channelId) : "";
     const [
-      channelContextRead,
       channelRepoBindingRead,
       channelAuditTrailRead,
       channelWorkAssignmentsRead,
@@ -280,14 +297,14 @@ async function writeShellState(res) {
       channelRecentActionsRead,
       recoveryActionsRead,
     ] = await Promise.all([
-      fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/context` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/repo-binding` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/audit-trail?limit=50` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/work-assignments?limit=100` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/operator-actions?limit=100` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/recent-actions?limit=100` : ""),
-      fetchOptionalUpstreamJson(buildRuntimeRecoveryActionsPath(scope)),
+      fetchOptionalUpstreamJson(buildRuntimeRecoveryActionsPath(effectiveScope)),
     ]);
+    const channelContextRead = resolvedChannelContext.contextRead;
     const workspaceId = resolveWorkspaceIdFromChannelContext(channelContextRead.payload?.context);
     const workspaceGovernanceProjection = buildWorkspaceGovernanceProjectionFromChannelTruth({
       workspaceId,
@@ -325,7 +342,7 @@ async function writeShellState(res) {
       runtimeRegistry: runtimeRegistryRead ?? null,
       runtimeAgents,
       runtimeWorktreeClaims,
-      scope,
+      scope: effectiveScope,
       channelSurface: {
         context_status: channelContextRead.status,
         repo_binding_status: channelRepoBindingRead.status,
@@ -635,7 +652,7 @@ async function handleWorkspaceGovernanceGithubIdentityUpsert(req, res) {
           provider,
           subject_ref: providerUserId || identityId,
           github_login: githubLogin || null,
-          status: "linked",
+          status: "bound",
         },
         policy_snapshot: {
           mode: "multi_human_governance_stage4a1",
@@ -1122,6 +1139,51 @@ function buildRuntimeRecoveryActionsPath(scope) {
     query.set("operator_id", operatorId);
   }
   return `/v1/runtime/recovery-actions?${query.toString()}`;
+}
+
+function buildChannelIdCandidates({ scopeChannelId, configuredChannelId, configuredChannelCandidates, topicRepoBindingProjection }) {
+  const candidates = [];
+  const fromScope = normalizeText(scopeChannelId);
+  if (fromScope) {
+    candidates.push(fromScope);
+  }
+  const fromConfigured = normalizeText(configuredChannelId);
+  if (fromConfigured) {
+    candidates.push(fromConfigured);
+  }
+  const fromTopicRepoBinding =
+    normalizeText(topicRepoBindingProjection?.channel_id) ||
+    normalizeText(topicRepoBindingProjection?.channelId) ||
+    "";
+  if (fromTopicRepoBinding) {
+    candidates.push(fromTopicRepoBinding);
+  }
+  if (Array.isArray(configuredChannelCandidates)) {
+    for (const candidate of configuredChannelCandidates) {
+      const normalized = normalizeText(candidate);
+      if (normalized) {
+        candidates.push(normalized);
+      }
+    }
+  }
+  return Array.from(new Set(candidates));
+}
+
+async function resolveChannelContextFromCandidates(candidates) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return { channelId: "", contextRead: { status: "skipped", payload: null, path: null } };
+  }
+  for (const candidate of candidates) {
+    const channelId = normalizeText(candidate);
+    if (!channelId) {
+      continue;
+    }
+    const contextRead = await fetchOptionalUpstreamJson(`/v1/channels/${encodeURIComponent(channelId)}/context`);
+    if (contextRead.status === "ok") {
+      return { channelId, contextRead };
+    }
+  }
+  return { channelId: "", contextRead: { status: "skipped", payload: null, path: null } };
 }
 
 async function fetchOptionalUpstreamJson(pathWithQuery) {

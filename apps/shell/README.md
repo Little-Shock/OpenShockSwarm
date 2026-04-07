@@ -19,6 +19,7 @@ Stage 4A1 governance fan-in scope:
 - Account/member/GitHub identity -> installation -> repo binding management entry
 - Only consume `/v1` governance truth from `channel context` and `channel repo-binding` contracts
 - Keep installation authorization and repo binding authorization as separate checks
+- When runtime scope has no channel, shell-state may discover channel context from `SHELL_CHANNEL_CANDIDATES`
 
 ## Stage 3 Entry Contract
 
@@ -39,6 +40,8 @@ Do not treat `.slock/.../OpenShockSwarm` copies as release or handoff entry.
 export SHELL_API_UPSTREAM=http://127.0.0.1:7070
 # optional if browser should call API origin directly (without same-origin proxy)
 # export SHELL_API_BASE_URL=http://127.0.0.1:7070
+# optional when runtime scope cannot infer channel id
+# export SHELL_CHANNEL_CANDIDATES=channel_stage4a1_review,channel_open_shock_stage4a1
 node apps/shell/scripts/dev-server.mjs
 ```
 
