@@ -1998,14 +1998,20 @@ function normalizeWorkspaceGithubInstallations(payload) {
 
 function normalizeWorkspaceRepoBindings(payload) {
   const items = extractResourceItems(payload, ["repo_bindings", "repo_binding"]);
-  return items.map((item) => ({
-    binding_id: normalizeText(item?.binding_id) || normalizeText(item?.bindingId) || normalizeText(item?.id) || null,
-    provider: normalizeText(item?.provider_ref?.provider) || normalizeText(item?.provider) || "unknown",
-    repo_ref: normalizeText(item?.provider_ref?.repo_ref) || normalizeText(item?.repo_ref) || null,
-    default_branch: normalizeText(item?.default_branch) || normalizeText(item?.defaultBranch) || null,
-    status: normalizeText(item?.status) || "active",
-    updated_at: item?.updated_at || item?.updatedAt || null,
-  }));
+  return items.map((item) => {
+    const inner = item?.repo_binding && typeof item.repo_binding === "object" ? item.repo_binding : item;
+    return {
+      binding_id: normalizeText(inner?.binding_id) || normalizeText(inner?.bindingId) || normalizeText(inner?.id) || null,
+      provider: normalizeText(inner?.provider_ref?.provider) || normalizeText(inner?.provider) || "unknown",
+      repo_ref: normalizeText(inner?.provider_ref?.repo_ref) || normalizeText(inner?.repo_ref) || null,
+      default_branch: normalizeText(inner?.default_branch) || normalizeText(inner?.defaultBranch) || null,
+      workspace_installation_id:
+        normalizeText(inner?.workspace_installation_id) || normalizeText(inner?.workspaceInstallationId) || null,
+      authorization_scope: normalizeText(inner?.authorization_scope) || normalizeText(inner?.authorizationScope) || null,
+      status: normalizeText(inner?.status) || normalizeText(item?.status) || "active",
+      updated_at: inner?.updated_at || inner?.updatedAt || item?.updated_at || item?.updatedAt || null,
+    };
+  });
 }
 
 function extractResourceItems(payload, preferredKeys) {
