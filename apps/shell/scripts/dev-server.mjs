@@ -1583,6 +1583,8 @@ function buildOperatorConsoleState({
   channelSurface,
   actorRegistry,
   controlEvents,
+  approvalHolds,
+  topicNotifications,
 }) {
   const channelId = normalizeText(scope?.channelId) || null;
   const operatorId = normalizeText(scope?.operatorId) || operatorAgentId;
