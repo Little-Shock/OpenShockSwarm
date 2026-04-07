@@ -3,12 +3,12 @@
 This directory contains the collaboration shell for OpenShock, including:
 
 - Stage 1 productized collaboration workflows
-- Stage 2 first-shot single-human multi-agent operator-console fan-in
+- Stage 2 first-shot + batch2 single-human multi-agent operator-console fan-in
 
 Scope in this stage:
 
 - Room workspace (`1 Room = 1 Topic`) with topic/run/inbox/approval/intervention/follow-up/closeout
-- Operator console fan-in for channel/workspace root context, repo binding, runtime/machine state, agent registry, and audit trail
+- Operator console fan-in for channel/workspace root context, work assignment, recovery action loop, recent actions, repo binding, runtime/machine state, agent registry, and audit trail
 - Coarse observability and stable shell adapter actions
 
 Out of scope in this stage:
@@ -48,10 +48,20 @@ The shell does not own local mock truth. `dev-server.mjs` serves shell assets an
 - `GET /v1/topics/:topicId/repo-binding`
 - `GET /v1/topics/:topicId/actors?limit=100`
 - `GET /v1/topics/:topicId/events?limit=20`
+- `GET /v1/channels/:channelId/context`
+- `PUT /v1/channels/:channelId/context`
+- `GET /v1/channels/:channelId/repo-binding`
+- `PUT /v1/channels/:channelId/repo-binding`
+- `GET /v1/channels/:channelId/audit-trail?limit=50`
+- `GET /v1/runtime/registry`
+- `GET /v1/runtime/agents?limit=200`
+- `PUT /v1/runtime/agents/:agentId/assignment`
+- `POST /v1/runtime/agents/:agentId/recovery-actions`
+- `GET /v1/runtime/recovery-actions?limit=50`
+- `GET /v1/runtime/worktree-claims?limit=200`
 - `GET /runtime/config`
 - `GET /runtime/smoke`
 - `PUT /v1/topics/:topicId/actors/:actorId`
-- `PUT /v1/topics/:topicId/repo-binding`
 - `POST /v1/topics/:topicId/approval-holds/:holdId/decisions`
 - `POST /v1/topics/:topicId/messages`
 
@@ -69,6 +79,14 @@ Adapter routes:
 - `POST /api/v0a/intervention-points/:pointId/action`
   - Body: `{ "action": "approve" | "hold" | "escalate", "operator": "<string>", "note": "<string>" }`
 - `POST /api/v0a/operator/repo-binding`
-  - Body: `{ "provider": "<string>", "repo_ref": "<string>", "default_branch": "<string|null>", "operator": "<string>" }`
+  - Body: `{ "channel_id": "<string>", "topic_id": "<string>", "provider": "<string>", "repo_ref": "<string>", "default_branch": "<string|null>", "operator": "<string>" }`
+- `POST /api/v0a/operator/channel-context`
+  - Body: `{ "channel_id": "<string>", "workspace_id": "<string>", "workspace_root": "<string>", "baseline_ref": "<string>", "operator": "<string>" }`
 - `POST /api/v0a/operator/agents/:actorId/upsert`
   - Body: `{ "role": "lead" | "worker" | "human" | "system", "status": "<string>", "lane_id": "<string|null>" }`
+- `POST /api/v0a/operator/agents/:actorId/assignment`
+  - Body: `{ "operator": "<string>", "channel_id": "<string>", "thread_id": "<string|null>", "workitem_id": "<string|null>", "status": "<string|null>" }`
+- `POST /api/v0a/operator/agents/:actorId/recovery-actions`
+  - Body: `{ "action": "resume" | "rebind" | "reclaim_worktree", "operator": "<string>", "channel_id": "<string|null>", "thread_id": "<string|null>", "workitem_id": "<string|null>", "claim_key": "<string|null>", "reason": "<string|null>" }`
+- `POST /api/v0a/operator/actions`
+  - Body: `{ "action": "<string>", "operator": "<string>", "channel_id": "<string|null>", "thread_id": "<string|null>", "workitem_id": "<string|null>", "run_id": "<string|null>", "target_agent_id": "<string|null>", "note": "<string|null>" }`

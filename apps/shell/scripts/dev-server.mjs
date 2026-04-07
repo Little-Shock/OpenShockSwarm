@@ -10,6 +10,14 @@ const port = Number(process.env.SHELL_PORT || 4173);
 const apiUpstream = process.env.SHELL_API_UPSTREAM || "http://127.0.0.1:7070";
 const configuredApiBase = process.env.SHELL_API_BASE_URL || "";
 const operatorAgentId = process.env.SHELL_OPERATOR_AGENT_ID || "shell_operator";
+const configuredOperatorId =
+  typeof process.env.SHELL_OPERATOR_ID === "string" && process.env.SHELL_OPERATOR_ID.trim().length > 0
+    ? process.env.SHELL_OPERATOR_ID.trim()
+    : "";
+const configuredChannelId =
+  typeof process.env.SHELL_CHANNEL_ID === "string" && process.env.SHELL_CHANNEL_ID.trim().length > 0
+    ? process.env.SHELL_CHANNEL_ID.trim()
+    : "";
 
 const mimeByExt = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -52,8 +60,24 @@ const server = http.createServer(async (req, res) => {
       return handleOperatorRepoBindingUpsert(req, res);
     }
 
+    if (route.kind === "operator-channel-context-upsert") {
+      return handleOperatorChannelContextUpsert(req, res);
+    }
+
     if (route.kind === "operator-agent-upsert") {
       return handleOperatorAgentUpsert(req, res, route.actorId);
+    }
+
+    if (route.kind === "operator-agent-assignment") {
+      return handleOperatorAgentAssignment(req, res, route.actorId);
+    }
+
+    if (route.kind === "operator-agent-recovery-action") {
+      return handleOperatorAgentRecoveryAction(req, res, route.actorId);
+    }
+
+    if (route.kind === "operator-action") {
+      return handleOperatorAction(req, res);
     }
 
     if (route.kind === "intervention-point-action") {
@@ -110,9 +134,27 @@ function matchRoute(rawUrl) {
     return { kind: "operator-repo-binding-upsert" };
   }
 
+  if (pathname === "/api/v0a/operator/channel-context" && url.search.length === 0) {
+    return { kind: "operator-channel-context-upsert" };
+  }
+
   const operatorAgentUpsertMatch = pathname.match(/^\/api\/v0a\/operator\/agents\/([^/]+)\/upsert$/);
   if (operatorAgentUpsertMatch) {
     return { kind: "operator-agent-upsert", actorId: decodeURIComponent(operatorAgentUpsertMatch[1]) };
+  }
+
+  const operatorAgentAssignmentMatch = pathname.match(/^\/api\/v0a\/operator\/agents\/([^/]+)\/assignment$/);
+  if (operatorAgentAssignmentMatch) {
+    return { kind: "operator-agent-assignment", actorId: decodeURIComponent(operatorAgentAssignmentMatch[1]) };
+  }
+
+  const operatorAgentRecoveryMatch = pathname.match(/^\/api\/v0a\/operator\/agents\/([^/]+)\/recovery-actions$/);
+  if (operatorAgentRecoveryMatch) {
+    return { kind: "operator-agent-recovery-action", actorId: decodeURIComponent(operatorAgentRecoveryMatch[1]) };
+  }
+
+  if (pathname === "/api/v0a/operator/actions" && url.search.length === 0) {
+    return { kind: "operator-action" };
   }
 
   const interventionPointActionMatch = pathname.match(/^\/api\/v0a\/intervention-points\/([^/]+)\/action$/);
@@ -173,6 +215,9 @@ async function writeShellState(res) {
       repoBindingRead,
       actorListRead,
       controlEventsRead,
+      runtimeRegistryRead,
+      runtimeAgentsRead,
+      runtimeWorktreeClaimsRead,
     ] = await Promise.all([
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/status`),
@@ -187,7 +232,28 @@ async function writeShellState(res) {
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/repo-binding`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/actors?limit=100`),
         fetchUpstreamJson(`/v1/topics/${encodedTopicId}/events?limit=20`),
+        fetchUpstreamJson("/v1/runtime/registry"),
+        fetchUpstreamJson("/v1/runtime/agents?limit=200"),
+        fetchUpstreamJson("/v1/runtime/worktree-claims?limit=200"),
       ]);
+    const runtimeAgents = Array.isArray(runtimeAgentsRead?.items) ? runtimeAgentsRead.items : [];
+    const runtimeWorktreeClaims = Array.isArray(runtimeWorktreeClaimsRead?.items)
+      ? runtimeWorktreeClaimsRead.items
+      : [];
+    const scope = deriveOperatorScope({
+      topicId,
+      runtimeRegistry: runtimeRegistryRead ?? null,
+      runtimeAgents,
+    });
+    const channelId = normalizeText(scope.channelId);
+    const encodedChannelId = channelId ? encodeURIComponent(channelId) : "";
+    const [channelContextRead, channelRepoBindingRead, channelAuditTrailRead, recoveryActionsRead] = await Promise.all([
+      fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/context` : ""),
+      fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/repo-binding` : ""),
+      fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/audit-trail?limit=50` : ""),
+      fetchOptionalUpstreamJson(buildRuntimeRecoveryActionsPath(scope)),
+    ]);
+
     const payload = buildShellStatePayload({
       topicId,
       topic: topicRead?.topic ?? null,
@@ -201,6 +267,20 @@ async function writeShellState(res) {
       runtimeConfig: runtimeConfigRead ?? null,
       runtimeSmoke: runtimeSmokeRead ?? null,
       repoBindingProjection: repoBindingRead?.repo_binding ?? null,
+      channelContextContract: channelContextRead.payload?.context ?? null,
+      channelRepoBindingConfig: channelRepoBindingRead.payload?.repo_binding ?? null,
+      channelAuditTrail: Array.isArray(channelAuditTrailRead.payload?.items) ? channelAuditTrailRead.payload.items : [],
+      runtimeRecoveryActions: Array.isArray(recoveryActionsRead.payload?.items) ? recoveryActionsRead.payload.items : [],
+      runtimeRegistry: runtimeRegistryRead ?? null,
+      runtimeAgents,
+      runtimeWorktreeClaims,
+      scope,
+      channelSurface: {
+        context_status: channelContextRead.status,
+        repo_binding_status: channelRepoBindingRead.status,
+        audit_trail_status: channelAuditTrailRead.status,
+        recovery_actions_status: recoveryActionsRead.status,
+      },
       actorRegistry: Array.isArray(actorListRead?.items) ? actorListRead.items : [],
       controlEvents: Array.isArray(controlEventsRead?.items) ? controlEventsRead.items : [],
     });
@@ -347,18 +427,75 @@ async function handleOperatorRepoBindingUpsert(req, res) {
     }
     const provider = normalizeText(input.provider) || "github";
     const defaultBranch = normalizeText(input.default_branch) || null;
-    const topicId = await resolveConsumerTopicId();
-    const encodedTopicId = encodeURIComponent(topicId);
-    const operator = normalizeOperator(input.operator);
-    const result = await fetchUpstreamJson(`/v1/topics/${encodedTopicId}/repo-binding`, {
+    const scope = await resolveOperatorScope();
+    const channelId = normalizeText(input.channel_id) || normalizeText(scope.channelId);
+    if (!channelId) {
+      return writeJson(res, 400, { error: "invalid_channel_id", message: "channel_id is required" });
+    }
+    const topicId = normalizeText(input.topic_id) || normalizeText(scope.topicId);
+    if (!topicId) {
+      return writeJson(res, 400, { error: "invalid_topic_id", message: "topic_id is required" });
+    }
+    const operator = normalizeText(input.operator) || normalizeText(scope.operatorId) || normalizeOperator(input.operator);
+    const fixedDirectory = normalizeText(input.fixed_directory) || null;
+    const result = await fetchUpstreamJson(`/v1/channels/${encodeURIComponent(channelId)}/repo-binding`, {
       method: "PUT",
       body: {
+        operator_id: operator,
+        topic_id: topicId,
         provider_ref: {
           provider,
           repo_ref: repoRef,
         },
         default_branch: defaultBranch,
-        bound_by: operator,
+        fixed_directory: fixedDirectory,
+        policy_snapshot: {
+          mode: "single_human_multi_agent",
+          source: "shell_operator_console",
+        },
+      },
+    });
+    return writeJson(res, 200, result);
+  } catch (error) {
+    return writeUpstreamError(res, error);
+  }
+}
+
+async function handleOperatorChannelContextUpsert(req, res) {
+  try {
+    if (req.method !== "POST") {
+      return writeJson(res, 405, { error: "method_not_allowed" });
+    }
+    const input = await readJsonBody(req);
+    const scope = await resolveOperatorScope();
+    const channelId = normalizeText(input.channel_id) || normalizeText(scope.channelId);
+    if (!channelId) {
+      return writeJson(res, 400, { error: "invalid_channel_id", message: "channel_id is required" });
+    }
+    const operator = normalizeText(input.operator) || normalizeText(scope.operatorId) || normalizeOperator(input.operator);
+    const workspaceId = normalizeText(input.workspace_id) || null;
+    const workspaceRoot = normalizeText(input.workspace_root) || null;
+    const baselineRef = normalizeText(input.baseline_ref) || null;
+    const fixedDirectory = normalizeText(input.fixed_directory) || null;
+    const docPaths = normalizeStringArray(input.doc_paths);
+    const runtimeEntries = normalizeStringArray(input.runtime_entries);
+    const ruleEntries = normalizeStringArray(input.rule_entries);
+    const result = await fetchUpstreamJson(`/v1/channels/${encodeURIComponent(channelId)}/context`, {
+      method: "PUT",
+      body: {
+        operator_id: operator,
+        workspace_id: workspaceId,
+        workspace_root: workspaceRoot,
+        baseline_ref: baselineRef,
+        fixed_directory: fixedDirectory,
+        doc_paths: docPaths.length > 0 ? docPaths : undefined,
+        runtime_entries: runtimeEntries.length > 0 ? runtimeEntries : undefined,
+        rule_entries: ruleEntries.length > 0 ? ruleEntries : undefined,
+        policy_snapshot: {
+          mode: "single_human_multi_agent",
+          boundary: "channel_aligned_entry",
+          source: "shell_operator_console",
+        },
       },
     });
     return writeJson(res, 200, result);
@@ -396,6 +533,147 @@ async function handleOperatorAgentUpsert(req, res, actorId) {
         },
       },
     );
+    return writeJson(res, 200, result);
+  } catch (error) {
+    return writeUpstreamError(res, error);
+  }
+}
+
+async function handleOperatorAgentAssignment(req, res, actorId) {
+  try {
+    if (req.method !== "POST") {
+      return writeJson(res, 405, { error: "method_not_allowed" });
+    }
+    const normalizedActorId = normalizeText(actorId);
+    if (!normalizedActorId) {
+      return writeJson(res, 400, { error: "invalid_actor_id", message: "actorId is required" });
+    }
+    const input = await readJsonBody(req);
+    const scope = await resolveOperatorScope();
+    const operatorId = normalizeText(input.operator) || normalizeText(scope.operatorId) || normalizeOperator(input.operator);
+    const channelId = normalizeText(input.channel_id) || normalizeText(scope.channelId);
+    if (!channelId) {
+      return writeJson(res, 400, { error: "invalid_channel_id", message: "channel_id is required" });
+    }
+    const threadId = normalizeText(input.thread_id) || normalizeText(scope.threadId) || null;
+    const workitemId = normalizeText(input.workitem_id) || normalizeText(scope.workitemId) || null;
+    const status = normalizeText(input.status) || null;
+    const result = await fetchUpstreamJson(
+      `/v1/runtime/agents/${encodeURIComponent(normalizedActorId)}/assignment`,
+      {
+        method: "PUT",
+        body: {
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId,
+          status,
+        },
+      },
+    );
+    return writeJson(res, 200, result);
+  } catch (error) {
+    return writeUpstreamError(res, error);
+  }
+}
+
+async function handleOperatorAgentRecoveryAction(req, res, actorId) {
+  try {
+    if (req.method !== "POST") {
+      return writeJson(res, 405, { error: "method_not_allowed" });
+    }
+    const normalizedActorId = normalizeText(actorId);
+    if (!normalizedActorId) {
+      return writeJson(res, 400, { error: "invalid_actor_id", message: "actorId is required" });
+    }
+    const input = await readJsonBody(req);
+    const action = normalizeText(input.action);
+    if (!["resume", "rebind", "reclaim_worktree"].includes(action)) {
+      return writeJson(res, 400, {
+        error: "invalid_runtime_recovery_action",
+        message: "action must be one of resume/rebind/reclaim_worktree",
+      });
+    }
+    const scope = await resolveOperatorScope();
+    const operatorId = normalizeText(input.operator) || normalizeText(scope.operatorId) || normalizeOperator(input.operator);
+    const channelId = normalizeText(input.channel_id) || normalizeText(scope.channelId) || null;
+    const threadId = normalizeText(input.thread_id) || normalizeText(scope.threadId) || null;
+    const workitemId = normalizeText(input.workitem_id) || normalizeText(scope.workitemId) || null;
+    const reason = normalizeText(input.reason) || null;
+    const claimKey = normalizeText(input.claim_key) || null;
+    const repoRef = normalizeText(input.repo_ref) || null;
+    const branch = normalizeText(input.branch) || null;
+    const laneId = normalizeText(input.lane_id) || null;
+    const status = normalizeText(input.status) || null;
+    const result = await fetchUpstreamJson(
+      `/v1/runtime/agents/${encodeURIComponent(normalizedActorId)}/recovery-actions`,
+      {
+        method: "POST",
+        body: {
+          action,
+          operator_id: operatorId,
+          channel_id: channelId,
+          thread_id: threadId,
+          workitem_id: workitemId,
+          reason,
+          claim_key: claimKey,
+          repo_ref: repoRef,
+          branch,
+          lane_id: laneId,
+          status,
+        },
+      },
+    );
+    return writeJson(res, 200, result);
+  } catch (error) {
+    return writeUpstreamError(res, error);
+  }
+}
+
+async function handleOperatorAction(req, res) {
+  try {
+    if (req.method !== "POST") {
+      return writeJson(res, 405, { error: "method_not_allowed" });
+    }
+    const input = await readJsonBody(req);
+    const action = normalizeText(input.action);
+    if (!action) {
+      return writeJson(res, 400, { error: "invalid_action", message: "action is required" });
+    }
+
+    const scope = await resolveOperatorScope();
+    const topicId = normalizeText(scope.topicId);
+    const operatorId = normalizeText(input.operator) || normalizeText(scope.operatorId) || normalizeOperator(input.operator);
+    const channelId = normalizeText(input.channel_id) || normalizeText(scope.channelId) || null;
+    const threadId = normalizeText(input.thread_id) || normalizeText(scope.threadId) || null;
+    const workitemId = normalizeText(input.workitem_id) || normalizeText(scope.workitemId) || null;
+    const encodedTopicId = encodeURIComponent(topicId);
+    await fetchUpstreamJson(`/v1/topics/${encodedTopicId}/actors/${encodeURIComponent(operatorId)}`, {
+      method: "PUT",
+      body: {
+        role: "human",
+        status: "active",
+      },
+    });
+    const result = await fetchUpstreamJson(`/v1/topics/${encodedTopicId}/messages`, {
+      method: "POST",
+      body: {
+        type: "status_report",
+        sourceAgentId: operatorId,
+        sourceRole: "human",
+        targetScope: "topic",
+        payload: {
+          event: "shell_operator_action_loop",
+          action,
+          channelId,
+          threadId,
+          workitemId,
+          runId: normalizeText(input.run_id) || null,
+          targetAgentId: normalizeText(input.target_agent_id) || null,
+          note: normalizeNote(input.note),
+        },
+      },
+    });
     return writeJson(res, 200, result);
   } catch (error) {
     return writeUpstreamError(res, error);
@@ -586,6 +864,94 @@ async function resolveConsumerTopicId() {
   return topicId;
 }
 
+async function resolveOperatorScope() {
+  const topicId = await resolveConsumerTopicId();
+  const [runtimeRegistryRead, runtimeAgentsRead] = await Promise.all([
+    fetchUpstreamJson("/v1/runtime/registry"),
+    fetchUpstreamJson("/v1/runtime/agents?limit=200"),
+  ]);
+  const runtimeAgents = Array.isArray(runtimeAgentsRead?.items) ? runtimeAgentsRead.items : [];
+  return deriveOperatorScope({
+    topicId,
+    runtimeRegistry: runtimeRegistryRead ?? null,
+    runtimeAgents,
+  });
+}
+
+function deriveOperatorScope({ topicId, runtimeRegistry, runtimeAgents }) {
+  const mergedAgents = [];
+  if (Array.isArray(runtimeRegistry?.agents)) {
+    mergedAgents.push(...runtimeRegistry.agents);
+  }
+  if (Array.isArray(runtimeAgents)) {
+    mergedAgents.push(...runtimeAgents);
+  }
+
+  let operatorId = configuredOperatorId;
+  let channelId = configuredChannelId;
+  let threadId = "";
+  let workitemId = "";
+
+  for (const item of mergedAgents) {
+    const candidateOperatorId = normalizeText(item?.owner_operator_id || item?.operator_id);
+    const candidateChannelId = normalizeText(item?.assigned_channel_id || item?.channel_id);
+    const candidateThreadId = normalizeText(item?.assigned_thread_id || item?.thread_id);
+    const candidateWorkitemId = normalizeText(item?.assigned_workitem_id || item?.workitem_id);
+    if (!operatorId && candidateOperatorId) {
+      operatorId = candidateOperatorId;
+    }
+    if (!channelId && candidateChannelId) {
+      channelId = candidateChannelId;
+    }
+    if (!threadId && candidateThreadId) {
+      threadId = candidateThreadId;
+    }
+    if (!workitemId && candidateWorkitemId) {
+      workitemId = candidateWorkitemId;
+    }
+    if (operatorId && channelId && threadId && workitemId) {
+      break;
+    }
+  }
+
+  return {
+    topicId: normalizeText(topicId),
+    operatorId: operatorId || operatorAgentId,
+    channelId: channelId || "",
+    threadId: threadId || "",
+    workitemId: workitemId || "",
+  };
+}
+
+function buildRuntimeRecoveryActionsPath(scope) {
+  const query = new URLSearchParams();
+  query.set("limit", "50");
+  const channelId = normalizeText(scope?.channelId);
+  const operatorId = normalizeText(scope?.operatorId);
+  if (channelId) {
+    query.set("channel_id", channelId);
+  }
+  if (operatorId) {
+    query.set("operator_id", operatorId);
+  }
+  return `/v1/runtime/recovery-actions?${query.toString()}`;
+}
+
+async function fetchOptionalUpstreamJson(pathWithQuery) {
+  if (!normalizeText(pathWithQuery)) {
+    return { status: "skipped", payload: null };
+  }
+  try {
+    const payload = await fetchUpstreamJson(pathWithQuery);
+    return { status: "ok", payload };
+  } catch (error) {
+    if (error instanceof UpstreamHttpError && error.statusCode === 404) {
+      return { status: "missing", payload: error.payload || null };
+    }
+    throw error;
+  }
+}
+
 function normalizeDecision(decision) {
   if (decision === "approve" || decision === "reject") {
     return decision;
@@ -607,14 +973,27 @@ function normalizeText(value) {
   return value.trim();
 }
 
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item) => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+}
+
 function normalizeOperator(value) {
   const normalized = normalizeText(value);
-  return normalized || operatorAgentId;
+  return normalized || configuredOperatorId || operatorAgentId;
 }
 
 function normalizeNote(value) {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function buildLocalId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function resolveIdempotencyKey(req, fallbackPrefix) {
@@ -645,6 +1024,15 @@ function buildShellStatePayload({
   runtimeConfig,
   runtimeSmoke,
   repoBindingProjection,
+  channelContextContract,
+  channelRepoBindingConfig,
+  channelAuditTrail,
+  runtimeRecoveryActions,
+  runtimeRegistry,
+  runtimeAgents,
+  runtimeWorktreeClaims,
+  scope,
+  channelSurface,
   actorRegistry,
   controlEvents,
 }) {
@@ -659,11 +1047,26 @@ function buildShellStatePayload({
   const actors = normalizeTopicActors(topic);
   const normalizedActorRegistry = normalizeActorRegistry(actorRegistry);
   const normalizedControlEvents = normalizeControlEvents(controlEvents);
+  const normalizedRuntimeAgents = normalizeRuntimeAgents(runtimeAgents, runtimeRegistry);
+  const normalizedRuntimeWorktreeClaims = normalizeRuntimeWorktreeClaims(runtimeWorktreeClaims);
+  const normalizedRuntimeRecoveryActions = normalizeRuntimeRecoveryActions(runtimeRecoveryActions);
+  const normalizedChannelAuditTrail = normalizeChannelAuditTrail(channelAuditTrail);
+  const normalizedOperatorActions = buildOperatorActions(normalizedMessages);
   const normalizedOperatorConsole = buildOperatorConsoleState({
     topicId,
     runtimeConfig,
     runtimeSmoke,
-    repoBindingProjection,
+    topicRepoBindingProjection: repoBindingProjection,
+    channelContextContract,
+    channelRepoBindingConfig,
+    channelAuditTrail: normalizedChannelAuditTrail,
+    runtimeRecoveryActions: normalizedRuntimeRecoveryActions,
+    runtimeRegistry,
+    runtimeAgents: normalizedRuntimeAgents,
+    runtimeWorktreeClaims: normalizedRuntimeWorktreeClaims,
+    operatorActions: normalizedOperatorActions,
+    scope,
+    channelSurface,
     actorRegistry: normalizedActorRegistry,
     controlEvents: normalizedControlEvents,
   });
@@ -869,49 +1272,75 @@ function buildOperatorConsoleState({
   topicId,
   runtimeConfig,
   runtimeSmoke,
-  repoBindingProjection,
+  topicRepoBindingProjection,
+  channelContextContract,
+  channelRepoBindingConfig,
+  channelAuditTrail,
+  runtimeRecoveryActions,
+  runtimeRegistry,
+  runtimeAgents,
+  runtimeWorktreeClaims,
+  operatorActions,
+  scope,
+  channelSurface,
   actorRegistry,
   controlEvents,
 }) {
+  const channelId = normalizeText(scope?.channelId) || null;
+  const operatorId = normalizeText(scope?.operatorId) || operatorAgentId;
   const runtimeName = normalizeText(runtimeConfig?.runtimeName) || "openshock-runtime";
   const daemonName = normalizeText(runtimeConfig?.daemonName) || "openshock-daemon";
   const shellUrl = normalizeText(runtimeConfig?.shellUrl) || null;
   const serverPort = Number.isFinite(Number(runtimeConfig?.serverPort)) ? Number(runtimeConfig.serverPort) : null;
   const sampleTopicId = normalizeText(runtimeConfig?.sampleFixture?.topicId) || topicId;
   const sampleTopicReady = Boolean(runtimeSmoke?.sampleTopicReady);
-  const sampleTopicAgentCount = Number(runtimeSmoke?.sampleTopicAgentCount || actorRegistry.length || 0);
+  const sampleTopicAgentCount = Number(runtimeSmoke?.sampleTopicAgentCount || runtimeAgents.length || actorRegistry.length || 0);
 
-  const normalizedRepoBinding =
-    repoBindingProjection && typeof repoBindingProjection === "object"
+  const channelContract =
+    channelContextContract && typeof channelContextContract === "object"
       ? {
-          topic_id: normalizeText(repoBindingProjection.topic_id) || topicId,
-          provider: normalizeText(repoBindingProjection?.provider_ref?.provider) || "unknown",
-          repo_ref: normalizeText(repoBindingProjection?.provider_ref?.repo_ref) || null,
-          default_branch: normalizeText(repoBindingProjection.default_branch) || null,
-          bound_by: normalizeText(repoBindingProjection.bound_by) || null,
-          updated_at: repoBindingProjection.updated_at || repoBindingProjection.linked_at || null,
+          channel_id: normalizeText(channelContextContract.channel_id) || channelId,
+          owner_operator_id: normalizeText(channelContextContract.owner_operator_id) || operatorId,
+          project_aligned_entry: Boolean(channelContextContract.project_aligned_entry),
+          workspace: channelContextContract.workspace || null,
+          context: channelContextContract.context || null,
+          updated_at: channelContextContract.updated_at || null,
         }
       : null;
 
-  const auditEntries = controlEvents.slice(0, 20).map((item) => ({
-    event_id: item.event_id || null,
-    action: item.event_type,
-    target:
-      item.related_resource_type && item.related_resource_id
-        ? `${item.related_resource_type}:${item.related_resource_id}`
-        : item.related_resource_type || "topic",
-    result_state: item.result_state || "accepted",
-    reason_code: item.reason_code || null,
-    at: item.at,
-  }));
+  const normalizedRepoBinding = normalizeOperatorRepoBinding({
+    topicId,
+    channelId,
+    operatorId,
+    channelRepoBindingConfig,
+    topicRepoBindingProjection,
+  });
+
+  const auditEntries = buildAuditEntries({
+    channelAuditTrail,
+    controlEvents,
+  });
+  const recentActions = buildRecentActions({
+    auditEntries,
+    recoveryActions: runtimeRecoveryActions,
+    operatorActions,
+  });
 
   return {
     scope: "single_human_multi_agent",
+    layer: "channel -> workspace(root) -> repo/worktree -> agent",
+    channel: {
+      channel_id: channelId,
+      status: channelSurface || null,
+      context_contract: channelContract,
+      project_aligned_entry: true,
+    },
     workspace: {
       workspace_id: `single_operator_${topicId}`,
-      operator_id: operatorAgentId,
+      operator_id: operatorId,
       default_topic_id: topicId,
       mode: "single_human_multi_agent",
+      root_path: normalizeText(channelContract?.workspace?.root_path) || null,
     },
     runtime: {
       runtime_name: runtimeName,
@@ -920,6 +1349,7 @@ function buildOperatorConsoleState({
       server_port: serverPort,
       sample_topic_id: sampleTopicId,
       pairing_status: sampleTopicReady ? "paired" : "pending_pairing",
+      summary: runtimeRegistry?.summary || null,
     },
     machine: {
       machine_id: `${runtimeName}@single-machine`,
@@ -929,12 +1359,253 @@ function buildOperatorConsoleState({
     },
     repo_binding: normalizedRepoBinding,
     agents: actorRegistry,
+    runtime_agents: runtimeAgents,
+    worktree_claims: runtimeWorktreeClaims,
+    recovery_actions: runtimeRecoveryActions,
+    operator_actions: operatorActions,
+    recent_actions: recentActions,
     audit_entries: auditEntries,
     write_anchors: {
+      context_upsert: "/api/v0a/operator/channel-context",
       repo_binding_upsert: "/api/v0a/operator/repo-binding",
       agent_upsert: "/api/v0a/operator/agents/:actorId/upsert",
+      assignment_enforce: "/api/v0a/operator/agents/:actorId/assignment",
+      recovery_action: "/api/v0a/operator/agents/:actorId/recovery-actions",
+      operator_action: "/api/v0a/operator/actions",
     },
   };
+}
+
+function normalizeRuntimeAgents(items, runtimeRegistry) {
+  const merged = [];
+  if (Array.isArray(runtimeRegistry?.agents)) {
+    merged.push(...runtimeRegistry.agents);
+  }
+  if (Array.isArray(items)) {
+    merged.push(...items);
+  }
+  const byId = new Map();
+  for (const item of merged) {
+    const agentId = normalizeText(item?.agent_id || item?.agentId);
+    if (!agentId) {
+      continue;
+    }
+    const previous = byId.get(agentId) || {};
+    byId.set(agentId, {
+      ...previous,
+      agent_id: agentId,
+      machine_id: normalizeText(item?.machine_id || previous.machine_id) || null,
+      runtime_id: normalizeText(item?.runtime_id || previous.runtime_id) || null,
+      owner_operator_id: normalizeText(item?.owner_operator_id || previous.owner_operator_id) || null,
+      assigned_channel_id: normalizeText(item?.assigned_channel_id || previous.assigned_channel_id) || null,
+      assigned_thread_id: normalizeText(item?.assigned_thread_id || previous.assigned_thread_id) || null,
+      assigned_workitem_id: normalizeText(item?.assigned_workitem_id || previous.assigned_workitem_id) || null,
+      status: normalizeText(item?.status || previous.status) || "unknown",
+      pairing_state: normalizeText(item?.pairing_state || previous.pairing_state) || "unknown",
+      liveness: normalizeText(item?.liveness || previous.liveness) || "unknown",
+      updated_at: item?.updated_at || previous.updated_at || null,
+      last_seen_at: item?.last_seen_at || previous.last_seen_at || null,
+    });
+  }
+  return Array.from(byId.values()).sort((left, right) => left.agent_id.localeCompare(right.agent_id));
+}
+
+function normalizeRuntimeWorktreeClaims(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => ({
+    claim_key: normalizeText(item?.claim_key) || "unknown_claim",
+    agent_id: normalizeText(item?.agent_id) || null,
+    owner_operator_id: normalizeText(item?.owner_operator_id) || null,
+    assigned_channel_id: normalizeText(item?.assigned_channel_id) || null,
+    assigned_thread_id: normalizeText(item?.assigned_thread_id) || null,
+    assigned_workitem_id: normalizeText(item?.assigned_workitem_id) || null,
+    repo_ref: normalizeText(item?.repo_ref) || null,
+    branch: normalizeText(item?.branch) || null,
+    lane_id: normalizeText(item?.lane_id) || null,
+    claim_status: normalizeText(item?.claim_status) || "unknown",
+    reclaimed_from_agent_id: normalizeText(item?.reclaimed_from_agent_id) || null,
+    updated_at: item?.updated_at || item?.claimed_at || null,
+  }));
+}
+
+function normalizeRuntimeRecoveryActions(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => ({
+    action_id: normalizeText(item?.action_id) || "unknown_action",
+    action: normalizeText(item?.action) || "unknown",
+    status: normalizeText(item?.status) || "applied",
+    operator_id: normalizeText(item?.operator_id) || null,
+    agent_id: normalizeText(item?.agent_id) || null,
+    channel_id: normalizeText(item?.channel_id) || null,
+    thread_id: normalizeText(item?.thread_id) || null,
+    workitem_id: normalizeText(item?.workitem_id) || null,
+    reason: normalizeText(item?.reason) || null,
+    at: item?.at || null,
+    result: item?.result || null,
+  }));
+}
+
+function normalizeChannelAuditTrail(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => ({
+    audit_id: normalizeText(item?.audit_id) || "unknown_audit",
+    channel_id: normalizeText(item?.channel_id) || null,
+    actor_id: normalizeText(item?.actor_id) || null,
+    action: normalizeText(item?.action) || "unknown_action",
+    target: normalizeText(item?.target) || "channel",
+    at: item?.at || null,
+    policy_snapshot: item?.policy_snapshot || {},
+    details: item?.details || {},
+  }));
+}
+
+function normalizeOperatorRepoBinding({ topicId, channelId, operatorId, channelRepoBindingConfig, topicRepoBindingProjection }) {
+  if (channelRepoBindingConfig && typeof channelRepoBindingConfig === "object") {
+    const inner = channelRepoBindingConfig.repo_binding || {};
+    return {
+      source: "channel",
+      channel_id: normalizeText(channelRepoBindingConfig.channel_id) || channelId || null,
+      owner_operator_id: normalizeText(channelRepoBindingConfig.owner_operator_id) || operatorId || null,
+      topic_id: normalizeText(inner.topic_id) || topicId,
+      provider: normalizeText(inner?.provider_ref?.provider) || "unknown",
+      repo_ref: normalizeText(inner?.provider_ref?.repo_ref) || null,
+      default_branch: normalizeText(inner.default_branch) || null,
+      fixed_directory: normalizeText(inner.fixed_directory) || null,
+      updated_at: inner.updated_at || channelRepoBindingConfig.updated_at || null,
+      updated_by: normalizeText(inner.updated_by) || null,
+    };
+  }
+  if (topicRepoBindingProjection && typeof topicRepoBindingProjection === "object") {
+    return {
+      source: "topic_projection",
+      channel_id: channelId || null,
+      owner_operator_id: operatorId || null,
+      topic_id: normalizeText(topicRepoBindingProjection.topic_id) || topicId,
+      provider: normalizeText(topicRepoBindingProjection?.provider_ref?.provider) || "unknown",
+      repo_ref: normalizeText(topicRepoBindingProjection?.provider_ref?.repo_ref) || null,
+      default_branch: normalizeText(topicRepoBindingProjection.default_branch) || null,
+      fixed_directory: normalizeText(topicRepoBindingProjection.fixed_directory) || null,
+      updated_at: topicRepoBindingProjection.updated_at || topicRepoBindingProjection.linked_at || null,
+      updated_by: normalizeText(topicRepoBindingProjection.bound_by) || null,
+    };
+  }
+  return null;
+}
+
+function buildAuditEntries({ channelAuditTrail, controlEvents }) {
+  if (Array.isArray(channelAuditTrail) && channelAuditTrail.length > 0) {
+    return channelAuditTrail.slice(0, 50).map((item) => ({
+      audit_id: item.audit_id || null,
+      event_id: item.audit_id || null,
+      source: "channel_audit_trail",
+      actor_id: item.actor_id || null,
+      action: item.action || "unknown_action",
+      target: item.target || "channel",
+      result_state: "accepted",
+      reason_code: null,
+      policy_snapshot: item.policy_snapshot || {},
+      details: item.details || {},
+      at: item.at,
+    }));
+  }
+  return controlEvents.slice(0, 20).map((item) => ({
+    audit_id: item.event_id || null,
+    event_id: item.event_id || null,
+    source: "control_event_projection",
+    actor_id: null,
+    action: item.event_type,
+    target:
+      item.related_resource_type && item.related_resource_id
+        ? `${item.related_resource_type}:${item.related_resource_id}`
+        : item.related_resource_type || "topic",
+    result_state: item.result_state || "accepted",
+    reason_code: item.reason_code || null,
+    policy_snapshot: {},
+    details: {},
+    at: item.at,
+  }));
+}
+
+function buildOperatorActions(messages) {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+  const allowedEvents = new Set([
+    "shell_operator_action_loop",
+    "shell_follow_up_request",
+    "shell_intervention_action",
+    "shell_intervention_point_action",
+  ]);
+  return messages
+    .filter((message) => message?.type === "status_report")
+    .map((message) => {
+      const payload = message.payload || {};
+      const event = normalizeText(payload.event);
+      if (!allowedEvents.has(event)) {
+        return null;
+      }
+      return {
+        action_id: normalizeText(message.messageId || message.message_id) || buildLocalId("operator_action"),
+        event,
+        action: normalizeText(payload.action) || event,
+        operator_id: normalizeText(message.sourceAgentId || message.source_agent_id) || null,
+        run_id: normalizeText(payload.runId || payload.run_id) || null,
+        target_agent_id: normalizeText(payload.targetAgentId || payload.target_agent_id) || null,
+        channel_id: normalizeText(payload.channelId || payload.channel_id) || null,
+        thread_id: normalizeText(payload.threadId || payload.thread_id) || null,
+        workitem_id: normalizeText(payload.workitemId || payload.workitem_id) || null,
+        note: normalizeText(payload.note) || null,
+        at: message.createdAt || new Date().toISOString(),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
+function buildRecentActions({ auditEntries, recoveryActions, operatorActions }) {
+  const rows = [];
+  for (const item of auditEntries || []) {
+    rows.push({
+      source: "audit",
+      id: item.audit_id || item.event_id || buildLocalId("audit"),
+      action: item.action || "audit",
+      status: item.result_state || "accepted",
+      target: item.target || "channel",
+      at: item.at || null,
+      note: normalizeText(item?.reason_code) || null,
+    });
+  }
+  for (const item of recoveryActions || []) {
+    rows.push({
+      source: "recovery",
+      id: item.action_id || buildLocalId("recovery"),
+      action: item.action || "recovery",
+      status: item.status || "applied",
+      target: normalizeText(item.agent_id) || "runtime_agent",
+      at: item.at || null,
+      note: normalizeText(item.reason) || null,
+    });
+  }
+  for (const item of operatorActions || []) {
+    rows.push({
+      source: "operator_action",
+      id: item.action_id || buildLocalId("operator_action"),
+      action: item.action || item.event || "operator_action",
+      status: "accepted",
+      target: normalizeText(item.target_agent_id) || "topic",
+      at: item.at || null,
+      note: normalizeText(item.note) || null,
+    });
+  }
+  return rows
+    .sort((left, right) => Date.parse(right.at || 0) - Date.parse(left.at || 0))
+    .slice(0, 50);
 }
 
 function mapAgents(agents, nowMs) {
