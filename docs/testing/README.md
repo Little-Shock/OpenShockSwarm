@@ -4,6 +4,13 @@
   - 以 `PRD -> Checklist -> Test Case` 链路整理的全量验证项
 - [Test Report 2026-04-06 Main](./Test-Report-2026-04-06-main.md)
   - 本轮在 `main` 基线上的实际执行结果、失败项和 GAP
+- [Test Report 2026-04-07 Headed Setup](./Test-Report-2026-04-07-headed-setup.md)
+  - `TKT-03` headed Chromium 自动化回放，覆盖 `TC-001` `TC-002` `TC-003` `TC-026`
+
+常用入口：
+
+- `pnpm test:headed-setup`
+  - 启动临时 workspace、daemon、server、web 和 headed Chromium，产出 `/tmp/openshock-tkt03-headed-setup-*` 证据目录
 
 如果 `Test Cases` 和 `Test Report` 冲突：
 

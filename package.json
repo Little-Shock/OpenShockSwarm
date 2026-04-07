@@ -20,6 +20,10 @@
     "verify:release:full": "bash ./scripts/release-gate.sh all",
     "verify:server": "bash -lc 'root=$(pwd); cd apps/server && OPENSHOCK_WORKSPACE_ROOT=\"${OPENSHOCK_WORKSPACE_ROOT:-$root}\" \"$root/scripts/go.sh\" test ./...'",
     "verify:daemon": "bash -lc 'root=$(pwd); cd apps/daemon && \"$root/scripts/go.sh\" test ./...'",
-    "ops:smoke": "bash ./scripts/ops-smoke.sh"
+    "ops:smoke": "bash ./scripts/ops-smoke.sh",
+    "test:headed-setup": "node ./scripts/headed-setup-e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.59.1"
   }
 }

@@ -79,7 +79,10 @@ export function GitHubConnectionConsole() {
   }, []);
 
   return (
-    <section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-yellow)]">
+    <section
+      data-testid="setup-github-connection"
+      className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-yellow)]"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
@@ -88,6 +91,7 @@ export function GitHubConnectionConsole() {
           <h3 className="mt-2 font-display text-3xl font-bold">探测远端 PR 就绪度</h3>
         </div>
         <span
+          data-testid="setup-github-readiness-status"
           className={cn(
             "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
             status?.ready ? "bg-[var(--shock-lime)]" : "bg-[var(--shock-paper)]"
@@ -139,7 +143,7 @@ export function GitHubConnectionConsole() {
       <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_0.8fr]">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前判断</p>
-          <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.8)]">
+          <p data-testid="setup-github-message" className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.8)]">
             {status?.message ?? "等待探测 GitHub 连接状态。"}
           </p>
           {status?.missing?.length ? (
@@ -204,6 +208,7 @@ export function GitHubConnectionConsole() {
 
       <div className="mt-4 flex justify-end">
         <button
+          data-testid="setup-github-refresh-button"
           type="button"
           onClick={() => void loadStatus()}
           disabled={loading}

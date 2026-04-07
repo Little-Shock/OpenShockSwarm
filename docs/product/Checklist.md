@@ -1,7 +1,7 @@
 # OpenShock Product Checklist
 
 **版本:** 1.0
-**更新日期:** 2026 年 4 月 6 日
+**更新日期:** 2026 年 4 月 7 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -100,8 +100,9 @@
   - [x] Setup 页可展示 effective auth path、GitHub App install state 与 installation URL
   - [x] 手动配对 runtime 后可以成功执行 bridge prompt
   - [x] 冷启动时 pairing / exec 在 `offline` 与 `stale` 窗口都回到当前活跃 daemon truth
+  - [x] headed Setup harness 已能回放 repo binding、GitHub readiness、runtime pairing 与 bridge prompt，并输出截图、trace、报告
 - 当前 GAP:
-  - [ ] repo binding / GitHub readiness 缺少一轮新的浏览器自动化回放证据
+  - [ ] GitHub App 未安装 / installation 未闭环时的 blocked contract 与回流 UX 仍缺浏览器级验收
 - 对应 Test Cases: `TC-001` `TC-002` `TC-003` `TC-004`
 
 ### CHK-05 工作流 B: 创建 Issue 并派发给 Agent
@@ -113,10 +114,11 @@
   - [x] 创建 issue 可联动生成 room / run / session
   - [x] daemon 会尝试为 lane 创建 worktree
   - [x] room 和 run 页面可承接后续协作
+  - [x] headed Setup harness 已可从 `/board` 创建 issue 并进入 room，PR entry 保持可继续推进状态
 - 当前 GAP:
   - [ ] 多 Agent 自动派发仍未建立
-  - [ ] 更完整的 browser 自动化串行创建证据仍需补充
-- 对应 Test Cases: `TC-005` `TC-006`
+  - [ ] “进入讨论间并发送第一条指令” 之后的 agent 协作回放仍未进入 headed 自动化
+- 对应 Test Cases: `TC-005` `TC-006` `TC-026`
 
 ### CHK-06 工作流 C: Topic 执行与 Run 真相
 
@@ -245,9 +247,10 @@
   - [x] 浏览器走查、API 检查、SSE 验证已经有一轮实际结果
   - [x] 2026 年 4 月 7 日针对 GitHub App effective auth path 和 memory contract 的 go tests / release verify 已通过
   - [x] `ops:smoke` 已会比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 URL 真值
+  - [x] `pnpm test:headed-setup` 已能输出 headed Chromium 截图、trace、日志和 markdown 报告
 - 当前 GAP:
   - [ ] 产品指标、体验指标、设计指标尚未形成持续观测
-- 对应 Test Cases: `TC-011` `TC-021`
+- 对应 Test Cases: `TC-011` `TC-021` `TC-026`
 
 ---
 

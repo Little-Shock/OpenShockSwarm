@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
 **版本:** 1.0
-**更新日期:** 2026 年 4 月 6 日
+**更新日期:** 2026 年 4 月 7 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -32,7 +32,7 @@
 ## TC-002 Repo Binding 绑定当前仓库
 
 - 业务目标: 确认用户可以从 Setup 完成仓库绑定，不需要手工改后端状态。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-04`
 - 前置条件: 当前仓库未绑定或允许重新绑定。
 - 测试步骤:
@@ -40,7 +40,7 @@
   2. 点击“绑定当前仓库”。
   3. 刷新页面并检查绑定状态。
 - 预期结果: server 写回 repo binding，页面显示当前仓库已绑定。
-- 业务结论: 本轮未重放，需要在下一轮 headed 自动化里补齐。
+- 业务结论: 2026 年 4 月 7 日的 headed Setup harness 已重放这条路径；repo binding 写回后，Setup 会稳定显示“已绑定”。
 
 ## TC-003 Runtime Pairing 手动配对成功
 
@@ -337,7 +337,7 @@
 ## TC-026 Headed Setup 到 PR Journey
 
 - 业务目标: 在非无头浏览器里串起 Setup 主链、Issue lane 和 PR 前置链。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-04` `CHK-05` `CHK-07` `CHK-15`
 - 前置条件: headed browser automation harness 已存在，server / daemon / web 可启动。
 - 测试步骤:
@@ -345,7 +345,7 @@
   2. 创建一条 issue，进入 room / run。
   3. 验证 PR 入口处于可继续推进状态。
 - 预期结果: Setup 到执行 lane 的用户旅程可稳定自动化回放。
-- 业务结论: 作为 `TKT-03/TKT-04/TKT-06` 的总链路 gate，当前还未实现。
+- 业务结论: 2026 年 4 月 7 日的 headed Chromium harness 已稳定回放 `Setup -> Issue -> Room`，并验证 room 里的 PR 入口保持 `发起 PR / 未创建 / enabled` 的可继续推进状态。真实远端 PR create/sync/merge 仍由 `TKT-04/TKT-06` 继续收口。
 
 ## TC-027 Sandbox / Destructive Approval Guard
 

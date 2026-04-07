@@ -162,9 +162,26 @@ export function StitchBoardView() {
               <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[#fff8e6] p-4 shadow-[3px_3px_0_0_var(--shock-ink)]">
                 <p className="font-mono text-[10px] tracking-[0.16em]">创建新 Issue Room</p>
                 <div className="mt-4 space-y-3">
-                  <input value={title} onChange={(event) => setTitle(event.target.value)} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none" placeholder="需求标题" />
-                  <textarea value={summary} onChange={(event) => setSummary(event.target.value)} className="min-h-[120px] w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none" placeholder="需求摘要" />
-                  <button onClick={handleCreateIssue} disabled={creating} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] disabled:opacity-60">
+                  <input
+                    data-testid="board-create-issue-title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
+                    placeholder="需求标题"
+                  />
+                  <textarea
+                    data-testid="board-create-issue-summary"
+                    value={summary}
+                    onChange={(event) => setSummary(event.target.value)}
+                    className="min-h-[120px] w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
+                    placeholder="需求摘要"
+                  />
+                  <button
+                    data-testid="board-create-issue-submit"
+                    onClick={handleCreateIssue}
+                    disabled={creating}
+                    className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] disabled:opacity-60"
+                  >
                     {creating ? "创建中..." : "创建并进入讨论间"}
                   </button>
                 </div>

@@ -131,7 +131,7 @@ export function LiveBridgeConsole() {
 
   useEffect(() => {
     const providers = runtime?.providers ?? [];
-    const preferredProvider = providers.find((item) => item.id === "claude")?.id ?? providers[0]?.id;
+    const preferredProvider = providers.find((item) => item.id === "codex")?.id ?? providers[0]?.id;
     if (preferredProvider) {
       setProvider(preferredProvider);
     }
@@ -201,7 +201,10 @@ export function LiveBridgeConsole() {
   }
 
   return (
-    <section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-pink)]">
+    <section
+      data-testid="setup-live-bridge"
+      className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-pink)]"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
@@ -284,6 +287,7 @@ export function LiveBridgeConsole() {
                 return (
                   <article
                     key={item.id}
+                    data-testid={`setup-runtime-card-${item.machine}`}
                     className={cn(
                       "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4",
                       selected ? "bg-[var(--shock-yellow)]" : "bg-white"
@@ -315,6 +319,7 @@ export function LiveBridgeConsole() {
 
                     <div className="mt-4 flex flex-wrap items-center gap-3">
                       <button
+                        data-testid={`setup-runtime-select-${item.machine}`}
                         type="button"
                         disabled={runtimeActionLoading || !actionable || selected}
                         onClick={() => void handleSelectRuntime(item.machine)}
@@ -344,6 +349,7 @@ export function LiveBridgeConsole() {
               Daemon URL
             </span>
             <input
+              data-testid="setup-runtime-daemon-url"
               value={daemonUrl}
               onChange={(event) => setDaemonURL(event.target.value)}
               className="w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-sm"
@@ -352,6 +358,7 @@ export function LiveBridgeConsole() {
           </label>
           <div className="flex flex-wrap gap-3">
             <button
+              data-testid="setup-runtime-pair-button"
               type="button"
               onClick={() => void handlePairRuntime()}
               disabled={runtimeActionLoading}
@@ -360,6 +367,7 @@ export function LiveBridgeConsole() {
               {runtimeActionLoading ? "处理中..." : "配对 Runtime"}
             </button>
             <button
+              data-testid="setup-runtime-unpair-button"
               type="button"
               onClick={() => void handleUnpairRuntime()}
               disabled={runtimeActionLoading || pairing?.pairingStatus !== "paired"}
@@ -371,11 +379,13 @@ export function LiveBridgeConsole() {
           <div className="grid gap-3 pt-2">
             <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Selection</p>
-              <p className="mt-2 font-display text-xl font-semibold">{selectedRuntimeName || "未选择"}</p>
+              <p data-testid="setup-runtime-selection-value" className="mt-2 font-display text-xl font-semibold">
+                {selectedRuntimeName || "未选择"}
+              </p>
             </div>
             <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">授权 / 配对</p>
-              <p className="mt-2 text-sm leading-6">
+              <p data-testid="setup-runtime-pairing-value" className="mt-2 text-sm leading-6">
                 {pairing?.deviceAuth || "未授权"} / {pairingStatusLabel(pairing?.pairingStatus || selection?.pairingStatus || "")}
               </p>
             </div>
@@ -394,6 +404,7 @@ export function LiveBridgeConsole() {
               Provider
             </span>
             <select
+              data-testid="setup-bridge-provider"
               value={provider}
               onChange={(event) => setProvider(event.target.value)}
               className="w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-sm"
@@ -410,6 +421,7 @@ export function LiveBridgeConsole() {
               提示词
             </span>
             <textarea
+              data-testid="setup-bridge-prompt"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               rows={4}
@@ -420,6 +432,7 @@ export function LiveBridgeConsole() {
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            data-testid="setup-bridge-submit"
             type="submit"
             disabled={loading || !runtime || !isSchedulableRuntime(runtime.state)}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
@@ -433,7 +446,10 @@ export function LiveBridgeConsole() {
       </form>
 
       {runtimeError || execError ? (
-        <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white">
+        <div
+          data-testid="setup-bridge-error"
+          className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white"
+        >
           {runtimeError || execError}
         </div>
       ) : null}
@@ -446,7 +462,10 @@ export function LiveBridgeConsole() {
             <p className="mt-2 text-sm leading-6">{result.duration}</p>
             <p className="mt-2 break-all font-mono text-[10px] leading-5">{result.command.join(" ")}</p>
           </div>
-          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-4 py-3 font-mono text-sm leading-6 text-[var(--shock-lime)]">
+          <div
+            data-testid="setup-bridge-output"
+            className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-4 py-3 font-mono text-sm leading-6 text-[var(--shock-lime)]"
+          >
             {result.output || "（没有输出）"}
           </div>
         </div>

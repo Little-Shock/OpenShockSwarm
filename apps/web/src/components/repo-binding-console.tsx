@@ -107,7 +107,10 @@ export function RepoBindingConsole() {
   const badge = bindingBadge(binding);
 
   return (
-    <section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-lime)]">
+    <section
+      data-testid="setup-repo-binding"
+      className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-lime)]"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
@@ -116,6 +119,7 @@ export function RepoBindingConsole() {
           <h3 className="mt-2 font-display text-3xl font-bold">扫描并绑定当前 Repo</h3>
         </div>
         <span
+          data-testid="setup-repo-binding-status"
           className={cn(
             "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
             badge.tone
@@ -179,7 +183,7 @@ export function RepoBindingConsole() {
             {valueOrFallback(binding?.repoUrl, "等待扫描当前仓库 origin")}
           </p>
           <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前判断</p>
-          <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.8)]">
+          <p data-testid="setup-repo-binding-message" className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.8)]">
             {valueOrFallback(binding?.connectionMessage, "等待 repo binding contract 返回当前 GitHub 连接判断。")}
           </p>
           {binding?.detectedAt ? (
@@ -216,6 +220,7 @@ export function RepoBindingConsole() {
           当前按钮会重新同步 repo binding 与 GitHub 安装态；如果 server 返回 blocked contract，这里直接展示，不再退回旧文案。
         </p>
         <button
+          data-testid="setup-repo-bind-button"
           type="button"
           onClick={handleBindRepo}
           disabled={loading}
