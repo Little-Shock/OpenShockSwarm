@@ -250,7 +250,7 @@
 ## TC-019 记忆注入与 Skill / Policy 提升
 
 - 业务目标: 确认记忆不仅可写回，也能被检索、提升和治理。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-10`
 - 前置条件: 存在 memory injection、promotion、review 机制。
 - 测试步骤:
@@ -258,7 +258,7 @@
   2. 在下一条任务中验证记忆注入。
   3. 将高价值经验提升为 skill 或 policy。
 - 预期结果: 记忆形成可治理的增强循环。
-- 业务结论: 当前只站住写回 scaffold。
+- 业务结论: 2026 年 4 月 7 日 `TKT-12` 新增 `/v1/memory-center`、`pnpm test:headed-memory-governance` 和对应浏览器级 report；当前 `memory` 页已能直接展示 session-level injection preview、policy mutation、skill/policy promotion queue，并把 approve 后的 `notes/skills.md`、`notes/policies.md` 重新带回 next-run preview，所以这条 memory injection / governance / promotion loop 当前已可独立复核并通过。
 
 ## TC-020 多 Runtime 调度与 Failover
 

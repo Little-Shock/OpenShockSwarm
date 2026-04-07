@@ -1,0 +1,852 @@
+package store
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+const (
+	memoryPolicyModeBalanced      = "balanced"
+	memoryPolicyModeGovernedFirst = "governed-first"
+
+	memoryPromotionKindSkill  = "skill"
+	memoryPromotionKindPolicy = "policy"
+
+	memoryPromotionStatusPending  = "pending_review"
+	memoryPromotionStatusApproved = "approved"
+	memoryPromotionStatusRejected = "rejected"
+
+	defaultMemoryPolicyMaxItems = 6
+	maxMemoryPolicyMaxItems     = 12
+)
+
+var (
+	ErrMemoryPolicyModeInvalid      = errors.New("memory policy mode is invalid")
+	ErrMemoryPolicyMaxItemsInvalid  = errors.New("memory policy maxItems is invalid")
+	ErrMemoryArtifactNotFound       = errors.New("memory artifact not found")
+	ErrMemoryPromotionKindInvalid   = errors.New("memory promotion kind is invalid")
+	ErrMemoryPromotionTitleRequired = errors.New("memory promotion title is required")
+	ErrMemoryPromotionNotFound      = errors.New("memory promotion not found")
+	ErrMemoryPromotionReviewInvalid = errors.New("memory promotion review decision is invalid")
+)
+
+type MemoryInjectionPolicy struct {
+	Mode                    string `json:"mode"`
+	IncludeRoomNotes        bool   `json:"includeRoomNotes"`
+	IncludeDecisionLedger   bool   `json:"includeDecisionLedger"`
+	IncludeAgentMemory      bool   `json:"includeAgentMemory"`
+	IncludePromotedArtifacts bool  `json:"includePromotedArtifacts"`
+	MaxItems                int    `json:"maxItems"`
+	UpdatedAt               string `json:"updatedAt"`
+	UpdatedBy               string `json:"updatedBy"`
+}
+
+type MemoryInjectionPreviewItem struct {
+	ArtifactID   string           `json:"artifactId"`
+	Path         string           `json:"path"`
+	Scope        string           `json:"scope"`
+	Kind         string           `json:"kind"`
+	Version      int              `json:"version"`
+	Summary      string           `json:"summary"`
+	LatestWrite  string           `json:"latestWrite,omitempty"`
+	Reason       string           `json:"reason"`
+	Snippet      string           `json:"snippet,omitempty"`
+	Required     bool             `json:"required"`
+	Governance   MemoryGovernance `json:"governance"`
+}
+
+type MemoryInjectionPreview struct {
+	ID           string                       `json:"id"`
+	SessionID    string                       `json:"sessionId"`
+	RunID        string                       `json:"runId"`
+	RoomID       string                       `json:"roomId"`
+	IssueKey     string                       `json:"issueKey"`
+	Title        string                       `json:"title"`
+	RecallPolicy string                       `json:"recallPolicy"`
+	PromptSummary string                      `json:"promptSummary"`
+	Files        []string                     `json:"files"`
+	Tools        []string                     `json:"tools"`
+	Items        []MemoryInjectionPreviewItem `json:"items"`
+}
+
+type MemoryPromotion struct {
+	ID             string `json:"id"`
+	MemoryID       string `json:"memoryId"`
+	SourcePath     string `json:"sourcePath"`
+	SourceScope    string `json:"sourceScope"`
+	SourceVersion  int    `json:"sourceVersion"`
+	SourceSummary  string `json:"sourceSummary"`
+	Excerpt        string `json:"excerpt,omitempty"`
+	Kind           string `json:"kind"`
+	Title          string `json:"title"`
+	Rationale      string `json:"rationale"`
+	Status         string `json:"status"`
+	TargetPath     string `json:"targetPath"`
+	TargetMemoryID string `json:"targetMemoryId,omitempty"`
+	ProposedBy     string `json:"proposedBy"`
+	ProposedAt     string `json:"proposedAt"`
+	ReviewedBy     string `json:"reviewedBy,omitempty"`
+	ReviewedAt     string `json:"reviewedAt,omitempty"`
+	ReviewNote     string `json:"reviewNote,omitempty"`
+}
+
+type MemoryCenter struct {
+	Policy        MemoryInjectionPolicy   `json:"policy"`
+	Previews      []MemoryInjectionPreview `json:"previews"`
+	Promotions    []MemoryPromotion       `json:"promotions"`
+	PendingCount  int                     `json:"pendingCount"`
+	ApprovedCount int                     `json:"approvedCount"`
+	RejectedCount int                     `json:"rejectedCount"`
+}
+
+type MemoryPolicyInput struct {
+	Mode                     string
+	IncludeRoomNotes         bool
+	IncludeDecisionLedger    bool
+	IncludeAgentMemory       bool
+	IncludePromotedArtifacts bool
+	MaxItems                 int
+	UpdatedBy                string
+}
+
+type MemoryPromotionRequestInput struct {
+	MemoryID      string
+	SourceVersion int
+	Kind          string
+	Title         string
+	Rationale     string
+	ProposedBy    string
+}
+
+type MemoryPromotionReviewInput struct {
+	Status     string
+	ReviewNote string
+	ReviewedBy string
+}
+
+type memoryCenterStateFile struct {
+	Policy     MemoryInjectionPolicy `json:"policy"`
+	Promotions []MemoryPromotion     `json:"promotions"`
+}
+
+func defaultMemoryCenterState(now string) memoryCenterStateFile {
+	return memoryCenterStateFile{
+		Policy: MemoryInjectionPolicy{
+			Mode:                     memoryPolicyModeGovernedFirst,
+			IncludeRoomNotes:         true,
+			IncludeDecisionLedger:    true,
+			IncludeAgentMemory:       false,
+			IncludePromotedArtifacts: true,
+			MaxItems:                 defaultMemoryPolicyMaxItems,
+			UpdatedAt:                now,
+			UpdatedBy:                "System",
+		},
+		Promotions: []MemoryPromotion{},
+	}
+}
+
+func normalizeMemoryPolicyMode(value string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case memoryPolicyModeBalanced:
+		return memoryPolicyModeBalanced, nil
+	case memoryPolicyModeGovernedFirst:
+		return memoryPolicyModeGovernedFirst, nil
+	default:
+		return "", ErrMemoryPolicyModeInvalid
+	}
+}
+
+func normalizeMemoryPolicyMaxItems(value int) (int, error) {
+	if value < 1 || value > maxMemoryPolicyMaxItems {
+		return 0, ErrMemoryPolicyMaxItemsInvalid
+	}
+	return value, nil
+}
+
+func normalizeMemoryPromotionKind(value string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case memoryPromotionKindSkill:
+		return memoryPromotionKindSkill, nil
+	case memoryPromotionKindPolicy:
+		return memoryPromotionKindPolicy, nil
+	default:
+		return "", ErrMemoryPromotionKindInvalid
+	}
+}
+
+func normalizeMemoryPromotionReviewStatus(value string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case memoryPromotionStatusApproved:
+		return memoryPromotionStatusApproved, nil
+	case memoryPromotionStatusRejected:
+		return memoryPromotionStatusRejected, nil
+	default:
+		return "", ErrMemoryPromotionReviewInvalid
+	}
+}
+
+func memoryPromotionTargetPath(kind string) string {
+	if kind == memoryPromotionKindPolicy {
+		return filepath.ToSlash(filepath.Join("notes", "policies.md"))
+	}
+	return filepath.ToSlash(filepath.Join("notes", "skills.md"))
+}
+
+func (s *Store) memoryCenterStatePathLocked() string {
+	return filepath.Join(filepath.Dir(s.path), "memory-center.json")
+}
+
+func (s *Store) loadMemoryCenterStateLocked() (memoryCenterStateFile, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	defaults := defaultMemoryCenterState(now)
+
+	body, err := os.ReadFile(s.memoryCenterStatePathLocked())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return s.normalizeMemoryCenterStateLocked(defaults), nil
+		}
+		return memoryCenterStateFile{}, err
+	}
+	if strings.TrimSpace(string(body)) == "" {
+		return s.normalizeMemoryCenterStateLocked(defaults), nil
+	}
+
+	var state memoryCenterStateFile
+	if err := json.Unmarshal(body, &state); err != nil {
+		return memoryCenterStateFile{}, err
+	}
+	return s.normalizeMemoryCenterStateLocked(state), nil
+}
+
+func (s *Store) saveMemoryCenterStateLocked(state memoryCenterStateFile) error {
+	body, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := s.memoryCenterStatePathLocked()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o644)
+}
+
+func (s *Store) normalizeMemoryCenterStateLocked(state memoryCenterStateFile) memoryCenterStateFile {
+	now := time.Now().UTC().Format(time.RFC3339)
+	defaults := defaultMemoryCenterState(now)
+
+	mode, err := normalizeMemoryPolicyMode(state.Policy.Mode)
+	if err != nil {
+		mode = defaults.Policy.Mode
+	}
+	maxItems, err := normalizeMemoryPolicyMaxItems(state.Policy.MaxItems)
+	if err != nil {
+		maxItems = defaults.Policy.MaxItems
+	}
+	state.Policy.Mode = mode
+	state.Policy.MaxItems = maxItems
+	state.Policy.UpdatedAt = defaultString(strings.TrimSpace(state.Policy.UpdatedAt), defaults.Policy.UpdatedAt)
+	state.Policy.UpdatedBy = defaultString(strings.TrimSpace(state.Policy.UpdatedBy), defaults.Policy.UpdatedBy)
+
+	normalizedPromotions := make([]MemoryPromotion, 0, len(state.Promotions))
+	for _, item := range state.Promotions {
+		kind, err := normalizeMemoryPromotionKind(item.Kind)
+		if err != nil {
+			continue
+		}
+		status := strings.TrimSpace(strings.ToLower(item.Status))
+		switch status {
+		case "":
+			status = memoryPromotionStatusPending
+		case memoryPromotionStatusPending, memoryPromotionStatusApproved, memoryPromotionStatusRejected:
+		default:
+			status = memoryPromotionStatusPending
+		}
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			continue
+		}
+
+		item.ID = defaultString(strings.TrimSpace(item.ID), fmt.Sprintf("memory-promotion-%s", slugify(kind+"-"+title)))
+		item.Kind = kind
+		item.Status = status
+		item.Title = title
+		item.TargetPath = defaultString(strings.TrimSpace(item.TargetPath), memoryPromotionTargetPath(kind))
+		item.SourcePath = filepath.ToSlash(strings.TrimSpace(item.SourcePath))
+		item.SourceScope = strings.TrimSpace(item.SourceScope)
+		item.SourceSummary = strings.TrimSpace(item.SourceSummary)
+		item.Rationale = strings.TrimSpace(item.Rationale)
+		item.ProposedBy = defaultString(strings.TrimSpace(item.ProposedBy), "System")
+		item.ProposedAt = defaultString(strings.TrimSpace(item.ProposedAt), now)
+		item.ReviewedBy = strings.TrimSpace(item.ReviewedBy)
+		item.ReviewedAt = strings.TrimSpace(item.ReviewedAt)
+		item.ReviewNote = strings.TrimSpace(item.ReviewNote)
+		item.Excerpt = strings.TrimSpace(item.Excerpt)
+		normalizedPromotions = append(normalizedPromotions, item)
+	}
+
+	sort.SliceStable(normalizedPromotions, func(i, j int) bool {
+		if normalizedPromotions[i].Status != normalizedPromotions[j].Status {
+			return memoryPromotionStatusRank(normalizedPromotions[i].Status) < memoryPromotionStatusRank(normalizedPromotions[j].Status)
+		}
+		if normalizedPromotions[i].ProposedAt != normalizedPromotions[j].ProposedAt {
+			return normalizedPromotions[i].ProposedAt > normalizedPromotions[j].ProposedAt
+		}
+		return normalizedPromotions[i].Title < normalizedPromotions[j].Title
+	})
+
+	state.Promotions = normalizedPromotions
+	return state
+}
+
+func memoryPromotionStatusRank(status string) int {
+	switch status {
+	case memoryPromotionStatusPending:
+		return 0
+	case memoryPromotionStatusApproved:
+		return 1
+	default:
+		return 2
+	}
+}
+
+func memoryModeLabel(policy MemoryInjectionPolicy) string {
+	mode := "balanced"
+	if policy.Mode == memoryPolicyModeGovernedFirst {
+		mode = "governed-first"
+	}
+
+	parts := []string{
+		"MEMORY.md + notes/ + decisions/",
+		mode,
+	}
+	if policy.IncludePromotedArtifacts {
+		parts = append(parts, "promoted-ledgers")
+	}
+	return strings.Join(parts, " / ")
+}
+
+func (s *Store) MemoryCenter() MemoryCenter {
+	snapshot := s.Snapshot()
+
+	s.mu.RLock()
+	state, err := s.loadMemoryCenterStateLocked()
+	s.mu.RUnlock()
+	if err != nil {
+		state = defaultMemoryCenterState(time.Now().UTC().Format(time.RFC3339))
+	}
+
+	return buildMemoryCenter(snapshot, state)
+}
+
+func buildMemoryCenter(snapshot State, state memoryCenterStateFile) MemoryCenter {
+	center := MemoryCenter{
+		Policy:     state.Policy,
+		Previews:   buildMemoryInjectionPreviews(snapshot, state.Policy),
+		Promotions: append([]MemoryPromotion{}, state.Promotions...),
+	}
+
+	for _, promotion := range state.Promotions {
+		switch promotion.Status {
+		case memoryPromotionStatusApproved:
+			center.ApprovedCount++
+		case memoryPromotionStatusRejected:
+			center.RejectedCount++
+		default:
+			center.PendingCount++
+		}
+	}
+
+	return center
+}
+
+func buildMemoryInjectionPreviews(snapshot State, policy MemoryInjectionPolicy) []MemoryInjectionPreview {
+	previews := make([]MemoryInjectionPreview, 0, len(snapshot.Sessions))
+	for _, session := range snapshot.Sessions {
+		previews = append(previews, buildMemoryInjectionPreview(snapshot, policy, session))
+	}
+	return previews
+}
+
+func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, session Session) MemoryInjectionPreview {
+	type candidate struct {
+		path     string
+		reason   string
+		required bool
+	}
+
+	candidates := []candidate{}
+	seen := map[string]bool{}
+	addCandidate := func(path, reason string, required bool) {
+		path = filepath.ToSlash(strings.TrimSpace(path))
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		candidates = append(candidates, candidate{
+			path:     path,
+			reason:   reason,
+			required: required,
+		})
+	}
+
+	for _, path := range session.MemoryPaths {
+		if !shouldIncludeSessionMemoryPath(path, policy) {
+			continue
+		}
+		addCandidate(path, "session recall path", true)
+	}
+
+	if policy.IncludeAgentMemory {
+		if run := findRunForSession(snapshot, session.ID, session.ActiveRunID); run != nil {
+			agentSlug := slugify(run.Owner)
+			if agentSlug != "" {
+				addCandidate(filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), "owner agent memory", false)
+			}
+		}
+	}
+
+	if policy.IncludePromotedArtifacts {
+		addCandidate(filepath.ToSlash(filepath.Join("notes", "skills.md")), "approved skill ledger", false)
+		addCandidate(filepath.ToSlash(filepath.Join("notes", "policies.md")), "approved policy ledger", false)
+	}
+
+	items := make([]MemoryInjectionPreviewItem, 0, len(candidates))
+	for _, candidate := range candidates {
+		artifact := findMemoryArtifactByPathInSnapshot(snapshot, candidate.path)
+		if artifact == nil {
+			continue
+		}
+		version := latestMemoryArtifactVersion(snapshot, artifact.ID)
+		items = append(items, MemoryInjectionPreviewItem{
+			ArtifactID:  artifact.ID,
+			Path:        artifact.Path,
+			Scope:       artifact.Scope,
+			Kind:        artifact.Kind,
+			Version:     artifact.Version,
+			Summary:     artifact.Summary,
+			LatestWrite: artifact.LatestWrite,
+			Reason:      candidate.reason,
+			Snippet:     memoryContentSnippet(version.Content),
+			Required:    candidate.required,
+			Governance:  artifact.Governance,
+		})
+	}
+
+	sortMemoryPreviewItems(items, policy.Mode)
+	items = trimMemoryPreviewItems(items, policy.MaxItems)
+
+	files := make([]string, 0, len(items))
+	for _, item := range items {
+		files = append(files, item.Path)
+	}
+
+	title := defaultString(strings.TrimSpace(session.IssueKey), session.ID)
+	if session.RoomID != "" {
+		title = title + " / " + session.RoomID
+	}
+
+	tools := []string{
+		"memory.search",
+		"memory.get",
+		"memory.write",
+		"memory.feedback",
+		"memory.promote",
+	}
+
+	return MemoryInjectionPreview{
+		ID:            session.ID,
+		SessionID:     session.ID,
+		RunID:         session.ActiveRunID,
+		RoomID:        session.RoomID,
+		IssueKey:      session.IssueKey,
+		Title:         title,
+		RecallPolicy:  fmt.Sprintf("%s / max %d items / room:%t / decision:%t / agent:%t / promoted:%t", policy.Mode, policy.MaxItems, policy.IncludeRoomNotes, policy.IncludeDecisionLedger, policy.IncludeAgentMemory, policy.IncludePromotedArtifacts),
+		PromptSummary: buildMemoryPromptSummary(policy, session, items),
+		Files:         files,
+		Tools:         tools,
+		Items:         items,
+	}
+}
+
+func shouldIncludeSessionMemoryPath(path string, policy MemoryInjectionPolicy) bool {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	switch {
+	case path == "MEMORY.md":
+		return true
+	case path == filepath.ToSlash(filepath.Join("notes", "work-log.md")):
+		return true
+	case strings.HasPrefix(path, filepath.ToSlash(filepath.Join("notes", "rooms"))+"/"):
+		return policy.IncludeRoomNotes
+	case strings.HasPrefix(path, filepath.ToSlash("decisions")+"/"):
+		return policy.IncludeDecisionLedger
+	default:
+		return true
+	}
+}
+
+func sortMemoryPreviewItems(items []MemoryInjectionPreviewItem, mode string) {
+	sort.SliceStable(items, func(i, j int) bool {
+		left := items[i]
+		right := items[j]
+		if left.Required != right.Required {
+			return left.Required
+		}
+		if mode == memoryPolicyModeGovernedFirst && left.Governance.RequiresReview != right.Governance.RequiresReview {
+			return left.Governance.RequiresReview
+		}
+		leftPriority := memoryPreviewKindPriority(left.Kind)
+		rightPriority := memoryPreviewKindPriority(right.Kind)
+		if leftPriority != rightPriority {
+			return leftPriority < rightPriority
+		}
+		if left.Scope != right.Scope {
+			return left.Scope < right.Scope
+		}
+		return left.Path < right.Path
+	})
+}
+
+func memoryPreviewKindPriority(kind string) int {
+	switch kind {
+	case "policy-ledger":
+		return 0
+	case "decision", "skill-ledger":
+		return 1
+	case "memory":
+		return 2
+	case "room-note":
+		return 3
+	default:
+		return 4
+	}
+}
+
+func trimMemoryPreviewItems(items []MemoryInjectionPreviewItem, maxItems int) []MemoryInjectionPreviewItem {
+	if maxItems <= 0 || len(items) <= maxItems {
+		return items
+	}
+
+	requiredCount := 0
+	for _, item := range items {
+		if item.Required {
+			requiredCount++
+		}
+	}
+	if requiredCount >= maxItems {
+		return items[:requiredCount]
+	}
+
+	trimmed := append([]MemoryInjectionPreviewItem{}, items[:requiredCount]...)
+	remaining := maxItems - requiredCount
+	if remaining > len(items[requiredCount:]) {
+		remaining = len(items[requiredCount:])
+	}
+	trimmed = append(trimmed, items[requiredCount:requiredCount+remaining]...)
+	return trimmed
+}
+
+func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem) string {
+	if len(items) == 0 {
+		return "当前 session 还没有可注入的 governed memory。"
+	}
+
+	lines := []string{
+		fmt.Sprintf("Session `%s` 采用 `%s` recall policy，优先注入 %d 份 governed artifacts。", defaultString(strings.TrimSpace(session.ID), "unknown"), policy.Mode, len(items)),
+	}
+
+	for index, item := range items {
+		if index >= 4 {
+			lines = append(lines, fmt.Sprintf("其余 %d 项继续通过 memory.search / memory.get 按需展开。", len(items)-index))
+			break
+		}
+		summary := defaultString(strings.TrimSpace(item.LatestWrite), item.Summary)
+		lines = append(lines, fmt.Sprintf("%d. `%s` (%s) -> %s", index+1, item.Path, item.Kind, summary))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func memoryContentSnippet(content string) string {
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	snippet := []string{}
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "#"), "-"))
+		if line == "" {
+			continue
+		}
+		snippet = append(snippet, line)
+		if len(snippet) >= 3 {
+			break
+		}
+	}
+	return strings.Join(snippet, " / ")
+}
+
+func latestMemoryArtifactVersion(snapshot State, memoryID string) MemoryArtifactVersion {
+	versions := snapshot.MemoryVersions[memoryID]
+	if len(versions) == 0 {
+		return MemoryArtifactVersion{}
+	}
+	return versions[len(versions)-1]
+}
+
+func findMemoryArtifactByPathInSnapshot(snapshot State, path string) *MemoryArtifact {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	for index := range snapshot.Memory {
+		if snapshot.Memory[index].Path == path {
+			return &snapshot.Memory[index]
+		}
+	}
+	return nil
+}
+
+func findMemoryArtifactByIDInSnapshot(snapshot State, memoryID string) *MemoryArtifact {
+	memoryID = strings.TrimSpace(memoryID)
+	for index := range snapshot.Memory {
+		if snapshot.Memory[index].ID == memoryID {
+			return &snapshot.Memory[index]
+		}
+	}
+	return nil
+}
+
+func findRunForSession(snapshot State, sessionID, runID string) *Run {
+	runID = strings.TrimSpace(runID)
+	for index := range snapshot.Runs {
+		if snapshot.Runs[index].ID == runID {
+			return &snapshot.Runs[index]
+		}
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	for index := range snapshot.Sessions {
+		if snapshot.Sessions[index].ID != sessionID {
+			continue
+		}
+		runID = snapshot.Sessions[index].ActiveRunID
+		break
+	}
+	for index := range snapshot.Runs {
+		if snapshot.Runs[index].ID == runID {
+			return &snapshot.Runs[index]
+		}
+	}
+	return nil
+}
+
+func (s *Store) UpdateMemoryPolicy(input MemoryPolicyInput) (State, MemoryInjectionPolicy, MemoryCenter, error) {
+	mode, err := normalizeMemoryPolicyMode(input.Mode)
+	if err != nil {
+		return State{}, MemoryInjectionPolicy{}, MemoryCenter{}, err
+	}
+	maxItems, err := normalizeMemoryPolicyMaxItems(input.MaxItems)
+	if err != nil {
+		return State{}, MemoryInjectionPolicy{}, MemoryCenter{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryInjectionPolicy{}, MemoryCenter{}, err
+	}
+
+	state.Policy = MemoryInjectionPolicy{
+		Mode:                     mode,
+		IncludeRoomNotes:         input.IncludeRoomNotes,
+		IncludeDecisionLedger:    input.IncludeDecisionLedger,
+		IncludeAgentMemory:       input.IncludeAgentMemory,
+		IncludePromotedArtifacts: input.IncludePromotedArtifacts,
+		MaxItems:                 maxItems,
+		UpdatedAt:                time.Now().UTC().Format(time.RFC3339),
+		UpdatedBy:                defaultString(strings.TrimSpace(input.UpdatedBy), "System"),
+	}
+	state = s.normalizeMemoryCenterStateLocked(state)
+	s.state.Workspace.MemoryMode = memoryModeLabel(state.Policy)
+
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, MemoryInjectionPolicy{}, MemoryCenter{}, err
+	}
+	if err := s.persistLocked(); err != nil {
+		return State{}, MemoryInjectionPolicy{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, state.Policy, buildMemoryCenter(snapshot, state), nil
+}
+
+func (s *Store) RequestMemoryPromotion(input MemoryPromotionRequestInput) (State, MemoryPromotion, MemoryCenter, error) {
+	kind, err := normalizeMemoryPromotionKind(input.Kind)
+	if err != nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, err
+	}
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, ErrMemoryPromotionTitleRequired
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, err
+	}
+
+	artifact := findMemoryArtifactByIDInSnapshot(s.state, input.MemoryID)
+	if artifact == nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, ErrMemoryArtifactNotFound
+	}
+
+	version := latestMemoryArtifactVersion(s.state, artifact.ID)
+	if input.SourceVersion > 0 {
+		found := false
+		for _, candidate := range s.state.MemoryVersions[artifact.ID] {
+			if candidate.Version == input.SourceVersion {
+				version = candidate
+				found = true
+				break
+			}
+		}
+		if !found {
+			return State{}, MemoryPromotion{}, MemoryCenter{}, ErrMemoryArtifactNotFound
+		}
+	}
+
+	promotion := MemoryPromotion{
+		ID:            fmt.Sprintf("memory-promotion-%s-%d", slugify(kind+"-"+title), time.Now().UnixNano()),
+		MemoryID:      artifact.ID,
+		SourcePath:    artifact.Path,
+		SourceScope:   artifact.Scope,
+		SourceVersion: version.Version,
+		SourceSummary: defaultString(strings.TrimSpace(version.Summary), artifact.Summary),
+		Excerpt:       memoryContentSnippet(version.Content),
+		Kind:          kind,
+		Title:         title,
+		Rationale:     strings.TrimSpace(input.Rationale),
+		Status:        memoryPromotionStatusPending,
+		TargetPath:    memoryPromotionTargetPath(kind),
+		ProposedBy:    defaultString(strings.TrimSpace(input.ProposedBy), "System"),
+		ProposedAt:    time.Now().UTC().Format(time.RFC3339),
+	}
+
+	state.Promotions = append(state.Promotions, promotion)
+	state = s.normalizeMemoryCenterStateLocked(state)
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, promotion, buildMemoryCenter(snapshot, state), nil
+}
+
+func (s *Store) ReviewMemoryPromotion(promotionID string, input MemoryPromotionReviewInput) (State, MemoryPromotion, MemoryCenter, error) {
+	reviewStatus, err := normalizeMemoryPromotionReviewStatus(input.Status)
+	if err != nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, err
+	}
+
+	index := -1
+	for candidate := range state.Promotions {
+		if state.Promotions[candidate].ID == strings.TrimSpace(promotionID) {
+			index = candidate
+			break
+		}
+	}
+	if index == -1 {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, ErrMemoryPromotionNotFound
+	}
+
+	promotion := state.Promotions[index]
+	reviewer := defaultString(strings.TrimSpace(input.ReviewedBy), "System")
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	promotion.Status = reviewStatus
+	promotion.ReviewNote = strings.TrimSpace(input.ReviewNote)
+	promotion.ReviewedBy = reviewer
+	promotion.ReviewedAt = now
+
+	if reviewStatus == memoryPromotionStatusApproved {
+		absTargetPath := filepath.Join(s.workspaceRoot, filepath.FromSlash(promotion.TargetPath))
+		header := "# Skills\n\n"
+		if promotion.Kind == memoryPromotionKindPolicy {
+			header = "# Policies\n\n"
+		}
+		if err := ensureFile(absTargetPath, header); err != nil {
+			return State{}, MemoryPromotion{}, MemoryCenter{}, err
+		}
+		if err := appendMarkdown(absTargetPath, buildMemoryPromotionEntry(promotion)); err != nil {
+			return State{}, MemoryPromotion{}, MemoryCenter{}, err
+		}
+
+		s.recordMemoryArtifactWriteLocked(
+			promotion.TargetPath,
+			fmt.Sprintf("Promoted %s: %s", promotion.Kind, promotion.Title),
+			"memory-promote",
+			reviewer,
+		)
+		if err := s.persistLocked(); err != nil {
+			return State{}, MemoryPromotion{}, MemoryCenter{}, err
+		}
+
+		if target := findMemoryArtifactByPathInSnapshot(s.state, promotion.TargetPath); target != nil {
+			promotion.TargetMemoryID = target.ID
+		}
+	}
+
+	state.Promotions[index] = promotion
+	state = s.normalizeMemoryCenterStateLocked(state)
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, promotion, buildMemoryCenter(snapshot, state), nil
+}
+
+func buildMemoryPromotionEntry(promotion MemoryPromotion) string {
+	lines := []string{
+		"",
+		fmt.Sprintf("## %s", promotion.Title),
+		"",
+		fmt.Sprintf("- kind: %s", promotion.Kind),
+		fmt.Sprintf("- promoted_from: %s @ v%d", promotion.SourcePath, promotion.SourceVersion),
+		fmt.Sprintf("- proposed_by: %s", promotion.ProposedBy),
+		fmt.Sprintf("- proposed_at: %s", promotion.ProposedAt),
+	}
+	if promotion.ReviewedBy != "" {
+		lines = append(lines, fmt.Sprintf("- approved_by: %s", promotion.ReviewedBy))
+	}
+	if promotion.ReviewedAt != "" {
+		lines = append(lines, fmt.Sprintf("- approved_at: %s", promotion.ReviewedAt))
+	}
+	if promotion.Rationale != "" {
+		lines = append(lines, fmt.Sprintf("- rationale: %s", promotion.Rationale))
+	}
+	if promotion.ReviewNote != "" {
+		lines = append(lines, fmt.Sprintf("- review_note: %s", promotion.ReviewNote))
+	}
+	if promotion.SourceSummary != "" {
+		lines = append(lines, fmt.Sprintf("- source_summary: %s", promotion.SourceSummary))
+	}
+	if promotion.Excerpt != "" {
+		lines = append(lines, "", "### Source Excerpt", "", fmt.Sprintf("> %s", strings.ReplaceAll(promotion.Excerpt, "\n", "\n> ")))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}

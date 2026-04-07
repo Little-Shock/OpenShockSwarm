@@ -9,10 +9,10 @@ export default function MemoryPage() {
     <OpenShockShell
       view="memory"
       eyebrow="Phase 5 记忆治理"
-      title="把 file memory 收成可检查的 version / diff / audit center"
-      description="这里不再只看 `MEMORY.md + notes/ + decisions/` 的文件名或摘要，而是直接消费 governed artifact registry、content diff 和 audit timeline。"
+      title="把 file memory 收成可治理、可注入、可提升的 memory center"
+      description="这里直接消费 `/v1/memory` 和 `/v1/memory-center`，把 governed artifact registry、next-run injection preview、skill / policy promotion queue 与 audit timeline 收成同一页真值。"
       contextTitle="Memory Ledger Online"
-      contextDescription="当 artifact version、governance、content 和最近一版差异都能直接从 live contract 读清时，memory subsystem 才算真正站住。"
+      contextDescription="当 artifact version、policy、preview、promotion review 和最近一版差异都能直接从 live contract 读清时，memory subsystem 才算真正站住。"
       contextBody={<LiveMemoryContextRail />}
     >
       <LiveMemoryView />

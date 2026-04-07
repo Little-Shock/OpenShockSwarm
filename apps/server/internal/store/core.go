@@ -30,6 +30,7 @@ func New(path, workspaceRoot string) (*Store, error) {
 	}
 
 	s.state = seedState()
+	s.hydrateMissingDefaults()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureFilesystemArtifactsLocked(); err != nil {
@@ -122,6 +123,27 @@ func (s *Store) ensureFilesystemArtifactsLocked() error {
 	if err != nil {
 		return err
 	}
+
+	for _, issueItem := range s.state.Issues {
+		roomItem := Room{}
+		foundRoom := false
+		for _, candidate := range s.state.Rooms {
+			if candidate.ID == issueItem.RoomID {
+				roomItem = candidate
+				foundRoom = true
+				break
+			}
+		}
+		if !foundRoom {
+			continue
+		}
+
+		artifacts, err = ensureIssueArtifacts(s.workspaceRoot, issueItem, roomItem, issueItem.Owner, artifacts)
+		if err != nil {
+			return err
+		}
+	}
+
 	s.state.Memory = artifacts
 	s.ensureMemorySubsystemLocked()
 	return nil
@@ -321,8 +343,28 @@ func slugify(input string) string {
 func (s *Store) ensureSessionConsistency() {
 	seen := make(map[string]bool, len(s.state.Sessions))
 	for index := range s.state.Sessions {
+		defaultPaths := defaultSessionMemoryPaths(s.state.Sessions[index].RoomID, s.state.Sessions[index].IssueKey)
 		if len(s.state.Sessions[index].MemoryPaths) == 0 {
-			s.state.Sessions[index].MemoryPaths = defaultSessionMemoryPaths(s.state.Sessions[index].RoomID, s.state.Sessions[index].IssueKey)
+			s.state.Sessions[index].MemoryPaths = defaultPaths
+		} else {
+			existing := make(map[string]bool, len(s.state.Sessions[index].MemoryPaths))
+			normalized := make([]string, 0, len(s.state.Sessions[index].MemoryPaths)+len(defaultPaths))
+			for _, path := range s.state.Sessions[index].MemoryPaths {
+				path = filepath.ToSlash(strings.TrimSpace(path))
+				if path == "" || existing[path] {
+					continue
+				}
+				existing[path] = true
+				normalized = append(normalized, path)
+			}
+			for _, path := range defaultPaths {
+				if existing[path] {
+					continue
+				}
+				existing[path] = true
+				normalized = append(normalized, path)
+			}
+			s.state.Sessions[index].MemoryPaths = normalized
 		}
 		if strings.TrimSpace(s.state.Sessions[index].UpdatedAt) == "" {
 			s.state.Sessions[index].UpdatedAt = time.Now().UTC().Format(time.RFC3339)

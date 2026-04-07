@@ -180,10 +180,12 @@
   - [x] `MEMORY.md`、`notes/`、`decisions/` 与 `.openshock/agents` 已进入写回路径
   - [x] memory 列表与详情接口可读
   - [x] memory artifact 已有 version / governance / detail contract，并有 store/api tests
+  - [x] `/memory` 现在直接消费 `/v1/memory-center`，可展示 injection policy、next-run preview、promotion queue 与 governed ledgers
+  - [x] 高价值 memory item 已可经人工 review 提升为 `Skill` / `Policy`，并回写 `notes/skills.md`、`notes/policies.md`
 - 当前 GAP:
-  - [ ] 记忆注入策略、整理策略、skill/policy 提升流程未完成
-  - [ ] 长期记忆引擎仍停留在设计层
-- 对应 Test Cases: `TC-013` `TC-019`
+  - [ ] 更重的后台整理任务（去重、压缩、打标签、TTL）仍未完成
+  - [ ] 长期记忆引擎与外部 provider 编排仍停留在设计层
+- 对应 Test Cases: `TC-019` `TC-023`
 
 ### CHK-11 工作流 H: 邀请、通知与恢复触达
 

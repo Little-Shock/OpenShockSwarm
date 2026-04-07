@@ -16,6 +16,8 @@
   - `TKT-10` 的 approval / blocked / review lifecycle browser evidence
 - [Test Report 2026-04-07 Notification Preference Delivery](./Test-Report-2026-04-07-notification-preference-delivery.md)
   - `TKT-11` 的 browser push / email policy, subscriber, fanout, retry evidence
+- [Test Report 2026-04-07 Memory Governance](./Test-Report-2026-04-07-memory-governance.md)
+  - `TKT-12` 的 memory injection preview, skill/policy promotion, governed ledger evidence
 - [Test Report 2026-04-07 Remote PR Browser Loop](./Test-Report-2026-04-07-remote-pr-browser-loop.md)
   - `TKT-06` 的真实远端 PR create / merge browser-level exact evidence
 

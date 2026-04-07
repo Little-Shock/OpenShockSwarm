@@ -96,8 +96,8 @@
 ### GAP-06 Stop / Resume / Skill Promotion
 
 - 现状:
-  - 当前已有 run 可见性和 memory contract
-  - stop/resume/follow-thread、skill/policy 提升闭环未完成
+  - 当前已有 run 可见性、memory contract、injection preview 与 skill/policy promotion flow
+  - stop/resume/follow-thread 与更重的长期记忆整理引擎仍未完成
 - 相关合同:
   - `CHK-09`
   - `CHK-10`

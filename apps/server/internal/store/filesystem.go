@@ -29,6 +29,7 @@ func ensureWorkspaceScaffold(root string, agents []Agent, existing []MemoryArtif
 		{scope: "workspace", kind: "notes", path: filepath.Join(root, "notes", "channels.md"), summary: "频道规则与默认语气。", content: "# Channels\n\n- `#all`: 轻松聊天，不直接在这里干活。\n- `#roadmap`: 路线与优先级讨论。\n- `#announcements`: 广播，不扩散讨论。\n"},
 		{scope: "workspace", kind: "notes", path: filepath.Join(root, "notes", "operating-rules.md"), summary: "运行与协作约束。", content: "# Operating Rules\n\n- Agent 是一等公民。\n- 真相通过 Run、PR、Inbox 和文件记忆可见。\n- 高风险操作必须升级审批。\n"},
 		{scope: "workspace", kind: "notes", path: filepath.Join(root, "notes", "skills.md"), summary: "Agent 可继承的技能约束。", content: "# Skills\n\n- 记录团队默认技能与装配规则。\n"},
+		{scope: "workspace", kind: "notes", path: filepath.Join(root, "notes", "policies.md"), summary: "团队可继承的 policy 约束。", content: "# Policies\n\n- 记录经人工确认后生效的团队规则。\n"},
 		{scope: "workspace", kind: "notes", path: filepath.Join(root, "notes", "work-log.md"), summary: "全局运行日志。", content: "# Work Log\n\n"},
 		{scope: "workspace", kind: "decision", path: filepath.Join(root, "decisions", "README.md"), summary: "决策目录索引。", content: "# Decisions\n\n- 这里记录和需求、审批、冲突处理相关的正式决定。\n"},
 	}

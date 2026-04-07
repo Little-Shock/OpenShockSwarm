@@ -259,6 +259,14 @@ func describeMemoryArtifact(path string) (scope, kind, baseSummary string, gover
 		kind = "memory"
 		baseSummary = "工作区级长期记忆。"
 		governance = MemoryGovernance{Mode: "append-only", RequiresReview: true, Escalation: "inbox"}
+	case path == filepath.ToSlash(filepath.Join("notes", "skills.md")):
+		kind = "skill-ledger"
+		baseSummary = "已提升 skill 记录。"
+		governance = MemoryGovernance{Mode: "skill-ledger", RequiresReview: true, Escalation: "approval-center"}
+	case path == filepath.ToSlash(filepath.Join("notes", "policies.md")):
+		kind = "policy-ledger"
+		baseSummary = "已提升 policy 记录。"
+		governance = MemoryGovernance{Mode: "policy-ledger", RequiresReview: true, Escalation: "approval-center"}
 	case path == "repo-binding":
 		kind = "integration"
 		baseSummary = "仓库绑定真值。"
