@@ -37,6 +37,7 @@ type NotificationFanoutRun struct {
 }
 
 type notificationFanoutStateFile struct {
+	LastRun  NotificationFanoutRun       `json:"lastRun"`
 	Receipts []NotificationFanoutReceipt `json:"receipts"`
 }
 
@@ -61,16 +62,25 @@ func (s *Store) notificationFanoutOutboxRootLocked() string {
 	return filepath.Join(filepath.Dir(s.path), "notification-outbox")
 }
 
+func defaultNotificationFanoutState() notificationFanoutStateFile {
+	return notificationFanoutStateFile{
+		LastRun: NotificationFanoutRun{
+			Receipts: []NotificationFanoutReceipt{},
+		},
+		Receipts: []NotificationFanoutReceipt{},
+	}
+}
+
 func (s *Store) loadNotificationFanoutStateLocked() (notificationFanoutStateFile, error) {
 	body, err := os.ReadFile(s.notificationFanoutStatePathLocked())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return notificationFanoutStateFile{Receipts: []NotificationFanoutReceipt{}}, nil
+			return defaultNotificationFanoutState(), nil
 		}
 		return notificationFanoutStateFile{}, err
 	}
 	if strings.TrimSpace(string(body)) == "" {
-		return notificationFanoutStateFile{Receipts: []NotificationFanoutReceipt{}}, nil
+		return defaultNotificationFanoutState(), nil
 	}
 
 	var state notificationFanoutStateFile
@@ -79,6 +89,12 @@ func (s *Store) loadNotificationFanoutStateLocked() (notificationFanoutStateFile
 	}
 	if state.Receipts == nil {
 		state.Receipts = []NotificationFanoutReceipt{}
+	}
+	if state.LastRun.Receipts == nil {
+		state.LastRun.Receipts = append([]NotificationFanoutReceipt{}, state.Receipts...)
+	}
+	if state.LastRun.Attempted == 0 && state.LastRun.Delivered == 0 && state.LastRun.Failed == 0 && len(state.LastRun.Receipts) > 0 {
+		state.LastRun = summarizeNotificationFanoutReceipts(state.LastRun.Receipts)
 	}
 	return state, nil
 }
@@ -105,7 +121,7 @@ func (s *Store) DispatchNotificationFanout() (State, NotificationCenter, Notific
 	}
 
 	snapshot := cloneState(s.state)
-	center := buildNotificationCenter(snapshot, state)
+	center := buildNotificationCenter(snapshot, state, fanoutState.LastRun)
 	now := time.Now().UTC().Format(time.RFC3339)
 	run := NotificationFanoutRun{
 		RanAt:    now,
@@ -139,7 +155,6 @@ func (s *Store) DispatchNotificationFanout() (State, NotificationCenter, Notific
 			run.Failed++
 			receipt.Status = notificationFanoutReceiptStatusFailed
 			receipt.Error = "notification subscriber not found"
-			fanoutState.Receipts = replaceNotificationFanoutReceipt(fanoutState.Receipts, receipt)
 			run.Receipts = append(run.Receipts, receipt)
 			continue
 		}
@@ -161,11 +176,12 @@ func (s *Store) DispatchNotificationFanout() (State, NotificationCenter, Notific
 		}
 
 		state.Subscribers[index] = subscriber
-		fanoutState.Receipts = replaceNotificationFanoutReceipt(fanoutState.Receipts, receipt)
 		run.Receipts = append(run.Receipts, receipt)
 	}
 
 	state = s.normalizeNotificationStateLocked(state)
+	fanoutState.LastRun = run
+	fanoutState.Receipts = append([]NotificationFanoutReceipt{}, run.Receipts...)
 	if err := s.saveNotificationStateLocked(state); err != nil {
 		return State{}, NotificationCenter{}, NotificationFanoutRun{}, err
 	}
@@ -173,7 +189,7 @@ func (s *Store) DispatchNotificationFanout() (State, NotificationCenter, Notific
 		return State{}, NotificationCenter{}, NotificationFanoutRun{}, err
 	}
 
-	return cloneState(s.state), buildNotificationCenter(snapshot, state), run, nil
+	return cloneState(s.state), buildNotificationCenter(snapshot, state, fanoutState.LastRun), run, nil
 }
 
 func replaceNotificationFanoutReceipt(items []NotificationFanoutReceipt, next NotificationFanoutReceipt) []NotificationFanoutReceipt {
@@ -184,6 +200,25 @@ func replaceNotificationFanoutReceipt(items []NotificationFanoutReceipt, next No
 		}
 	}
 	return append(items, next)
+}
+
+func summarizeNotificationFanoutReceipts(receipts []NotificationFanoutReceipt) NotificationFanoutRun {
+	run := NotificationFanoutRun{
+		Receipts: append([]NotificationFanoutReceipt{}, receipts...),
+	}
+	for _, receipt := range receipts {
+		run.Attempted++
+		if receipt.AttemptedAt > run.RanAt {
+			run.RanAt = receipt.AttemptedAt
+		}
+		switch receipt.Status {
+		case notificationFanoutReceiptStatusSent:
+			run.Delivered++
+		case notificationFanoutReceiptStatusFailed:
+			run.Failed++
+		}
+	}
+	return run
 }
 
 func (s *Store) writeNotificationFanoutPayloadLocked(subscriber NotificationSubscriber, delivery NotificationDelivery, attemptedAt string) (string, error) {

@@ -224,14 +224,15 @@
 ## TC-017 浏览器 Push / 邮件通知
 
 - 业务目标: 确认高时效事件能主动触达，而不是等人刷新页面。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-11`
 - 前置条件: 存在通知发送器、模板与订阅模型。
 - 测试步骤:
-  1. 触发 blocked 或 approval 事件。
-  2. 检查浏览器 Push 或邮件是否送达。
-- 预期结果: 高优先级事件有可靠通知。
-- 业务结论: 当前仍停留在对象与文档层。
+  1. 在 `/settings` 写入 workspace browser/email policy，并接入 current browser / email subscribers。
+  2. 先用 invalid email target 执行一次 fanout，确认 failed receipts 与 subscriber `lastError` 显式可见。
+  3. 修正 email target 后重跑 fanout，确认 browser push / email receipts 转成 delivered。
+- 预期结果: 高时效事件有可靠通知，失败和重试状态也能被人类显式看到。
+- 业务结论: 2026 年 4 月 7 日 `TKT-11` 新增 `pnpm test:headed-notification-preference-delivery`，在 headed browser 里把 `/settings` 上的 workspace policy、current browser subscriber、email subscriber、fanout receipts 与 retry contract 串成同一条 exact replay。invalid email target 会 fail closed 并留下 `lastError` / failed receipts，修正为 `ops@openshock.dev` 后 same-page retry 会转成 delivered；current browser subscriber 也会把 sent browser receipts 落成 local notification。当前这条 browser push / email delivery loop 已可独立复核并通过；invite / verify / reset password 继续留在后续身份链路范围。
 
 ## TC-018 Stop / Resume / Follow Thread
 

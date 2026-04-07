@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-export type NotificationPreference = "inherit" | "all" | "critical" | "mute";
+import type { NotificationDelivery, NotificationFanoutReceipt, NotificationPreference } from "@/lib/live-notifications";
+
 export type BrowserPermissionState = NotificationPermission | "unsupported";
 export type BrowserRegistrationState = "idle" | "registering" | "ready" | "blocked" | "error";
 
@@ -18,6 +19,8 @@ type BrowserNotificationSurface = {
 };
 
 const LOCAL_PREFERENCE_KEY = "openshock.notification.preference";
+const DEVICE_ID_KEY = "openshock.notification.device-id";
+const LOCAL_NOTIFICATION_STATE_EVENT = "openshock:notification-local-state";
 const SERVICE_WORKER_PATH = "/openshock-notify-sw.js";
 
 const INITIAL_SURFACE: BrowserNotificationSurface = {
@@ -33,6 +36,74 @@ const INITIAL_SURFACE: BrowserNotificationSurface = {
 
 function isNotificationPreference(value: string | null): value is NotificationPreference {
   return value === "inherit" || value === "all" || value === "critical" || value === "mute";
+}
+
+function createLocalDeviceID() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `browser-${crypto.randomUUID()}`;
+  }
+  return `browser-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function readOrCreateDeviceID() {
+  if (typeof window === "undefined") {
+    return "browser-server-render";
+  }
+
+  const current = window.localStorage.getItem(DEVICE_ID_KEY);
+  if (current) {
+    return current;
+  }
+
+  const next = createLocalDeviceID();
+  window.localStorage.setItem(DEVICE_ID_KEY, next);
+  return next;
+}
+
+function buildBrowserSubscriberTarget(deviceID: string) {
+  return `https://browser.push.local/devices/${deviceID}`;
+}
+
+function buildBrowserSubscriberLabel(deviceID: string) {
+  return `Current Browser · ${deviceID.slice(-8)}`;
+}
+
+function subscribeLocalNotificationState(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleChange = () => {
+    onStoreChange();
+  };
+  window.addEventListener("storage", handleChange);
+  window.addEventListener(LOCAL_NOTIFICATION_STATE_EVENT, handleChange);
+  return () => {
+    window.removeEventListener("storage", handleChange);
+    window.removeEventListener(LOCAL_NOTIFICATION_STATE_EVENT, handleChange);
+  };
+}
+
+function emitLocalNotificationStateChange() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new Event(LOCAL_NOTIFICATION_STATE_EVENT));
+}
+
+function readPreferenceSnapshot() {
+  if (typeof window === "undefined") {
+    return "inherit" as NotificationPreference;
+  }
+  const stored = window.localStorage.getItem(LOCAL_PREFERENCE_KEY);
+  return isNotificationPreference(stored) ? stored : "inherit";
+}
+
+function readDeviceSnapshot() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return readOrCreateDeviceID();
 }
 
 function readPermission(): BrowserPermissionState {
@@ -122,15 +193,14 @@ async function readSurfaceSnapshot(): Promise<BrowserNotificationSurface> {
 }
 
 export function useBrowserNotificationSurface() {
-  const [preference, setPreference] = useState<NotificationPreference>(() => {
-    if (typeof window === "undefined") {
-      return "inherit";
-    }
-
-    const stored = window.localStorage.getItem(LOCAL_PREFERENCE_KEY);
-    return isNotificationPreference(stored) ? stored : "inherit";
-  });
+  const deviceID = useSyncExternalStore(subscribeLocalNotificationState, readDeviceSnapshot, () => "");
+  const preference = useSyncExternalStore(
+    subscribeLocalNotificationState,
+    readPreferenceSnapshot,
+    () => "inherit" as NotificationPreference
+  );
   const [surface, setSurface] = useState<BrowserNotificationSurface>(INITIAL_SURFACE);
+  const deliveredReceiptsRef = useRef(new Set<string>());
 
   async function refreshSurface() {
     const next = await readSurfaceSnapshot();
@@ -153,10 +223,13 @@ export function useBrowserNotificationSurface() {
     };
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(LOCAL_PREFERENCE_KEY, preference);
-  }, [preference]);
+  const setPreference = useCallback((nextPreference: NotificationPreference) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(LOCAL_PREFERENCE_KEY, nextPreference);
+    emitLocalNotificationStateChange();
+  }, []);
 
   async function requestPermission() {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -215,12 +288,13 @@ export function useBrowserNotificationSurface() {
 
     const registration = await findNotificationRegistration();
     const title = "OpenShock 通知面在线";
-    const body = "浏览器权限和 registration surface 已就绪，真实 delivery fanout 仍待 #56 / #58 接上。";
+    const body = "浏览器权限、service worker 和 subscriber target 已就绪，可以接收 notification fanout。";
 
     if (registration) {
       await registration.showNotification(title, {
         body,
         tag: "openshock-notify-smoke",
+        data: { href: "/settings" },
       });
       return;
     }
@@ -228,7 +302,57 @@ export function useBrowserNotificationSurface() {
     new Notification(title, { body });
   }
 
+  async function showDeliveredNotifications(
+    receipts: NotificationFanoutReceipt[],
+    deliveries: NotificationDelivery[],
+    subscriberID?: string
+  ) {
+    if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") {
+      return 0;
+    }
+
+    const deliveriesByID = new Map(deliveries.map((delivery) => [delivery.id, delivery]));
+    const registration = await findNotificationRegistration();
+    let shown = 0;
+
+    for (const receipt of receipts) {
+      if (receipt.channel !== "browser_push" || receipt.status !== "sent") {
+        continue;
+      }
+      if (subscriberID && receipt.subscriberId !== subscriberID) {
+        continue;
+      }
+      if (deliveredReceiptsRef.current.has(receipt.id)) {
+        continue;
+      }
+
+      const delivery = deliveriesByID.get(receipt.deliveryId);
+      if (!delivery) {
+        continue;
+      }
+
+      if (registration) {
+        await registration.showNotification(delivery.title, {
+          body: delivery.body,
+          tag: receipt.deliveryId,
+          data: { href: delivery.href },
+        });
+      } else {
+        new Notification(delivery.title, {
+          body: delivery.body,
+        });
+      }
+      deliveredReceiptsRef.current.add(receipt.id);
+      shown += 1;
+    }
+
+    return shown;
+  }
+
   return {
+    deviceID,
+    subscriberTarget: deviceID ? buildBrowserSubscriberTarget(deviceID) : "等待当前浏览器标识…",
+    subscriberLabel: deviceID ? buildBrowserSubscriberLabel(deviceID) : "Current Browser",
     preference,
     setPreference,
     surface,
@@ -236,5 +360,6 @@ export function useBrowserNotificationSurface() {
     requestPermission,
     registerBrowserSurface,
     sendTestNotification,
+    showDeliveredNotifications,
   };
 }

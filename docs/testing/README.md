@@ -14,6 +14,8 @@
   - `TKT-09` 的 board / room / inbox / setup action-level authz matrix exact evidence
 - [Test Report 2026-04-07 Approval Center Lifecycle](./Test-Report-2026-04-07-approval-center-lifecycle.md)
   - `TKT-10` 的 approval / blocked / review lifecycle browser evidence
+- [Test Report 2026-04-07 Notification Preference Delivery](./Test-Report-2026-04-07-notification-preference-delivery.md)
+  - `TKT-11` 的 browser push / email policy, subscriber, fanout, retry evidence
 - [Test Report 2026-04-07 Remote PR Browser Loop](./Test-Report-2026-04-07-remote-pr-browser-loop.md)
   - `TKT-06` 的真实远端 PR create / merge browser-level exact evidence
 

@@ -114,6 +114,7 @@ type NotificationCenter struct {
 	Subscribers    []NotificationSubscriber `json:"subscribers"`
 	Deliveries     []NotificationDelivery   `json:"deliveries"`
 	ApprovalCenter ApprovalCenterState      `json:"approvalCenter"`
+	Worker         NotificationFanoutRun    `json:"worker"`
 }
 
 type NotificationPolicyInput struct {
@@ -148,6 +149,9 @@ func defaultNotificationCenter(now string) NotificationCenter {
 		ApprovalCenter: ApprovalCenterState{
 			Signals: []ApprovalCenterItem{},
 			Recent:  []ApprovalCenterItem{},
+		},
+		Worker: NotificationFanoutRun{
+			Receipts: []NotificationFanoutReceipt{},
 		},
 	}
 }
@@ -434,7 +438,7 @@ func (s *Store) normalizeNotificationStateLocked(state notificationStateFile) no
 	return state
 }
 
-func buildNotificationCenter(snapshot State, state notificationStateFile) NotificationCenter {
+func buildNotificationCenter(snapshot State, state notificationStateFile, worker NotificationFanoutRun) NotificationCenter {
 	deliveries := make([]NotificationDelivery, 0, len(snapshot.Inbox)*max(1, len(state.Subscribers)))
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -545,6 +549,7 @@ func buildNotificationCenter(snapshot State, state notificationStateFile) Notifi
 		Subscribers:    state.Subscribers,
 		Deliveries:     deliveries,
 		ApprovalCenter: approval,
+		Worker:         worker,
 	}
 }
 
@@ -553,12 +558,14 @@ func (s *Store) NotificationCenter() NotificationCenter {
 
 	s.mu.RLock()
 	state, err := s.loadNotificationStateLocked()
+	fanoutState, fanoutErr := s.loadNotificationFanoutStateLocked()
 	s.mu.RUnlock()
-	if err != nil {
+	if err != nil || fanoutErr != nil {
 		now := time.Now().UTC().Format(time.RFC3339)
 		state = defaultNotificationState(now, snapshot.Workspace.BrowserPush)
+		fanoutState = defaultNotificationFanoutState()
 	}
-	return buildNotificationCenter(snapshot, state)
+	return buildNotificationCenter(snapshot, state, fanoutState.LastRun)
 }
 
 func (s *Store) NotificationSubscriber(subscriberID string) (NotificationSubscriber, bool) {
@@ -581,6 +588,10 @@ func (s *Store) UpdateNotificationPolicy(input NotificationPolicyInput) (State, 
 	defer s.mu.Unlock()
 
 	state, err := s.loadNotificationStateLocked()
+	if err != nil {
+		return State{}, NotificationPolicy{}, NotificationCenter{}, err
+	}
+	fanoutState, err := s.loadNotificationFanoutStateLocked()
 	if err != nil {
 		return State{}, NotificationPolicy{}, NotificationCenter{}, err
 	}
@@ -616,7 +627,7 @@ func (s *Store) UpdateNotificationPolicy(input NotificationPolicyInput) (State, 
 	}
 
 	snapshot := cloneState(s.state)
-	return snapshot, state.Policy, buildNotificationCenter(snapshot, state), nil
+	return snapshot, state.Policy, buildNotificationCenter(snapshot, state, fanoutState.LastRun), nil
 }
 
 func (s *Store) UpsertNotificationSubscriber(input NotificationSubscriberUpsertInput) (State, NotificationSubscriber, NotificationCenter, bool, error) {
@@ -641,6 +652,10 @@ func (s *Store) UpsertNotificationSubscriber(input NotificationSubscriberUpsertI
 	defer s.mu.Unlock()
 
 	state, err := s.loadNotificationStateLocked()
+	if err != nil {
+		return State{}, NotificationSubscriber{}, NotificationCenter{}, false, err
+	}
+	fanoutState, err := s.loadNotificationFanoutStateLocked()
 	if err != nil {
 		return State{}, NotificationSubscriber{}, NotificationCenter{}, false, err
 	}
@@ -695,7 +710,7 @@ func (s *Store) UpsertNotificationSubscriber(input NotificationSubscriberUpsertI
 	}
 
 	snapshot := cloneState(s.state)
-	center := buildNotificationCenter(snapshot, state)
+	center := buildNotificationCenter(snapshot, state, fanoutState.LastRun)
 	for _, item := range state.Subscribers {
 		if item.ID == subscriber.ID {
 			return snapshot, item, center, created, nil
