@@ -14,7 +14,7 @@ type ExecResult = {
   duration: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
+const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 const DEFAULT_WORKSPACE_ROOT = "/home/lark/OpenShock";
 
 function cn(...parts: Array<string | false | null | undefined>) {

@@ -27,7 +27,7 @@ type ExecPayload = {
   error?: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
+const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 const WORKSPACE_CWD = "E:\\00.Lark_Projects\\00_OpenShock";
 
 function cn(...parts: Array<string | false | null | undefined>) {

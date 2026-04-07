@@ -8,17 +8,20 @@ import "./globals.css";
 const display = Space_Grotesk({
   variable: "--font-display",
   subsets: ["latin"],
+  fallback: ["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "sans-serif"],
 });
 
 const body = Inter({
   variable: "--font-body",
   subsets: ["latin"],
+  fallback: ["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "sans-serif"],
 });
 
 const mono = IBM_Plex_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
+  fallback: ["Sarasa Mono SC", "Microsoft YaHei UI", "Noto Sans Mono CJK SC", "monospace"],
 });
 
 export const metadata: Metadata = {

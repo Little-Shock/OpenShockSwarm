@@ -4,7 +4,7 @@ import { startTransition, useCallback, useEffect, useState } from "react";
 
 import type { MemoryGovernance } from "@/lib/mock-data";
 
-const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
+const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 
 export type MemoryArtifactVersion = {
   version: number;

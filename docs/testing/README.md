@@ -28,6 +28,8 @@
   - `TKT-13` 的 stop / resume / follow-thread browser exact replay evidence
 - [Test Report 2026-04-07 Multi-runtime Scheduler Failover](./Test-Report-2026-04-07-multi-runtime-scheduler-failover.md)
   - `TKT-14` 的 multi-runtime scheduler / active lease / offline failover browser exact evidence
+- [Test Report 2026-04-08 Shell Thread Polish](./Test-Report-2026-04-08-shell-thread-polish.md)
+  - `TKT-16` `TKT-17` `TKT-20` 当前这轮 shell / thread / board demotion 的 headed walkthrough evidence
 
 常用入口：
 

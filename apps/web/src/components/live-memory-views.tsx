@@ -15,7 +15,7 @@ import {
 } from "@/lib/live-memory";
 import type { AuthSession, MemoryGovernance } from "@/lib/mock-data";
 
-const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
+const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 const POLICY_MAX_ITEM_OPTIONS = [4, 6, 8, 10, 12] as const;
 
 function cn(...parts: Array<string | false | null | undefined>) {

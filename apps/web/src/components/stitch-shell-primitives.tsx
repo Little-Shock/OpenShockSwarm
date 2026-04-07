@@ -108,7 +108,7 @@ function InboxIcon() {
 }
 
 type StitchSidebarProps = {
-  active: "channels" | "rooms" | "board" | "inbox";
+  active: "channels" | "rooms" | "board" | "inbox" | null;
   channels?: Channel[];
   rooms?: Room[];
   machines?: MachineStatus[];
@@ -138,11 +138,11 @@ function SidebarSection({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="mb-2 flex w-full items-center justify-between gap-2 px-2 text-left"
+        className="mb-1 flex w-full items-center justify-between gap-2 px-2 py-1 text-left"
       >
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.62)]">
-            {open ? "v" : ">"}
+            {open ? "▾" : "▸"}
           </span>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
             {title}
@@ -166,13 +166,13 @@ export function WorkspaceStatusStrip({
 }) {
   return (
     <div className="flex items-center gap-2 border-b-2 border-[var(--shock-ink)] bg-[var(--shock-status)] px-4 py-2">
-      <span className="font-display text-[14px] font-bold">{workspaceName || "OpenShock"}</span>
-      <span className="text-[12px] text-[color:rgba(24,20,14,0.62)]">
-        {disconnected ? "is offline" : "is live"}
+      <span className="font-display text-[13px] font-bold">{workspaceName || "OpenShock"}</span>
+      <span className="text-[11px] text-[color:rgba(24,20,14,0.62)]">
+        {disconnected ? "offline" : "live"}
       </span>
       <Link
         href="/setup"
-        className="ml-auto border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+        className="ml-auto border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
       >
         Reconnect
       </Link>
@@ -202,14 +202,14 @@ export function StitchSidebar({
   const selectedRoom = selectedRoomId ? roomList.find((room) => room.id === selectedRoomId) : undefined;
 
   return (
-    <aside className="hidden h-full w-[286px] flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
+    <aside className="hidden h-full w-[282px] flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
       <div className="border-b-2 border-[var(--shock-ink)] px-2 py-2">
         <button
           type="button"
-          className="inline-flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-black px-3 py-1.5 font-display text-base font-bold text-[var(--shock-yellow)] shadow-[var(--shock-shadow-sm)]"
+          className="flex w-full items-center gap-2 border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-display text-[15px] font-bold text-[var(--shock-yellow)] shadow-[var(--shock-shadow-sm)]"
         >
-          <span className="truncate">{workspaceName || "OpenShock"}</span>
-          <span className="font-mono text-[10px]">v</span>
+          <span className="min-w-0 flex-1 truncate text-left">{workspaceName || "OpenShock"}</span>
+          <span className="font-mono text-[10px]">▾</span>
         </button>
         <p className="mt-2 truncate px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
           {workspaceSubtitle || "local-first command room"}
@@ -219,10 +219,7 @@ export function StitchSidebar({
       <div className="grid grid-cols-2 border-b-2 border-[var(--shock-ink)] bg-white">
         <Link
           href="/chat/all"
-          className={cn(
-            "flex items-center justify-center gap-2 border-r-2 border-[var(--shock-ink)] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
-            "bg-white"
-          )}
+          className="flex items-center justify-center gap-2 border-r-2 border-[var(--shock-ink)] bg-white px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]"
         >
           <ChatModeIcon />
           Chat
@@ -242,11 +239,13 @@ export function StitchSidebar({
             href="/chat/all"
             className={cn(
               "flex items-center gap-2 border-2 border-[var(--shock-ink)] px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
-              active === "channels" ? "bg-[var(--shock-pink)] font-semibold text-white" : "border-transparent bg-transparent hover:border-[var(--shock-ink)] hover:bg-white"
+              active === "channels"
+                ? "bg-[var(--shock-pink)] font-semibold text-white"
+                : "border-transparent bg-transparent hover:border-[var(--shock-ink)] hover:bg-white"
             )}
-            >
+          >
             <HashIcon />
-            <span className="flex-1">Search</span>
+            <span className="flex-1">Quick switch</span>
             <span className="font-mono text-[10px]">Ctrl+K</span>
           </Link>
         </div>
@@ -257,22 +256,22 @@ export function StitchSidebar({
               key={channel.id}
               href={`/chat/${channel.id}`}
               className={cn(
-                "block border-2 px-2 py-2 text-sm transition-colors",
+                "block border-2 px-2 py-1.5 text-sm transition-colors",
                 selectedChannelId === channel.id
                   ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white shadow-[var(--shock-shadow-sm)]"
                   : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
               )}
-            >
-              <div className="flex items-center gap-2">
-                <HashIcon />
-                <p className="min-w-0 flex-1 truncate font-medium">{channel.name}</p>
+              >
+                <div className="flex items-center gap-2">
+                  <HashIcon />
+                  <p className="min-w-0 flex-1 truncate font-medium">{channel.name}</p>
                 {channel.unread > 0 ? (
                   <span className={cn("min-w-5 rounded-full border border-[var(--shock-ink)] px-1 text-center font-mono text-[10px]", selectedChannelId === channel.id ? "bg-white text-[var(--shock-ink)]" : "bg-white")}>
                     {channel.unread}
                   </span>
                 ) : null}
               </div>
-              <p className={cn("mt-1 truncate pl-6 text-[11px]", selectedChannelId === channel.id ? "text-white/80" : "text-[color:rgba(24,20,14,0.56)]")}>
+              <p className={cn("mt-0.5 truncate pl-6 text-[10px]", selectedChannelId === channel.id ? "text-white/80" : "text-[color:rgba(24,20,14,0.56)]")}>
                 {channel.summary}
               </p>
             </Link>
@@ -285,7 +284,7 @@ export function StitchSidebar({
               key={room.id}
               href={`/rooms/${room.id}`}
               className={cn(
-                "block border-2 px-2 py-2 text-sm transition-colors",
+                "block border-2 px-2 py-1.5 text-sm transition-colors",
                 selectedRoomId === room.id
                   ? "border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]"
                   : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
@@ -298,7 +297,7 @@ export function StitchSidebar({
                   {room.topic.status}
                 </span>
               </div>
-              <p className="mt-1 truncate pl-6 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.56)]">
+              <p className="mt-0.5 truncate pl-6 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.56)]">
                 {room.issueKey}
               </p>
             </Link>
@@ -311,21 +310,27 @@ export function StitchSidebar({
           <Link
             href="/inbox"
             className={cn(
-              "flex items-center justify-between border-2 px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
+              "flex items-center justify-between gap-2 border-2 px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
               active === "inbox" ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white" : "bg-white"
             )}
           >
-            <span className="font-medium">Inbox</span>
+            <span className="flex items-center gap-2 font-medium">
+              <InboxIcon />
+              Inbox
+            </span>
             <span className="font-mono text-[10px]">{openInboxCount}</span>
           </Link>
           <Link
             href="/board"
             className={cn(
-              "flex items-center justify-between border-2 px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
+              "flex items-center justify-between gap-2 border-2 px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
               active === "board" ? "border-[var(--shock-ink)] bg-white" : "bg-white"
             )}
           >
-            <span className="font-medium">Board</span>
+            <span className="flex items-center gap-2 font-medium">
+              <WorkspaceModeIcon />
+              Board
+            </span>
             <span className="font-mono text-[10px]">{roomList.length}</span>
           </Link>
         </div>
@@ -341,13 +346,23 @@ export function StitchSidebar({
               </p>
             </div>
             <div className="text-right">
-              <p className="font-mono text-[10px] uppercase text-[color:rgba(24,20,14,0.56)]">runtime</p>
+              <p className="font-mono text-[10px] uppercase text-[color:rgba(24,20,14,0.56)]">presence</p>
               <p className="font-mono text-[10px] uppercase">{runningAgents}/{machineList.length}</p>
             </div>
           </div>
-          <div className="mt-2 flex items-center justify-between text-[11px]">
-            <span>blocked</span>
-            <span className="font-mono">{blockedAgents}</span>
+          <div className="mt-2 grid grid-cols-3 gap-1 text-[10px]">
+            <div className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
+              <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">live</p>
+              <p className="mt-1 font-mono">{runningAgents}</p>
+            </div>
+            <div className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
+              <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">blocked</p>
+              <p className="mt-1 font-mono">{blockedAgents}</p>
+            </div>
+            <div className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
+              <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">inbox</p>
+              <p className="mt-1 font-mono">{openInboxCount}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -374,16 +389,16 @@ export function StitchTopBar({
 }: StitchTopBarProps) {
   return (
     <header className="border-b-2 border-[var(--shock-ink)] bg-white">
-      <div className="grid gap-3 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)_auto] xl:items-center">
+      <div className="grid gap-3 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_minmax(250px,320px)_auto] xl:items-center">
         <div className="min-w-0">
           {eyebrow ? (
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">
               {eyebrow}
             </p>
           ) : null}
-          <h1 className="mt-1 truncate font-display text-[26px] font-bold leading-none">{title}</h1>
+          <h1 className="mt-1 truncate font-display text-[22px] font-bold leading-none">{title}</h1>
           {description ? (
-            <p className="mt-2 max-w-3xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">{description}</p>
+            <p className="mt-1.5 max-w-3xl text-[11px] leading-5 text-[color:rgba(24,20,14,0.66)]">{description}</p>
           ) : null}
         </div>
 
@@ -424,7 +439,7 @@ export function StitchTopBar({
               <span
                 key={tab}
                 className={cn(
-                  "border-r-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em]",
+                  "border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]",
                   tab === activeTab ? "bg-[var(--shock-yellow)] font-semibold" : "bg-white text-[color:rgba(24,20,14,0.62)]"
                 )}
               >

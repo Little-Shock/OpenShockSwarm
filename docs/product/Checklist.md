@@ -1,7 +1,7 @@
 # OpenShock Product Checklist
 
-**版本:** 1.1
-**更新日期:** 2026 年 4 月 7 日
+**版本:** 1.2
+**更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -287,9 +287,12 @@
   - [x] 当前 web 已有频道、讨论间、收件箱、Setup、Agent、Machine 数据源与基础左栏骨架
   - [x] `OpenShockShell`、`StitchSidebar`、`StitchTopBar` 已提供可演进的全屏壳层原语
   - [x] `/v1/state` 已能把 channels / agents / machines / inbox / rooms 收成同一份 workspace truth
+  - [x] `/setup`、`/inbox`、`/board` 等次级 surface 已统一进入同一套 workspace shell，不再和 chat/room 使用两套左栏
+  - [x] web 默认改走同源 `/api/control/*` proxy，Windows 有头浏览器下也能拿到 live workspace truth，不再卡在 `syncing`
 - 当前 GAP:
-  - [ ] 仍缺 `app.slock.ai` 式 workspace-scoped shell：统一 sidebar order、global search 入口、threads/saved 快捷面、workspace context
-  - [ ] `Setup / Issues / Runs / Agents / Memory / Access / Settings` 仍像后台导航，而不是协作壳中的次级 surface
+  - [ ] 仍缺 `app.slock.ai` 式 DM / saved / later / profile 级入口
+  - [ ] Quick switch 目前还是静态入口，还没有真正的 search result / switcher 面
+  - [ ] `Issues / Runs / Agents / Memory / Access / Settings` 虽已统一进同一壳层，但信息密度和 drill-in 细节还没完全收平
   - [ ] `DM` 还没有成为一等协作入口
 - 对应 Test Cases: `TC-028` `TC-029`
 
@@ -302,8 +305,10 @@
   - [x] room / run 已有 live truth，且 stop / resume / follow-thread 已可真实回写
   - [x] room 数据里已有 topic，shell 与 setup 侧已有 machine / agent summary
   - [x] Agent 列表、Room 详情、Run 详情已经存在
+  - [x] channel / room 现在都有 message-centric thread rail，message row 可直接打开 reply 子区，composer 保持常驻可见
+  - [x] room thread rail 已直接接上 `follow_thread` 控制，不再只是纯展示卡片
 - 当前 GAP:
-  - [ ] `Thread / followed thread / saved later` 还没形成完整前台工作流
+  - [ ] `Thread / followed thread / saved later` 还没形成完整回访工作流，当前仍缺 follow list / reopen / saved 列表
   - [ ] `Agent / Machine / Human` 还没有像 `app.slock.ai` 那样的一等 profile route / panel
   - [ ] Room 还缺稳定的 `Chat / Topic / Run / PR / Context` 工作台 tabs，用户仍需频繁跨页面跳转
 - 对应 Test Cases: `TC-030` `TC-031`
@@ -316,9 +321,10 @@
 - 已落地:
   - [x] `/board` 已接 live issue truth，并可创建 issue 后进入 room
   - [x] board lane 与 issue -> room -> run 主链已联动
+  - [x] Board 已从主消息导航挪到左下角次级入口，不再和频道 / room 同层抢主壳心智
 - 当前 GAP:
-  - [ ] Board 仍是主导航显眼入口，优先级还高于 DM / Thread / Profile / Search
-  - [ ] Board 还没有明确退到 issue / room planning surface，而不是首页心智中心
+  - [ ] Board 虽已降级，但 room / issue / board 的回跳还不够顺手
+  - [ ] Board 还没有形成更轻的 planning card 语言，内部信息仍偏重
   - [ ] Board 与 room / topic / run context 的回跳关系仍不够紧
 - 对应 Test Cases: `TC-032`
 

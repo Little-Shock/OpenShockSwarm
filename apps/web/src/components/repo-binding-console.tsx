@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 
-const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "http://127.0.0.1:8080";
+const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 
 type RepoBindingSnapshot = {
   repo: string;

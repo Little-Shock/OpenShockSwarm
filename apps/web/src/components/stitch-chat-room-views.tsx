@@ -115,15 +115,325 @@ function messageGlyph(message: Message) {
   return "SYS";
 }
 
+type ReplyTarget = {
+  messageId: string;
+  speaker: string;
+  excerpt: string;
+};
+
+type ThreadMap = Record<string, Message[]>;
+
+const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
+  all: {
+    "msg-all-2": [
+      {
+        id: "thread-all-1",
+        speaker: "Mina",
+        role: "human",
+        tone: "human",
+        message: "那就别把机器状态塞进 setup 了，直接留在主壳和 room 里常驻。",
+        time: "09:18",
+      },
+      {
+        id: "thread-all-2",
+        speaker: "Codex Dockmaster",
+        role: "agent",
+        tone: "agent",
+        message: "收到。我会把 presence 和 room context 一起留在左栏和右 rail，不再只给后台页。",
+        time: "09:19",
+      },
+    ],
+  },
+  roadmap: {
+    "msg-roadmap-1": [
+      {
+        id: "thread-roadmap-1",
+        speaker: "System",
+        role: "system",
+        tone: "system",
+        message: "已记录：Board 仅保留为 planning mirror，不再作为首页主心智。",
+        time: "10:06",
+      },
+    ],
+  },
+};
+
+const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
+  "room-runtime": {
+    "msg-room-1": [
+      {
+        id: "thread-room-runtime-1",
+        speaker: "Larkspur",
+        role: "human",
+        tone: "human",
+        message: "房间里只保留当前 room 的执行信息，不要再搞一个总览页。",
+        time: "09:24",
+      },
+      {
+        id: "thread-room-runtime-2",
+        speaker: "Codex Dockmaster",
+        role: "agent",
+        tone: "agent",
+        message: "明白。当前 room 会只盯住 branch、runtime、PR 和当前 topic，不再分散视线。",
+        time: "09:25",
+      },
+    ],
+    "msg-room-2": [
+      {
+        id: "thread-room-runtime-3",
+        speaker: "System",
+        role: "system",
+        tone: "system",
+        message: "Follow-thread 已可把后续恢复继续锁在同一条 room discussion 上。",
+        time: "09:27",
+      },
+    ],
+  },
+  "room-inbox": {
+    "msg-room-4": [
+      {
+        id: "thread-room-inbox-1",
+        speaker: "Mina",
+        role: "human",
+        tone: "human",
+        message: "Inbox 入口放左下角是对的，但卡片正文还得更克制。",
+        time: "10:03",
+      },
+    ],
+  },
+  "room-memory": {
+    "msg-room-6": [
+      {
+        id: "thread-room-memory-1",
+        speaker: "Larkspur",
+        role: "human",
+        tone: "human",
+        message: "先别写回，优先级策略没定之前必须卡住。",
+        time: "10:32",
+      },
+    ],
+  },
+};
+
+function messageExcerpt(text: string, maxLength = 72) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function buildReplyTarget(message: Message): ReplyTarget {
+  return {
+    messageId: message.id,
+    speaker: message.speaker,
+    excerpt: messageExcerpt(message.message, 56),
+  };
+}
+
+function initialThreadMessageId(messages: Message[], threadMap: ThreadMap) {
+  const seeded = messages.find((message) => (threadMap[message.id] ?? []).length > 0);
+  return seeded?.id ?? messages[messages.length - 1]?.id ?? null;
+}
+
+function actionTone(tone: "yellow" | "white" | "ink") {
+  switch (tone) {
+    case "yellow":
+      return "bg-[var(--shock-yellow)]";
+    case "ink":
+      return "bg-black text-white";
+    default:
+      return "bg-white";
+  }
+}
+
+function ReplyComposerChip({
+  replyTarget,
+  onClear,
+}: {
+  replyTarget: ReplyTarget;
+  onClear: () => void;
+}) {
+  return (
+    <div className="mb-2 flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2">
+      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+        Reply
+      </span>
+      <p className="min-w-0 flex-1 truncate text-[12px] text-[color:rgba(24,20,14,0.74)]">
+        {replyTarget.speaker}: {replyTarget.excerpt}
+      </p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
+      >
+        Clear
+      </button>
+    </div>
+  );
+}
+
+function ThreadReplyRow({ message }: { message: Message }) {
+  return (
+    <article className="border-b border-[color:rgba(24,20,14,0.12)] px-3 py-3 last:border-b-0">
+      <div className="flex items-start gap-2">
+        <div
+          className={cn(
+            "mt-0.5 flex h-7 min-w-7 items-center justify-center border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
+            messageBadgeTone(message)
+          )}
+        >
+          {messageGlyph(message)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-[13px] font-bold leading-none">{message.speaker}</span>
+            <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.5)]">{message.time}</span>
+          </div>
+          <div className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[color:rgba(24,20,14,0.86)]">
+            {renderMarkedMessage(message.message)}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ThreadRail({
+  scopeLabel,
+  selectedMessage,
+  replies,
+  replyTarget,
+  onReply,
+  primaryAction,
+  emptyTitle,
+  emptyMessage,
+}: {
+  scopeLabel: string;
+  selectedMessage?: Message;
+  replies: Message[];
+  replyTarget?: ReplyTarget | null;
+  onReply: () => void;
+  primaryAction?: {
+    label: string;
+    onClick: () => void | Promise<void>;
+    disabled?: boolean;
+    tone?: "yellow" | "white" | "ink";
+    testId?: string;
+  };
+  emptyTitle: string;
+  emptyMessage: string;
+}) {
+  return (
+    <>
+      <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-display text-[20px] font-bold leading-none">Thread</p>
+            <p className="mt-2 truncate font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
+              {scopeLabel}
+            </p>
+          </div>
+          {primaryAction ? (
+            <button
+              type="button"
+              data-testid={primaryAction.testId}
+              onClick={() => void primaryAction.onClick()}
+              disabled={primaryAction.disabled}
+              className={cn(
+                "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60",
+                actionTone(primaryAction.tone ?? "white")
+              )}
+            >
+              {primaryAction.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3">
+        {!selectedMessage ? (
+          <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+            <p className="font-display text-[18px] font-bold">{emptyTitle}</p>
+            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{emptyMessage}</p>
+          </section>
+        ) : (
+          <div className="space-y-3">
+            <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
+                Parent Message
+              </p>
+              <div className="mt-3 flex items-start gap-3">
+                <div
+                  className={cn(
+                    "mt-0.5 flex h-8 min-w-8 items-center justify-center border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
+                    messageBadgeTone(selectedMessage)
+                  )}
+                >
+                  {messageGlyph(selectedMessage)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-display text-[15px] font-bold leading-none">{selectedMessage.speaker}</p>
+                    <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">{selectedMessage.time}</span>
+                  </div>
+                  <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.86)]">
+                    {selectedMessage.message}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]">
+              <div className="border-b-2 border-[var(--shock-ink)] px-3 py-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
+                  Replies
+                </p>
+              </div>
+              {replies.length > 0 ? (
+                replies.map((reply) => <ThreadReplyRow key={reply.id} message={reply} />)
+              ) : (
+                <div className="px-3 py-4 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+                  当前还没有独立 reply，下一条就从这里继续。
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+        <button
+          type="button"
+          onClick={onReply}
+          disabled={!selectedMessage}
+          className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+        >
+          {selectedMessage && replyTarget?.messageId === selectedMessage.id
+            ? "Reply target ready in composer"
+            : "Reply in composer"}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function MessageStreamRow({
   message,
   replyCount,
+  threadActive = false,
+  onOpenThread,
 }: {
   message: Message;
   replyCount?: number;
+  threadActive?: boolean;
+  onOpenThread?: (message: Message) => void;
 }) {
   return (
-    <article className="border-b border-[color:rgba(24,20,14,0.12)] px-4 py-4 last:border-b-0">
+    <article
+      className={cn(
+        "border-b border-[color:rgba(24,20,14,0.12)] px-4 py-4 last:border-b-0",
+        threadActive && "bg-[#fff4cc]"
+      )}
+    >
       <div className="flex items-start gap-3">
         <div
           className={cn(
@@ -144,11 +454,25 @@ function MessageStreamRow({
           <div className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-7 text-[color:rgba(24,20,14,0.9)]">
             {renderMarkedMessage(message.message)}
           </div>
-          {typeof replyCount === "number" && replyCount > 0 ? (
-            <div className="mt-3">
-              <span className="inline-flex items-center gap-1 border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
-                {replyCount} {replyCount > 1 ? "replies" : "reply"}
-              </span>
+          {typeof replyCount === "number" || onOpenThread ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onOpenThread?.(message)}
+                className={cn(
+                  "inline-flex items-center gap-1 border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]",
+                  threadActive ? "bg-[var(--shock-yellow)]" : "bg-white"
+                )}
+              >
+                {typeof replyCount === "number" && replyCount > 0
+                  ? `${replyCount} ${replyCount > 1 ? "replies" : "reply"}`
+                  : "Reply"}
+              </button>
+              {threadActive ? (
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.5)]">
+                  thread open
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -208,6 +532,11 @@ function ClaudeCompactComposer({
   canSend,
   sendStatus,
   sendBoundary,
+  replyTarget,
+  onClearReplyTarget,
+  threadReplyCounts,
+  activeThreadMessageId,
+  onOpenThread,
 }: {
   room: Room;
   initialMessages: Message[];
@@ -220,20 +549,33 @@ function ClaudeCompactComposer({
   canSend: boolean;
   sendStatus: string;
   sendBoundary: string;
+  replyTarget?: ReplyTarget | null;
+  onClearReplyTarget?: () => void;
+  threadReplyCounts: Record<string, number>;
+  activeThreadMessageId?: string | null;
+  onOpenThread: (message: Message) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [draft, setDraft] = useState("先给我一句结论：这个讨论间现在该先做哪一步？");
   const [loading, setLoading] = useState(false);
   const latestMessage = messages[messages.length - 1];
   const scrollRef = useStickyMessageScroll(room.id, messages.length, latestMessage?.message.length ?? 0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setMessages(initialMessages);
   }, [initialMessages]);
 
+  useEffect(() => {
+    if (replyTarget) {
+      inputRef.current?.focus();
+    }
+  }, [replyTarget]);
+
   async function handleSend() {
     if (!draft.trim() || loading || !canSend) return;
     const prompt = draft.trim();
+    const sendPrompt = replyTarget ? `回复 ${replyTarget.speaker}：${prompt}` : prompt;
     setLoading(true);
     const now = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
     const humanMessage: Message = {
@@ -241,7 +583,7 @@ function ClaudeCompactComposer({
       speaker: "Lead_Architect",
       role: "human",
       tone: "human",
-      message: prompt,
+      message: sendPrompt,
       time: now,
     };
     const agentMessageId = `local-agent-${Date.now()}`;
@@ -256,7 +598,7 @@ function ClaudeCompactComposer({
     setMessages((current) => [...current, humanMessage, agentMessage]);
 
     try {
-      const payload = await onSend(room.id, prompt, "claude", (event) => {
+      const payload = await onSend(room.id, sendPrompt, "claude", (event) => {
         if (event.type === "stdout" && event.delta) {
           setMessages((current) =>
             current.map((item) =>
@@ -285,6 +627,7 @@ function ClaudeCompactComposer({
         );
       }
       setDraft("");
+      onClearReplyTarget?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : "bridge error";
       setMessages((current) => [
@@ -317,12 +660,23 @@ function ClaudeCompactComposer({
       >
         <div className="mx-auto max-w-[1100px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec]">
           {messages.map((message) => (
-            <MessageStreamRow key={message.id} message={message} />
+            <MessageStreamRow
+              key={message.id}
+              message={message}
+              replyCount={threadReplyCounts[message.id]}
+              threadActive={activeThreadMessageId === message.id}
+              onOpenThread={onOpenThread}
+            />
           ))}
         </div>
       </div>
 
       <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+        <div className="mx-auto max-w-[1100px]">
+          {replyTarget ? (
+            <ReplyComposerChip replyTarget={replyTarget} onClear={() => onClearReplyTarget?.()} />
+          ) : null}
+        </div>
         <form onSubmit={(event) => void handleSubmit(event)} className="mx-auto flex max-w-[1100px] items-center gap-2">
           <button
             type="button"
@@ -332,12 +686,13 @@ function ClaudeCompactComposer({
             +
           </button>
           <input
+            ref={inputRef}
             data-testid="room-message-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             disabled={!canSend || loading}
             className="h-10 flex-1 border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[12px] outline-none"
-            placeholder="输入指令、问题或新的约束..."
+            placeholder={replyTarget ? `继续回复 ${replyTarget.speaker}...` : "输入指令、问题或新的约束..."}
           />
           <button
             type="submit"
@@ -363,6 +718,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const { state, approvalCenter, loading, error, postChannelMessage } = usePhaseZeroState();
   const channel = loading || error ? undefined : state.channels.find((item) => item.id === channelId);
   const messages = channel ? state.channelMessages[channel.id] ?? [] : [];
+  const channelThreadReplies = channel ? CHANNEL_THREAD_REPLIES[channel.id] ?? {} : {};
   const sidebarChannels = loading || error ? [] : state.channels;
   const sidebarRooms = loading || error ? [] : state.rooms;
   const sidebarMachines = loading || error ? [] : state.machines;
@@ -372,25 +728,60 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const messageScrollRef = useStickyMessageScroll(
     channelId,
     messages.length,
     latestMessage?.message.length ?? 0
   );
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const inboxCount = loading || error ? 0 : approvalCenter.openCount;
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
+  const selectedThreadMessage =
+    messages.find((message) => message.id === selectedThreadId) ?? messages.find((message) => message.id === initialThreadMessageId(messages, channelThreadReplies));
+  const selectedThreadReplies = selectedThreadMessage ? channelThreadReplies[selectedThreadMessage.id] ?? [] : [];
+
+  useEffect(() => {
+    const nextThreadId = initialThreadMessageId(messages, channelThreadReplies);
+    setSelectedThreadId((current) => {
+      if (current && messages.some((message) => message.id === current)) {
+        return current;
+      }
+      return nextThreadId;
+    });
+    setReplyTarget((current) => {
+      if (current && messages.some((message) => message.id === current.messageId)) {
+        return current;
+      }
+      return null;
+    });
+  }, [channelId, messages, channelThreadReplies]);
+
+  useEffect(() => {
+    if (replyTarget) {
+      inputRef.current?.focus();
+    }
+  }, [replyTarget]);
+
+  function handleOpenThread(message: Message) {
+    setSelectedThreadId(message.id);
+    setReplyTarget(buildReplyTarget(message));
+  }
 
   async function handleChannelSend() {
     if (!channel || !draft.trim() || sending || loading || Boolean(error)) {
       return;
     }
+    const sendPrompt = replyTarget ? `回复 ${replyTarget.speaker}：${draft.trim()}` : draft.trim();
     setSending(true);
     setSendError(null);
     try {
-      await postChannelMessage(channel.id, draft.trim());
+      await postChannelMessage(channel.id, sendPrompt);
       setDraft("");
+      setReplyTarget(null);
     } catch (channelError) {
       setSendError(channelError instanceof Error ? channelError.message : "频道消息发送失败");
     } finally {
@@ -487,12 +878,25 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                       message="等第一条 live channel message 出现后，这里会直接显示真实频道流。"
                     />
                   ) : (
-                    messages.map((message) => <MessageStreamRow key={message.id} message={message} />)
+                    messages.map((message) => (
+                      <MessageStreamRow
+                        key={message.id}
+                        message={message}
+                        replyCount={channelThreadReplies[message.id]?.length}
+                        threadActive={selectedThreadMessage?.id === message.id}
+                        onOpenThread={handleOpenThread}
+                      />
+                    ))
                   )}
                 </div>
               </div>
 
               <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <div className="mx-auto max-w-[1100px]">
+                  {replyTarget ? (
+                    <ReplyComposerChip replyTarget={replyTarget} onClear={() => setReplyTarget(null)} />
+                  ) : null}
+                </div>
                 <form onSubmit={(event) => void handleChannelSubmit(event)} className="mx-auto flex max-w-[1100px] items-center gap-2">
                   <button
                     type="button"
@@ -502,12 +906,19 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     +
                   </button>
                   <input
+                    ref={inputRef}
                     data-testid="channel-message-input"
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     disabled={!channel || loading || Boolean(error) || sending}
                     className="h-10 flex-1 border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[12px] outline-none"
-                    placeholder={channel ? `发送消息到 ${channel.name}...` : "等待频道同步..."}
+                    placeholder={
+                      replyTarget
+                        ? `继续回复 ${replyTarget.speaker}...`
+                        : channel
+                          ? `发送消息到 ${channel.name}...`
+                          : "等待频道同步..."
+                    }
                   />
                   <button
                     type="button"
@@ -534,109 +945,24 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             </div>
 
             <aside className="hidden min-h-0 flex-col border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex">
-              <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-display text-2xl font-bold leading-none">Thread</p>
-                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
-                      {channel?.name ?? "channel"}
-                    </p>
-                  </div>
-                  <Link
-                    href={channel ? `/chat/${channel.id}` : "/chat/all"}
-                    className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                  >
-                    View Channel
-                  </Link>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="space-y-4">
-                  <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
-                      Latest Relay
-                    </p>
-                    <p className="mt-3 font-display text-xl font-bold">
-                      {latestMessage?.speaker ?? "等待新消息"}
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[color:rgba(17,17,17,0.72)]">
-                      {latestMessage?.message ?? "线程摘要会在频道里有新互动后出现。"}
-                    </p>
-                    <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.52)]">
-                      {latestMessage?.time ?? "now"}
-                    </p>
-                  </section>
-
-                  <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
-                      Saved Context
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                        <p className="font-display text-lg font-bold">Channel purpose</p>
-                        <p className="mt-2 text-sm leading-6 text-[color:rgba(17,17,17,0.72)]">
-                          {channel?.purpose ?? "等待同步频道基线。"}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                          <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(17,17,17,0.52)]">
-                            Unread
-                          </p>
-                          <p className="mt-2 font-display text-3xl font-bold">{channel?.unread ?? 0}</p>
-                        </div>
-                        <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                          <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(17,17,17,0.52)]">
-                            Agents
-                          </p>
-                          <p className="mt-2 font-display text-3xl font-bold">{runningAgents}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="rounded-[18px] border-3 border-[var(--shock-ink)] bg-white p-4 shadow-[4px_4px_0_0_var(--shock-ink)]">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
-                      Live Citizens
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      {sidebarAgents.slice(0, 4).map((agent) => (
-                        <div
-                          key={agent.id}
-                          className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
-                        >
-                          <div className="flex items-start gap-3">
-                            <span
-                              className={cn(
-                                "mt-1 h-3 w-3 rounded-full border border-[var(--shock-ink)]",
-                                agent.state === "blocked"
-                                  ? "bg-[var(--shock-pink)]"
-                                  : agent.state === "running"
-                                    ? "bg-[var(--shock-lime)]"
-                                    : "bg-white"
-                              )}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold">{agent.name}</p>
-                              <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(17,17,17,0.52)]">
-                                {agent.state} · {agent.runtimePreference}
-                              </p>
-                              <p className="mt-2 text-sm leading-6 text-[color:rgba(17,17,17,0.72)]">
-                                {agent.mood}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                </div>
-              </div>
-              <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <div className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-4 py-3 font-mono text-[11px] text-[color:rgba(17,17,17,0.48)]">
-                  Reply to thread...
-                </div>
-              </div>
+              <ThreadRail
+                scopeLabel={channel?.name ?? "channel"}
+                selectedMessage={selectedThreadMessage}
+                replies={selectedThreadReplies}
+                replyTarget={replyTarget}
+                onReply={() => {
+                  if (selectedThreadMessage) {
+                    setReplyTarget(buildReplyTarget(selectedThreadMessage));
+                  }
+                }}
+                primaryAction={{
+                  label: "Focus Reply",
+                  onClick: () => setReplyTarget(selectedThreadMessage ? buildReplyTarget(selectedThreadMessage) : null),
+                  disabled: !selectedThreadMessage,
+                }}
+                emptyTitle="先选一条消息"
+                emptyMessage="thread 是频道消息的局部回复区。先在左侧消息流里点一条消息，再从这里继续。"
+              />
             </aside>
           </div>
         </section>
@@ -654,9 +980,13 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const currentRunStatus = session?.status ?? run?.status;
   const runPaused = currentRunStatus === "paused";
   const messages = room ? state.roomMessages[room.id] ?? [] : [];
+  const roomThreadReplies = room ? ROOM_THREAD_REPLIES[room.id] ?? {} : {};
   const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
   const [prLoading, setPrLoading] = useState(false);
   const [prError, setPrError] = useState<string | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [railMode, setRailMode] = useState<"context" | "thread">("context");
   const canMerge = pullRequest && pullRequest.status !== "merged";
   const canReply = !loading && !error && !runPaused && hasSessionPermission(authSession, "room.reply");
   const roomReplyStatus = loading ? "syncing" : error ? "sync_failed" : runPaused ? "paused" : permissionStatus(authSession, "room.reply");
@@ -686,6 +1016,34 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const inboxCount = loading || error ? 0 : approvalCenter.openCount;
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
+  const selectedThreadMessage =
+    messages.find((message) => message.id === selectedThreadId) ?? messages.find((message) => message.id === initialThreadMessageId(messages, roomThreadReplies));
+  const selectedThreadReplies = selectedThreadMessage ? roomThreadReplies[selectedThreadMessage.id] ?? [] : [];
+  const threadReplyCounts = Object.fromEntries(
+    messages.map((message) => [message.id, roomThreadReplies[message.id]?.length ?? 0])
+  );
+
+  useEffect(() => {
+    const nextThreadId = initialThreadMessageId(messages, roomThreadReplies);
+    setSelectedThreadId((current) => {
+      if (current && messages.some((message) => message.id === current)) {
+        return current;
+      }
+      return nextThreadId;
+    });
+    setReplyTarget((current) => {
+      if (current && messages.some((message) => message.id === current.messageId)) {
+        return current;
+      }
+      return null;
+    });
+  }, [roomId, messages, roomThreadReplies]);
+
+  function handleOpenThread(message: Message) {
+    setSelectedThreadId(message.id);
+    setReplyTarget(buildReplyTarget(message));
+    setRailMode("thread");
+  }
 
   async function handleCreatePullRequest() {
     if (!room || prLoading || !canReviewPullRequest) return;
@@ -792,7 +1150,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                   : room?.summary ?? "当前还没有拿到这间房的 live 摘要。"
             }
             searchPlaceholder="Search room / run / PR / board"
-            tabs={["Chat", "Topic", "Run", "PR", "Board"]}
+            tabs={["Chat", "Thread", "Topic", "Run", "PR"]}
             activeTab="Chat"
           />
           <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
@@ -853,58 +1211,98 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                   canSend={canReply}
                   sendStatus={roomReplyStatus}
                   sendBoundary={roomReplyBoundary}
+                  replyTarget={replyTarget}
+                  onClearReplyTarget={() => setReplyTarget(null)}
+                  threadReplyCounts={threadReplyCounts}
+                  activeThreadMessageId={selectedThreadMessage?.id}
+                  onOpenThread={handleOpenThread}
                 />
               )}
             </div>
 
             <aside className="hidden min-h-0 flex-col border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex">
               <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <p className="font-display text-[20px] font-bold leading-none">Context Rail</p>
+                <p className="font-display text-[20px] font-bold leading-none">
+                  {railMode === "thread" ? "Thread Rail" : "Context Rail"}
+                </p>
                 <div className="mt-3 flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
-                  {["Chat", "Topic", "Run", "PR", "Board"].map((tab) => (
-                    <span
+                  {["Context", "Thread", "Run", "PR"].map((tab) => (
+                    <button
+                      type="button"
                       key={tab}
+                      onClick={() => setRailMode(tab === "Thread" ? "thread" : "context")}
                       className={cn(
                         "border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] last:border-r-0",
-                        tab === "Chat" ? "bg-[var(--shock-yellow)]" : "bg-white"
+                        (tab === "Thread" && railMode === "thread") || (tab !== "Thread" && tab === "Context" && railMode === "context")
+                          ? "bg-[var(--shock-yellow)]"
+                          : "bg-white"
                       )}
                     >
                       {tab}
-                    </span>
+                    </button>
                   ))}
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4">
-                <div className="mb-3 flex gap-2">
-                  <button className="flex-1 border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)]">
-                    注入 Guidance
-                  </button>
-                  <button
-                    data-testid="room-pull-request-action"
-                    disabled={pullRequestActionDisabled}
-                    onClick={() => void pullRequestActionHandler?.()}
-                    className="flex-1 border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
-                  >
-                    {pullRequestActionLabel}
-                  </button>
-                </div>
-                <p data-testid="room-pull-request-authz" className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                  {pullRequestActionStatus}
-                </p>
-                {(pullRequestActionStatus === "blocked" || pullRequestActionStatus === "signed_out" || pullRequestActionStatus === "review_only" || pullRequestActionStatus === "merged") ? (
-                  <p className="mb-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{pullRequestBoundary}</p>
-                ) : null}
+                {railMode === "thread" ? (
+                  <ThreadRail
+                    scopeLabel={room?.issueKey ?? roomId}
+                    selectedMessage={selectedThreadMessage}
+                    replies={selectedThreadReplies}
+                    replyTarget={replyTarget}
+                    onReply={() => {
+                      if (selectedThreadMessage) {
+                        setReplyTarget(buildReplyTarget(selectedThreadMessage));
+                      }
+                    }}
+                    primaryAction={{
+                      label: session?.followThread ?? run?.followThread ? "Thread Locked" : "Lock Thread",
+                      onClick: () =>
+                        void handleRunControl(
+                          "follow_thread",
+                          selectedThreadMessage
+                            ? `锁定 thread: ${selectedThreadMessage.speaker} / ${messageExcerpt(selectedThreadMessage.message, 48)}`
+                            : "锁定当前线程"
+                        ),
+                      disabled: !selectedThreadMessage || !canControlRun,
+                      tone: session?.followThread ?? run?.followThread ? "ink" : "yellow",
+                      testId: "room-thread-follow-current",
+                    }}
+                    emptyTitle="先选一条 room 消息"
+                    emptyMessage="thread 只作为当前 room 的局部回复区，不会再生成新的一级页面。先在左侧消息流里点一条消息。"
+                  />
+                ) : (
+                  <>
+                    <div className="mb-3 flex gap-2">
+                      <button className="flex-1 border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)]">
+                        注入 Guidance
+                      </button>
+                      <button
+                        data-testid="room-pull-request-action"
+                        disabled={pullRequestActionDisabled}
+                        onClick={() => void pullRequestActionHandler?.()}
+                        className="flex-1 border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+                      >
+                        {pullRequestActionLabel}
+                      </button>
+                    </div>
+                    <p data-testid="room-pull-request-authz" className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                      {pullRequestActionStatus}
+                    </p>
+                    {(pullRequestActionStatus === "blocked" || pullRequestActionStatus === "signed_out" || pullRequestActionStatus === "review_only" || pullRequestActionStatus === "merged") ? (
+                      <p className="mb-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{pullRequestBoundary}</p>
+                    ) : null}
 
-                <div className="space-y-3">
-                  {loading ? (
-                    <DiscussionStateMessage title="等待房间上下文" message="右侧 context rail 会在 live room / run / session 真值返回后展开。" />
-                  ) : error ? (
-                    <DiscussionStateMessage title="上下文同步失败" message={error} />
-                  ) : !room || !run ? (
-                    <DiscussionStateMessage title="缺少讨论间上下文" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
-                  ) : (
-                    <>
+                    <div className="space-y-3">
+                      {loading ? (
+                        <DiscussionStateMessage title="等待房间上下文" message="右侧 context rail 会在 live room / run / session 真值返回后展开。" />
+                      ) : error ? (
+                        <DiscussionStateMessage title="上下文同步失败" message={error} />
+                      ) : !room || !run ? (
+                        <DiscussionStateMessage title="缺少讨论间上下文" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
+                      ) : (
+                        <>
                       <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Topic</p>
                         <p className="mt-2 font-display text-[18px] font-bold leading-6">{room.topic.title}</p>
@@ -1021,9 +1419,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                           </p>
                         </div>
                       </section>
-                    </>
-                  )}
-                </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </aside>
           </div>

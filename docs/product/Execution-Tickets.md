@@ -1,7 +1,7 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.1
-**更新日期:** 2026 年 4 月 7 日
+**版本:** 1.2
+**更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -39,7 +39,7 @@
 
 ## TKT-16 app.slock.ai Shell / Workspace Navigation Reframe
 
-- 状态: `todo`
+- 状态: `active`
 - 优先级: `P0`
 - 目标: 把当前多页面控制台壳重排成 `app.slock.ai` 风格的 workspace-scoped collaboration shell，让 `Channel / Room / Inbox / DM / Presence` 成为默认入口。
 - 范围:
@@ -56,7 +56,7 @@
 
 ## TKT-17 DM / Thread / Search / Saved Surface
 
-- 状态: `todo`
+- 状态: `active`
 - 优先级: `P0`
 - 目标: 补齐 Slock 壳最缺的消息型 surface，让 `DM / followed thread / saved / search` 成为真实前台入口。
 - 范围:
@@ -108,7 +108,7 @@
 
 ## TKT-20 Board Secondary Planning Surface
 
-- 状态: `todo`
+- 状态: `active`
 - 优先级: `P2`
 - 目标: 保留 Board，但把它降为 issue / room 的次级规划面，不再主导首页心智。
 - 范围:
