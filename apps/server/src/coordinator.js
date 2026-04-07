@@ -260,6 +260,19 @@ function createEmptyChannelGovernance() {
   };
 }
 
+function sameProviderFamily(left, right) {
+  const normalizedLeft = normalizeOptionalScopeId(left);
+  const normalizedRight = normalizeOptionalScopeId(right);
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  const githubLike = (value) => value === "github" || value === "github_app";
+  return githubLike(normalizedLeft) && githubLike(normalizedRight);
+}
+
 function parseProviderRef(input, { requireRepoRef = true } = {}) {
   assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "provider_ref_required", "provider_ref must be an object");
   const provider = typeof input.provider === "string" ? input.provider.trim() : "";
@@ -2671,6 +2684,164 @@ export class ServerCoordinator {
     }
   }
 
+  findChannelContextByTopicId(topicId) {
+    const normalizedTopicId = normalizeOptionalScopeId(topicId);
+    if (!normalizedTopicId) {
+      return null;
+    }
+    for (const channel of this.channelContexts.values()) {
+      if (normalizeOptionalScopeId(channel.repoBinding?.topicId) === normalizedTopicId) {
+        return channel;
+      }
+    }
+    return null;
+  }
+
+  assertChannelRepoBindingGovernance(channel, input = {}) {
+    this.ensureChannelGovernance(channel);
+    const member = channel.governance.member;
+    const installation = channel.governance.githubInstallation;
+    const governanceConfigured = member !== null || installation !== null || channel.governance.authIdentity !== null;
+
+    if (!governanceConfigured) {
+      return {
+        enforced: false,
+        memberRole: null,
+        installationId: null,
+        installationStatus: null
+      };
+    }
+
+    if (!member || member.status !== "active") {
+      throw new CoordinatorError("workspace_member_required", "active workspace member is required", {
+        channel_id: channel.channelId,
+        workspace_id: channel.workspace.workspaceId
+      });
+    }
+    const permissions = WORKSPACE_GOVERNANCE_PERMISSION_MATRIX[member.role] ?? null;
+    if (!permissions || permissions.manage_repo_binding !== true) {
+      throw new CoordinatorError("workspace_member_role_forbidden", "member role cannot manage repo binding", {
+        channel_id: channel.channelId,
+        workspace_id: channel.workspace.workspaceId,
+        role: member.role
+      });
+    }
+
+    if (!installation) {
+      throw new CoordinatorError("workspace_installation_required", "workspace github installation is required before repo binding", {
+        channel_id: channel.channelId,
+        workspace_id: channel.workspace.workspaceId
+      });
+    }
+    if (installation.status !== "active") {
+      throw new CoordinatorError("workspace_installation_not_active", "workspace github installation is not active", {
+        channel_id: channel.channelId,
+        workspace_id: channel.workspace.workspaceId,
+        installation_id: installation.installationId,
+        status: installation.status
+      });
+    }
+    if (
+      normalizeOptionalScopeId(installation.workspaceId) &&
+      normalizeOptionalScopeId(installation.workspaceId) !== normalizeOptionalScopeId(channel.workspace.workspaceId)
+    ) {
+      throw new CoordinatorError("workspace_scope_mismatch", "installation workspace scope does not match channel workspace scope", {
+        channel_id: channel.channelId,
+        expected_workspace_id: channel.workspace.workspaceId,
+        got_workspace_id: installation.workspaceId
+      });
+    }
+    const requestedInstallationId = normalizeOptionalScopeId(input.workspaceInstallationId);
+    if (requestedInstallationId && requestedInstallationId !== installation.installationId) {
+      throw new CoordinatorError("workspace_scope_mismatch", "workspace_installation_id does not belong to channel workspace scope", {
+        channel_id: channel.channelId,
+        expected_workspace_installation_id: installation.installationId,
+        got_workspace_installation_id: requestedInstallationId
+      });
+    }
+    if (
+      normalizeOptionalScopeId(input.providerRef?.provider) &&
+      !sameProviderFamily(input.providerRef?.provider, installation.provider)
+    ) {
+      throw new CoordinatorError("workspace_installation_provider_mismatch", "repo binding provider does not match workspace installation provider", {
+        channel_id: channel.channelId,
+        expected_provider: installation.provider,
+        got_provider: input.providerRef?.provider
+      });
+    }
+    if (
+      Array.isArray(installation.authorizedRepos) &&
+      installation.authorizedRepos.length > 0 &&
+      normalizeOptionalScopeId(input.providerRef?.repo_ref) &&
+      !installation.authorizedRepos.includes(input.providerRef.repo_ref)
+    ) {
+      throw new CoordinatorError("workspace_repo_not_authorized", "repo is not authorized by workspace installation", {
+        channel_id: channel.channelId,
+        workspace_id: channel.workspace.workspaceId,
+        repo_ref: input.providerRef.repo_ref
+      });
+    }
+
+    return {
+      enforced: true,
+      memberRole: member.role,
+      installationId: installation.installationId,
+      installationStatus: installation.status
+    };
+  }
+
+  assertTopicBindingUsable(topicId, providerRef) {
+    const channel = this.findChannelContextByTopicId(topicId);
+    if (!channel) {
+      return;
+    }
+    this.ensureChannelGovernance(channel);
+    const governanceConfigured =
+      channel.governance.member !== null ||
+      channel.governance.githubInstallation !== null ||
+      channel.governance.authIdentity !== null;
+    if (!governanceConfigured) {
+      return;
+    }
+    const installation = channel.governance.githubInstallation;
+    if (!installation) {
+      throw new CoordinatorError("workspace_installation_required", "workspace github installation is required before topic repo binding use", {
+        topic_id: topicId,
+        channel_id: channel.channelId
+      });
+    }
+    if (installation.status !== "active") {
+      throw new CoordinatorError("workspace_installation_not_active", "workspace github installation is not active", {
+        topic_id: topicId,
+        channel_id: channel.channelId,
+        installation_id: installation.installationId,
+        status: installation.status
+      });
+    }
+    if (
+      normalizeOptionalScopeId(providerRef?.provider) &&
+      normalizeOptionalScopeId(installation.provider) &&
+      !sameProviderFamily(providerRef?.provider, installation.provider)
+    ) {
+      throw new CoordinatorError("workspace_installation_provider_mismatch", "provider does not match workspace installation", {
+        topic_id: topicId,
+        expected_provider: installation.provider,
+        got_provider: providerRef?.provider
+      });
+    }
+    if (
+      Array.isArray(installation.authorizedRepos) &&
+      installation.authorizedRepos.length > 0 &&
+      normalizeOptionalScopeId(providerRef?.repo_ref) &&
+      !installation.authorizedRepos.includes(providerRef.repo_ref)
+    ) {
+      throw new CoordinatorError("workspace_repo_not_authorized", "repo is not authorized by workspace installation", {
+        topic_id: topicId,
+        repo_ref: providerRef.repo_ref
+      });
+    }
+  }
+
   getChannelContextContract(channelId) {
     const channel = this.requireChannelContext(channelId);
     this.ensureChannelGovernance(channel);
@@ -2855,9 +3026,14 @@ export class ServerCoordinator {
     const defaultBranch = normalizeOptionalScopeId(input.defaultBranch) ?? channel.repoBinding?.defaultBranch ?? null;
     const fixedDirectory = normalizeOptionalScopeId(input.fixedDirectory) ?? channel.repoBinding?.fixedDirectory ?? channel.context.fixedDirectory ?? null;
     this.ensureChannelGovernance(channel);
+    const enforcement = this.assertChannelRepoBindingGovernance(channel, {
+      providerRef,
+      workspaceInstallationId: input.workspaceInstallationId
+    });
     const installationId =
       normalizeOptionalScopeId(input.workspaceInstallationId) ??
       channel.repoBinding?.workspaceInstallationId ??
+      enforcement.installationId ??
       channel.governance.githubInstallation?.installationId ??
       null;
     channel.repoBinding = {
@@ -2888,7 +3064,10 @@ export class ServerCoordinator {
         repo_ref: providerRef.repo_ref,
         default_branch: defaultBranch,
         fixed_directory: fixedDirectory,
-        workspace_installation_id: installationId
+        workspace_installation_id: installationId,
+        governance_enforced: enforcement.enforced,
+        member_role: enforcement.memberRole,
+        installation_status: enforcement.installationStatus
       }
     });
     this.channelContexts.set(channel.channelId, channel);
@@ -4033,6 +4212,7 @@ export class ServerCoordinator {
     const topic = this.requireTopic(topicId);
     assertOrThrow(input && typeof input === "object", "repo_binding_invalid", "repo binding payload must be object");
     const providerRef = parseProviderRef(input.provider_ref, { requireRepoRef: true });
+    this.assertTopicBindingUsable(topicId, providerRef);
     const defaultBranch =
       typeof input.default_branch === "string" && input.default_branch.trim().length > 0
         ? input.default_branch.trim()
@@ -4069,6 +4249,7 @@ export class ServerCoordinator {
     const topic = this.requireTopic(topicId);
     assertOrThrow(input && typeof input === "object", "pr_projection_invalid", "pr projection payload must be object");
     const providerRef = parseProviderRef(input.provider_ref, { requireRepoRef: true });
+    this.assertTopicBindingUsable(topicId, providerRef);
     const now = nowIso();
     const prId = generateId("pr");
     const item = {
@@ -4110,6 +4291,10 @@ export class ServerCoordinator {
 
     if (input.provider_ref !== undefined) {
       const patched = parseProviderRef(input.provider_ref, { requireRepoRef: false });
+      this.assertTopicBindingUsable(resolved.topicId, {
+        provider: patched.provider ?? item.provider_ref.provider,
+        repo_ref: patched.repo_ref ?? item.provider_ref.repo_ref
+      });
       item.provider_ref = {
         provider: patched.provider ?? item.provider_ref.provider,
         repo_ref: patched.repo_ref ?? item.provider_ref.repo_ref,

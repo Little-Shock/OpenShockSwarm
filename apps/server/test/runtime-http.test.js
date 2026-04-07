@@ -4340,6 +4340,241 @@ test("v1 stage4a1 control-plane governance contract keeps identity/member/instal
   );
 });
 
+test("v1 stage4a1 enforcement blocks missing installation, forbidden role, stale binding usage and wrong workspace scope", async () => {
+  const channelId = "channel_open_shock_stage4a1_enforcement";
+  const topicId = "topic_stage4a1_enforcement";
+  const operatorId = "human_operator_stage4a1_enforcement";
+  const workspaceId = "workspace_stage4a1_enforcement";
+  const installationId = "gh_ins_workspace_stage4a1_enforcement";
+
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const context = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: operatorId,
+          workspace_id: workspaceId,
+          workspace_root: "/Users/atou/.slock/agents",
+          auth_identity: {
+            identity_id: "auth_identity_stage4a1_enforcement",
+            provider: "github",
+            subject_ref: "github_user_stage4a1_enforcement",
+            status: "bound"
+          },
+          member: {
+            member_id: "member_stage4a1_enforcement",
+            role: "owner",
+            status: "active"
+          },
+          github_installation: {
+            installation_id: installationId,
+            provider: "github_app",
+            workspace_id: workspaceId,
+            status: "active",
+            authorized_repos: ["Little-Shock/OpenShockSwarm"]
+          }
+        }
+      });
+      assert.equal(context.statusCode, 200);
+
+      const bindingOk = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
+        body: {
+          operator_id: operatorId,
+          topic_id: topicId,
+          provider_ref: {
+            provider: "github",
+            repo_ref: "Little-Shock/OpenShockSwarm"
+          },
+          workspace_installation_id: installationId
+        }
+      });
+      assert.equal(bindingOk.statusCode, 200);
+      assert.equal(bindingOk.body.repo_binding.repo_binding.workspace_installation_id, installationId);
+
+      const forbiddenRole = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: operatorId,
+          member: {
+            member_id: "member_stage4a1_enforcement",
+            role: "member",
+            status: "active"
+          }
+        }
+      });
+      assert.equal(forbiddenRole.statusCode, 200);
+
+      const bindingWithForbiddenRole = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
+        body: {
+          operator_id: operatorId,
+          topic_id: topicId,
+          provider_ref: {
+            provider: "github",
+            repo_ref: "Little-Shock/OpenShockSwarm"
+          },
+          workspace_installation_id: installationId
+        }
+      });
+      assert.equal(bindingWithForbiddenRole.statusCode, 422);
+      assert.equal(bindingWithForbiddenRole.body.error.code, "workspace_member_role_forbidden");
+
+      const restoreRole = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: operatorId,
+          member: {
+            member_id: "member_stage4a1_enforcement",
+            role: "owner",
+            status: "active"
+          }
+        }
+      });
+      assert.equal(restoreRole.statusCode, 200);
+
+      const scopeMismatch = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/repo-binding`,
+        body: {
+          operator_id: operatorId,
+          topic_id: topicId,
+          provider_ref: {
+            provider: "github",
+            repo_ref: "Little-Shock/OpenShockSwarm"
+          },
+          workspace_installation_id: "gh_ins_workspace_stage4a1_other"
+        }
+      });
+      assert.equal(scopeMismatch.statusCode, 422);
+      assert.equal(scopeMismatch.body.error.code, "workspace_scope_mismatch");
+
+      const removedInstallation = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+        body: {
+          operator_id: operatorId,
+          github_installation: {
+            installation_id: installationId,
+            provider: "github_app",
+            workspace_id: workspaceId,
+            status: "removed"
+          }
+        }
+      });
+      assert.equal(removedInstallation.statusCode, 200);
+
+      const staleTopicBinding = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/topics/${encodeURIComponent(topicId)}/repo-binding`,
+        body: {
+          provider_ref: {
+            provider: "github",
+            repo_ref: "Little-Shock/OpenShockSwarm"
+          },
+          default_branch: "feat/initial-implementation",
+          bound_by: operatorId
+        }
+      });
+      assert.equal(staleTopicBinding.statusCode, 422);
+      assert.equal(staleTopicBinding.body.error.code, "workspace_installation_not_active");
+
+      const missingInstallTopic = "topic_stage4a1_missing_install";
+      const missingInstallChannel = "channel_stage4a1_missing_install";
+
+      const createMissingInstallTopic = await requestJson({
+        port,
+        method: "POST",
+        path: "/v1/topics",
+        headers: {
+          "Idempotency-Key": "stage4a1-missing-install-topic"
+        },
+        body: {
+          topic_id: missingInstallTopic,
+          goal: "stage4a1 missing installation guard",
+          constraints: ["stage4a1", "governance"]
+        }
+      });
+      assert.equal(createMissingInstallTopic.statusCode, 201);
+
+      const missingInstallContext = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(missingInstallChannel)}/context`,
+        body: {
+          operator_id: operatorId,
+          workspace_id: "workspace_stage4a1_missing_install",
+          workspace_root: "/Users/atou/.slock/agents",
+          member: {
+            member_id: "member_stage4a1_missing_install",
+            role: "owner",
+            status: "active"
+          }
+        }
+      });
+      assert.equal(missingInstallContext.statusCode, 200);
+
+      const missingInstallBinding = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/channels/${encodeURIComponent(missingInstallChannel)}/repo-binding`,
+        body: {
+          operator_id: operatorId,
+          topic_id: missingInstallTopic,
+          provider_ref: {
+            provider: "github",
+            repo_ref: "Little-Shock/OpenShockSwarm"
+          }
+        }
+      });
+      assert.equal(missingInstallBinding.statusCode, 422);
+      assert.equal(missingInstallBinding.body.error.code, "workspace_installation_required");
+
+      const auditTrail = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/channels/${encodeURIComponent(channelId)}/audit-trail?limit=40`
+      });
+      assert.equal(auditTrail.statusCode, 200);
+      assert.equal(
+        auditTrail.body.items.some(
+          (item) =>
+            item.action === "channel_repo_binding_upsert" &&
+            item.details.governance_enforced === true &&
+            item.details.member_role === "owner"
+        ),
+        true
+      );
+    }
+  );
+});
+
 test("v1 stage2 batch2 runtime recovery contract supports assignment enforcement and operator-triggered recoveries", async () => {
   const operatorId = "human_operator_stage2_batch2";
   const channelId = "channel_open_shock_batch2";
