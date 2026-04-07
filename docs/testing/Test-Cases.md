@@ -313,14 +313,14 @@
 ## TC-024 Role / Permission Action Matrix
 
 - 业务目标: 确认不同角色对 issue、room、run、repo binding、PR、inbox 的动作边界清楚。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-12` `CHK-13`
 - 前置条件: 存在 admin / reviewer / viewer 三种角色。
 - 测试步骤:
   1. 分别以三种角色访问关键写接口和对应前端入口。
   2. 检查允许、拒绝、禁用状态是否一致。
 - 预期结果: 权限矩阵在 UI 和 API 两侧一致，不存在越权写入。
-- 业务结论: 2026 年 4 月 7 日 `TKT-08` 已把 `members.manage` 这条 owner-side slice 做成 live `/access` surface，并用 browser + targeted auth contract 验证了 invite / role / status 相关边界；但这条用例定义的是跨 issue / room / run / inbox / repo / runtime 的完整动作矩阵，所以当前仍保持 `Not Run`，继续留给 `TKT-09`。
+- 业务结论: 2026 年 4 月 7 日 `TKT-09` 把 Board / Room / Inbox / Setup 的关键 mutation 入口正式接到 live auth session permission truth，并新增 `pnpm test:headed-action-authz-matrix` 独立回放 owner / member / viewer / signed-out 四个窗口下的前台 enable / disable / deny state；同次还用 targeted `go test ./internal/api -run 'TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces' -count=1` 锁住 `/v1/issues`、`/v1/rooms/:id/messages`、`/v1/exec`、`/v1/inbox/:id`、`/v1/repo/binding`、`/v1/runtime/*`、`/v1/pull-requests/:id` 的 allow/deny contract。当前这条跨 issue / room / run / inbox / repo / runtime 的 action matrix 已可独立复核并通过。
 
 ## TC-025 GitHub Webhook Replay / Review Sync
 
@@ -357,4 +357,4 @@
   1. 触发 destructive git 或越界写入动作。
   2. 检查系统是否拦截并生成 approval item。
 - 预期结果: 高风险动作不会直接执行，系统产生显式审批记录。
-- 业务结论: 作为 `TKT-09/TKT-15` 的安全 gate，当前还未建立。
+- 业务结论: 2026 年 4 月 7 日 `TKT-09` 已把 role / permission action matrix 收进真实前台与后端 guard，但 destructive git、越界写入、敏感凭证使用的 approval-required contract 仍未系统化产品化；因此这条安全 gate 继续保留 `Not Run`，留给 `TKT-15` 继续吸收。

@@ -206,10 +206,11 @@
   - [x] worktree 是当前默认隔离单元
   - [x] 本地 CLI 通过 daemon bridge 执行
   - [x] issue 创建类操作具备基本 401/403 权限防护
+  - [x] issue / room / run / inbox / repo / runtime 的关键写入口已按 live session permission 进入 allow / disable split
 - 当前 GAP:
   - [ ] destructive action approval、secrets 分层、越界写保护还未系统化产品化
   - [ ] 沙盒能力目前仍主要继承本地环境
-- 对应 Test Cases: `TC-012` `TC-020`
+- 对应 Test Cases: `TC-011` `TC-024` `TC-027`
 
 ### CHK-13 身份、成员、角色与仓库授权
 
@@ -222,8 +223,8 @@
   - [x] auth session persistence 已有 store test 与 browser reload evidence
   - [x] owner 已可在 `/access` 直接 invite 成员，并 live 调整 member role / status
   - [x] invited member 首次登录会转成 `active`，role 变化会同步反映到 session / permissions / browser probes
+  - [x] Board / Room / Inbox / Setup 关键动作已和 `issue.create` / `room.reply` / `run.execute` / `inbox.review` / `inbox.decide` / `repo.admin` / `runtime.manage` / `pull_request.*` 真值对齐
 - 当前 GAP:
-  - [ ] issue / room / run / inbox / repo / runtime 的 action-level authz matrix 仍未站住
   - [ ] 设备授权与完整邮箱验证流程仍未产品化
   - [ ] GitHub 仍主要是 readiness probe，不是完整授权模型
 - 对应 Test Cases: `TC-014` `TC-016` `TC-024`

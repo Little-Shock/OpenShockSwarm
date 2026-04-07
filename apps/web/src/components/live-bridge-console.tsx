@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useLiveRuntimeTruth } from "@/lib/live-runtime";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 
 type ExecResult = {
   provider: string;
@@ -103,6 +104,12 @@ export function LiveBridgeConsole() {
   const [result, setResult] = useState<ExecResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const canManageRuntime = hasSessionPermission(state.auth.session, "runtime.manage");
+  const canExec = hasSessionPermission(state.auth.session, "run.execute");
+  const runtimeManageStatus = permissionStatus(state.auth.session, "runtime.manage");
+  const execStatus = permissionStatus(state.auth.session, "run.execute");
+  const runtimeManageBoundary = permissionBoundaryCopy(state.auth.session, "runtime.manage");
+  const execBoundary = permissionBoundaryCopy(state.auth.session, "run.execute");
 
   const registryRuntimes = state.runtimes.length > 0 ? state.runtimes : runtimes;
   const selectedMachine =
@@ -138,6 +145,9 @@ export function LiveBridgeConsole() {
   }, [runtime]);
 
   async function handlePairRuntime() {
+    if (!canManageRuntime) {
+      return;
+    }
     setExecError(null);
 
     try {
@@ -149,6 +159,9 @@ export function LiveBridgeConsole() {
   }
 
   async function handleUnpairRuntime() {
+    if (!canManageRuntime) {
+      return;
+    }
     setExecError(null);
 
     try {
@@ -160,6 +173,9 @@ export function LiveBridgeConsole() {
   }
 
   async function handleSelectRuntime(machine: string) {
+    if (!canManageRuntime) {
+      return;
+    }
     setExecError(null);
 
     try {
@@ -172,6 +188,9 @@ export function LiveBridgeConsole() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canExec) {
+      return;
+    }
     setLoading(true);
     setExecError(null);
     setResult(null);
@@ -316,11 +335,12 @@ export function LiveBridgeConsole() {
                     <div className="mt-4 flex flex-wrap items-center gap-3">
                       <button
                         type="button"
-                        disabled={runtimeActionLoading || !actionable || selected}
+                        data-testid={`setup-runtime-select-${item.machine}`}
+                        disabled={runtimeActionLoading || !actionable || selected || !canManageRuntime}
                         onClick={() => void handleSelectRuntime(item.machine)}
                         className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {selected ? "当前所选" : actionable ? "切换到此 Runtime" : "不可选择"}
+                        {selected ? "当前所选" : !canManageRuntime ? "仅 Owner 可切换" : actionable ? "切换到此 Runtime" : "不可选择"}
                       </button>
                       {selected ? (
                         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
@@ -352,22 +372,28 @@ export function LiveBridgeConsole() {
           </label>
           <div className="flex flex-wrap gap-3">
             <button
+              data-testid="setup-runtime-pair"
               type="button"
               onClick={() => void handlePairRuntime()}
-              disabled={runtimeActionLoading}
+              disabled={runtimeActionLoading || !canManageRuntime}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {runtimeActionLoading ? "处理中..." : "配对 Runtime"}
             </button>
             <button
+              data-testid="setup-runtime-unpair"
               type="button"
               onClick={() => void handleUnpairRuntime()}
-              disabled={runtimeActionLoading || pairing?.pairingStatus !== "paired"}
+              disabled={runtimeActionLoading || pairing?.pairingStatus !== "paired" || !canManageRuntime}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               撤销当前授权
             </button>
           </div>
+          <p data-testid="setup-runtime-manage-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+            {runtimeManageStatus}
+          </p>
+          {!canManageRuntime ? <p className="text-sm leading-6 text-[var(--shock-pink)]">{runtimeManageBoundary}</p> : null}
           <div className="grid gap-3 pt-2">
             <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Selection</p>
@@ -396,6 +422,7 @@ export function LiveBridgeConsole() {
             <select
               value={provider}
               onChange={(event) => setProvider(event.target.value)}
+              disabled={!canExec}
               className="w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-sm"
             >
               {(runtime?.providers ?? []).map((item) => (
@@ -412,6 +439,7 @@ export function LiveBridgeConsole() {
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
+              disabled={!canExec}
               rows={4}
               className="w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 text-sm leading-6"
             />
@@ -420,8 +448,9 @@ export function LiveBridgeConsole() {
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            data-testid="setup-runtime-exec-submit"
             type="submit"
-            disabled={loading || !runtime || !isSchedulableRuntime(runtime.state)}
+            disabled={loading || !runtime || !isSchedulableRuntime(runtime.state) || !canExec}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "执行中..." : "发送提示词"}
@@ -430,6 +459,10 @@ export function LiveBridgeConsole() {
             当前 selection 会决定 setup bridge 默认命中的 daemon；Room / Run 路由则按各自绑定的 runtime 派发。
           </p>
         </div>
+        <p data-testid="setup-exec-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+          {execStatus}
+        </p>
+        {!canExec ? <p className="text-sm leading-6 text-[var(--shock-pink)]">{execBoundary}</p> : null}
       </form>
 
       {runtimeError || execError ? (

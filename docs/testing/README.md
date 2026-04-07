@@ -10,6 +10,8 @@
   - `TKT-07` 的 login / logout / session persistence browser evidence
 - [Test Report 2026-04-07 Workspace Invite Member Role](./Test-Report-2026-04-07-workspace-invite-member-role.md)
   - `TKT-08` 的 owner-side invite / member role-status mutation browser evidence
+- [Test Report 2026-04-07 Action AuthZ Matrix](./Test-Report-2026-04-07-action-authz-matrix.md)
+  - `TKT-09` 的 board / room / inbox / setup action-level authz matrix exact evidence
 - [Test Report 2026-04-07 Remote PR Browser Loop](./Test-Report-2026-04-07-remote-pr-browser-loop.md)
   - `TKT-06` 的真实远端 PR create / merge browser-level exact evidence
 

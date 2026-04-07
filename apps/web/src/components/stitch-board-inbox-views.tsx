@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { buildBoardColumns, type InboxItem } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { hasSessionPermission, permissionStatus } from "@/lib/session-authz";
 import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -42,6 +43,16 @@ function pullRequestStatusLabel(status?: string) {
   }
 }
 
+function permissionForInboxAction(
+  item: InboxItem,
+  decision: "approved" | "deferred" | "resolved" | "merged" | "changes_requested"
+) {
+  if (item.kind === "review" && decision === "changes_requested") {
+    return "inbox.review";
+  }
+  return "inbox.decide";
+}
+
 function SurfaceStateMessage({
   title,
   message,
@@ -63,6 +74,9 @@ export function StitchBoardView() {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("把真实 PR 写回接进讨论间");
   const [summary, setSummary] = useState("从房间直接创建 PR，并把 review / merge 状态回写到 Room 和 Inbox。");
+  const session = state.auth.session;
+  const canCreateIssue = hasSessionPermission(session, "issue.create");
+  const createIssueStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(session, "issue.create");
   const liveIssues = loading || error ? [] : state.issues;
   const liveMachines = loading || error ? [] : state.machines;
   const liveAgents = loading || error ? [] : state.agents;
@@ -74,7 +88,7 @@ export function StitchBoardView() {
   const activeAgents = liveAgents.filter((agent) => agent.state === "running").length;
 
   async function handleCreateIssue() {
-    if (!title.trim() || creating) return;
+    if (!title.trim() || creating || !canCreateIssue) return;
     setCreating(true);
     try {
       const payload = await createIssue({
@@ -162,11 +176,14 @@ export function StitchBoardView() {
               <div className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-[#fff8e6] p-4 shadow-[3px_3px_0_0_var(--shock-ink)]">
                 <p className="font-mono text-[10px] tracking-[0.16em]">创建新 Issue Room</p>
                 <div className="mt-4 space-y-3">
-                  <input data-testid="board-create-issue-title" value={title} onChange={(event) => setTitle(event.target.value)} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none" placeholder="需求标题" />
-                  <textarea data-testid="board-create-issue-summary" value={summary} onChange={(event) => setSummary(event.target.value)} className="min-h-[120px] w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none" placeholder="需求摘要" />
-                  <button data-testid="board-create-issue-submit" onClick={handleCreateIssue} disabled={creating} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] disabled:opacity-60">
+                  <input data-testid="board-create-issue-title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!canCreateIssue} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求标题" />
+                  <textarea data-testid="board-create-issue-summary" value={summary} onChange={(event) => setSummary(event.target.value)} disabled={!canCreateIssue} className="min-h-[120px] w-full rounded-[4px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求摘要" />
+                  <button data-testid="board-create-issue-submit" onClick={handleCreateIssue} disabled={creating || !canCreateIssue} className="w-full rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] disabled:opacity-60">
                     {creating ? "创建中..." : "创建并进入讨论间"}
                   </button>
+                  <p data-testid="board-create-issue-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                    {createIssueStatus}
+                  </p>
                 </div>
               </div>
             </aside>
@@ -180,6 +197,7 @@ export function StitchBoardView() {
 export function StitchInboxView() {
   const { state, loading, error, applyInboxDecision } = usePhaseZeroState();
   const inboxItems = loading || error ? [] : state.inbox;
+  const session = state.auth.session;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
   const sidebarChannels = loading || error ? [] : state.channels;
@@ -271,14 +289,16 @@ export function StitchInboxView() {
                         {item.kind === "review" && findPullRequestForItem(item) ? (
                           <>
                             <button
-                              disabled={busyId === item.id}
+                              data-testid={`inbox-action-merged-${item.id}`}
+                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "merged"))}
                               onClick={() => void handleInboxDecision(item, "merged")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >
                               Merge
                             </button>
                             <button
-                              disabled={busyId === item.id}
+                              data-testid={`inbox-action-changes_requested-${item.id}`}
+                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "changes_requested"))}
                               onClick={() => void handleInboxDecision(item, "changes_requested")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >
@@ -288,14 +308,16 @@ export function StitchInboxView() {
                         ) : item.kind === "approval" ? (
                           <>
                             <button
-                              disabled={busyId === item.id}
+                              data-testid={`inbox-action-approved-${item.id}`}
+                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "approved"))}
                               onClick={() => void handleInboxDecision(item, "approved")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >
                               Approve
                             </button>
                             <button
-                              disabled={busyId === item.id}
+                              data-testid={`inbox-action-deferred-${item.id}`}
+                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "deferred"))}
                               onClick={() => void handleInboxDecision(item, "deferred")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >
@@ -305,14 +327,16 @@ export function StitchInboxView() {
                         ) : item.kind === "blocked" ? (
                           <>
                             <button
-                              disabled={busyId === item.id}
+                              data-testid={`inbox-action-resolved-${item.id}`}
+                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "resolved"))}
                               onClick={() => void handleInboxDecision(item, "resolved")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-purple)] px-4 py-3 font-mono text-[10px] text-white disabled:opacity-60"
                             >
                               Resolve
                             </button>
                             <button
-                              disabled={busyId === item.id}
+                              data-testid={`inbox-action-deferred-${item.id}`}
+                              disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, "deferred"))}
                               onClick={() => void handleInboxDecision(item, "deferred")}
                               className="inline-flex min-w-[150px] items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[10px] disabled:opacity-60"
                             >

@@ -41,6 +41,7 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
 		{name: "repo binding", method: http.MethodPost, path: "/v1/repo/binding", body: `{"repo":"example/phase-zero","repoUrl":"https://github.com/example/phase-zero.git","branch":"main"}`, permission: "repo.admin"},
 		{name: "runtime pairing", method: http.MethodPost, path: "/v1/runtime/pairing", body: `{"daemonUrl":"http://127.0.0.1:65531"}`, permission: "runtime.manage"},
+		{name: "runtime unpair", method: http.MethodDelete, path: "/v1/runtime/pairing", body: "", permission: "runtime.manage"},
 		{name: "runtime selection", method: http.MethodPost, path: "/v1/runtime/selection", body: `{"machine":"shock-main"}`, permission: "runtime.manage"},
 	}
 
@@ -214,6 +215,7 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
 		{name: "repo binding", method: http.MethodPost, path: "/v1/repo/binding", body: `{"repo":"example/phase-zero","repoUrl":"https://github.com/example/phase-zero.git","branch":"main"}`, permission: "repo.admin"},
 		{name: "runtime pairing", method: http.MethodPost, path: "/v1/runtime/pairing", body: `{"daemonUrl":"http://127.0.0.1:65531"}`, permission: "runtime.manage"},
+		{name: "runtime unpair", method: http.MethodDelete, path: "/v1/runtime/pairing", body: "", permission: "runtime.manage"},
 		{name: "runtime selection", method: http.MethodPost, path: "/v1/runtime/selection", body: `{"machine":"shock-main"}`, permission: "runtime.manage"},
 	}
 
@@ -251,7 +253,7 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 	}
 }
 
-func TestViewerRoleCannotMutateIssueRoomRunOrInboxSurfaces(t *testing.T) {
+func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 	root := t.TempDir()
 	s, _, server, cleanup := newAuthGuardTestServer(t, root)
 	defer cleanup()
@@ -272,7 +274,13 @@ func TestViewerRoleCannotMutateIssueRoomRunOrInboxSurfaces(t *testing.T) {
 		{name: "room reply", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages", body: `{"prompt":"viewer should not reply"}`, permission: "room.reply"},
 		{name: "run execute", method: http.MethodPost, path: "/v1/exec", body: `{"prompt":"viewer should not exec"}`, permission: "run.execute"},
 		{name: "pull request review", method: http.MethodPost, path: "/v1/rooms/room-runtime/pull-request", body: `{}`, permission: "pull_request.review"},
+		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox review", method: http.MethodPost, path: "/v1/inbox/inbox-review-copy", body: `{"decision":"changes_requested"}`, permission: "inbox.review"},
+		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
+		{name: "repo binding", method: http.MethodPost, path: "/v1/repo/binding", body: `{"repo":"example/phase-zero","repoUrl":"https://github.com/example/phase-zero.git","branch":"main"}`, permission: "repo.admin"},
+		{name: "runtime pairing", method: http.MethodPost, path: "/v1/runtime/pairing", body: `{"daemonUrl":"http://127.0.0.1:65531"}`, permission: "runtime.manage"},
+		{name: "runtime unpair", method: http.MethodDelete, path: "/v1/runtime/pairing", body: "", permission: "runtime.manage"},
+		{name: "runtime selection", method: http.MethodPost, path: "/v1/runtime/selection", body: `{"machine":"shock-main"}`, permission: "runtime.manage"},
 	}
 
 	for _, testCase := range cases {

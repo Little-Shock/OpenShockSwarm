@@ -65,7 +65,8 @@
 - 现状:
   - login / logout / session persistence foundation 已站住，`/access` 已消费 live auth/member/role truth
   - owner-side invite、member role/status mutation 已接进 `/access`
-  - 设备授权与跨 issue / room / run / inbox / repo / runtime 的 action-level authz matrix 仍未完成
+  - 跨 issue / room / run / inbox / repo / runtime 的 action-level authz matrix 已收平
+  - 设备授权与完整邮箱验证流程仍未完成
 - 相关合同:
   - `CHK-12`
   - `CHK-13`

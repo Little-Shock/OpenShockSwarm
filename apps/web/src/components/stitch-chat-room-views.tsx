@@ -8,6 +8,7 @@ import {
   type Room,
 } from "@/lib/mock-data";
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import { StitchSidebar, StitchTopBar } from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -76,6 +77,9 @@ function ClaudeCompactComposer({
   room,
   initialMessages,
   onSend,
+  canSend,
+  sendStatus,
+  sendBoundary,
 }: {
   room: Room;
   initialMessages: Message[];
@@ -85,6 +89,9 @@ function ClaudeCompactComposer({
     provider?: string,
     onEvent?: (event: RoomStreamEvent) => void
   ) => Promise<{ state?: PhaseZeroState; error?: string } | null | undefined>;
+  canSend: boolean;
+  sendStatus: string;
+  sendBoundary: string;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [draft, setDraft] = useState("先给我一句结论：这个讨论间现在该先做哪一步？");
@@ -95,7 +102,7 @@ function ClaudeCompactComposer({
   }, [initialMessages]);
 
   async function handleSend() {
-    if (!draft.trim() || loading) return;
+    if (!draft.trim() || loading || !canSend) return;
     const prompt = draft.trim();
     setLoading(true);
     const now = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
@@ -194,20 +201,29 @@ function ClaudeCompactComposer({
       <div className="border-t-2 border-[var(--shock-ink)] bg-white px-3 py-2">
         <div className="flex items-center gap-2">
           <input
+            data-testid="room-message-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            disabled={!canSend || loading}
             className="h-11 flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[11px] outline-none"
             placeholder="输入指令、问题或新的约束..."
           />
           <button
             type="button"
             onClick={handleSend}
-            disabled={loading}
+            data-testid="room-send-message"
+            disabled={loading || !canSend}
             className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-base disabled:opacity-60"
           >
             ↗
           </button>
         </div>
+        <p data-testid="room-reply-authz" className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+          {sendStatus}
+        </p>
+        {!canSend ? (
+          <p className="mt-2 text-sm leading-6 text-[var(--shock-pink)]">{sendBoundary}</p>
+        ) : null}
       </div>
     </>
   );
@@ -401,11 +417,17 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const room = state.rooms.find((item) => item.id === roomId);
   const run = room ? state.runs.find((item) => item.id === room.runId) : undefined;
   const session = room ? state.sessions.find((item) => item.roomId === room.id) : undefined;
+  const authSession = state.auth.session;
   const messages = room ? state.roomMessages[room.id] ?? [] : [];
   const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
   const [prLoading, setPrLoading] = useState(false);
   const [prError, setPrError] = useState<string | null>(null);
   const canMerge = pullRequest && pullRequest.status !== "merged";
+  const canReply = !loading && !error && hasSessionPermission(authSession, "room.reply");
+  const roomReplyStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "room.reply");
+  const roomReplyBoundary = permissionBoundaryCopy(authSession, "room.reply");
+  const canReviewPullRequest = hasSessionPermission(authSession, "pull_request.review");
+  const canMergePullRequest = hasSessionPermission(authSession, "pull_request.merge");
   const activeAgents =
     room && run
       ? state.agents.filter(
@@ -422,7 +444,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const sidebarAgents = loading || error ? [] : state.agents;
 
   async function handleCreatePullRequest() {
-    if (!room || prLoading) return;
+    if (!room || prLoading || !canReviewPullRequest) return;
     setPrLoading(true);
     setPrError(null);
     try {
@@ -435,7 +457,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   }
 
   async function handleMergePullRequest() {
-    if (!pullRequest || prLoading) return;
+    if (!pullRequest || prLoading || !canMergePullRequest) return;
     setPrLoading(true);
     setPrError(null);
     try {
@@ -444,6 +466,50 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
       setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request merge failed");
     } finally {
       setPrLoading(false);
+    }
+  }
+
+  async function handleSyncPullRequest() {
+    if (!pullRequest || prLoading || !canReviewPullRequest) return;
+    setPrLoading(true);
+    setPrError(null);
+    try {
+      await updatePullRequest(pullRequest.id, { status: pullRequest.status === "changes_requested" ? "changes_requested" : "in_review" });
+    } catch (pullRequestError) {
+      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request sync failed");
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  let pullRequestActionLabel = "发起 PR";
+  let pullRequestActionDisabled = !room || prLoading || !canReviewPullRequest;
+  let pullRequestActionHandler: (() => Promise<void>) | null = handleCreatePullRequest;
+  let pullRequestActionStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "pull_request.review");
+  let pullRequestBoundary = permissionBoundaryCopy(authSession, "pull_request.review");
+
+  if (pullRequest?.status === "merged") {
+    pullRequestActionLabel = "已合并";
+    pullRequestActionDisabled = true;
+    pullRequestActionHandler = null;
+    pullRequestActionStatus = "merged";
+    pullRequestBoundary = "当前 PR 已合并，不再提供新的 review / merge 动作。";
+  } else if (pullRequest) {
+    if (canMergePullRequest) {
+      pullRequestActionLabel = canMerge ? "合并 PR" : "已合并";
+      pullRequestActionDisabled = prLoading || !canMerge;
+      pullRequestActionHandler = handleMergePullRequest;
+      pullRequestActionStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "pull_request.merge");
+      pullRequestBoundary = permissionBoundaryCopy(authSession, "pull_request.merge");
+    } else {
+      pullRequestActionLabel = "同步 PR";
+      pullRequestActionDisabled = prLoading || !canReviewPullRequest;
+      pullRequestActionHandler = handleSyncPullRequest;
+      pullRequestActionStatus =
+        loading || error ? "syncing" : canReviewPullRequest ? "review_only" : permissionStatus(authSession, "pull_request.review");
+      pullRequestBoundary = canReviewPullRequest
+        ? "当前 session 只有 review 权限，可以同步 PR 状态，但不能直接 merge。"
+        : permissionBoundaryCopy(authSession, "pull_request.review");
     }
   }
 
@@ -474,7 +540,14 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                   <DiscussionStateMessage title="未找到讨论间" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
                 </div>
               ) : (
-                <ClaudeCompactComposer room={room} initialMessages={messages} onSend={streamRoomMessage} />
+                <ClaudeCompactComposer
+                  room={room}
+                  initialMessages={messages}
+                  onSend={streamRoomMessage}
+                  canSend={canReply}
+                  sendStatus={roomReplyStatus}
+                  sendBoundary={roomReplyBoundary}
+                />
               )}
             </div>
 
@@ -483,13 +556,19 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                 <button className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] text-white">注入 Guidance</button>
                 <button
                   data-testid="room-pull-request-action"
-                  disabled={!room || prLoading || (pullRequest?.status === "merged")}
-                  onClick={pullRequest ? handleMergePullRequest : handleCreatePullRequest}
+                  disabled={pullRequestActionDisabled}
+                  onClick={() => void pullRequestActionHandler?.()}
                   className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] disabled:opacity-60"
                 >
-                  {!pullRequest ? "发起 PR" : canMerge ? "合并 PR" : "已合并"}
+                  {pullRequestActionLabel}
                 </button>
               </div>
+              <p data-testid="room-pull-request-authz" className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                {pullRequestActionStatus}
+              </p>
+              {(pullRequestActionStatus === "blocked" || pullRequestActionStatus === "signed_out" || pullRequestActionStatus === "review_only" || pullRequestActionStatus === "merged") ? (
+                <p className="mb-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{pullRequestBoundary}</p>
+              ) : null}
 
               <div className="space-y-3">
                 {loading ? (
