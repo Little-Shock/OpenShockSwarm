@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const fixtureDir = path.join(repoRoot, "scripts", "fixtures", "github-webhook-replay");
+const goWrapper = path.join(repoRoot, "scripts", "go.sh");
 const reportArg = readArg("--report");
 const reportPath = reportArg ? path.resolve(process.cwd(), reportArg) : "";
 const secret = "super-secret";
@@ -34,7 +35,7 @@ try {
   const statePath = path.join(workspaceRoot, "data", "phase0", "state.json");
   await mkdir(path.dirname(statePath), { recursive: true });
   const serverBinary = path.join(runArtifactsDir, "openshock-server");
-  await runCommand("go", ["build", "-o", serverBinary, "./cmd/openshock-server"], {
+  await runCommand("bash", [goWrapper, "build", "-o", serverBinary, "./cmd/openshock-server"], {
     cwd: path.join(repoRoot, "apps", "server"),
   });
 
