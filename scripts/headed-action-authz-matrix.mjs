@@ -283,9 +283,9 @@ async function verifyOwnerSurface(page, webURL, screenshotsDir) {
   await capture(page, screenshotsDir, "owner-room");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
-  await expectButtonState(page, "inbox-action-merged-inbox-review-copy", false);
-  await expectButtonState(page, "inbox-action-changes_requested-inbox-review-copy", false);
-  await expectButtonState(page, "inbox-action-approved-inbox-approval-runtime", false);
+  await expectButtonState(page, "approval-center-action-merged-inbox-review-copy", false);
+  await expectButtonState(page, "approval-center-action-changes_requested-inbox-review-copy", false);
+  await expectButtonState(page, "approval-center-action-approved-inbox-approval-runtime", false);
   await capture(page, screenshotsDir, "owner-inbox");
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
@@ -313,9 +313,9 @@ async function verifyMemberSurface(page, webURL, screenshotsDir) {
   await capture(page, screenshotsDir, "member-room");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
-  await expectButtonState(page, "inbox-action-merged-inbox-review-copy", true);
-  await expectButtonState(page, "inbox-action-changes_requested-inbox-review-copy", false);
-  await expectButtonState(page, "inbox-action-approved-inbox-approval-runtime", true);
+  await expectButtonState(page, "approval-center-action-merged-inbox-review-copy", true);
+  await expectButtonState(page, "approval-center-action-changes_requested-inbox-review-copy", false);
+  await expectButtonState(page, "approval-center-action-approved-inbox-approval-runtime", true);
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
   await waitForText(page, "setup-repo-binding-authz", "blocked");
@@ -341,9 +341,9 @@ async function verifyViewerSurface(page, webURL, screenshotsDir) {
   await capture(page, screenshotsDir, "viewer-room");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
-  await expectButtonState(page, "inbox-action-merged-inbox-review-copy", true);
-  await expectButtonState(page, "inbox-action-changes_requested-inbox-review-copy", true);
-  await expectButtonState(page, "inbox-action-approved-inbox-approval-runtime", true);
+  await expectButtonState(page, "approval-center-action-merged-inbox-review-copy", true);
+  await expectButtonState(page, "approval-center-action-changes_requested-inbox-review-copy", true);
+  await expectButtonState(page, "approval-center-action-approved-inbox-approval-runtime", true);
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
   await waitForText(page, "setup-repo-binding-authz", "blocked");
