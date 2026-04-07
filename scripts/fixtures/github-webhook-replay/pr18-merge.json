@@ -1,0 +1,24 @@
+{
+  "action": "closed",
+  "repository": {
+    "full_name": "Larkspur-Wang/OpenShock"
+  },
+  "sender": {
+    "login": "merge-bot"
+  },
+  "pull_request": {
+    "number": 18,
+    "title": "runtime: surface heartbeat and lane state in discussion room",
+    "html_url": "https://github.com/Larkspur-Wang/OpenShock/pull/18",
+    "state": "closed",
+    "merged": true,
+    "head": {
+      "ref": "feat/runtime-state-shell",
+      "sha": "abc123"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "def456"
+    }
+  }
+}

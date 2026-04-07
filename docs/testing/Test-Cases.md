@@ -206,7 +206,7 @@
   2. 触发 webhook 事件。
   3. 检查 state / inbox / room / PR 是否同步更新。
 - 预期结果: GitHub 事件可以持续同步回 OpenShock。
-- 业务结论: 当前仓库未完成，不应写成已做完。
+- 业务结论: 2026 年 4 月 7 日 `TKT-05` 新增了 exact replay harness，把 signed webhook ingest / review-comment-check-merge writeback 在本地控制环境里跑通；但它仍不是 installation-complete 后的真实 GitHub callback，所以这条完整安装 + webhook 用例继续保持 Blocked。
 
 ## TC-016 真实远端 PR 创建、同步与合并
 
@@ -325,14 +325,14 @@
 ## TC-025 GitHub Webhook Replay / Review Sync
 
 - 业务目标: 确认 webhook 事件可以把 review / comment / merge 状态同步回 OpenShock。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-07`
 - 前置条件: 存在 webhook fixture 或可控 replay 环境。
 - 测试步骤:
   1. 回放 pull request、review、comment、merge 事件。
   2. 检查 state / inbox / room / pull request 是否更新。
 - 预期结果: webhook 事件被规范化、验签、写回，且失败态可见。
-- 业务结论: 作为 `TKT-05/TKT-06` 的 gate，当前还未执行实机验证。
+- 业务结论: 2026 年 4 月 7 日新增 `pnpm test:webhook-replay`，会起临时 `openshock-server` 并对 `/v1/github/webhook` 回放 signed review / comment / check / merge 事件，同时验证 bad-signature 与 untracked PR failure contract。当前这条 replay / review-sync 用例已可独立复核并通过。
 
 ## TC-026 Headed Setup 到 PR Journey
 

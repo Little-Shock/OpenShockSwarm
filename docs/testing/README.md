@@ -4,6 +4,8 @@
   - 以 `PRD -> Checklist -> Test Case` 链路整理的全量验证项
 - [Test Report 2026-04-06 Main](./Test-Report-2026-04-06-main.md)
   - 本轮在 `main` 基线上的实际执行结果、失败项和 GAP
+- [Test Report 2026-04-07 Webhook Replay](./Test-Report-2026-04-07-webhook-replay.md)
+  - `TKT-05` 的 webhook replay / review sync exact replay evidence
 
 如果 `Test Cases` 和 `Test Report` 冲突：
 

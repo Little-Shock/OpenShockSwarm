@@ -1,0 +1,28 @@
+{
+  "action": "submitted",
+  "repository": {
+    "full_name": "Larkspur-Wang/OpenShock"
+  },
+  "sender": {
+    "login": "review-bot"
+  },
+  "pull_request": {
+    "number": 404,
+    "title": "missing pr",
+    "html_url": "https://github.com/Larkspur-Wang/OpenShock/pull/404",
+    "state": "open",
+    "merged": false,
+    "head": {
+      "ref": "feat/missing-pr",
+      "sha": "abc123"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "def456"
+    }
+  },
+  "review": {
+    "state": "approved",
+    "body": "looks good"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "action": "created",
+  "repository": {
+    "full_name": "Larkspur-Wang/OpenShock"
+  },
+  "sender": {
+    "login": "comment-bot"
+  },
+  "issue": {
+    "number": 22,
+    "title": "inbox: unify approval, blocked, and review cards",
+    "pull_request": {
+      "html_url": "https://github.com/Larkspur-Wang/OpenShock/pull/22"
+    }
+  },
+  "comment": {
+    "body": "please also cover stale runtime"
+  }
+}

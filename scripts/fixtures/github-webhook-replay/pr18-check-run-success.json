@@ -1,0 +1,21 @@
+{
+  "action": "completed",
+  "repository": {
+    "full_name": "Larkspur-Wang/OpenShock"
+  },
+  "sender": {
+    "login": "checks-bot"
+  },
+  "check_run": {
+    "name": "ci / unit",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "abc123",
+    "pull_requests": [
+      {
+        "number": 18,
+        "html_url": "https://github.com/Larkspur-Wang/OpenShock/pull/18"
+      }
+    ]
+  }
+}

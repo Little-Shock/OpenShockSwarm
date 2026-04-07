@@ -1,0 +1,28 @@
+{
+  "action": "submitted",
+  "repository": {
+    "full_name": "Larkspur-Wang/OpenShock"
+  },
+  "sender": {
+    "login": "review-bot"
+  },
+  "pull_request": {
+    "number": 22,
+    "title": "inbox: unify approval, blocked, and review cards",
+    "html_url": "https://github.com/Larkspur-Wang/OpenShock/pull/22",
+    "state": "open",
+    "merged": false,
+    "head": {
+      "ref": "feat/inbox-decision-cards",
+      "sha": "abc123"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "def456"
+    }
+  },
+  "review": {
+    "state": "changes_requested",
+    "body": "needs tests"
+  }
+}
