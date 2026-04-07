@@ -305,6 +305,7 @@ async function writeShellState(res) {
       channelOperatorActionsRead,
       channelRecentActionsRead,
       recoveryActionsRead,
+      channelExternalMemoryProviderRead,
     ] = await Promise.all([
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/repo-binding` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/notification-endpoint` : ""),
@@ -313,7 +314,13 @@ async function writeShellState(res) {
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/operator-actions?limit=100` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/recent-actions?limit=100` : ""),
       fetchOptionalUpstreamJson(buildRuntimeRecoveryActionsPath(effectiveScope)),
+      fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/external-memory-provider` : ""),
     ]);
+    const channelMemoryViewerRead = await resolveChannelMemoryViewerRead({
+      channelId,
+      encodedChannelId,
+      channelExternalMemoryProviderRead,
+    });
     const channelContextRead = resolvedChannelContext.contextRead;
     const workspaceId = resolveWorkspaceIdFromChannelContext(channelContextRead.payload?.context);
     const workspaceGovernanceProjection = buildWorkspaceGovernanceProjectionFromChannelTruth({
@@ -338,6 +345,9 @@ async function writeShellState(res) {
       repoBindingProjection: repoBindingRead?.repo_binding ?? null,
       channelContextContract: channelContextRead.payload?.context ?? null,
       channelNotificationEndpointContract: channelNotificationEndpointRead.payload?.notification_endpoint ?? null,
+      channelExternalMemoryProviderContract:
+        channelExternalMemoryProviderRead.payload?.external_memory_provider ?? null,
+      channelMemoryViewerProjection: channelMemoryViewerRead.payload?.memory_viewer ?? null,
       channelRepoBindingConfig: channelRepoBindingRead.payload?.repo_binding ?? null,
       channelAuditTrail: Array.isArray(channelAuditTrailRead.payload?.items) ? channelAuditTrailRead.payload.items : [],
       channelWorkAssignments: Array.isArray(channelWorkAssignmentsRead.payload?.items)
@@ -364,6 +374,8 @@ async function writeShellState(res) {
         operator_actions_status: channelOperatorActionsRead.status,
         recent_actions_status: channelRecentActionsRead.status,
         recovery_actions_status: recoveryActionsRead.status,
+        external_memory_provider_status: channelExternalMemoryProviderRead.status,
+        memory_viewer_status: channelMemoryViewerRead.status,
       },
       actorRegistry: Array.isArray(actorListRead?.items) ? actorListRead.items : [],
       controlEvents: Array.isArray(controlEventsRead?.items) ? controlEventsRead.items : [],
@@ -1199,6 +1211,31 @@ async function resolveChannelContextFromCandidates(candidates) {
   return { channelId: "", contextRead: { status: "skipped", payload: null, path: null } };
 }
 
+async function resolveChannelMemoryViewerRead({ channelId, encodedChannelId, channelExternalMemoryProviderRead }) {
+  const normalizedChannelId = normalizeText(channelId);
+  if (!normalizedChannelId) {
+    return { status: "skipped", payload: null, path: null };
+  }
+  if (channelExternalMemoryProviderRead?.status !== "ok") {
+    return { status: "skipped", payload: null, path: null };
+  }
+  const providerContract =
+    channelExternalMemoryProviderRead.payload?.external_memory_provider &&
+    typeof channelExternalMemoryProviderRead.payload.external_memory_provider === "object"
+      ? channelExternalMemoryProviderRead.payload.external_memory_provider
+      : {};
+  const provider =
+    providerContract.external_memory_provider &&
+    typeof providerContract.external_memory_provider === "object"
+      ? providerContract.external_memory_provider
+      : providerContract;
+  const providerStatus = normalizeText(provider?.status);
+  if (providerStatus && providerStatus !== "active") {
+    return { status: "skipped", payload: null, path: null };
+  }
+  return fetchOptionalUpstreamJson(`/v1/channels/${encodedChannelId}/memory-viewer?limit=100`);
+}
+
 async function fetchOptionalUpstreamJson(pathWithQuery) {
   if (!normalizeText(pathWithQuery)) {
     return { status: "skipped", payload: null, path: null };
@@ -1293,6 +1330,8 @@ function buildShellStatePayload({
   repoBindingProjection,
   channelContextContract,
   channelNotificationEndpointContract,
+  channelExternalMemoryProviderContract,
+  channelMemoryViewerProjection,
   channelRepoBindingConfig,
   channelAuditTrail,
   channelWorkAssignments,
@@ -1334,6 +1373,8 @@ function buildShellStatePayload({
     topicRepoBindingProjection: repoBindingProjection,
     channelContextContract,
     channelNotificationEndpointContract,
+    channelExternalMemoryProviderContract,
+    channelMemoryViewerProjection,
     channelRepoBindingConfig,
     channelAuditTrail: normalizedChannelAuditTrail,
     channelWorkAssignments: normalizedChannelWorkAssignments,
@@ -1569,6 +1610,8 @@ function buildOperatorConsoleState({
   topicRepoBindingProjection,
   channelContextContract,
   channelNotificationEndpointContract,
+  channelExternalMemoryProviderContract,
+  channelMemoryViewerProjection,
   channelRepoBindingConfig,
   channelAuditTrail,
   channelWorkAssignments,
@@ -1673,6 +1716,14 @@ function buildOperatorConsoleState({
     channelOperatorActions,
   });
   normalizedWorkspaceGovernance.stage4a2_governance = normalizedWorkspaceGovernance.stage4a2;
+  normalizedWorkspaceGovernance.stage4b = buildStage4bGovernanceProjection({
+    channelContextContract: channelContract,
+    channelExternalMemoryProviderContract,
+    channelMemoryViewerProjection,
+    channelRecentActions,
+    channelSurface,
+  });
+  normalizedWorkspaceGovernance.stage4b_governance = normalizedWorkspaceGovernance.stage4b;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -1887,6 +1938,367 @@ function buildStage4a2GovernanceProjection({
           null,
       },
     },
+  };
+}
+
+function buildStage4bGovernanceProjection({
+  channelContextContract,
+  channelExternalMemoryProviderContract,
+  channelMemoryViewerProjection,
+  channelRecentActions,
+  channelSurface,
+}) {
+  const context = channelContextContract?.context && typeof channelContextContract.context === "object"
+    ? channelContextContract.context
+    : {};
+  const governance = channelContextContract?.governance && typeof channelContextContract.governance === "object"
+    ? channelContextContract.governance
+    : {};
+  const writeAnchors = channelContextContract?.write_anchors && typeof channelContextContract.write_anchors === "object"
+    ? channelContextContract.write_anchors
+    : {};
+  const auditAnchor = channelContextContract?.audit_anchor && typeof channelContextContract.audit_anchor === "object"
+    ? channelContextContract.audit_anchor
+    : {};
+  const providerContract = normalizeStage4bExternalMemoryProviderContract(channelExternalMemoryProviderContract);
+  const provider = normalizeStage4bExternalMemoryProvider(
+    pickFirstDefinedValue([
+      providerContract.external_memory_provider,
+      channelMemoryViewerProjection?.external_memory_provider,
+      channelContextContract?.external_memory_provider,
+      context.external_memory_provider,
+    ]),
+  );
+  const memoryViewer = normalizeStage4bMemoryViewer(channelMemoryViewerProjection);
+  const skillPolicyPlugin = normalizeStage4bSkillPolicyPlugin(
+    pickFirstDefinedValue([
+      governance.skill_policy_plugin,
+      governance.skillPolicyPlugin,
+      context.skill_policy_plugin,
+      context.skillPolicyPlugin,
+    ]),
+  );
+  const tokenQuotaContext = normalizeStage4bTokenQuotaContext(
+    pickFirstDefinedValue([
+      governance.token_quota_context,
+      governance.tokenQuotaContext,
+      context.token_quota_context,
+      context.tokenQuotaContext,
+    ]),
+  );
+  const providerReadStatus = normalizeText(channelSurface?.external_memory_provider_status) || "skipped";
+  const memoryViewerReadStatus = normalizeText(channelSurface?.memory_viewer_status) || "skipped";
+  const providerStatus = normalizeText(provider?.status);
+  const externalMemoryProviderStatus =
+    providerReadStatus === "ok"
+      ? provider
+        ? providerStatus === "active"
+          ? "ok"
+          : providerStatus || "pending"
+        : "pending"
+      : providerReadStatus;
+  const resolvedMemoryViewerStatus =
+    memoryViewerReadStatus === "ok"
+      ? "ok"
+      : memoryViewerReadStatus === "skipped" && providerStatus && providerStatus !== "active"
+        ? "provider_not_active"
+        : memoryViewerReadStatus;
+  const skillPolicyPluginStatus = skillPolicyPlugin ? "ok" : "pending";
+  const tokenQuotaContextStatus = tokenQuotaContext ? "ok" : "pending";
+  const providerAuditAnchor =
+    normalizeStage4a2AuditAnchor(providerContract.audit_anchor?.latest?.external_memory_provider) ||
+    normalizeStage4a2AuditAnchor(auditAnchor.latest?.external_memory_provider) ||
+    null;
+  const memoryWriteAuditAnchor =
+    normalizeStage4a2AuditAnchor(memoryViewer.audit_anchor?.latest?.memory_write) ||
+    normalizeStage4a2AuditAnchor(providerContract.audit_anchor?.latest?.memory_write) ||
+    normalizeStage4a2AuditAnchor(auditAnchor.latest?.memory_write) ||
+    null;
+  const memoryFeedbackAuditAnchor =
+    normalizeStage4a2AuditAnchor(memoryViewer.audit_anchor?.latest?.memory_feedback) ||
+    normalizeStage4a2AuditAnchor(providerContract.audit_anchor?.latest?.memory_feedback) ||
+    normalizeStage4a2AuditAnchor(auditAnchor.latest?.memory_feedback) ||
+    null;
+  const memoryPromoteAuditAnchor =
+    normalizeStage4a2AuditAnchor(memoryViewer.audit_anchor?.latest?.memory_promote) ||
+    normalizeStage4a2AuditAnchor(providerContract.audit_anchor?.latest?.memory_promote) ||
+    normalizeStage4a2AuditAnchor(auditAnchor.latest?.memory_promote) ||
+    null;
+  const memoryForgetAuditAnchor =
+    normalizeStage4a2AuditAnchor(memoryViewer.audit_anchor?.latest?.memory_forget) ||
+    normalizeStage4a2AuditAnchor(providerContract.audit_anchor?.latest?.memory_forget) ||
+    normalizeStage4a2AuditAnchor(auditAnchor.latest?.memory_forget) ||
+    null;
+  const skillPolicyPluginAuditAnchor = normalizeStage4a2AuditAnchor(auditAnchor.latest?.skill_policy_plugin);
+  const tokenQuotaContextAuditAnchor = normalizeStage4a2AuditAnchor(auditAnchor.latest?.token_quota_context);
+  const stage4bTimeline = summarizeStage4bTimeline(channelRecentActions);
+  const auditReady = Boolean(
+    providerAuditAnchor ||
+      memoryWriteAuditAnchor ||
+      memoryFeedbackAuditAnchor ||
+      memoryPromoteAuditAnchor ||
+      memoryForgetAuditAnchor ||
+      skillPolicyPluginAuditAnchor ||
+      tokenQuotaContextAuditAnchor,
+  );
+  const providerWriteAnchors =
+    providerContract.write_anchors && typeof providerContract.write_anchors === "object"
+      ? providerContract.write_anchors
+      : {};
+  const memoryViewerWriteAnchors =
+    memoryViewer.write_anchors && typeof memoryViewer.write_anchors === "object"
+      ? memoryViewer.write_anchors
+      : {};
+  const normalizedWriteAnchors = {
+    external_memory_provider_upsert:
+      normalizeText(writeAnchors.external_memory_provider_upsert) ||
+      normalizeText(providerWriteAnchors.provider_upsert) ||
+      null,
+    memory_viewer: normalizeText(writeAnchors.memory_viewer) || null,
+    memory_search: normalizeText(writeAnchors.memory_search) || normalizeText(providerWriteAnchors.memory_search) || null,
+    memory_get: normalizeText(writeAnchors.memory_get) || normalizeText(providerWriteAnchors.memory_get) || null,
+    memory_write:
+      normalizeText(writeAnchors.memory_write) ||
+      normalizeText(memoryViewerWriteAnchors.memory_write) ||
+      normalizeText(providerWriteAnchors.memory_write) ||
+      null,
+    memory_feedback:
+      normalizeText(writeAnchors.memory_feedback) ||
+      normalizeText(memoryViewerWriteAnchors.memory_feedback) ||
+      normalizeText(providerWriteAnchors.memory_feedback) ||
+      null,
+    memory_promote:
+      normalizeText(writeAnchors.memory_promote) ||
+      normalizeText(memoryViewerWriteAnchors.memory_promote) ||
+      normalizeText(providerWriteAnchors.memory_promote) ||
+      null,
+    memory_forget:
+      normalizeText(writeAnchors.memory_forget) ||
+      normalizeText(memoryViewerWriteAnchors.memory_forget) ||
+      normalizeText(providerWriteAnchors.memory_forget) ||
+      null,
+    skill_policy_plugin_upsert: normalizeText(writeAnchors.skill_policy_plugin_upsert) || null,
+    token_quota_context_upsert: normalizeText(writeAnchors.token_quota_context_upsert) || null,
+    timeline_anchor: normalizeText(writeAnchors.recent_actions) || null,
+  };
+  const timelineReady = stage4bTimeline.total > 0 || Boolean(normalizedWriteAnchors.timeline_anchor);
+
+  return {
+    status: {
+      external_memory_provider_status: externalMemoryProviderStatus,
+      memory_viewer_status: resolvedMemoryViewerStatus,
+      skill_policy_plugin_status: skillPolicyPluginStatus,
+      token_quota_context_status: tokenQuotaContextStatus,
+      audit_status: auditReady ? "ok" : "pending",
+      timeline_status: timelineReady ? "ok" : "pending",
+    },
+    external_memory_provider: {
+      provider,
+      write_anchors: {
+        provider_upsert: normalizedWriteAnchors.external_memory_provider_upsert,
+        memory_search: normalizedWriteAnchors.memory_search,
+        memory_get: normalizedWriteAnchors.memory_get,
+        memory_write: normalizedWriteAnchors.memory_write,
+        memory_feedback: normalizedWriteAnchors.memory_feedback,
+        memory_promote: normalizedWriteAnchors.memory_promote,
+        memory_forget: normalizedWriteAnchors.memory_forget,
+      },
+      audit_anchor: {
+        external_memory_provider: providerAuditAnchor,
+        memory_write: memoryWriteAuditAnchor,
+        memory_feedback: memoryFeedbackAuditAnchor,
+        memory_promote: memoryPromoteAuditAnchor,
+        memory_forget: memoryForgetAuditAnchor,
+      },
+    },
+    memory_viewer: {
+      summary: memoryViewer.summary,
+      items: memoryViewer.items,
+      write_anchors: {
+        memory_viewer: normalizedWriteAnchors.memory_viewer,
+        memory_write: normalizedWriteAnchors.memory_write,
+        memory_feedback: normalizedWriteAnchors.memory_feedback,
+        memory_promote: normalizedWriteAnchors.memory_promote,
+        memory_forget: normalizedWriteAnchors.memory_forget,
+      },
+      audit_anchor: {
+        memory_write: memoryWriteAuditAnchor,
+        memory_feedback: memoryFeedbackAuditAnchor,
+        memory_promote: memoryPromoteAuditAnchor,
+        memory_forget: memoryForgetAuditAnchor,
+      },
+    },
+    skill_policy_plugin: {
+      value: skillPolicyPlugin,
+      write_anchor: normalizedWriteAnchors.skill_policy_plugin_upsert,
+      audit_anchor: skillPolicyPluginAuditAnchor,
+    },
+    token_quota_context: {
+      value: tokenQuotaContext,
+      write_anchor: normalizedWriteAnchors.token_quota_context_upsert,
+      audit_anchor: tokenQuotaContextAuditAnchor,
+    },
+    timeline: {
+      anchor: normalizedWriteAnchors.timeline_anchor,
+      recent_actions: stage4bTimeline.actions,
+      total: stage4bTimeline.total,
+    },
+  };
+}
+
+function normalizeStage4bExternalMemoryProviderContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const contract =
+    raw.external_memory_provider && typeof raw.external_memory_provider === "object" ? raw.external_memory_provider : raw;
+  return {
+    external_memory_provider: contract.external_memory_provider || null,
+    write_anchors: contract.write_anchors || {},
+    audit_anchor: contract.audit_anchor || {},
+  };
+}
+
+function normalizeStage4bExternalMemoryProvider(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    provider_id: normalizeText(raw.provider_id) || null,
+    provider_type: normalizeText(raw.provider_type) || null,
+    status: normalizeText(raw.status) || "disabled",
+    read_scopes: normalizeStringArray(raw.read_scopes),
+    write_scopes: normalizeStringArray(raw.write_scopes),
+    recall_policy: raw.recall_policy && typeof raw.recall_policy === "object" ? raw.recall_policy : null,
+    retention_policy: raw.retention_policy && typeof raw.retention_policy === "object" ? raw.retention_policy : null,
+    sharing_policy: raw.sharing_policy && typeof raw.sharing_policy === "object" ? raw.sharing_policy : null,
+    capabilities: raw.capabilities && typeof raw.capabilities === "object" ? raw.capabilities : {},
+  };
+}
+
+function normalizeStage4bMemoryViewer(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      summary: {
+        total_entries: 0,
+        active_entries: 0,
+        forgotten_entries: 0,
+      },
+      items: [],
+      write_anchors: {},
+      audit_anchor: {},
+    };
+  }
+  return {
+    summary: {
+      total_entries: Number(raw.summary?.total_entries || 0),
+      active_entries: Number(raw.summary?.active_entries || 0),
+      forgotten_entries: Number(raw.summary?.forgotten_entries || 0),
+    },
+    items: Array.isArray(raw.items)
+      ? raw.items.map((item) => ({
+          memory_id: normalizeText(item?.memory_id) || null,
+          provider_memory_id: normalizeText(item?.provider_memory_id) || null,
+          scope: normalizeText(item?.scope) || null,
+          content: normalizeText(item?.content) || null,
+          source_action: normalizeText(item?.source_action) || null,
+          source_ref: normalizeText(item?.source_ref) || null,
+          status: normalizeText(item?.status) || "active",
+          feedback:
+            item?.feedback && typeof item.feedback === "object"
+              ? {
+                  verdict: normalizeText(item.feedback.verdict) || null,
+                  note: normalizeText(item.feedback.note) || null,
+                }
+              : null,
+          promoted_at: item?.promoted_at || null,
+          forgotten_at: item?.forgotten_at || null,
+          created_at: item?.created_at || null,
+          updated_at: item?.updated_at || null,
+        }))
+      : [],
+    write_anchors: raw.write_anchors && typeof raw.write_anchors === "object" ? raw.write_anchors : {},
+    audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : {},
+  };
+}
+
+function normalizeStage4bSkillPolicyPlugin(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const registry = raw.registry && typeof raw.registry === "object" ? raw.registry : {};
+  return {
+    enabled: raw.enabled !== false,
+    scope: normalizeText(raw.scope) || null,
+    registry: {
+      skill_refs: normalizeStringArray(registry.skill_refs),
+      policy_refs: normalizeStringArray(registry.policy_refs),
+      plugin_refs: normalizeStringArray(registry.plugin_refs),
+    },
+    bindings: Array.isArray(raw.bindings)
+      ? raw.bindings.map((item) => ({
+          binding_id: normalizeText(item?.binding_id) || null,
+          plugin_ref: normalizeText(item?.plugin_ref) || null,
+          skill_ref: normalizeText(item?.skill_ref) || null,
+          policy_ref: normalizeText(item?.policy_ref) || null,
+          enabled: item?.enabled !== false,
+          scope: normalizeText(item?.scope) || null,
+        }))
+      : [],
+    updated_at: raw.updated_at || null,
+    updated_by: normalizeText(raw.updated_by) || null,
+  };
+}
+
+function normalizeStage4bTokenQuotaContext(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    token_used: Number(raw.token_used || 0),
+    token_limit: raw.token_limit === null || raw.token_limit === undefined ? null : Number(raw.token_limit),
+    quota_state: normalizeText(raw.quota_state) || "healthy",
+    context_tokens: Number(raw.context_tokens || 0),
+    context_window_tokens:
+      raw.context_window_tokens === null || raw.context_window_tokens === undefined
+        ? null
+        : Number(raw.context_window_tokens),
+    recall_source: normalizeText(raw.recall_source) || null,
+    recall_hits: Number(raw.recall_hits || 0),
+    degrade_reason: normalizeText(raw.degrade_reason) || null,
+    updated_at: raw.updated_at || null,
+    updated_by: normalizeText(raw.updated_by) || null,
+  };
+}
+
+function summarizeStage4bTimeline(items) {
+  if (!Array.isArray(items)) {
+    return { total: 0, actions: [] };
+  }
+  const actions = [];
+  for (const item of items) {
+    const action = normalizeText(item?.action);
+    if (!action) {
+      continue;
+    }
+    if (
+      !action.includes("memory") &&
+      !action.includes("skill_policy_plugin") &&
+      !action.includes("token_quota_context")
+    ) {
+      continue;
+    }
+    actions.push({
+      action,
+      at: item?.at || null,
+    });
+    if (actions.length >= 10) {
+      break;
+    }
+  }
+  return {
+    total: actions.length,
+    actions,
   };
 }
 

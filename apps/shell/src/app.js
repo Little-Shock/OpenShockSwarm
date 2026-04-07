@@ -503,6 +503,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage4a2_governance && typeof governance.stage4a2_governance === "object"
       ? governance.stage4a2_governance
       : null);
+  const stage4b =
+    (governance.stage4b && typeof governance.stage4b === "object" ? governance.stage4b : null) ||
+    (governance.stage4b_governance && typeof governance.stage4b_governance === "object"
+      ? governance.stage4b_governance
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -727,6 +732,69 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
       status: normalizeText(stage4a2Status.usage_notes_status) === "ok" ? "active" : "pending",
     });
     dom.workspaceGovernanceList.append(usageCard);
+  }
+
+  if (stage4b) {
+    const stage4bStatus = stage4b.status && typeof stage4b.status === "object" ? stage4b.status : {};
+    const provider =
+      stage4b.external_memory_provider && typeof stage4b.external_memory_provider === "object"
+        ? stage4b.external_memory_provider
+        : {};
+    const memoryViewer =
+      stage4b.memory_viewer && typeof stage4b.memory_viewer === "object" ? stage4b.memory_viewer : {};
+    const skillPolicyPlugin =
+      stage4b.skill_policy_plugin && typeof stage4b.skill_policy_plugin === "object"
+        ? stage4b.skill_policy_plugin
+        : {};
+    const tokenQuotaContext =
+      stage4b.token_quota_context && typeof stage4b.token_quota_context === "object"
+        ? stage4b.token_quota_context
+        : {};
+    const timeline = stage4b.timeline && typeof stage4b.timeline === "object" ? stage4b.timeline : {};
+
+    const providerCard = queueCard({
+      title: "Stage4B External Memory Provider",
+      subtitle:
+        `provider=${normalizeText(stage4bStatus.external_memory_provider_status) || "pending"} · ` +
+        `viewer=${normalizeText(stage4bStatus.memory_viewer_status) || "pending"}`,
+      note: `${formatStage4bProvider(provider.provider)} · ${formatStage4bProviderAnchors(provider.write_anchors)}`,
+      status:
+        normalizeText(stage4bStatus.external_memory_provider_status) === "ok" &&
+        normalizeText(stage4bStatus.memory_viewer_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(providerCard);
+
+    const memoryViewerCard = queueCard({
+      title: "Stage4B Memory Viewer",
+      subtitle: `status=${normalizeText(stage4bStatus.memory_viewer_status) || "pending"}`,
+      note: `${formatStage4bMemoryViewer(memoryViewer)} · ${formatStage4bMemoryItems(memoryViewer.items)}`,
+      status: normalizeText(stage4bStatus.memory_viewer_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(memoryViewerCard);
+
+    const skillPolicyPluginCard = queueCard({
+      title: "Stage4B Skill / Policy / Plugin",
+      subtitle: `status=${normalizeText(stage4bStatus.skill_policy_plugin_status) || "pending"}`,
+      note: `${formatStage4bSkillPolicyPlugin(skillPolicyPlugin.value)} · ${formatStage4bAuditAnchor(skillPolicyPlugin.audit_anchor)}`,
+      status: normalizeText(stage4bStatus.skill_policy_plugin_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(skillPolicyPluginCard);
+
+    const tokenQuotaCard = queueCard({
+      title: "Stage4B Token / Quota / Context",
+      subtitle:
+        `status=${normalizeText(stage4bStatus.token_quota_context_status) || "pending"} · ` +
+        `timeline=${normalizeText(stage4bStatus.timeline_status) || "pending"}`,
+      note: `${formatStage4bTokenQuotaContext(tokenQuotaContext.value)} · ${formatStage4bTimeline(timeline)}`,
+      status:
+        normalizeText(stage4bStatus.token_quota_context_status) === "ok" &&
+        normalizeText(stage4bStatus.timeline_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(tokenQuotaCard);
   }
 }
 
@@ -1357,6 +1425,118 @@ function formatStage4a2Enforcement(raw) {
   const approvalRequired = raw.approval_required === true ? "yes" : "no";
   const approvalId = normalizeText(raw.approval_id) || "n/a";
   return `enforcement profile=${profile} · secret_refs=${secretRefs} · approval_required=${approvalRequired} · approval_id=${approvalId}`;
+}
+
+function formatStage4bProvider(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "external memory provider pending";
+  }
+  const providerId = normalizeText(raw.provider_id) || "n/a";
+  const providerType = normalizeText(raw.provider_type) || "n/a";
+  const status = normalizeText(raw.status) || "unknown";
+  const readScopes = Array.isArray(raw.read_scopes) ? raw.read_scopes : [];
+  const writeScopes = Array.isArray(raw.write_scopes) ? raw.write_scopes : [];
+  return `provider=${providerType}#${providerId}:${status} · read=[${readScopes.join(",") || "n/a"}] · write=[${
+    writeScopes.join(",") || "n/a"
+  }]`;
+}
+
+function formatStage4bProviderAnchors(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "provider anchors pending";
+  }
+  const memorySearch = normalizeText(raw.memory_search) || "n/a";
+  const memoryWrite = normalizeText(raw.memory_write) || "n/a";
+  const memoryForget = normalizeText(raw.memory_forget) || "n/a";
+  return `anchors search=${memorySearch} · write=${memoryWrite} · forget=${memoryForget}`;
+}
+
+function formatStage4bMemoryViewer(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "memory viewer pending";
+  }
+  const summary = raw.summary && typeof raw.summary === "object" ? raw.summary : {};
+  const totalEntries = Number(summary.total_entries || 0);
+  const activeEntries = Number(summary.active_entries || 0);
+  const forgottenEntries = Number(summary.forgotten_entries || 0);
+  return `summary total=${totalEntries} · active=${activeEntries} · forgotten=${forgottenEntries}`;
+}
+
+function formatStage4bMemoryItems(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return "no memory entries projected";
+  }
+  return raw
+    .slice(0, 4)
+    .map((item) => {
+      const memoryId = normalizeText(item?.memory_id) || "memory";
+      const scope = normalizeText(item?.scope) || "scope";
+      const status = normalizeText(item?.status) || "unknown";
+      return `${scope}/${memoryId}:${status}`;
+    })
+    .join(" · ");
+}
+
+function formatStage4bSkillPolicyPlugin(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "skill/policy/plugin governance pending";
+  }
+  const enabled = raw.enabled === false ? "disabled" : "enabled";
+  const scope = normalizeText(raw.scope) || "channel";
+  const registry = raw.registry && typeof raw.registry === "object" ? raw.registry : {};
+  const bindings = Array.isArray(raw.bindings) ? raw.bindings : [];
+  const skillCount = Array.isArray(registry.skill_refs) ? registry.skill_refs.length : 0;
+  const policyCount = Array.isArray(registry.policy_refs) ? registry.policy_refs.length : 0;
+  const pluginCount = Array.isArray(registry.plugin_refs) ? registry.plugin_refs.length : 0;
+  return `mode=${enabled} · scope=${scope} · skill=${skillCount} · policy=${policyCount} · plugin=${pluginCount} · bindings=${bindings.length}`;
+}
+
+function formatStage4bAuditAnchor(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "audit anchor pending";
+  }
+  const action = normalizeText(raw.action) || "unknown_action";
+  const auditId = normalizeText(raw.audit_id) || "n/a";
+  const at = raw.at ? formatTime(raw.at) : "n/a";
+  return `audit=${auditId} · action=${action} · at=${at}`;
+}
+
+function formatStage4bTokenQuotaContext(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "token/quota/context pending";
+  }
+  const tokenUsed = Number(raw.token_used || 0);
+  const tokenLimit = raw.token_limit === null || raw.token_limit === undefined ? "n/a" : Number(raw.token_limit);
+  const quotaState = normalizeText(raw.quota_state) || "unknown";
+  const contextTokens = Number(raw.context_tokens || 0);
+  const windowTokens =
+    raw.context_window_tokens === null || raw.context_window_tokens === undefined
+      ? "n/a"
+      : Number(raw.context_window_tokens);
+  const recallSource = normalizeText(raw.recall_source) || "n/a";
+  const recallHits = Number(raw.recall_hits || 0);
+  const degradeReason = normalizeText(raw.degrade_reason) || "none";
+  return (
+    `token=${tokenUsed}/${tokenLimit} · quota=${quotaState} · context=${contextTokens}/${windowTokens} · ` +
+    `recall=${recallSource}:${recallHits} · degrade=${degradeReason}`
+  );
+}
+
+function formatStage4bTimeline(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "timeline evidence pending";
+  }
+  const total = Number(raw.total || 0);
+  const actions = Array.isArray(raw.recent_actions) ? raw.recent_actions : [];
+  if (total === 0 || actions.length === 0) {
+    return "no stage4b timeline evidence projected";
+  }
+  const summary = actions
+    .slice(0, 4)
+    .map((item) => normalizeText(item?.action) || "unknown_action")
+    .join(",");
+  const anchor = normalizeText(raw.anchor) || "n/a";
+  return `timeline total=${total} · latest=${summary} · anchor=${anchor}`;
 }
 
 function formatStage4a2UsageNotes(raw) {
