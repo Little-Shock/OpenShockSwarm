@@ -335,26 +335,40 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
   }
 
   async function createPullRequest(roomId: string) {
-    const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/pull-request`, {
-      method: "POST",
-    });
+    try {
+      const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/pull-request`, {
+        method: "POST",
+      });
 
-    if (payload.state) {
-      commitState(payload.state);
+      if (payload.state) {
+        commitState(payload.state);
+      }
+      return payload;
+    } catch (mutationError) {
+      if (mutationError instanceof StateMutationError && mutationError.payload.state) {
+        commitState(mutationError.payload.state);
+      }
+      throw mutationError;
     }
-    return payload;
   }
 
   async function updatePullRequest(pullRequestId: string, input: UpdatePullRequestInput) {
-    const payload = await readJSON<StateMutationResponse>(`/v1/pull-requests/${pullRequestId}`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    try {
+      const payload = await readJSON<StateMutationResponse>(`/v1/pull-requests/${pullRequestId}`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
 
-    if (payload.state) {
-      commitState(payload.state);
+      if (payload.state) {
+        commitState(payload.state);
+      }
+      return payload;
+    } catch (mutationError) {
+      if (mutationError instanceof StateMutationError && mutationError.payload.state) {
+        commitState(mutationError.payload.state);
+      }
+      throw mutationError;
     }
-    return payload;
   }
 
   async function applyInboxDecision(inboxItemId: string, decision: InboxDecision) {

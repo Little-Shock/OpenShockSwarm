@@ -6,6 +6,8 @@
   - 本轮在 `main` 基线上的实际执行结果、失败项和 GAP
 - [Test Report 2026-04-07 Webhook Replay](./Test-Report-2026-04-07-webhook-replay.md)
   - `TKT-05` 的 webhook replay / review sync exact replay evidence
+- [Test Report 2026-04-07 Remote PR Browser Loop](./Test-Report-2026-04-07-remote-pr-browser-loop.md)
+  - `TKT-06` 的真实远端 PR create / merge browser-level exact evidence
 
 如果 `Test Cases` 和 `Test Report` 冲突：
 

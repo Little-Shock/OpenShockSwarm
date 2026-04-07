@@ -404,6 +404,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const messages = room ? state.roomMessages[room.id] ?? [] : [];
   const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
   const [prLoading, setPrLoading] = useState(false);
+  const [prError, setPrError] = useState<string | null>(null);
   const canMerge = pullRequest && pullRequest.status !== "merged";
   const activeAgents =
     room && run
@@ -423,8 +424,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   async function handleCreatePullRequest() {
     if (!room || prLoading) return;
     setPrLoading(true);
+    setPrError(null);
     try {
       await createPullRequest(room.id);
+    } catch (pullRequestError) {
+      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request create failed");
     } finally {
       setPrLoading(false);
     }
@@ -433,8 +437,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   async function handleMergePullRequest() {
     if (!pullRequest || prLoading) return;
     setPrLoading(true);
+    setPrError(null);
     try {
       await updatePullRequest(pullRequest.id, { status: "merged" });
+    } catch (pullRequestError) {
+      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request merge failed");
     } finally {
       setPrLoading(false);
     }
@@ -475,6 +482,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
               <div className="mb-3 flex gap-2">
                 <button className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-mono text-[10px] text-white">注入 Guidance</button>
                 <button
+                  data-testid="room-pull-request-action"
                   disabled={!room || prLoading || (pullRequest?.status === "merged")}
                   onClick={pullRequest ? handleMergePullRequest : handleCreatePullRequest}
                   className="flex-1 rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] disabled:opacity-60"
@@ -513,15 +521,20 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="font-mono text-[10px] tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
-                          <p className="mt-2 font-display text-2xl font-bold">{pullRequest?.label ?? run.pullRequest ?? "未创建"}</p>
+                          <p data-testid="room-pull-request-label" className="mt-2 font-display text-2xl font-bold">{pullRequest?.label ?? run.pullRequest ?? "未创建"}</p>
                         </div>
-                        <span className="rounded-[4px] border border-[var(--shock-ink)] bg-[#ececec] px-2 py-1 font-mono text-[10px]">
+                        <span data-testid="room-pull-request-status" className="rounded-[4px] border border-[var(--shock-ink)] bg-[#ececec] px-2 py-1 font-mono text-[10px]">
                           {pullRequestStatusLabel(pullRequest?.status)}
                         </span>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.64)]">
+                      <p data-testid="room-pull-request-summary" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.64)]">
                         {pullRequest?.reviewSummary ?? run.nextAction}
                       </p>
+                      {prError ? (
+                        <p data-testid="room-pull-request-error" className="mt-3 font-mono text-[11px] text-[var(--shock-pink)]">
+                          {prError}
+                        </p>
+                      ) : null}
                     </section>
 
                     <section className="rounded-[6px] border-2 border-[var(--shock-ink)] bg-[#111827] p-4 text-white">

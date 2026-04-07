@@ -211,7 +211,7 @@
 ## TC-016 真实远端 PR 创建、同步与合并
 
 - 业务目标: 确认 PR 真相不止停留在本地状态对象。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-07`
 - 前置条件: 存在真实远端仓库与安全测试环境。
 - 测试步骤:
@@ -219,7 +219,7 @@
   2. 观察远端 PR 是否创建。
   3. 执行 review / merge 并检查状态回流。
 - 预期结果: PR 生命周期能在 OpenShock 与 GitHub 间双向同步。
-- 业务结论: 当前不具备可安全验收的闭环。
+- 业务结论: 2026 年 4 月 7 日 `TKT-06` 新增 `pnpm test:headed-remote-pr-loop`，在安全 sandbox base branch 上完成 `/setup -> issue -> room -> remote PR create -> merge` 的浏览器级实机回放；报告已记录真实远端 PR `#9` 从 `OPEN -> MERGED`，且 safe base / remote head 清理通过，因此这条真实远端 PR 闭环当前已可独立复核并通过。
 
 ## TC-017 浏览器 Push / 邮件通知
 
@@ -337,7 +337,7 @@
 ## TC-026 Headed Setup 到 PR Journey
 
 - 业务目标: 在非无头浏览器里串起 Setup 主链、Issue lane 和 PR 前置链。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-04` `CHK-05` `CHK-07` `CHK-15`
 - 前置条件: headed browser automation harness 已存在，server / daemon / web 可启动。
 - 测试步骤:
@@ -345,7 +345,7 @@
   2. 创建一条 issue，进入 room / run。
   3. 验证 PR 入口处于可继续推进状态。
 - 预期结果: Setup 到执行 lane 的用户旅程可稳定自动化回放。
-- 业务结论: 作为 `TKT-03/TKT-04/TKT-06` 的总链路 gate，当前还未实现。
+- 业务结论: 2026 年 4 月 7 日 `TKT-06` 新增 `pnpm test:headed-remote-pr-loop`，会在 headed browser 中串起 `/setup`、repo binding、GitHub readiness、issue / room / run、远端 PR create / merge；同时 no-auth probe 会把 PR 创建失败显式打到 room / inbox / blocked surface，不再静默吞掉。这条 Setup 到 PR journey 的 headed 回放当前已可独立复核并通过；`TC-015` 的 installation-complete live callback 仍留在后续远端范围。
 
 ## TC-027 Sandbox / Destructive Approval Guard
 

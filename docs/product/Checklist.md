@@ -142,10 +142,10 @@
   - [x] server 已支持按 effective auth path 在 `gh CLI / GitHub App` 间切换 PR create / sync / merge
   - [x] GitHub App-backed create / sync / merge 与 review-decision failure path 已有 contract tests
   - [x] signed webhook replay harness 已可通过真实 HTTP 请求回放 review / comment / check / merge，并验证 failure-path observability
+  - [x] headed browser harness 已在安全 sandbox base branch 上完成真实远端 PR create / sync / merge 闭环，并验证 no-auth failure path 的 UI / inbox / room blocked 可见性
 - 当前 GAP:
-  - [ ] GitHub App onboarding 与浏览器级真实回放仍未补齐
-  - [ ] installation-complete 后的 live webhook / repo 持续同步仍缺少本轮实机验证
-- 对应 Test Cases: `TC-010` `TC-015` `TC-016`
+  - [ ] GitHub App installation-complete 回跳后的 live webhook / repo 持续同步仍缺少本轮实机验证
+- 对应 Test Cases: `TC-010` `TC-015` `TC-016` `TC-022` `TC-025` `TC-026`
 
 ### CHK-08 工作流 E: Blocked 与人工纠偏
 
