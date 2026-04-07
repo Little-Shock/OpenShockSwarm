@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import {
   type Message,
@@ -176,6 +176,11 @@ function ClaudeCompactComposer({
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await handleSend();
+  }
+
   return (
     <>
       <div className="flex-1 overflow-y-auto bg-[#fbfbfb] p-6">
@@ -202,7 +207,7 @@ function ClaudeCompactComposer({
       </div>
 
       <div className="border-t-2 border-[var(--shock-ink)] bg-white px-3 py-2">
-        <div className="flex items-center gap-2">
+        <form onSubmit={(event) => void handleSubmit(event)} className="flex items-center gap-2">
           <input
             data-testid="room-message-input"
             value={draft}
@@ -212,15 +217,14 @@ function ClaudeCompactComposer({
             placeholder="输入指令、问题或新的约束..."
           />
           <button
-            type="button"
-            onClick={handleSend}
+            type="submit"
             data-testid="room-send-message"
             disabled={loading || !canSend}
             className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] text-base disabled:opacity-60"
           >
             ↗
           </button>
-        </div>
+        </form>
         <p data-testid="room-reply-authz" className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
           {sendStatus}
         </p>
@@ -259,6 +263,11 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleChannelSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await handleChannelSend();
   }
 
   return (
@@ -365,7 +374,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
               </div>
 
               <div className="border-t-2 border-[var(--shock-ink)] bg-white px-6 py-4">
-                <div className="mx-auto flex max-w-4xl items-center gap-3">
+                <form onSubmit={(event) => void handleChannelSubmit(event)} className="mx-auto flex max-w-4xl items-center gap-3">
                   <button className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white text-xl">+</button>
                   <input
                     data-testid="channel-message-input"
@@ -377,15 +386,14 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                   />
                   <button className="flex h-11 w-11 items-center justify-center rounded-[4px] border-2 border-[var(--shock-ink)] bg-white">☺</button>
                   <button
-                    type="button"
+                    type="submit"
                     data-testid="channel-send-message"
-                    onClick={() => void handleChannelSend()}
                     disabled={!channel || loading || Boolean(error) || sending || !draft.trim()}
                     className="rounded-[4px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-5 py-3 font-mono text-[11px] tracking-[0.14em] disabled:opacity-60"
                   >
                     {sending ? "发送中..." : "发送 ↗"}
                   </button>
-                </div>
+                </form>
                 {sendError ? (
                   <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-4xl text-sm leading-6 text-[var(--shock-pink)]">
                     {sendError}

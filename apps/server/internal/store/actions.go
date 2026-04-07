@@ -866,7 +866,15 @@ func (s *Store) AppendConversation(roomID, prompt, output string) (State, error)
 	return cloneState(s.state), nil
 }
 
-func (s *Store) AppendChannelConversation(channelID, prompt string) (State, error) {
+type ChannelConversationInput struct {
+	Prompt       string
+	ReplySpeaker string
+	ReplyRole    string
+	ReplyTone    string
+	ReplyMessage string
+}
+
+func (s *Store) AppendChannelConversation(channelID string, input ChannelConversationInput) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -887,10 +895,19 @@ func (s *Store) AppendChannelConversation(channelID, prompt string) (State, erro
 		Speaker: "Lead_Architect",
 		Role:    "human",
 		Tone:    "human",
-		Message: defaultString(strings.TrimSpace(prompt), "空消息已忽略。"),
+		Message: defaultString(strings.TrimSpace(input.Prompt), "空消息已忽略。"),
+		Time:    now,
+	}
+	replyMessage := Message{
+		ID:      fmt.Sprintf("%s-reply-%d", channelID, time.Now().UnixNano()),
+		Speaker: defaultString(strings.TrimSpace(input.ReplySpeaker), "Shock_AI_Core"),
+		Role:    defaultString(strings.TrimSpace(input.ReplyRole), "agent"),
+		Tone:    defaultString(strings.TrimSpace(input.ReplyTone), "agent"),
+		Message: defaultString(strings.TrimSpace(input.ReplyMessage), "已收到，但这次没有拿到可展示的回复。"),
 		Time:    now,
 	}
 	s.appendChannelMessageLocked(channelID, humanMessage)
+	s.appendChannelMessageLocked(channelID, replyMessage)
 	s.state.Channels[channelIndex].Unread = 0
 
 	if err := s.persistLocked(); err != nil {

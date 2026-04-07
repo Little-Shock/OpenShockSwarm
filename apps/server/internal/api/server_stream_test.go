@@ -135,6 +135,97 @@ func TestRoomMessageStreamPersistsConversation(t *testing.T) {
 	}
 }
 
+func TestChannelMessagePersistsAgentReply(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	reportedAt := time.Now().UTC().Format(time.RFC3339)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if req.Provider != "claude" {
+			t.Fatalf("provider = %q, want claude", req.Provider)
+		}
+		if err := json.NewEncoder(w).Encode(DaemonExecResponse{
+			Provider: "claude",
+			Command:  []string{"claude", "--bare"},
+			Output:   "我在线，频道可以直接回复了。",
+			Duration: "0.8s",
+		}); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}))
+	defer daemon.Close()
+
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		DaemonURL:   daemon.URL,
+		Machine:     "shock-main",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  reportedAt,
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "你是谁？",
+		"provider": "claude",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	resp, err := http.Post(server.URL+"/v1/channels/all/messages", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/channels/all/messages error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Output string      `json:"output"`
+		State  store.State `json:"state"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if payload.Output != "我在线，频道可以直接回复了。" {
+		t.Fatalf("output = %q, want daemon reply", payload.Output)
+	}
+
+	messages := payload.State.ChannelMessages["all"]
+	if len(messages) < 2 {
+		t.Fatalf("channel messages = %#v, want appended human+agent reply", messages)
+	}
+	last := messages[len(messages)-1]
+	if last.Role != "agent" || last.Speaker != "Claude Review Runner" {
+		t.Fatalf("last channel message = %#v, want Claude agent reply", last)
+	}
+	if !strings.Contains(last.Message, "频道可以直接回复了") {
+		t.Fatalf("last message = %q, want daemon output", last.Message)
+	}
+}
+
 func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

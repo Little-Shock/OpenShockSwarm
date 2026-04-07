@@ -218,7 +218,48 @@ func (s *Server) handleChannelRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 			return
 		}
-		nextState, err := s.store.AppendChannelConversation(channelID, prompt)
+		provider := defaultString(req.Provider, "claude")
+		payload, err := s.runDaemonExec(ExecRequest{
+			Provider: provider,
+			Prompt:   prompt,
+			Cwd:      req.Cwd,
+		})
+		if err != nil {
+			status := http.StatusBadGateway
+			message := fmt.Sprintf("频道 agent 连接失败：%s", err.Error())
+			var daemonErr *daemonHTTPError
+			if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
+				status = http.StatusConflict
+				message = buildConflictRoomMessage("频道 runtime lease 冲突", err)
+			}
+			nextState, appendErr := s.store.AppendChannelConversation(channelID, store.ChannelConversationInput{
+				Prompt:       prompt,
+				ReplySpeaker: "System",
+				ReplyRole:    "system",
+				ReplyTone:    "blocked",
+				ReplyMessage: message,
+			})
+			if appendErr != nil {
+				if strings.Contains(strings.ToLower(appendErr.Error()), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSON(w, status, map[string]string{"error": appendErr.Error()})
+				return
+			}
+			response := map[string]any{"error": err.Error(), "state": nextState}
+			if daemonErr != nil && daemonErr.Conflict != nil {
+				response["conflict"] = daemonErr.Conflict
+			}
+			writeJSON(w, status, response)
+			return
+		}
+		nextState, err := s.store.AppendChannelConversation(channelID, store.ChannelConversationInput{
+			Prompt:       prompt,
+			ReplySpeaker: channelReplySpeaker(provider),
+			ReplyRole:    "agent",
+			ReplyTone:    "agent",
+			ReplyMessage: strings.TrimSpace(payload.Output),
+		})
 		if err != nil {
 			status := http.StatusInternalServerError
 			if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -227,7 +268,7 @@ func (s *Server) handleChannelRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, status, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
+		writeJSON(w, http.StatusOK, map[string]any{"state": nextState, "output": payload.Output})
 		return
 	}
 
@@ -1384,4 +1425,15 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func channelReplySpeaker(provider string) string {
+	switch strings.TrimSpace(strings.ToLower(provider)) {
+	case "claude":
+		return "Claude Review Runner"
+	case "codex":
+		return "Codex Dockmaster"
+	default:
+		return "Shock_AI_Core"
+	}
 }

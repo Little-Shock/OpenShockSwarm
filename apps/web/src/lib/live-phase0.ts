@@ -392,15 +392,22 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
   }
 
   async function postChannelMessage(channelId: string, prompt: string) {
-    const payload = await readJSON<StateMutationResponse>(`/v1/channels/${channelId}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ prompt }),
-    });
+    try {
+      const payload = await readJSON<StateMutationResponse>(`/v1/channels/${channelId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ prompt }),
+      });
 
-    if (payload.state) {
-      commitStateAndRefreshApprovalCenter(payload.state);
+      if (payload.state) {
+        commitStateAndRefreshApprovalCenter(payload.state);
+      }
+      return payload;
+    } catch (mutationError) {
+      if (mutationError instanceof StateMutationError && mutationError.payload.state) {
+        commitStateAndRefreshApprovalCenter(mutationError.payload.state);
+      }
+      throw mutationError;
     }
-    return payload;
   }
 
   async function postRoomMessage(roomId: string, prompt: string, provider = "claude") {
