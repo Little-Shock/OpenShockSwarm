@@ -241,6 +241,8 @@ const DEPLOY_RUNTIME_DEVICE_AUTHORIZATION_STATUSES = new Set(["pending", "author
 const DEPLOY_RUNTIME_RUNTIME_ATTACH_STATUSES = new Set(["not_attached", "attaching", "attached", "degraded", "blocked"]);
 const DEPLOY_RUNTIME_HOSTED_ENTRY_CHAIN_STATUSES = new Set(["pending", "ready", "blocked", "local_only"]);
 const NOTIFICATION_ACCESS_STATUSES = new Set(["pending", "ready", "blocked"]);
+const USAGE_QUOTA_READINESS_STATES = new Set(["pending", "healthy", "near_limit", "blocked"]);
+const USAGE_QUOTA_READINESS_STATUSES = new Set(["pending", "ready", "blocked"]);
 const INBOX_ATTENTION_CHANNELS = new Set(["inbox", "browser_push", "email"]);
 const INBOX_FOLLOW_UP_PRIORITIES = new Set(["normal", "high", "urgent"]);
 const CHANNEL_AGENT_MAILBOX_ROUTING_KEYS = Object.freeze([
@@ -4050,6 +4052,180 @@ export class ServerCoordinator {
     };
   }
 
+  buildUsageQuotaReadinessContract(channel) {
+    this.ensureChannelGovernance(channel);
+    const tokenQuotaContext = channel.governance.tokenQuotaContext;
+    const runtimeRegistry = this.getRuntimeRegistry();
+    const deployRuntime = this.runtimeDeployRuntime ?? createEmptyRuntimeDeployRuntimeContract();
+    const runtimeAttach =
+      deployRuntime.deviceAuthorizationRuntimeAttach ?? createEmptyRuntimeDeviceAuthorizationRuntimeAttachContract();
+    const healthReadiness = deployRuntime.healthReadiness ?? {
+      healthStatus: "unknown",
+      readinessStatus: "not_ready"
+    };
+    const releaseRecoveryUpgradeHandoff = deployRuntime.releaseRecoveryUpgradeHandoff ?? {
+      status: "draft"
+    };
+    const channelAuditAnchor = this.buildChannelAuditAnchor(channel);
+    const runtimeAuditAnchor = this.buildRuntimeDeployRuntimeAuditAnchor();
+
+    const tokenUsed = Number.isInteger(tokenQuotaContext?.tokenUsed) ? tokenQuotaContext.tokenUsed : null;
+    const tokenLimit = Number.isInteger(tokenQuotaContext?.tokenLimit) ? tokenQuotaContext.tokenLimit : null;
+    const contextTokens = Number.isInteger(tokenQuotaContext?.contextTokens) ? tokenQuotaContext.contextTokens : null;
+    const contextWindowTokens = Number.isInteger(tokenQuotaContext?.contextWindowTokens)
+      ? tokenQuotaContext.contextWindowTokens
+      : null;
+    const quotaState = tokenQuotaContext?.quotaState ?? "pending";
+    assertOrThrow(
+      USAGE_QUOTA_READINESS_STATES.has(quotaState),
+      "invalid_usage_quota_readiness_quota_state",
+      "usage/quota/readiness quota_state is invalid"
+    );
+    const tokenRemaining =
+      tokenLimit === null || tokenUsed === null ? null : Math.max(0, tokenLimit - tokenUsed);
+    const contextRemaining =
+      contextWindowTokens === null || contextTokens === null ? null : Math.max(0, contextWindowTokens - contextTokens);
+
+    const runtimeSignals = {
+      runtimeAttachStatus: runtimeAttach.runtimeAttachStatus ?? "not_attached",
+      deviceAuthorizationStatus: runtimeAttach.deviceAuthorizationStatus ?? "pending",
+      hostedEntryChainStatus: runtimeAttach.hostedEntryChainStatus ?? "pending",
+      runtimeReadinessStatus: healthReadiness.readinessStatus ?? "not_ready",
+      machineFleetStatus: runtimeRegistry.machineFleet?.status ?? "not_paired",
+      releaseHandoffStatus: releaseRecoveryUpgradeHandoff.status ?? "draft"
+    };
+
+    let blockReason = {
+      code: null,
+      source: null,
+      detail: null
+    };
+    if (quotaState === "blocked") {
+      blockReason = {
+        code: "quota_blocked",
+        source: "token_quota_context",
+        detail: tokenQuotaContext?.degradeReason ?? "token_quota_context_blocked"
+      };
+    } else if (
+      runtimeSignals.deviceAuthorizationStatus === "blocked" ||
+      runtimeSignals.deviceAuthorizationStatus === "revoked"
+    ) {
+      blockReason = {
+        code: "device_authorization_blocked",
+        source: "runtime_device_authorization",
+        detail: runtimeSignals.deviceAuthorizationStatus
+      };
+    } else if (runtimeSignals.runtimeAttachStatus === "blocked") {
+      blockReason = {
+        code: "runtime_attach_blocked",
+        source: "runtime_attach",
+        detail: runtimeAttach.attachRef ?? "runtime_attach_blocked"
+      };
+    } else if (runtimeSignals.runtimeReadinessStatus === "blocked") {
+      blockReason = {
+        code: "runtime_readiness_blocked",
+        source: "runtime_health_readiness",
+        detail: healthReadiness.notes ?? "runtime_readiness_blocked"
+      };
+    }
+
+    const quotaReady = quotaState === "healthy" || quotaState === "near_limit";
+    const attachReady =
+      runtimeSignals.runtimeAttachStatus === "attached" &&
+      runtimeSignals.deviceAuthorizationStatus === "authorized" &&
+      runtimeSignals.hostedEntryChainStatus === "ready";
+    const runtimeReady =
+      runtimeSignals.runtimeReadinessStatus === "ready" &&
+      (runtimeSignals.machineFleetStatus === "ready" || runtimeSignals.machineFleetStatus === "degraded");
+    const releaseReady =
+      runtimeSignals.releaseHandoffStatus === "ready" || runtimeSignals.releaseHandoffStatus === "completed";
+    const missingSignals = [];
+    if (!quotaReady) {
+      missingSignals.push("quota_state");
+    }
+    if (!attachReady) {
+      missingSignals.push("runtime_attach");
+    }
+    if (!runtimeReady) {
+      missingSignals.push("runtime_readiness");
+    }
+    if (!releaseReady) {
+      missingSignals.push("upgrade_handoff");
+    }
+
+    const upgradeReadinessStatus =
+      blockReason.code !== null
+        ? "blocked"
+        : missingSignals.length === 0
+          ? "ready"
+          : "pending";
+    assertOrThrow(
+      USAGE_QUOTA_READINESS_STATUSES.has(upgradeReadinessStatus),
+      "invalid_usage_quota_readiness_status",
+      "usage/quota/readiness status is invalid"
+    );
+
+    return {
+      contractVersion: "v1.stage6c",
+      truthFamily: ["/v1/channels/*", "/v1/runtime/*"],
+      status: {
+        usageQuotaReadinessStatus: upgradeReadinessStatus,
+        quotaState,
+        runtimeAttachStatus: runtimeSignals.runtimeAttachStatus,
+        runtimeReadinessStatus: runtimeSignals.runtimeReadinessStatus
+      },
+      usage: {
+        tokenUsed,
+        tokenLimit,
+        contextTokens,
+        contextWindowTokens,
+        recallSource: tokenQuotaContext?.recallSource ?? null,
+        recallHits: tokenQuotaContext?.recallHits ?? null,
+        degradeReason: tokenQuotaContext?.degradeReason ?? null
+      },
+      remainingCapacity: {
+        tokenRemaining,
+        contextRemaining,
+        unit: "tokens"
+      },
+      blockReason,
+      upgradeReadiness: {
+        status: upgradeReadinessStatus,
+        missingSignals,
+        requiredSignals: {
+          quotaState: ["healthy", "near_limit"],
+          runtimeAttachStatus: "attached",
+          runtimeReadinessStatus: "ready",
+          releaseHandoffStatus: ["ready", "completed"]
+        },
+        runtimeSignals
+      },
+      refs: {
+        workspaceId: channel.workspace.workspaceId,
+        channelId: channel.channelId,
+        runtimeIds: runtimeRegistry.machineFleet?.runtimeIds ?? []
+      },
+      writeAnchors: {
+        tokenQuotaContextUpsert: `/v1/channels/${encodeURIComponent(channel.channelId)}/context`,
+        runtimeDeployRuntimeUpsert: "/v1/runtime/deploy-runtime"
+      },
+      readAnchors: {
+        channelContext: `/v1/channels/${encodeURIComponent(channel.channelId)}/context`,
+        runtimeRegistry: "/v1/runtime/registry",
+        runtimeDeployRuntime: "/v1/runtime/deploy-runtime"
+      },
+      auditAnchor: {
+        channelTrail: channelAuditAnchor.trail,
+        runtimeTrail: runtimeAuditAnchor.trail,
+        latest: {
+          tokenQuotaContext: channelAuditAnchor.latest?.tokenQuotaContext ?? null,
+          deployRuntime: runtimeAuditAnchor.latest?.deployRuntime ?? null
+        }
+      },
+      updatedAt: channel.updatedAt
+    };
+  }
+
   upsertChannelGovernance(channel, input = {}, operatorId, policySnapshot) {
     const governance = this.ensureChannelGovernance(channel);
     if (input.authIdentity !== undefined) {
@@ -5063,6 +5239,7 @@ export class ServerCoordinator {
       approvalContract: this.getChannelApprovalAuditAnchors(channel),
       externalMemoryProvider: channel.externalMemoryProvider,
       workspaceOnboardingAccess: this.buildWorkspaceOnboardingAccessContract(channel),
+      usageQuotaReadiness: this.buildUsageQuotaReadinessContract(channel),
       repoBinding: channel.repoBinding ?? null,
       auditAnchor: this.buildChannelAuditAnchor(channel),
       updatedAt: channel.updatedAt

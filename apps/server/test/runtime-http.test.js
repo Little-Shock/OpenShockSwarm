@@ -6455,7 +6455,7 @@ test("v1 stage6a workspace onboarding access contract keeps identity/invite/inst
       });
       assert.equal(payload.includes("stage6a"), true);
       assert.equal(payload.includes("stage6b"), true);
-      assert.equal(payload.includes("\"stage6c\""), false);
+      assert.equal(payload.includes("stage6c"), true);
     }
   );
 });
@@ -6564,7 +6564,7 @@ test("v1 stage6b notification recovery access contract keeps invite/verify/reset
       context: contextAfterEndpointUpsert.body.context
     });
     assert.equal(payload.includes("stage6b"), true);
-    assert.equal(payload.includes("stage6c"), false);
+    assert.equal(payload.includes("stage6c"), true);
   });
 });
 
@@ -6731,6 +6731,166 @@ test("v1 stage6b blocked escalation/approval required/pr ready/agent mailbox rou
     });
     assert.equal(payload.includes("stage6b"), true);
     assert.equal(payload.includes("\"stage6c\""), false);
+  });
+});
+
+test("v1 stage6c usage/quota/readiness contract keeps usage, quota_state, remaining capacity and upgrade readiness on stage4b + /v1/runtime truths", async () => {
+  const channelId = "channel_stage6c_usage_quota";
+  const operatorId = "human_operator_stage6c_usage_quota";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const baseContext = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        workspace_id: "workspace_stage6c_usage_quota",
+        workspace_root: "/Users/atou/.slock/agents",
+        baseline_ref: "feat/initial-implementation@bfb95f9",
+        fixed_directory: "/Users/atou/OpenShockSwarm"
+      }
+    });
+    assert.equal(baseContext.statusCode, 200);
+    assert.equal(baseContext.body.context.usage_quota_readiness.contract_version, "v1.stage6c");
+    assert.equal(baseContext.body.context.usage_quota_readiness.status.usage_quota_readiness_status, "pending");
+    assert.equal(baseContext.body.context.usage_quota_readiness.status.quota_state, "pending");
+
+    const quotaContext = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        token_quota_context: {
+          token_used: 9500,
+          token_limit: 10000,
+          quota_state: "near_limit",
+          context_tokens: 6000,
+          context_window_tokens: 8000,
+          recall_source: "external_memory_provider",
+          recall_hits: 3
+        }
+      }
+    });
+    assert.equal(quotaContext.statusCode, 200);
+    assert.equal(quotaContext.body.context.usage_quota_readiness.status.quota_state, "near_limit");
+    assert.equal(quotaContext.body.context.usage_quota_readiness.remaining_capacity.token_remaining, 500);
+    assert.equal(quotaContext.body.context.usage_quota_readiness.remaining_capacity.context_remaining, 2000);
+    assert.equal(quotaContext.body.context.usage_quota_readiness.block_reason.code, null);
+    assert.equal(quotaContext.body.context.usage_quota_readiness.upgrade_readiness.status, "pending");
+
+    const machine = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/machines/machine_stage6c_quota_01",
+      body: {
+        runtime_id: "runtime_stage6c_01",
+        status: "online",
+        capabilities: ["node", "git"]
+      }
+    });
+    assert.equal(machine.statusCode, 200);
+
+    const upsertAgent = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage6c_quota_alpha",
+      body: {
+        machine_id: "machine_stage6c_quota_01",
+        status: "idle",
+        operator_id: operatorId,
+        channel_id: channelId
+      }
+    });
+    assert.equal(upsertAgent.statusCode, 200);
+
+    const pairAgent = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage6c_quota_alpha/pairing",
+      body: {
+        machine_id: "machine_stage6c_quota_01",
+        operator_id: operatorId,
+        channel_id: channelId,
+        pairing_mode: "remote_daemon_pairing"
+      }
+    });
+    assert.equal(pairAgent.statusCode, 200);
+
+    const deployRuntime = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        health_readiness: {
+          health_status: "healthy",
+          readiness_status: "ready"
+        },
+        release_recovery_upgrade_handoff: {
+          status: "ready",
+          upgrade_ref: "runbook/stage6c-upgrade"
+        },
+        device_authorization_runtime_attach: {
+          onboarding_flow_status: "ready",
+          device_authorization_status: "authorized",
+          authorized_device_count: 2,
+          authorization_policy_ref: "policy/device/stage6c",
+          runtime_attach_status: "attached",
+          attached_runtime_count: 1,
+          attach_agent_count: 1,
+          attach_ref: "/v1/runtime/agents/agent_stage6c_quota_alpha/pairing",
+          hosted_entry_chain_status: "ready",
+          hosted_entry_ref: "/v1/channels/channel_stage6c_usage_quota/context"
+        }
+      }
+    });
+    assert.equal(deployRuntime.statusCode, 200);
+
+    const readyContext = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+    });
+    assert.equal(readyContext.statusCode, 200);
+    assert.equal(readyContext.body.context.usage_quota_readiness.status.usage_quota_readiness_status, "ready");
+    assert.equal(readyContext.body.context.usage_quota_readiness.status.runtime_attach_status, "attached");
+    assert.equal(readyContext.body.context.usage_quota_readiness.status.runtime_readiness_status, "ready");
+    assert.equal(readyContext.body.context.usage_quota_readiness.upgrade_readiness.status, "ready");
+    assert.equal(
+      readyContext.body.context.usage_quota_readiness.upgrade_readiness.runtime_signals.machine_fleet_status,
+      "ready"
+    );
+
+    const blockedContext = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        token_quota_context: {
+          token_used: 10000,
+          token_limit: 10000,
+          quota_state: "blocked",
+          context_tokens: 8000,
+          context_window_tokens: 8000,
+          degrade_reason: "quota_exhausted"
+        }
+      }
+    });
+    assert.equal(blockedContext.statusCode, 200);
+    assert.equal(blockedContext.body.context.usage_quota_readiness.status.quota_state, "blocked");
+    assert.equal(blockedContext.body.context.usage_quota_readiness.block_reason.code, "quota_blocked");
+    assert.equal(blockedContext.body.context.usage_quota_readiness.block_reason.detail, "quota_exhausted");
+    assert.equal(blockedContext.body.context.usage_quota_readiness.upgrade_readiness.status, "blocked");
+
+    const payload = JSON.stringify({
+      context: blockedContext.body.context,
+      deployRuntime: deployRuntime.body.deploy_runtime
+    });
+    assert.equal(payload.includes("stage6c"), true);
+    assert.equal(payload.includes("\"billing_shadow\""), false);
   });
 });
 

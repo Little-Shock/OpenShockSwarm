@@ -1236,6 +1236,98 @@ function serializeWorkspaceOnboardingAccessContract(input = {}, channelId = null
   };
 }
 
+function serializeStage6cUsageQuotaReadinessContract(input = {}, channelId = null) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const encodedChannelId = channelId ? encodeURIComponent(channelId) : ":channelId";
+  const latest = input.auditAnchor?.latest ?? {};
+  return {
+    contract_version: input.contractVersion ?? "v1.stage6c",
+    truth_family: deepClone(input.truthFamily ?? ["/v1/channels/*", "/v1/runtime/*"]),
+    status: {
+      usage_quota_readiness_status: input.status?.usageQuotaReadinessStatus ?? "pending",
+      quota_state: input.status?.quotaState ?? "pending",
+      runtime_attach_status: input.status?.runtimeAttachStatus ?? "not_attached",
+      runtime_readiness_status: input.status?.runtimeReadinessStatus ?? "not_ready"
+    },
+    usage: {
+      token_used: input.usage?.tokenUsed ?? null,
+      token_limit: input.usage?.tokenLimit ?? null,
+      context_tokens: input.usage?.contextTokens ?? null,
+      context_window_tokens: input.usage?.contextWindowTokens ?? null,
+      recall_source: input.usage?.recallSource ?? null,
+      recall_hits: input.usage?.recallHits ?? null,
+      degrade_reason: input.usage?.degradeReason ?? null
+    },
+    remaining_capacity: {
+      token_remaining: input.remainingCapacity?.tokenRemaining ?? null,
+      context_remaining: input.remainingCapacity?.contextRemaining ?? null,
+      unit: input.remainingCapacity?.unit ?? "tokens"
+    },
+    block_reason: {
+      code: input.blockReason?.code ?? null,
+      source: input.blockReason?.source ?? null,
+      detail: input.blockReason?.detail ?? null
+    },
+    upgrade_readiness: {
+      status: input.upgradeReadiness?.status ?? "pending",
+      missing_signals: deepClone(input.upgradeReadiness?.missingSignals ?? []),
+      required_signals: {
+        quota_state: deepClone(input.upgradeReadiness?.requiredSignals?.quotaState ?? ["healthy", "near_limit"]),
+        runtime_attach_status: input.upgradeReadiness?.requiredSignals?.runtimeAttachStatus ?? "attached",
+        runtime_readiness_status: input.upgradeReadiness?.requiredSignals?.runtimeReadinessStatus ?? "ready",
+        release_handoff_status: deepClone(input.upgradeReadiness?.requiredSignals?.releaseHandoffStatus ?? ["ready", "completed"])
+      },
+      runtime_signals: {
+        runtime_attach_status: input.upgradeReadiness?.runtimeSignals?.runtimeAttachStatus ?? "not_attached",
+        device_authorization_status:
+          input.upgradeReadiness?.runtimeSignals?.deviceAuthorizationStatus ?? "pending",
+        hosted_entry_chain_status: input.upgradeReadiness?.runtimeSignals?.hostedEntryChainStatus ?? "pending",
+        runtime_readiness_status: input.upgradeReadiness?.runtimeSignals?.runtimeReadinessStatus ?? "not_ready",
+        machine_fleet_status: input.upgradeReadiness?.runtimeSignals?.machineFleetStatus ?? "not_paired",
+        release_handoff_status: input.upgradeReadiness?.runtimeSignals?.releaseHandoffStatus ?? "draft"
+      }
+    },
+    refs: {
+      workspace_id: input.refs?.workspaceId ?? null,
+      channel_id: input.refs?.channelId ?? channelId ?? null,
+      runtime_ids: deepClone(input.refs?.runtimeIds ?? [])
+    },
+    write_anchors: {
+      token_quota_context_upsert:
+        input.writeAnchors?.tokenQuotaContextUpsert ?? `/v1/channels/${encodedChannelId}/context`,
+      runtime_deploy_runtime_upsert: input.writeAnchors?.runtimeDeployRuntimeUpsert ?? "/v1/runtime/deploy-runtime"
+    },
+    read_anchors: {
+      channel_context: input.readAnchors?.channelContext ?? `/v1/channels/${encodedChannelId}/context`,
+      runtime_registry: input.readAnchors?.runtimeRegistry ?? "/v1/runtime/registry",
+      runtime_deploy_runtime: input.readAnchors?.runtimeDeployRuntime ?? "/v1/runtime/deploy-runtime"
+    },
+    audit_anchor: {
+      channel_trail: input.auditAnchor?.channelTrail ?? `/v1/channels/${encodedChannelId}/audit-trail`,
+      runtime_trail: input.auditAnchor?.runtimeTrail ?? "/v1/runtime/deploy-runtime",
+      latest: {
+        token_quota_context: latest.tokenQuotaContext
+          ? {
+              audit_id: latest.tokenQuotaContext.auditId ?? null,
+              action: latest.tokenQuotaContext.action ?? null,
+              at: latest.tokenQuotaContext.at ?? null
+            }
+          : null,
+        deploy_runtime: latest.deployRuntime
+          ? {
+              audit_id: latest.deployRuntime.auditId ?? null,
+              action: latest.deployRuntime.action ?? null,
+              at: latest.deployRuntime.at ?? null
+            }
+          : null
+      }
+    },
+    updated_at: input.updatedAt ?? null
+  };
+}
+
 function serializeChannelContextContract(input = {}) {
   const channelId = input.channelId;
   return {
@@ -1271,6 +1363,7 @@ function serializeChannelContextContract(input = {}) {
     },
     notification_access_contract: serializeStage6bNotificationAccessContract(input.notificationRecoveryAccess, channelId),
     workspace_onboarding_access: serializeWorkspaceOnboardingAccessContract(input.workspaceOnboardingAccess, channelId),
+    usage_quota_readiness: serializeStage6cUsageQuotaReadinessContract(input.usageQuotaReadiness, channelId),
     governance: {
       auth_identity: input.governance?.authIdentity
         ? {
