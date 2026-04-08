@@ -32,6 +32,7 @@
     "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",
     "test:headed-frontend-interaction-polish": "node ./scripts/headed-frontend-interaction-polish.mjs",
     "test:headed-room-workbench-topic-context": "node ./scripts/headed-room-workbench-topic-context.mjs",
+    "test:headed-profile-surface": "node ./scripts/headed-profile-surface.mjs",
     "test:headed-work-shell-smoke": "node ./scripts/headed-work-shell-smoke.mjs",
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
     "test:webhook-replay": "node ./scripts/github-webhook-replay.mjs",

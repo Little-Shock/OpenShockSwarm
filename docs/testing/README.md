@@ -44,6 +44,8 @@
   - `TKT-22` 的 DM entry、followed thread revisit、saved-later revisit 有头证据
 - [Test Report 2026-04-08 Room Workbench Topic Context](./Test-Report-2026-04-08-room-workbench-topic-context.md)
   - `TKT-23` 的 room-first `Chat / Topic / Run / PR / Context` workbench、reload persistence 与 inbox back-link evidence
+- [Test Report 2026-04-08 Profile Surface](./Test-Report-2026-04-08-profile-surface.md)
+  - `TKT-25` 的 `Agent / Machine / Human` unified profile surface、shell / room drill-in 与 live presence evidence
 
 常用入口：
 
@@ -73,6 +75,8 @@
   - 验证 DM entry、thread follow、saved-later、reopen thread 回访闭环
 - `pnpm test:headed-room-workbench-topic-context`
   - 验证 room-first `Chat / Topic / Run / PR / Context` workbench、follow_thread、PR surface 与 inbox back-link
+- `pnpm test:headed-profile-surface`
+  - 验证 `Agent / Machine / Human` unified profile surface、shell / room drill-in、presence / capability / recent activity
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-quick-search`

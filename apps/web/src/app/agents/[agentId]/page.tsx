@@ -1,4 +1,4 @@
-import { LiveAgentPageContent } from "@/components/live-detail-views";
+import { LiveProfilePageContent } from "@/components/live-profile-views";
 
 export default async function AgentPage({
   params,
@@ -6,5 +6,5 @@ export default async function AgentPage({
   params: Promise<{ agentId: string }>;
 }) {
   const { agentId } = await params;
-  return <LiveAgentPageContent agentId={agentId} />;
+  return <LiveProfilePageContent kind="agent" profileId={agentId} />;
 }
