@@ -239,11 +239,11 @@ export function OpenShockShell({
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
 
-          <div className="border-b-2 border-[var(--shock-ink)] bg-[#f3ead3] px-3 py-2.5 md:px-4">
+          <div className="border-b-2 border-[var(--shock-ink)] bg-[#f3ead3] px-3 py-2 md:px-4">
             <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
               <div>
-                <p className="font-display text-[18px] font-bold">{contextTitle}</p>
-                <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
+                <p className="font-display text-[17px] font-bold">{contextTitle}</p>
+                <p className="mt-1 max-w-3xl text-[11px] leading-5 text-[color:rgba(24,20,14,0.66)]">
                   {contextDescription}
                 </p>
               </div>
@@ -252,7 +252,7 @@ export function OpenShockShell({
                   <span
                     key={stat.label}
                     className={cn(
-                      "border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                      "rounded-[10px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
                       statTone(stat.tone)
                     )}
                   >
@@ -263,16 +263,16 @@ export function OpenShockShell({
             </div>
           </div>
 
-          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_304px]">
-            <div className="min-h-0 overflow-y-auto bg-[var(--shock-paper)] px-2 py-3 md:px-3 xl:min-h-0">
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_288px]">
+            <div className="min-h-0 overflow-y-auto bg-[var(--shock-paper)] px-2 py-2.5 md:px-3 xl:min-h-0">
               {children}
             </div>
             <aside className="hidden min-h-0 border-l-2 border-[var(--shock-ink)] bg-[#efe5ce] xl:flex xl:flex-col">
-              <div className="flex-1 overflow-y-auto p-3">
+              <div className="flex-1 overflow-y-auto p-2.5">
                 {contextBody ?? (
-                  <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                  <section className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em]">MVP Contract</p>
-                    <ul className="mt-3 space-y-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.76)]">
+                    <ul className="mt-2.5 space-y-1.5 text-[12px] leading-5 text-[color:rgba(24,20,14,0.76)]">
                       <li>频道负责轻松讨论，不直接背负执行压力。</li>
                       <li>严肃工作必须进入讨论间，并和 Run 保持绑定。</li>
                       <li>Topic 可见，Session 继续留在系统内部。</li>
@@ -281,21 +281,21 @@ export function OpenShockShell({
                   </section>
                 )}
 
-                <section className="mt-3 border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                <section className="mt-2.5 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Live Machines</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.machines.length}</span>
                   </div>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-2.5 space-y-2">
                     {resolvedState.machines.map((machine) => (
-                      <div key={machine.id} className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                      <div key={machine.id} className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold">{machine.name}</p>
-                          <span className={cn("border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", machineTone(machine.state))}>
+                          <span className={cn("rounded-full border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", machineTone(machine.state))}>
                             {machineStateLabel(machine.state)}
                           </span>
                         </div>
-                        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                        <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
                           {machine.cli}
                         </p>
                       </div>
@@ -303,25 +303,25 @@ export function OpenShockShell({
                   </div>
                 </section>
 
-                <section className="mt-3 border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                <section className="mt-2.5 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Agents</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.agents.length}</span>
                   </div>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-2.5 space-y-2">
                     {resolvedState.agents.slice(0, 5).map((agent) => (
                       <Link
                         key={agent.id}
                         href={`/agents/${agent.id}`}
-                        className="block border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                        className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2.5 transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#efe5ce]"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="min-w-0 flex-1 truncate font-semibold">{agent.name}</p>
-                          <span className={cn("border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", agentTone(agent.state))}>
+                          <span className={cn("rounded-full border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", agentTone(agent.state))}>
                             {agentStateLabel(agent.state)}
                           </span>
                         </div>
-                        <p className="mt-2 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                        <p className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
                           {agent.lane}
                         </p>
                       </Link>

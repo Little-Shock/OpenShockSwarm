@@ -441,7 +441,7 @@
 ## TC-034 Frontend Interaction Polish Sweep
 
 - 业务目标: 确认聊天工作台的滚动、下拉、字号、输入框与高亮位置都符合高频使用习惯。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-01` `CHK-16` `CHK-17`
 - 前置条件: 统一壳层已经存在，并可在浏览器里持续操作 channel / room / inbox / setup。
 - 测试步骤:
@@ -449,7 +449,7 @@
   2. 检查 sidebar / channel / room 下拉与高亮位置是否稳定、紧凑、易读。
   3. 检查 composer 是否始终可见，字号和间距是否不会把信息打散。
 - 预期结果: 产品在高频聊天和切换场景下保持顺手，而不是只有静态截图好看。
-- 业务结论: 这轮已经收掉共享壳体的白缝和 Work 页密度，但完整的人机工学扫尾还没系统化，因此这条用例保留 `Not Run`，作为下一轮前端 polish 主票的验收面。
+- 业务结论: 2026 年 4 月 8 日 `TKT-24` 已新增 `pnpm test:headed-frontend-interaction-polish`，在 headed Chromium 下连续复核了 sidebar / topbar 命中区、`channel / room` scrollback、composer 常驻、room 现有 `Issue / Board / Thread` 动作命中区，以及 `1180px` 窄屏无横向溢出。当前 `docs/testing/Test-Report-2026-04-08-frontend-interaction-polish.md` 已记录命中区尺寸、viewport 可见性与截图证据，因此这条用例当前转为 `Pass`。
 
 ## TC-035 Device Authorization / Email Verification Lifecycle
 

@@ -34,6 +34,8 @@
   - `TKT-21` 的 real quick search / search result surface headed exact replay evidence
 - [Test Report 2026-04-08 Work Shell Smoke](./Test-Report-2026-04-08-work-shell-smoke.md)
   - `chat / setup / issues / memory / inbox / board / room / run` 在统一 workspace shell 下的当前有头走查结果
+- [Test Report 2026-04-08 Frontend Interaction Polish](./Test-Report-2026-04-08-frontend-interaction-polish.md)
+  - `TKT-24` 的 sidebar / topbar hit area、channel / room scrollback、composer 常驻与窄屏抽查证据
 - [Test Report 2026-04-08 Memory Governance](./Test-Report-2026-04-08-memory-governance.md)
   - `TKT-12` 当天重跑后的有头记忆治理证据
 - [Test Report 2026-04-08 Stop Resume Follow-thread](./Test-Report-2026-04-08-stop-resume-follow-thread.md)
@@ -67,6 +69,8 @@
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-quick-search`
   - 验证 Quick Search 的 channel / room / issue / run / agent 命中、跳转、高亮和 empty state
+- `pnpm test:headed-frontend-interaction-polish`
+  - 验证 sidebar / topbar 命中区、channel / room scrollback、composer 常驻与窄屏无横向溢出
 - `pnpm test:headed-work-shell-smoke`
   - 验证统一 workspace shell 下的 `chat / setup / issues / memory / inbox / board / room / run` 页面走查
 

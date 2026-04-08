@@ -162,7 +162,8 @@ function SidebarSection({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="mb-1 flex w-full items-center justify-between gap-2 px-2 py-1 text-left"
+        aria-expanded={open}
+        className="mb-1 flex min-h-[44px] w-full items-center justify-between gap-2 rounded-[14px] border-2 border-transparent px-2.5 py-1.5 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-[var(--shock-ink)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]"
       >
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.62)]">
@@ -173,10 +174,12 @@ function SidebarSection({
           </p>
         </div>
         {typeof count === "number" ? (
-          <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.52)]">{count}</span>
+          <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-0.5 font-mono text-[10px] text-[color:rgba(24,20,14,0.66)]">
+            {count}
+          </span>
         ) : null}
       </button>
-      {open ? <div className="space-y-1">{children}</div> : null}
+      {open ? <div className="space-y-1.5">{children}</div> : null}
     </section>
   );
 }
@@ -189,14 +192,14 @@ export function WorkspaceStatusStrip({
   disconnected?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2 border-b-2 border-[var(--shock-ink)] bg-[var(--shock-status)] px-4 py-2">
+    <div className="flex items-center gap-2 border-b-2 border-[var(--shock-ink)] bg-[var(--shock-status)] px-3 py-2">
       <span className="font-display text-[13px] font-bold">{workspaceName || "OpenShock"}</span>
       <span className="text-[11px] text-[color:rgba(24,20,14,0.62)]">
         {disconnected ? "offline" : "live"}
       </span>
       <Link
         href="/setup"
-        className="ml-auto border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+        className="ml-auto inline-flex min-h-[36px] items-center rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-status)]"
       >
         Reconnect
       </Link>
@@ -246,7 +249,7 @@ export function StitchSidebar({
         <Link
           href="/chat/all"
           className={cn(
-            "flex items-center justify-center gap-2 border-r-2 border-[var(--shock-ink)] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
+            "flex min-h-[44px] items-center justify-center gap-2 border-r-2 border-[var(--shock-ink)] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)]",
             mode === "chat"
               ? "bg-white text-[var(--shock-ink)]"
               : "bg-[var(--shock-paper)] text-[color:rgba(24,20,14,0.72)] hover:bg-white"
@@ -258,7 +261,7 @@ export function StitchSidebar({
         <Link
           href="/setup"
           className={cn(
-            "flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
+            "flex min-h-[44px] items-center justify-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)]",
             mode === "work"
               ? "bg-white text-[var(--shock-ink)]"
               : "text-[color:rgba(24,20,14,0.72)] hover:bg-[var(--shock-paper)]"
@@ -269,14 +272,14 @@ export function StitchSidebar({
         </Link>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="flex-1 overflow-y-auto overscroll-y-contain px-2 py-2">
         <div className="space-y-1">
           <button
             type="button"
             onClick={onOpenQuickSearch}
             data-testid="quick-search-trigger-sidebar"
             className={cn(
-              "flex w-full items-center gap-2 border-2 border-[var(--shock-ink)] px-2 py-2 text-left text-sm shadow-[var(--shock-shadow-sm)]",
+              "flex min-h-[44px] items-center gap-2 rounded-[16px] border-2 border-[var(--shock-ink)] px-2.5 py-2 text-left text-sm shadow-[var(--shock-shadow-sm)] transition-[background-color,border-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
               active === "channels"
                 ? "bg-[var(--shock-pink)] font-semibold text-white"
                 : "border-transparent bg-transparent hover:border-[var(--shock-ink)] hover:bg-white"
@@ -294,22 +297,22 @@ export function StitchSidebar({
               key={channel.id}
               href={`/chat/${channel.id}`}
               className={cn(
-                "block border-2 px-2 py-1.5 text-sm transition-colors",
+                "block min-h-[52px] rounded-[16px] border-2 px-2.5 py-2 text-sm transition-[background-color,border-color,transform,box-shadow] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
                 selectedChannelId === channel.id
                   ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white shadow-[var(--shock-shadow-sm)]"
                   : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
               )}
-              >
-                <div className="flex items-center gap-2">
-                  <HashIcon />
-                  <p className="min-w-0 flex-1 truncate font-medium">{channel.name}</p>
+            >
+              <div className="flex items-center gap-2">
+                <HashIcon />
+                <p className="min-w-0 flex-1 truncate font-medium">{channel.name}</p>
                 {channel.unread > 0 ? (
                   <span className={cn("min-w-5 rounded-full border border-[var(--shock-ink)] px-1 text-center font-mono text-[10px]", selectedChannelId === channel.id ? "bg-white text-[var(--shock-ink)]" : "bg-white")}>
                     {channel.unread}
                   </span>
                 ) : null}
               </div>
-              <p className={cn("mt-0.5 truncate pl-6 text-[10px]", selectedChannelId === channel.id ? "text-white/80" : "text-[color:rgba(24,20,14,0.56)]")}>
+              <p className={cn("mt-1 truncate pl-6 text-[10px] leading-4", selectedChannelId === channel.id ? "text-white/80" : "text-[color:rgba(24,20,14,0.56)]")}>
                 {channel.summary}
               </p>
             </Link>
@@ -322,7 +325,7 @@ export function StitchSidebar({
               key={room.id}
               href={`/rooms/${room.id}`}
               className={cn(
-                "block border-2 px-2 py-1.5 text-sm transition-colors",
+                "block min-h-[52px] rounded-[16px] border-2 px-2.5 py-2 text-sm transition-[background-color,border-color,transform,box-shadow] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
                 selectedRoomId === room.id
                   ? "border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]"
                   : "border-transparent hover:border-[var(--shock-ink)] hover:bg-white"
@@ -335,7 +338,7 @@ export function StitchSidebar({
                   {room.topic.status}
                 </span>
               </div>
-              <p className="mt-0.5 truncate pl-6 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.56)]">
+              <p className="mt-1 truncate pl-6 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.56)]">
                 {room.issueKey}
               </p>
             </Link>
@@ -348,7 +351,7 @@ export function StitchSidebar({
           <Link
             href="/inbox"
             className={cn(
-              "flex items-center justify-between gap-2 border-2 px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
+              "flex min-h-[44px] items-center justify-between gap-2 rounded-[14px] border-2 px-2.5 py-2 text-sm shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
               active === "inbox" ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white" : "bg-white"
             )}
           >
@@ -361,7 +364,7 @@ export function StitchSidebar({
           <Link
             href="/board"
             className={cn(
-              "flex items-center justify-between gap-2 border-2 px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
+              "flex min-h-[44px] items-center justify-between gap-2 rounded-[14px] border-2 px-2.5 py-2 text-sm shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
               active === "board" ? "border-[var(--shock-ink)] bg-white" : "bg-white"
             )}
           >
@@ -373,7 +376,7 @@ export function StitchSidebar({
           </Link>
         </div>
 
-        <div className="mt-2 border-2 border-[var(--shock-ink)] bg-white px-2 py-2 shadow-[var(--shock-shadow-sm)]">
+        <div className="mt-2 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2.5 shadow-[var(--shock-shadow-sm)]">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate font-display text-[14px] font-bold leading-none">
@@ -388,16 +391,16 @@ export function StitchSidebar({
               <p className="font-mono text-[10px] uppercase">{runningAgents}/{machineList.length}</p>
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-1 text-[10px]">
-            <div className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
+          <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
+            <div className="rounded-[10px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
               <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">live</p>
               <p className="mt-1 font-mono">{runningAgents}</p>
             </div>
-            <div className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
+            <div className="rounded-[10px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
               <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">blocked</p>
               <p className="mt-1 font-mono">{blockedAgents}</p>
             </div>
-            <div className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
+            <div className="rounded-[10px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
               <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">inbox</p>
               <p className="mt-1 font-mono">{openInboxCount}</p>
             </div>
@@ -438,7 +441,7 @@ export function StitchTopBar({
 }: StitchTopBarProps) {
   return (
     <header className="border-b-2 border-[var(--shock-ink)] bg-white">
-      <div className="grid gap-3 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_minmax(250px,320px)_auto] xl:items-center">
+      <div className="grid gap-2.5 px-4 py-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(250px,320px)_auto] xl:items-center">
         <div className="min-w-0">
           {eyebrow ? (
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">
@@ -455,7 +458,7 @@ export function StitchTopBar({
           type="button"
           onClick={onOpenQuickSearch}
           data-testid="quick-search-trigger-topbar"
-          className="flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 text-left"
+          className="flex min-h-[50px] items-center gap-2 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 text-left shadow-[var(--shock-shadow-sm)]"
         >
           <span className="flex h-7 w-7 items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] font-mono text-[10px] font-bold">
             K
@@ -483,7 +486,7 @@ export function StitchTopBar({
               key={link.href}
               href={link.href}
               className={cn(
-                "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]",
+                "inline-flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                 currentHref === link.href ? "bg-[var(--shock-yellow)]" : "bg-white hover:bg-[var(--shock-paper)]"
               )}
             >
@@ -495,11 +498,11 @@ export function StitchTopBar({
 
       {tabs && tabs.length > 0 ? (
         <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4">
-          <div className="flex flex-wrap gap-0">
+          <div className="flex flex-nowrap overflow-x-auto">
             {tabs.map((tab) => {
               const resolvedTab = typeof tab === "string" ? { label: tab } : tab;
               const className = cn(
-                "border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]",
+                "flex min-h-[44px] items-center border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]",
                 resolvedTab.label === activeTab
                   ? "bg-[var(--shock-yellow)] font-semibold"
                   : "bg-white text-[color:rgba(24,20,14,0.62)]"
