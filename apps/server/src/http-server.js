@@ -1084,6 +1084,69 @@ function serializeChannelCollaborationContract(input = {}, channelId = null) {
   };
 }
 
+function serializeStage6bNotificationAccessContract(input = {}, channelId = null) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const encodedChannelId = channelId ? encodeURIComponent(channelId) : ":channelId";
+  const latest = input.auditAnchor?.latest ?? {};
+  return {
+    contract_version: input.contractVersion ?? "v1.stage6b",
+    truth_family: deepClone(input.truthFamily ?? ["/v1/channels/*", "/v1/inbox/*", "/v1/topics/*"]),
+    status: {
+      notification_access_status: input.status?.notificationAccessStatus ?? "pending",
+      invite_status: input.status?.inviteStatus ?? "pending",
+      verify_status: input.status?.verifyStatus ?? "pending",
+      reset_password_status: input.status?.resetPasswordStatus ?? "pending"
+    },
+    access_rules: {
+      invite: {
+        required_layers: deepClone(input.accessRules?.invite?.requiredLayers ?? ["inbox", "email"]),
+        event_code: input.accessRules?.invite?.eventCode ?? "invite"
+      },
+      verify: {
+        required_layers: deepClone(input.accessRules?.verify?.requiredLayers ?? ["inbox", "email"]),
+        event_code: input.accessRules?.verify?.eventCode ?? "verify"
+      },
+      reset_password: {
+        required_layers: deepClone(input.accessRules?.resetPassword?.requiredLayers ?? ["inbox", "email"]),
+        event_code: input.accessRules?.resetPassword?.eventCode ?? "reset_password"
+      }
+    },
+    endpoint_status: {
+      inbox: input.endpointStatus?.inbox ?? "server_owned",
+      browser_push: input.endpointStatus?.browserPush ?? "pending",
+      email: input.endpointStatus?.email ?? "pending"
+    },
+    write_anchors: {
+      notification_endpoint_upsert:
+        input.writeAnchors?.notificationEndpointUpsert ??
+        `/v1/channels/${encodedChannelId}/notification-endpoint`
+    },
+    read_anchors: {
+      channel_notification_endpoint:
+        input.readAnchors?.channelNotificationEndpoint ??
+        `/v1/channels/${encodedChannelId}/notification-endpoint`,
+      channel_context: input.readAnchors?.channelContext ?? `/v1/channels/${encodedChannelId}/context`,
+      topic_notifications: input.readAnchors?.topicNotifications ?? "/v1/topics/:topicId/notifications",
+      topic_inbox: input.readAnchors?.topicInbox ?? "/v1/inbox/:actorId?topic_id=:topicId"
+    },
+    audit_anchor: {
+      trail: input.auditAnchor?.trail ?? `/v1/channels/${encodedChannelId}/audit-trail`,
+      latest: {
+        notification_endpoint: latest.notificationEndpoint
+          ? {
+              audit_id: latest.notificationEndpoint.auditId ?? null,
+              action: latest.notificationEndpoint.action ?? null,
+              at: latest.notificationEndpoint.at ?? null
+            }
+          : null
+      }
+    },
+    updated_at: input.updatedAt ?? null
+  };
+}
+
 function serializeWorkspaceOnboardingAccessContract(input = {}, channelId = null) {
   if (!input || typeof input !== "object") {
     return null;
@@ -1206,6 +1269,7 @@ function serializeChannelContextContract(input = {}) {
         : null,
       collaboration_contract: serializeChannelCollaborationContract(input.context?.collaborationContract, channelId)
     },
+    notification_access_contract: serializeStage6bNotificationAccessContract(input.notificationRecoveryAccess, channelId),
     workspace_onboarding_access: serializeWorkspaceOnboardingAccessContract(input.workspaceOnboardingAccess, channelId),
     governance: {
       auth_identity: input.governance?.authIdentity
@@ -1637,6 +1701,7 @@ function serializeChannelNotificationApprovalContract(input = {}) {
           `/v1/channels/${encodeURIComponent(channelId)}/audit-trail`
       }
     },
+    notification_access_contract: serializeStage6bNotificationAccessContract(input.notificationRecoveryAccess, channelId),
     write_anchors: {
       notification_endpoint_upsert:
         input.writeAnchors?.notificationEndpointUpsert ??

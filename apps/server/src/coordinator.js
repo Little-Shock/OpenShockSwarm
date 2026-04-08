@@ -240,6 +240,7 @@ const DEPLOY_RUNTIME_ONBOARDING_FLOW_STATUSES = new Set(["pending", "ready", "bl
 const DEPLOY_RUNTIME_DEVICE_AUTHORIZATION_STATUSES = new Set(["pending", "authorized", "blocked", "revoked"]);
 const DEPLOY_RUNTIME_RUNTIME_ATTACH_STATUSES = new Set(["not_attached", "attaching", "attached", "degraded", "blocked"]);
 const DEPLOY_RUNTIME_HOSTED_ENTRY_CHAIN_STATUSES = new Set(["pending", "ready", "blocked", "local_only"]);
+const NOTIFICATION_ACCESS_STATUSES = new Set(["pending", "ready", "blocked"]);
 const INBOX_ATTENTION_CHANNELS = new Set(["inbox", "browser_push", "email"]);
 const INBOX_FOLLOW_UP_PRIORITIES = new Set(["normal", "high", "urgent"]);
 const EXTERNAL_MEMORY_PROVIDER_CAPABILITIES = Object.freeze({
@@ -4993,6 +4994,7 @@ export class ServerCoordinator {
       },
       notificationEndpoint: channel.notificationEndpoints,
       notificationRoutingRules: NOTIFICATION_ROUTING_RULES,
+      notificationRecoveryAccess: this.buildNotificationRecoveryAccessContract(channel),
       approvalContract: this.getChannelApprovalAuditAnchors(channel),
       externalMemoryProvider: channel.externalMemoryProvider,
       workspaceOnboardingAccess: this.buildWorkspaceOnboardingAccessContract(channel),
@@ -5953,6 +5955,7 @@ export class ServerCoordinator {
       ownerOperatorId: channel.ownerOperatorId,
       notificationEndpoint: channel.notificationEndpoints,
       routingRules: NOTIFICATION_ROUTING_RULES,
+      notificationRecoveryAccess: this.buildNotificationRecoveryAccessContract(channel),
       approvalContract: this.getChannelApprovalAuditAnchors(channel),
       writeAnchors: {
         notificationEndpointUpsert: `/v1/channels/${encodeURIComponent(channel.channelId)}/notification-endpoint`,
@@ -5961,6 +5964,89 @@ export class ServerCoordinator {
       auditAnchor: this.buildChannelAuditAnchor(channel),
       updatedAt: channel.updatedAt
     });
+  }
+
+  buildNotificationRecoveryAccessContract(channel) {
+    const notificationEndpoint = this.ensureChannelNotificationEndpoints(channel);
+    const auditAnchor = this.buildChannelAuditAnchor(channel);
+    const routingRules = NOTIFICATION_ROUTING_RULES;
+    const emailEvents = routingRules.email?.events ?? [];
+    const inboxEvents = routingRules.inbox?.events ?? [];
+    const emailReady =
+      notificationEndpoint.email?.enabled === true &&
+      Boolean(normalizeOptionalScopeId(notificationEndpoint.email?.endpointRef));
+    const browserPushReady =
+      notificationEndpoint.browserPush?.enabled === true &&
+      Boolean(normalizeOptionalScopeId(notificationEndpoint.browserPush?.endpointRef));
+    const resolveRuleCoverage = (events, eventCode) => Array.isArray(events) && (events.includes("all") || events.includes(eventCode));
+    const resolveEventStatus = (eventCode) => {
+      if (!resolveRuleCoverage(emailEvents, eventCode) || !resolveRuleCoverage(inboxEvents, eventCode)) {
+        return "blocked";
+      }
+      if (emailReady) {
+        return "ready";
+      }
+      return "pending";
+    };
+    const inviteStatus = resolveEventStatus("invite");
+    const verifyStatus = resolveEventStatus("verify");
+    const resetPasswordStatus = resolveEventStatus("reset_password");
+    const aggregateStatus =
+      [inviteStatus, verifyStatus, resetPasswordStatus].every((item) => item === "ready")
+        ? "ready"
+        : [inviteStatus, verifyStatus, resetPasswordStatus].some((item) => item === "blocked")
+          ? "blocked"
+          : "pending";
+    assertOrThrow(
+      NOTIFICATION_ACCESS_STATUSES.has(aggregateStatus),
+      "invalid_notification_access_status",
+      "notification access status is invalid"
+    );
+    return {
+      contractVersion: "v1.stage6b",
+      truthFamily: ["/v1/channels/*", "/v1/inbox/*", "/v1/topics/*"],
+      status: {
+        notificationAccessStatus: aggregateStatus,
+        inviteStatus,
+        verifyStatus,
+        resetPasswordStatus
+      },
+      accessRules: {
+        invite: {
+          requiredLayers: ["inbox", "email"],
+          eventCode: "invite"
+        },
+        verify: {
+          requiredLayers: ["inbox", "email"],
+          eventCode: "verify"
+        },
+        resetPassword: {
+          requiredLayers: ["inbox", "email"],
+          eventCode: "reset_password"
+        }
+      },
+      endpointStatus: {
+        inbox: "server_owned",
+        browserPush: browserPushReady ? "ready" : "pending",
+        email: emailReady ? "ready" : "pending"
+      },
+      writeAnchors: {
+        notificationEndpointUpsert: `/v1/channels/${encodeURIComponent(channel.channelId)}/notification-endpoint`
+      },
+      readAnchors: {
+        channelNotificationEndpoint: `/v1/channels/${encodeURIComponent(channel.channelId)}/notification-endpoint`,
+        channelContext: `/v1/channels/${encodeURIComponent(channel.channelId)}/context`,
+        topicNotifications: "/v1/topics/:topicId/notifications",
+        topicInbox: "/v1/inbox/:actorId?topic_id=:topicId"
+      },
+      auditAnchor: {
+        trail: auditAnchor.trail,
+        latest: {
+          notificationEndpoint: auditAnchor.latest?.notificationEndpoint ?? null
+        }
+      },
+      updatedAt: channel.updatedAt
+    };
   }
 
   upsertChannelNotificationEndpointContract(channelId, input = {}) {

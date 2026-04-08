@@ -6454,10 +6454,118 @@ test("v1 stage6a workspace onboarding access contract keeps identity/invite/inst
         shellCompatibility: shellCompatibility.body
       });
       assert.equal(payload.includes("stage6a"), true);
-      assert.equal(payload.includes("\"stage6b\""), false);
+      assert.equal(payload.includes("stage6b"), true);
       assert.equal(payload.includes("\"stage6c\""), false);
     }
   );
+});
+
+test("v1 stage6b notification recovery access contract keeps invite/verify/reset-password access on existing notification truth", async () => {
+  const channelId = "channel_stage6b_notification_access";
+  const operatorId = "human_operator_stage6b_notification_access";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const context = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`,
+      body: {
+        operator_id: operatorId,
+        workspace_id: "workspace_stage6b_notification_access",
+        workspace_root: "/Users/atou/.slock/agents",
+        baseline_ref: "feat/initial-implementation@8fda3e7",
+        fixed_directory: "/Users/atou/OpenShockSwarm"
+      }
+    });
+    assert.equal(context.statusCode, 200);
+    assert.equal(context.body.context.notification_access_contract.contract_version, "v1.stage6b");
+    assert.equal(context.body.context.notification_access_contract.status.notification_access_status, "pending");
+    assert.equal(context.body.context.notification_access_contract.status.invite_status, "pending");
+    assert.equal(context.body.context.notification_access_contract.status.verify_status, "pending");
+    assert.equal(context.body.context.notification_access_contract.status.reset_password_status, "pending");
+
+    const defaultEndpointContract = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/notification-endpoint`
+    });
+    assert.equal(defaultEndpointContract.statusCode, 200);
+    assert.equal(defaultEndpointContract.body.notification_endpoint.contract_version, "v1.stage4a2");
+    assert.equal(defaultEndpointContract.body.notification_endpoint.notification_access_contract.contract_version, "v1.stage6b");
+    assert.equal(
+      defaultEndpointContract.body.notification_endpoint.notification_access_contract.status.notification_access_status,
+      "pending"
+    );
+    assert.equal(defaultEndpointContract.body.notification_endpoint.notification_access_contract.endpoint_status.email, "pending");
+    assert.equal(
+      defaultEndpointContract.body.notification_endpoint.notification_access_contract.read_anchors.channel_context,
+      `/v1/channels/${encodeURIComponent(channelId)}/context`
+    );
+
+    const readyEndpointContract = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/notification-endpoint`,
+      body: {
+        operator_id: operatorId,
+        email: {
+          enabled: true,
+          endpoint_ref: "mailto:stage6b@openshock.dev"
+        }
+      }
+    });
+    assert.equal(readyEndpointContract.statusCode, 200);
+    assert.equal(
+      readyEndpointContract.body.notification_endpoint.notification_access_contract.status.notification_access_status,
+      "ready"
+    );
+    assert.equal(readyEndpointContract.body.notification_endpoint.notification_access_contract.status.invite_status, "ready");
+    assert.equal(readyEndpointContract.body.notification_endpoint.notification_access_contract.status.verify_status, "ready");
+    assert.equal(
+      readyEndpointContract.body.notification_endpoint.notification_access_contract.status.reset_password_status,
+      "ready"
+    );
+    assert.equal(readyEndpointContract.body.notification_endpoint.notification_access_contract.endpoint_status.email, "ready");
+    assert.equal(
+      readyEndpointContract.body.notification_endpoint.notification_access_contract.audit_anchor.latest.notification_endpoint.action,
+      "channel_notification_endpoint_upsert"
+    );
+
+    const contextAfterEndpointUpsert = await requestJson({
+      port,
+      method: "GET",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/context`
+    });
+    assert.equal(contextAfterEndpointUpsert.statusCode, 200);
+    assert.equal(
+      contextAfterEndpointUpsert.body.context.notification_access_contract.status.notification_access_status,
+      "ready"
+    );
+    assert.equal(contextAfterEndpointUpsert.body.context.notification_access_contract.endpoint_status.email, "ready");
+
+    const invalidNotificationAccessProjectionWrite = await requestJson({
+      port,
+      method: "PUT",
+      path: `/v1/channels/${encodeURIComponent(channelId)}/notification-endpoint`,
+      body: {
+        operator_id: operatorId,
+        notification_access_contract: {
+          status: {
+            notification_access_status: "ready"
+          }
+        }
+      }
+    });
+    assert.equal(invalidNotificationAccessProjectionWrite.statusCode, 400);
+    assert.equal(invalidNotificationAccessProjectionWrite.body.error.code, "invalid_notification_endpoint_field");
+
+    const payload = JSON.stringify({
+      notificationEndpoint: readyEndpointContract.body.notification_endpoint,
+      context: contextAfterEndpointUpsert.body.context
+    });
+    assert.equal(payload.includes("stage6b"), true);
+    assert.equal(payload.includes("stage6c"), false);
+  });
 });
 
 test("v1 stage5b inbox attention contract keeps unified inbox/follow-up/mention routing under /v1/inbox truth family", async () => {
