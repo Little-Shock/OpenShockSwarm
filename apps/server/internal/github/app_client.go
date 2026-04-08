@@ -65,7 +65,7 @@ func (s *Service) createPullRequestWithGitHubApp(workspaceRoot string, input Cre
 		return PullRequest{}, fmt.Errorf("push branch to origin: %w", err)
 	}
 
-	token, err := githubAppInstallationToken()
+	token, err := githubAppInstallationToken(workspaceRoot)
 	if err != nil {
 		return PullRequest{}, err
 	}
@@ -85,11 +85,11 @@ func (s *Service) createPullRequestWithGitHubApp(workspaceRoot string, input Cre
 		return PullRequest{}, fmt.Errorf("github app create returned invalid pull request number")
 	}
 
-	return s.viewPullRequestWithGitHubApp(input.Repo, created.Number, false)
+	return s.viewPullRequestWithGitHubApp(workspaceRoot, input.Repo, created.Number, false)
 }
 
-func (s *Service) mergePullRequestWithGitHubApp(input MergePullRequestInput) (PullRequest, error) {
-	token, err := githubAppInstallationToken()
+func (s *Service) mergePullRequestWithGitHubApp(workspaceRoot string, input MergePullRequestInput) (PullRequest, error) {
+	token, err := githubAppInstallationToken(workspaceRoot)
 	if err != nil {
 		return PullRequest{}, err
 	}
@@ -101,11 +101,11 @@ func (s *Service) mergePullRequestWithGitHubApp(input MergePullRequestInput) (Pu
 		return PullRequest{}, err
 	}
 
-	return s.viewPullRequestWithGitHubApp(input.Repo, input.Number, false)
+	return s.viewPullRequestWithGitHubApp(workspaceRoot, input.Repo, input.Number, false)
 }
 
-func (s *Service) viewPullRequestWithGitHubApp(repo string, number int, requireReviewDecision bool) (PullRequest, error) {
-	token, err := githubAppInstallationToken()
+func (s *Service) viewPullRequestWithGitHubApp(workspaceRoot, repo string, number int, requireReviewDecision bool) (PullRequest, error) {
+	token, err := githubAppInstallationToken(workspaceRoot)
 	if err != nil {
 		return PullRequest{}, err
 	}
@@ -172,8 +172,8 @@ func fetchGitHubAppReviewDecision(token, repo string, number int) (string, error
 	return strings.TrimSpace(payload.Data.Repository.PullRequest.ReviewDecision), nil
 }
 
-func githubAppInstallationToken() (string, error) {
-	appID, installationID, privateKey, err := loadGitHubAppCredentials()
+func githubAppInstallationToken(workspaceRoot string) (string, error) {
+	appID, installationID, privateKey, err := loadGitHubAppCredentials(workspaceRoot)
 	if err != nil {
 		return "", err
 	}
@@ -243,9 +243,12 @@ func doGitHubAPIJSONRequest(method, requestURL, bearerToken string, requestBody 
 	return nil
 }
 
-func loadGitHubAppCredentials() (string, string, *rsa.PrivateKey, error) {
+func loadGitHubAppCredentials(workspaceRoot string) (string, string, *rsa.PrivateKey, error) {
 	appID := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_ID"))
 	installationID := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_INSTALLATION_ID"))
+	if installationID == "" {
+		installationID = strings.TrimSpace(loadInstallationStateFallback(workspaceRoot).InstallationID)
+	}
 	if appID == "" {
 		return "", "", nil, fmt.Errorf("github app id is not configured")
 	}
