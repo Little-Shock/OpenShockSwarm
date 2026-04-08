@@ -26,8 +26,8 @@ var (
 	ErrAgentMemoryBindingRequired      = errors.New("agent memory binding requires at least one scope")
 	ErrAgentMemorySpaceInvalid         = errors.New("agent memory space is invalid")
 	ErrAgentRuntimePreferenceInvalid   = errors.New("agent runtime preference must match a known runtime")
-	ErrAgentProviderPreferenceInvalid  = errors.New("agent provider preference must match runtime inventory")
-	ErrAgentModelPreferenceInvalid     = errors.New("agent model preference must match provider inventory")
+	ErrAgentProviderPreferenceInvalid  = errors.New("agent provider preference must match runtime provider truth")
+	ErrAgentModelPreferenceInvalid     = errors.New("agent model preference is invalid")
 )
 
 type AgentProfileUpdateInput struct {
@@ -293,13 +293,10 @@ func resolveModelPreference(provider RuntimeProvider, value string) (string, err
 	if trimmed == "" {
 		return "", ErrAgentModelPreferenceRequired
 	}
-	if len(provider.Models) == 0 {
-		return trimmed, nil
-	}
 	for _, model := range provider.Models {
 		if strings.EqualFold(model, trimmed) {
 			return model, nil
 		}
 	}
-	return "", fmt.Errorf("%w: %s", ErrAgentModelPreferenceInvalid, trimmed)
+	return trimmed, nil
 }

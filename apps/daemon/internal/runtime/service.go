@@ -416,6 +416,7 @@ func detectProviders() []Provider {
 				"mcp-server",
 				"app-server",
 			},
+			// This list is a suggestion catalog for the UI. Only CLI/provider presence is machine-derived here.
 			Models:    []string{"gpt-5.2", "gpt-5.3-codex", "gpt-5.1-codex-mini"},
 			Transport: "http bridge",
 		})
@@ -430,6 +431,7 @@ func detectProviders() []Provider {
 				"non-interactive-print",
 				"mcp-config",
 			},
+			// This list is a suggestion catalog for the UI. Only CLI/provider presence is machine-derived here.
 			Models:    []string{"claude-sonnet-4", "claude-opus-4.1"},
 			Transport: "http bridge",
 		})

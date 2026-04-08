@@ -475,20 +475,20 @@
   2. 编辑 `role / avatar / prompt / memory binding / provider preference`。
   3. 保存后刷新页面，并检查 next-run preview 是否读取新配置。
 - 预期结果: Agent profile edit 会持久化并影响下一次 run 的配置注入。
-- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine inventory / durable config 继续留 `TKT-33` `TKT-37`。
+- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine capability catalog / durable config 继续留 `TKT-33` `TKT-37`。
 
 ## TC-037 Machine Profile / Local CLI Model Capability Binding
 
 - 业务目标: 确认 Runtime / Machine 的真实能力可以被人类看到，并和 Agent 偏好绑定。
 - 当前执行状态: Pass
 - 对应 Checklist: `CHK-14` `CHK-19` `CHK-22`
-- 前置条件: 存在 machine profile、capability inventory 和 Agent capability preference surface。
+- 前置条件: 存在 machine profile、capability catalog 和 Agent capability preference surface。
 - 测试步骤:
   1. 打开 machine profile 或 setup capability 面。
-  2. 读取本地 CLI / provider / model inventory。
-  3. 为某个 Agent 绑定 default provider / model / runtime affinity，并验证保存结果。
-- 预期结果: Machine capability truth 和 Agent 偏好使用同一份后端配置真相。
-- 业务结论: 2026 年 4 月 9 日 `TKT-33` 已新增 `pnpm test:headed-machine-profile-capability-binding`，在 headed Chromium 下把 `/setup`、machine profile、Agent profile editor 和 `/agents` 串成同一条 exact replay。当前 `docs/testing/Test-Report-2026-04-09-machine-profile-capability-binding.md` 已记录 shell / daemon / provider-model inventory 与 agent provider+model+runtime affinity 的同源读写证据，因此这条用例当前转为 `Pass`；更重的 durable config / database recovery 继续留给 `TKT-37 / TC-040`。
+  2. 读取本地 CLI / provider truth 与 provider model catalog suggestion。
+  3. 为某个 Agent 绑定 default provider / model / runtime affinity，并验证保存结果；model 字段允许输入 catalog 外的本机配置值。
+- 预期结果: Machine capability truth 和 Agent 偏好使用同一份后端配置真相；provider/model catalog 只做 suggestion，不按静态列表硬拒绝。
+- 业务结论: 2026 年 4 月 9 日 `TKT-33` 已新增 `pnpm test:headed-machine-profile-capability-binding`，在 headed Chromium 下把 `/setup`、machine profile、Agent profile editor 和 `/agents` 串成同一条 exact replay。当前 `docs/testing/Test-Report-2026-04-09-machine-profile-capability-binding.md` 已记录 shell / daemon / provider-model catalog 与 agent provider+model+runtime affinity 的同源读写证据，并覆盖 catalog 外 model 仍可保存的回放，因此这条用例当前转为 `Pass`；更重的 durable config / database recovery 继续留给 `TKT-37 / TC-040`。
 
 ## TC-038 Onboarding Wizard / Scenario Template Bootstrap
 

@@ -264,12 +264,12 @@
 - 目标: 把 Runtime / Machine 的本地能力发现与 Agent 偏好绑定做成正式产品面。
 - 范围:
   - machine profile：hostname / OS / shell / daemon / capability summary
-  - 本地 CLI / provider / model inventory
+  - 本地 CLI / provider truth + provider model catalog
   - Agent default provider / model / runtime affinity 绑定
 - 依赖: `TKT-14`
 - Done When:
   - `/setup`、`/agents` 或 machine profile 能看到 machine capability truth
-  - Agent 可声明 default provider / model / runtime affinity，并和 machine inventory 对齐
+  - Agent 可声明 default provider / model / runtime affinity，并与 machine/provider truth 对齐；model catalog 只作 suggestion，不按静态列表硬拒绝
   - 有 store / API tests 加浏览器级 walkthrough
 - Checklist: `CHK-14` `CHK-19` `CHK-22`
 - Test Cases: `TC-037` `TC-040`

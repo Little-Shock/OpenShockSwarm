@@ -331,6 +331,11 @@ function providerModelList(provider: RuntimeRegistryRecord["providers"][number] 
   return provider?.models ?? [];
 }
 
+function catalogIncludesModel(models: string[], value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && models.some((model) => model.toLowerCase() === trimmed.toLowerCase());
+}
+
 function RuntimeProviderInventory({
   runtime,
   testPrefix,
@@ -432,14 +437,21 @@ function AgentProfileSurface({
     : "";
   const selectedProviderRecord =
     selectedRuntimeProviders.find((provider) => matchesProviderPreference(provider, providerPreferenceDraft)) ?? null;
+  const selectedProviderCatalog = providerModelList(selectedProviderRecord);
   const providerOptions = uniqueStrings([
     agent.providerPreference,
     ...selectedRuntimeProviders.map((provider) => runtimeProviderLabel(provider)),
   ]);
   const modelOptions = uniqueStrings([
     agent.modelPreference,
-    ...providerModelList(selectedProviderRecord),
+    ...selectedProviderCatalog,
   ]);
+  const alternateProviderCatalog = uniqueStrings(
+    selectedRuntimeProviders
+      .filter((provider) => provider.id !== selectedProviderRecord?.id)
+      .flatMap((provider) => providerModelList(provider))
+  );
+  const modelCatalogListId = `profile-editor-model-catalog-${agent.id}`;
 
   useEffect(() => {
     setRoleDraft(agent.role);
@@ -482,13 +494,20 @@ function AgentProfileSurface({
   }, [selectedProviderRecord, selectedRuntimeFirstProviderLabel]);
 
   useEffect(() => {
-    if (modelOptions.length === 0) {
+    if (selectedProviderCatalog.length === 0) {
       return;
     }
-    if (!modelOptions.includes(modelPreferenceDraft)) {
-      setModelPreferenceDraft(modelOptions[0]);
+    if (modelPreferenceDraft.trim() === "") {
+      setModelPreferenceDraft(selectedProviderCatalog[0] ?? "");
+      return;
     }
-  }, [modelOptions, modelPreferenceDraft]);
+    if (catalogIncludesModel(selectedProviderCatalog, modelPreferenceDraft)) {
+      return;
+    }
+    if (catalogIncludesModel(alternateProviderCatalog, modelPreferenceDraft)) {
+      setModelPreferenceDraft(selectedProviderCatalog[0] ?? "");
+    }
+  }, [alternateProviderCatalog, modelPreferenceDraft, selectedProviderCatalog]);
 
   function toggleMemorySpace(value: string) {
     setMemorySpacesDraft((current) =>
@@ -530,7 +549,7 @@ function AgentProfileSurface({
       title={agent.name}
       description={agent.description}
       contextTitle="Profile Presence"
-      contextDescription="Agent profile 现在把 role / prompt / memory binding 和 runtime affinity contract 放在同一页：provider、model、runtime 直接对齐 machine inventory，不再长第二套 shadow state。"
+      contextDescription="Agent profile 现在把 role / prompt / memory binding 和 runtime affinity contract 放在同一页：provider、model、runtime 直接对齐 machine provider truth 与 model catalog suggestion，不再长第二套 shadow state。"
       contextBody={
         <DetailRail
           label="Agent Truth"
@@ -586,7 +605,7 @@ function AgentProfileSurface({
 
           <Panel tone="paper">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Bound Runtime Inventory</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Bound Runtime Catalog</p>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
                 {selectedRuntimeRecord ? selectedRuntimeRecord.id : "未命中 runtime"}
               </span>
@@ -607,7 +626,7 @@ function AgentProfileSurface({
               </div>
             ) : (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                当前 draft 还没命中任何 runtime inventory；先从已注册 machine truth 里选一条 runtime affinity。
+                当前 draft 还没命中任何 runtime provider/catalog；先从已注册 machine truth 里选一条 runtime affinity。
               </p>
             )}
           </Panel>
@@ -713,19 +732,23 @@ function AgentProfileSurface({
                 </label>
                 <label className="block">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Default Model</span>
-                  <select
+                  <input
                     data-testid="profile-editor-model-preference"
+                    list={modelCatalogListId}
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
                     value={modelPreferenceDraft}
                     onChange={(event) => setModelPreferenceDraft(event.target.value)}
                     disabled={!canEdit || saving}
-                  >
+                    autoComplete="off"
+                  />
+                  <datalist id={modelCatalogListId}>
                     {modelOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
+                      <option key={option} value={option} />
                     ))}
-                  </select>
+                  </datalist>
+                  <p className="mt-1.5 text-xs leading-5 text-[color:rgba(24,20,14,0.64)]">
+                    runtime 侧这份 model catalog 只提供 suggestion；可直接输入本机配置里的 model id，不按静态目录做硬拒绝。
+                  </p>
                 </label>
               </div>
 
@@ -911,9 +934,9 @@ function MachineProfileSurface({
       view="profiles"
       eyebrow="Machine Profile"
       title={machine.name}
-      description="Machine profile 现在把 heartbeat、shell、daemon、provider-model inventory、最近 runs 和已绑定 agents 收成一张前台 surface。"
+      description="Machine profile 现在把 heartbeat、shell、daemon、provider-model catalog、最近 runs 和已绑定 agents 收成一张前台 surface。"
       contextTitle="Machine Presence"
-      contextDescription="这页只读 live machine/runtime truth；binding editor 继续留在 Agent profile，但 `/setup`、`/agents` 和这里都读同一份 inventory。"
+      contextDescription="这页只读 live machine/runtime truth；binding editor 继续留在 Agent profile，但 `/setup`、`/agents` 和这里都读同一份 provider/model catalog。"
       contextBody={
         <DetailRail
           label="Machine Truth"

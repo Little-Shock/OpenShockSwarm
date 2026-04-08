@@ -68,3 +68,33 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 		t.Fatalf("reloaded agent = %#v, want persisted profile edits + audit", reloadedAgent)
 	}
 }
+
+func TestUpdateAgentProfileAllowsModelOutsideProviderCatalog(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, agent, err := s.UpdateAgentProfile("agent-codex-dockmaster", AgentProfileUpdateInput{
+		Role:                  "Delivery Lead",
+		Avatar:                "signal-radar",
+		Prompt:                "Prefer live machine truth before catalog defaults.",
+		OperatingInstructions: "Treat provider catalogs as suggestions, not allowlists.",
+		ProviderPreference:    "Codex CLI",
+		ModelPreference:       "gpt-5.4",
+		RecallPolicy:          "agent-first",
+		RuntimePreference:     "shock-sidecar",
+		MemorySpaces:          []string{"workspace", "user"},
+		UpdatedBy:             "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("UpdateAgentProfile() error = %v", err)
+	}
+
+	if agent.ModelPreference != "gpt-5.4" {
+		t.Fatalf("updated agent model = %q, want custom model outside catalog to persist", agent.ModelPreference)
+	}
+}

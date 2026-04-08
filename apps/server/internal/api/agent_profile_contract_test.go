@@ -78,3 +78,29 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 		t.Fatalf("updated detail = %#v, want persisted profile edits", updated)
 	}
 }
+
+func TestAgentProfileRouteAllowsCustomModelOutsideCatalog(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	updateResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPatch,
+		server.URL+"/v1/agents/agent-codex-dockmaster",
+		`{"role":"Delivery Lead","avatar":"signal-radar","prompt":"Prefer live machine truth before catalog defaults.","operatingInstructions":"Treat provider catalogs as suggestions, not allowlists.","providerPreference":"Codex CLI","modelPreference":"gpt-5.4","recallPolicy":"agent-first","runtimePreference":"shock-sidecar","memorySpaces":["workspace","user"]}`,
+	)
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/agents/:id status = %d, want %d", updateResp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Agent store.Agent `json:"agent"`
+	}
+	decodeJSON(t, updateResp, &payload)
+	if payload.Agent.ModelPreference != "gpt-5.4" || payload.Agent.RuntimePreference != "shock-sidecar" {
+		t.Fatalf("updated agent = %#v, want custom model + runtime preference persisted", payload.Agent)
+	}
+}

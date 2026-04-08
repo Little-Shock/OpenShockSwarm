@@ -245,18 +245,18 @@ try {
   await expectLocatorText(
     page.locator('[data-testid="setup-runtime-card-shock-main"]'),
     "Codex CLI: gpt-5.2 / gpt-5.3-codex / gpt-5.1-codex-mini",
-    "setup card missing codex model inventory"
+    "setup card missing codex model catalog"
   );
   await expectLocatorText(
     page.locator('[data-testid="setup-runtime-card-shock-main"]'),
     "Claude Code CLI: claude-sonnet-4 / claude-opus-4.1",
-    "setup card missing claude model inventory"
+    "setup card missing claude model catalog"
   );
-  results.push("`/setup` 当前会直接展示 selected runtime 的 shell 与 provider-model inventory。");
+  results.push("`/setup` 当前会直接展示 selected runtime 的 shell 与 provider-model catalog。");
 
   await page.goto(`${webURL}/profiles/machine/machine-main`, { waitUntil: "domcontentloaded" });
   await waitForVisible(page.locator('[data-testid="machine-profile-shell"]'), "machine profile shell metric did not render");
-  await waitForVisible(page.locator('[data-testid="machine-runtime-shock-main-provider-codex"]'), "machine provider inventory did not render");
+  await waitForVisible(page.locator('[data-testid="machine-runtime-shock-main-provider-codex"]'), "machine provider catalog did not render");
   await capture(page, "machine-profile-inventory");
   await expectLocatorText(
     page.locator('[data-testid="machine-profile-shell"]'),
@@ -266,33 +266,33 @@ try {
   await expectLocatorText(
     page.locator('[data-testid="machine-runtime-shock-main-provider-codex"]'),
     "gpt-5.3-codex",
-    "machine profile codex inventory missing model"
+    "machine profile codex catalog missing model"
   );
   await expectLocatorText(
     page.locator('[data-testid="machine-runtime-shock-main-provider-claude"]'),
     "claude-opus-4.1",
-    "machine profile claude inventory missing model"
+    "machine profile claude catalog missing model"
   );
-  results.push("machine profile 会和 `/setup` 读同一份 runtime truth：shell、daemon、CLI 与 provider-model inventory 一致。");
+  results.push("machine profile 会和 `/setup` 读同一份 runtime truth：shell、daemon、CLI 与 provider-model catalog 一致。");
 
   await page.goto(`${webURL}/profiles/agent/agent-codex-dockmaster`, { waitUntil: "domcontentloaded" });
   await waitForVisible(page.locator('[data-testid="profile-editor-runtime-preference"]'), "agent runtime select did not render");
-  await waitForVisible(page.locator('[data-testid="profile-binding-runtime-card"]'), "agent binding inventory card did not render");
+  await waitForVisible(page.locator('[data-testid="profile-binding-runtime-card"]'), "agent binding catalog card did not render");
   await capture(page, "agent-profile-before-binding-edit");
 
   await page.locator('[data-testid="profile-editor-runtime-preference"]').selectOption("shock-sidecar");
   await expectLocatorText(
     page.locator('[data-testid="profile-binding-runtime-card"]'),
     "shock-sidecar",
-    "binding inventory did not switch to shock-sidecar"
+    "binding catalog did not switch to shock-sidecar"
   );
   await expectLocatorText(
     page.locator('[data-testid="profile-binding-shell"]'),
     "zsh",
-    "binding inventory did not switch shell to zsh"
+    "binding catalog did not switch shell to zsh"
   );
   await page.locator('[data-testid="profile-editor-provider-preference"]').selectOption("Codex CLI");
-  await page.locator('[data-testid="profile-editor-model-preference"]').selectOption("gpt-5.1-codex-mini");
+  await page.locator('[data-testid="profile-editor-model-preference"]').fill("gpt-5.4");
   await page.locator('[data-testid="profile-editor-save"]').click();
   await waitForVisible(page.locator('[data-testid="profile-editor-save-status"]'), "agent profile save status did not render");
   await capture(page, "agent-profile-after-binding-save");
@@ -304,7 +304,7 @@ try {
   const savedAgent = await agentResponse.json();
   if (
     savedAgent.providerPreference !== "Codex CLI" ||
-    savedAgent.modelPreference !== "gpt-5.1-codex-mini" ||
+    savedAgent.modelPreference !== "gpt-5.4" ||
     savedAgent.runtimePreference !== "shock-sidecar"
   ) {
     throw new Error(`saved agent binding mismatch: ${JSON.stringify(savedAgent)}`);
@@ -312,8 +312,8 @@ try {
 
   await expectLocatorText(
     page.locator('[data-testid="profile-next-run-preview-summary"]'),
-    "gpt-5.1-codex-mini",
-    "next-run preview did not absorb updated model preference"
+    "gpt-5.4",
+    "next-run preview did not absorb updated custom model preference"
   );
   await expectLocatorText(
     page.locator('[data-testid="profile-next-run-preview-summary"]'),
@@ -329,18 +329,18 @@ try {
   if ((await page.locator('[data-testid="profile-editor-provider-preference"]').inputValue()) !== "Codex CLI") {
     throw new Error("provider preference did not persist after reload");
   }
-  if ((await page.locator('[data-testid="profile-editor-model-preference"]').inputValue()) !== "gpt-5.1-codex-mini") {
+  if ((await page.locator('[data-testid="profile-editor-model-preference"]').inputValue()) !== "gpt-5.4") {
     throw new Error("model preference did not persist after reload");
   }
   await capture(page, "agent-profile-after-reload");
-  results.push("Agent profile editor 现在可把 provider / model / runtime affinity 直接写回后端 truth，reload 后仍保持同一份绑定。");
+  results.push("Agent profile editor 现在可把 provider / model / runtime affinity 直接写回后端 truth；provider-model catalog 只作 suggestion，catalog 外 model id reload 后仍保持同一份绑定。");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "domcontentloaded" });
   await waitForVisible(page.locator('[data-testid="agents-card-agent-codex-dockmaster"]'), "agents card did not render");
   await capture(page, "agents-page-binding-summary");
   await expectLocatorText(
     page.locator('[data-testid="agents-card-agent-codex-dockmaster"]'),
-    "Codex CLI / gpt-5.1-codex-mini",
+    "Codex CLI / gpt-5.4",
     "agents page did not reflect provider/model binding"
   );
   await expectLocatorText(
@@ -363,7 +363,7 @@ try {
     ...screenshots.map((item) => `- ${item.name}: ${item.path}`),
     "",
     "## Single Value",
-    "- `TKT-33` 现在已经把 machine shell / daemon / provider-model inventory 和 Agent provider+model+runtime affinity 收进同一份后端 truth；`/setup`、machine profile、`/agents` 与 Agent profile editor 回读一致。",
+    "- `TKT-33` 现在已经把 machine shell / daemon / provider-model catalog 和 Agent provider+model+runtime affinity 收进同一份后端 truth；`/setup`、machine profile、`/agents` 与 Agent profile editor 回读一致，而 model catalog 只作 suggestion、不再对 catalog 外 model 做静态硬拒绝。",
     "",
   ];
 

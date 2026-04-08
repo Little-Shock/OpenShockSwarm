@@ -92,7 +92,7 @@
 ### GAP-11 Agent / Machine Profile / Local CLI Preferences
 
 - 现状:
-  - Agent / Machine 现在已有统一 profile surface；`/setup`、machine profile、`/agents` 与 Agent profile editor 已共享 machine shell / daemon / provider-model inventory truth
+  - Agent / Machine 现在已有统一 profile surface；`/setup`、machine profile、`/agents` 与 Agent profile editor 已共享 machine shell / daemon / provider-model catalog truth
   - Agent 已能编辑并持久化 `prompt / avatar / role / operating instructions / memory binding / recall policy / provider / model / runtime affinity`
   - 当前剩余尾项只剩把这组偏好继续下沉成 onboarding 默认值和更重的 durable config truth
 - 影响:

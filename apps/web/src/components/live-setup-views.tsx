@@ -325,7 +325,7 @@ export function LiveSetupOverview() {
             当前 runtime control plane 已把 registry、selection 与 pairing 拆开：主状态里已收下 {state.runtimes.length} 条 runtime truth，
             当前有 {selectableRuntimes} 台可调度，默认指向 {selectedRuntimeLabel}
             {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}
-            {selectedRuntimeInventory ? `，provider/model inventory 为 ${selectedRuntimeInventory}` : ""}。
+            {selectedRuntimeInventory ? `，provider/model catalog 为 ${selectedRuntimeInventory}` : ""}。
           </p>
           <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6">
             {scheduler.summary || "当前还没有 scheduler truth。"}
