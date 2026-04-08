@@ -297,6 +297,11 @@ async function writeShellState(res) {
       channelId,
     };
     const encodedChannelId = channelId ? encodeURIComponent(channelId) : "";
+    const inboxActorId =
+      normalizeText(effectiveScope.operatorId) ||
+      normalizeText(configuredOperatorId) ||
+      normalizeText(operatorAgentId) ||
+      "";
     const [
       channelRepoBindingRead,
       channelNotificationEndpointRead,
@@ -307,6 +312,7 @@ async function writeShellState(res) {
       channelRecentActionsRead,
       recoveryActionsRead,
       channelExternalMemoryProviderRead,
+      actorInboxRead,
     ] = await Promise.all([
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/repo-binding` : ""),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/notification-endpoint` : ""),
@@ -317,6 +323,10 @@ async function writeShellState(res) {
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/recent-actions?limit=100` : ""),
       fetchOptionalUpstreamJson(buildRuntimeRecoveryActionsPath(effectiveScope)),
       fetchOptionalUpstreamJson(channelId ? `/v1/channels/${encodedChannelId}/external-memory-provider` : ""),
+      resolveActorInboxRead({
+        actorId: inboxActorId,
+        topicId,
+      }),
     ]);
     const channelMemoryViewerRead = await resolveChannelMemoryViewerRead({
       channelId,
@@ -369,6 +379,7 @@ async function writeShellState(res) {
       runtimeAgents,
       runtimeWorktreeClaims,
       scope: effectiveScope,
+      actorInboxRead,
       channelSurface: {
         context_status: channelContextRead.status,
         notification_endpoint_status: channelNotificationEndpointRead.status,
@@ -381,6 +392,7 @@ async function writeShellState(res) {
         recovery_actions_status: recoveryActionsRead.status,
         external_memory_provider_status: channelExternalMemoryProviderRead.status,
         memory_viewer_status: channelMemoryViewerRead.status,
+        inbox_status: actorInboxRead.status,
       },
       actorRegistry: Array.isArray(actorListRead?.items) ? actorListRead.items : [],
       controlEvents: Array.isArray(controlEventsRead?.items) ? controlEventsRead.items : [],
@@ -1308,6 +1320,37 @@ async function resolveChannelMemoryViewerRead({ channelId, encodedChannelId, cha
   return fetchOptionalUpstreamJson(`/v1/channels/${encodedChannelId}/memory-viewer?limit=100`);
 }
 
+async function resolveActorInboxRead({ actorId, topicId }) {
+  const normalizedActorId = normalizeText(actorId);
+  const normalizedTopicId = normalizeText(topicId);
+  if (!normalizedActorId || !normalizedTopicId) {
+    return { status: "skipped", payload: null, path: null };
+  }
+  const pathWithQuery = `/v1/inbox/${encodeURIComponent(normalizedActorId)}?topic_id=${encodeURIComponent(
+    normalizedTopicId,
+  )}&limit=100`;
+  try {
+    const payload = await fetchUpstreamJson(pathWithQuery);
+    return { status: "ok", payload, path: pathWithQuery };
+  } catch (error) {
+    const errorCode =
+      error instanceof UpstreamHttpError
+        ? normalizeText(error.payload?.error?.code || error.payload?.error || error.payload?.code)
+        : "";
+    if (
+      error instanceof UpstreamHttpError &&
+      (error.statusCode === 400 || error.statusCode === 422) &&
+      errorCode === "actor_not_registered"
+    ) {
+      return { status: "missing", payload: error.payload || null, path: pathWithQuery };
+    }
+    if (error instanceof UpstreamHttpError && error.statusCode === 404) {
+      return { status: "missing", payload: error.payload || null, path: pathWithQuery };
+    }
+    throw error;
+  }
+}
+
 async function fetchOptionalUpstreamJson(pathWithQuery) {
   if (!normalizeText(pathWithQuery)) {
     return { status: "skipped", payload: null, path: null };
@@ -1416,6 +1459,7 @@ function buildShellStatePayload({
   runtimeAgents,
   runtimeWorktreeClaims,
   scope,
+  actorInboxRead,
   channelSurface,
   actorRegistry,
   controlEvents,
@@ -1462,6 +1506,7 @@ function buildShellStatePayload({
     runtimeAgents: normalizedRuntimeAgents,
     runtimeWorktreeClaims: normalizedRuntimeWorktreeClaims,
     scope,
+    actorInboxRead,
     channelSurface,
     actorRegistry: normalizedActorRegistry,
     controlEvents: normalizedControlEvents,
@@ -1698,6 +1743,7 @@ function buildOperatorConsoleState({
   runtimeAgents,
   runtimeWorktreeClaims,
   scope,
+  actorInboxRead,
   channelSurface,
   actorRegistry,
   controlEvents,
@@ -1821,6 +1867,15 @@ function buildOperatorConsoleState({
     chain: normalizedWorkspaceGovernance.chain,
   });
   normalizedWorkspaceGovernance.stage5a_hosted_workbench = normalizedWorkspaceGovernance.stage5a;
+  normalizedWorkspaceGovernance.stage5b = buildStage5bHostedWorkbenchProjection({
+    topicId,
+    scope,
+    channelContextContract: channelContract,
+    channelWorkAssignments,
+    actorInboxRead,
+    stage5a: normalizedWorkspaceGovernance.stage5a,
+  });
+  normalizedWorkspaceGovernance.stage5b_hosted_workbench = normalizedWorkspaceGovernance.stage5b;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -2917,6 +2972,203 @@ function buildStage5aHostedWorkbenchProjection({
   };
 }
 
+function buildStage5bHostedWorkbenchProjection({
+  topicId,
+  scope,
+  channelContextContract,
+  channelWorkAssignments,
+  actorInboxRead,
+  stage5a,
+}) {
+  const context = channelContextContract?.context && typeof channelContextContract.context === "object"
+    ? channelContextContract.context
+    : {};
+  const governance = channelContextContract?.governance && typeof channelContextContract.governance === "object"
+    ? channelContextContract.governance
+    : {};
+  const writeAnchors = channelContextContract?.write_anchors && typeof channelContextContract.write_anchors === "object"
+    ? channelContextContract.write_anchors
+    : {};
+  const statusSource = findStage5bStatusSource({ context, governance });
+  const statusDefaultFlow = statusSource.default_flow && typeof statusSource.default_flow === "object"
+    ? statusSource.default_flow
+    : {};
+  const stage5aHostedWorkbench = stage5a?.hosted_workbench && typeof stage5a.hosted_workbench === "object"
+    ? stage5a.hosted_workbench
+    : {};
+  const stage5aHostedAccess = stage5a?.hosted_access && typeof stage5a.hosted_access === "object"
+    ? stage5a.hosted_access
+    : {};
+
+  const scopeChannelId = normalizeText(scope?.channelId);
+  const scopeThreadId = normalizeText(scope?.threadId);
+  const scopeWorkitemId = normalizeText(scope?.workitemId);
+  const primaryAssignment = resolvePrimaryStage5aAssignment(channelWorkAssignments, scopeChannelId);
+  const resolvedChannelId =
+    scopeChannelId ||
+    normalizeText(channelContextContract?.channel_id) ||
+    normalizeText(statusSource.channel_id) ||
+    normalizeText(statusDefaultFlow.channel_id) ||
+    normalizeText(primaryAssignment?.assigned_channel_id) ||
+    null;
+  const resolvedThreadId =
+    scopeThreadId ||
+    normalizeText(statusSource.thread_id) ||
+    normalizeText(statusDefaultFlow.thread_id) ||
+    normalizeText(primaryAssignment?.assigned_thread_id) ||
+    null;
+  const resolvedWorkitemId =
+    scopeWorkitemId ||
+    normalizeText(statusSource.task_id) ||
+    normalizeText(statusSource.workitem_id) ||
+    normalizeText(statusDefaultFlow.task_id) ||
+    normalizeText(statusDefaultFlow.workitem_id) ||
+    normalizeText(primaryAssignment?.assigned_workitem_id) ||
+    null;
+
+  const hostedWorkbenchUrl =
+    normalizeText(statusSource.hosted_workbench_url) ||
+    normalizeText(statusSource.hosted_home_url) ||
+    normalizeText(statusSource.home_url) ||
+    normalizeText(stage5aHostedWorkbench.home?.hosted_home_url) ||
+    normalizeText(stage5aHostedAccess.hosted_entry_url) ||
+    null;
+  const hostedWorkbenchStatus =
+    resolvedChannelId && isNonLocalHttpUrl(hostedWorkbenchUrl)
+      ? "ok"
+      : resolvedChannelId && hostedWorkbenchUrl
+        ? "local_only"
+        : "pending";
+  const defaultFlowStatus = resolvedChannelId && resolvedThreadId && resolvedWorkitemId ? "ok" : "pending";
+
+  const inboxReadStatus = normalizeText(actorInboxRead?.status) || "skipped";
+  const inboxPayload = actorInboxRead?.payload && typeof actorInboxRead.payload === "object" ? actorInboxRead.payload : {};
+  const inboxItems = Array.isArray(inboxPayload.items) ? inboxPayload.items : [];
+  const inboxSummary = summarizeStage5bInboxItems(inboxItems);
+  const unifiedInboxStatus =
+    inboxReadStatus === "ok"
+      ? "ok"
+      : inboxReadStatus === "missing" || inboxReadStatus === "skipped"
+        ? "pending"
+        : inboxReadStatus;
+  const attentionRoutingStatus =
+    inboxReadStatus === "ok"
+      ? "ok"
+      : inboxReadStatus === "missing" || inboxReadStatus === "skipped"
+        ? "pending"
+        : inboxReadStatus;
+
+  const inboxActorId = normalizeText(inboxPayload.actor_id) || normalizeText(scope?.operatorId) || null;
+  const encodedInboxActorId = inboxActorId ? encodeURIComponent(inboxActorId) : "";
+  const inboxTopicId = normalizeText(inboxPayload.topic_id) || normalizeText(topicId) || null;
+  const assignedAgentIds = Array.isArray(channelWorkAssignments)
+    ? Array.from(
+        new Set(
+          channelWorkAssignments
+            .map((item) => normalizeText(item?.agent_id))
+            .filter((item) => item.length > 0),
+        ),
+      )
+    : [];
+  const assignmentSource = normalizeText(statusSource.assignment_source) || normalizeText(primaryAssignment?.status) || "channel_projection";
+
+  return {
+    status: {
+      hosted_multi_human_workbench_status: hostedWorkbenchStatus,
+      default_flow_status: defaultFlowStatus,
+      unified_inbox_status: unifiedInboxStatus,
+      attention_routing_status: attentionRoutingStatus,
+    },
+    hosted_multi_human_workbench: {
+      hosted_home_url: hostedWorkbenchUrl,
+      hosted_web_url: hostedWorkbenchUrl,
+      channel_id: resolvedChannelId,
+      participant_mode: normalizeText(statusSource.participant_mode) || "multi_human",
+      source: normalizeText(statusSource.source) || "channel_context_projection",
+      write_anchors: {
+        work_assignment:
+          normalizeText(writeAnchors.work_assignment_upsert) ||
+          null,
+        operator_action:
+          normalizeText(writeAnchors.operator_action) ||
+          normalizeText(writeAnchors.operator_action_append) ||
+          null,
+      },
+      truth_surfaces: {
+        channel_work_assignments: "/v1/channels/:channelId/work-assignments",
+        operator_actions: "/v1/channels/:channelId/operator-actions",
+      },
+    },
+    default_flow: {
+      topic_id: normalizeText(topicId) || null,
+      channel_id: resolvedChannelId,
+      thread_id: resolvedThreadId,
+      task_id: resolvedWorkitemId,
+      assignment_source: assignmentSource,
+      assigned_agents_count: assignedAgentIds.length,
+      assigned_agent_ids: assignedAgentIds,
+      truth_surface: "/v1/channels/:channelId/work-assignments",
+    },
+    unified_inbox: {
+      actor_id: inboxActorId,
+      topic_id: inboxTopicId,
+      total_items: inboxSummary.total,
+      pending_items: inboxSummary.pending_total,
+      acked_items: inboxSummary.acked_total,
+      kind_counts: inboxSummary.kind_counts,
+      next_cursor: normalizeText(inboxPayload.next_cursor) || null,
+      source: "v1_inbox_projection",
+      read_anchor: normalizeText(actorInboxRead?.path) || null,
+      ack_anchor: inboxActorId ? `/v1/inbox/${encodedInboxActorId}/acks` : null,
+      truth_surface: "/v1/inbox/:actorId?topic_id=:topicId",
+    },
+    attention_routing: {
+      pending_approval_holds: Number(inboxSummary.kind_counts.approval_hold_pending || 0),
+      unresolved_conflicts: Number(inboxSummary.kind_counts.conflict_unresolved || 0),
+      active_blockers: Number(inboxSummary.kind_counts.blocker_active || 0),
+      pending_total: inboxSummary.pending_total,
+      acked_total: inboxSummary.acked_total,
+      attention_required_total:
+        Number(inboxSummary.kind_counts.approval_hold_pending || 0) +
+        Number(inboxSummary.kind_counts.conflict_unresolved || 0) +
+        Number(inboxSummary.kind_counts.blocker_active || 0),
+      source: "inbox_kind_projection",
+    },
+  };
+}
+
+function summarizeStage5bInboxItems(items) {
+  const summary = {
+    total: 0,
+    pending_total: 0,
+    acked_total: 0,
+    kind_counts: {
+      approval_hold_pending: 0,
+      conflict_unresolved: 0,
+      blocker_active: 0,
+      other: 0,
+    },
+  };
+  if (!Array.isArray(items)) {
+    return summary;
+  }
+  for (const item of items) {
+    const kind = normalizeText(item?.kind) || "other";
+    summary.total += 1;
+    if (item?.acked === true) {
+      summary.acked_total += 1;
+    } else {
+      summary.pending_total += 1;
+    }
+    if (kind in summary.kind_counts) {
+      summary.kind_counts[kind] += 1;
+    } else {
+      summary.kind_counts.other += 1;
+    }
+  }
+  return summary;
+}
+
 function resolvePrimaryStage5aAssignment(channelWorkAssignments, channelId) {
   if (!Array.isArray(channelWorkAssignments) || channelWorkAssignments.length === 0) {
     return null;
@@ -2994,6 +3246,25 @@ function findStage5aStatusSource({ context, governance }) {
       context.hostedWorkbench,
       context.hosted_access,
       context.hostedAccess,
+    ]) || {}
+  );
+}
+
+function findStage5bStatusSource({ context, governance }) {
+  return (
+    pickFirstDefinedValue([
+      governance.stage5b,
+      governance.stage5b_hosted_workbench,
+      governance.hosted_multi_human_workbench,
+      governance.hosted_multi_human,
+      governance.multi_human_workbench,
+      governance.multi_human_default_flow,
+      context.stage5b,
+      context.stage5b_hosted_workbench,
+      context.hosted_multi_human_workbench,
+      context.hosted_multi_human,
+      context.multi_human_workbench,
+      context.multi_human_default_flow,
     ]) || {}
   );
 }

@@ -1,6 +1,6 @@
-# Stage 3/4/5A Shell Governance and Release Fan-In
+# Stage 3/4/5A/5B Shell Governance and Release Fan-In
 
-This directory hosts the collaboration shell surface used by Stage 1/2 runtime flow, Stage 3 delivery/ops readiness fan-in, Stage 4A1/4A2/4B governance fan-in, and Stage 5A hosted workbench fan-in.
+This directory hosts the collaboration shell surface used by Stage 1/2 runtime flow, Stage 3 delivery/ops readiness fan-in, Stage 4A1/4A2/4B governance fan-in, Stage 5A hosted workbench fan-in, and Stage 5B hosted multi-human workbench fan-in.
 
 Stage 3 scope for this module:
 
@@ -19,6 +19,12 @@ Stage 5A hosted workbench fan-in scope:
 - Build hosted default entry projection from existing `/v1` truth and `/api/v0a` adapter only
 - Keep hosted home, unified inbox, and channel/thread/task default flow in one projection
 - Keep local entry and hosted entry on one delivery contract without adding a second collaboration truth
+
+Stage 5B hosted multi-human workbench fan-in scope:
+
+- Build hosted multi-human workbench projection from existing `/v1/channels/*`, `/v1/topics/*`, and `/v1/inbox/*` truth only
+- Keep channel/thread/task default flow and unified inbox-attention routing in one Stage5B projection
+- Keep shell adapter fail-closed on missing actor inbox registration and never add shell-local shadow truth
 
 Stage 4A1 governance fan-in scope:
 
@@ -96,6 +102,7 @@ The shell does not own local mock truth. `dev-server.mjs` serves shell assets an
 - `GET /v1/channels/:channelId/operator-actions?limit=100`
 - `POST /v1/channels/:channelId/operator-actions`
 - `GET /v1/channels/:channelId/recent-actions?limit=100`
+- `GET /v1/inbox/:actorId?topic_id=:topicId&limit=100`
 - `GET /v1/runtime/registry`
 - `GET /v1/runtime/agents?limit=200`
 - `POST /v1/runtime/agents/:agentId/recovery-actions`

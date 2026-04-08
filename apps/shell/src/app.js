@@ -518,6 +518,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage5a_hosted_workbench && typeof governance.stage5a_hosted_workbench === "object"
       ? governance.stage5a_hosted_workbench
       : null);
+  const stage5b =
+    (governance.stage5b && typeof governance.stage5b === "object" ? governance.stage5b : null) ||
+    (governance.stage5b_hosted_workbench && typeof governance.stage5b_hosted_workbench === "object"
+      ? governance.stage5b_hosted_workbench
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -913,6 +918,50 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
           : "pending",
     });
     dom.workspaceGovernanceList.append(deployCard);
+  }
+
+  if (stage5b) {
+    const stage5bStatus = stage5b.status && typeof stage5b.status === "object" ? stage5b.status : {};
+    const hostedWorkbench =
+      stage5b.hosted_multi_human_workbench && typeof stage5b.hosted_multi_human_workbench === "object"
+        ? stage5b.hosted_multi_human_workbench
+        : {};
+    const defaultFlow = stage5b.default_flow && typeof stage5b.default_flow === "object" ? stage5b.default_flow : {};
+    const unifiedInbox = stage5b.unified_inbox && typeof stage5b.unified_inbox === "object" ? stage5b.unified_inbox : {};
+    const attentionRouting =
+      stage5b.attention_routing && typeof stage5b.attention_routing === "object" ? stage5b.attention_routing : {};
+
+    const hostedWorkbenchCard = queueCard({
+      title: "Stage5B Hosted Multi-Human Workbench",
+      subtitle:
+        `status=${normalizeText(stage5bStatus.hosted_multi_human_workbench_status) || "pending"} · ` +
+        `participants=${normalizeText(hostedWorkbench.participant_mode) || "multi_human"}`,
+      note: formatStage5bHostedWorkbench(hostedWorkbench),
+      status: normalizeText(stage5bStatus.hosted_multi_human_workbench_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(hostedWorkbenchCard);
+
+    const defaultFlowCard = queueCard({
+      title: "Stage5B Channel / Thread / Task Default Flow",
+      subtitle: `status=${normalizeText(stage5bStatus.default_flow_status) || "pending"}`,
+      note: formatStage5bDefaultFlow(defaultFlow),
+      status: normalizeText(stage5bStatus.default_flow_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(defaultFlowCard);
+
+    const inboxCard = queueCard({
+      title: "Stage5B Unified Inbox / Attention Routing",
+      subtitle:
+        `inbox=${normalizeText(stage5bStatus.unified_inbox_status) || "pending"} · ` +
+        `attention=${normalizeText(stage5bStatus.attention_routing_status) || "pending"}`,
+      note: `${formatStage5bUnifiedInbox(unifiedInbox)} · ${formatStage5bAttentionRouting(attentionRouting)}`,
+      status:
+        normalizeText(stage5bStatus.unified_inbox_status) === "ok" &&
+        normalizeText(stage5bStatus.attention_routing_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(inboxCard);
   }
 }
 
@@ -1795,6 +1844,52 @@ function formatStage5aDeliveryContract(raw) {
   const adapterEntry = normalizeText(raw.adapter_entry) || "/api/v0a/shell-state";
   const singlePath = raw.single_delivery_path === true ? "yes" : "no";
   return `local=${localRoot} · hosted=${hostedEntry} · adapter=${adapterEntry} · single_path=${singlePath}`;
+}
+
+function formatStage5bHostedWorkbench(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted multi-human workbench pending";
+  }
+  const hostedHomeUrl = normalizeText(raw.hosted_home_url) || normalizeText(raw.hosted_web_url) || "n/a";
+  const channelId = normalizeText(raw.channel_id) || "unbound_channel";
+  const source = normalizeText(raw.source) || "channel_context_projection";
+  return `home=${hostedHomeUrl} · channel=${channelId} · source=${source}`;
+}
+
+function formatStage5bDefaultFlow(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "default flow pending";
+  }
+  const topicId = normalizeText(raw.topic_id) || "n/a";
+  const channelId = normalizeText(raw.channel_id) || "n/a";
+  const threadId = normalizeText(raw.thread_id) || "n/a";
+  const taskId = normalizeText(raw.task_id) || "n/a";
+  const source = normalizeText(raw.assignment_source) || "channel_projection";
+  const agentCount = Number(raw.assigned_agents_count || 0);
+  return `flow=${topicId}/${channelId}/${threadId}/${taskId} · assigned_agents=${agentCount} · source=${source}`;
+}
+
+function formatStage5bUnifiedInbox(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "unified inbox pending";
+  }
+  const actorId = normalizeText(raw.actor_id) || "n/a";
+  const topicId = normalizeText(raw.topic_id) || "n/a";
+  const total = Number(raw.total_items || 0);
+  const pending = Number(raw.pending_items || 0);
+  const acked = Number(raw.acked_items || 0);
+  return `actor=${actorId} · topic=${topicId} · total=${total} · pending=${pending} · acked=${acked}`;
+}
+
+function formatStage5bAttentionRouting(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "attention routing pending";
+  }
+  const approvals = Number(raw.pending_approval_holds || 0);
+  const conflicts = Number(raw.unresolved_conflicts || 0);
+  const blockers = Number(raw.active_blockers || 0);
+  const required = Number(raw.attention_required_total || approvals + conflicts + blockers);
+  return `approvals=${approvals} · conflicts=${conflicts} · blockers=${blockers} · attention_required=${required}`;
 }
 
 function queueCard({ title, subtitle, note, status = "pending" }) {
