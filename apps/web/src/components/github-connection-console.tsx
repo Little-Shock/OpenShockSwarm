@@ -255,7 +255,7 @@ export function GitHubConnectionConsole() {
             data-testid="setup-github-return-steps"
             className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]"
           >
-            完成安装或补齐配置后，回到 Setup，先点“重新探测 GitHub”，确认状态更新，再继续同步 Repo Binding。
+            完成安装后，GitHub 会先回跳到 OpenShock 的 callback 收口页；如果回流正常，Setup 会自动读到新的 install truth。只有 callback 没接住时，才需要手动重新探测。
           </p>
         </div>
       </div>

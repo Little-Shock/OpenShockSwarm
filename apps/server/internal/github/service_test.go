@@ -2,6 +2,8 @@ package github
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -134,6 +136,39 @@ func TestProbePrefersGitHubAppInstallTruthWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestProbeFallsBackToPersistedInstallationState(t *testing.T) {
+	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
+	t.Setenv("OPENSHOCK_GITHUB_APP_SLUG", "openshock-app")
+	t.Setenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY", "inline-private-key")
+
+	root := t.TempDir()
+	if err := SaveInstallationState(root, InstallationState{InstallationID: "67890"}); err != nil {
+		t.Fatalf("SaveInstallationState() error = %v", err)
+	}
+
+	service := NewService(fakeRunner{
+		lookPaths: map[string]string{},
+		outputs: map[string]fakeOutput{
+			"git -C " + root + " remote get-url origin":       {text: "https://github.com/Larkspur-Wang/OpenShock.git"},
+			"git -C " + root + " rev-parse --abbrev-ref HEAD": {text: "main"},
+		},
+	})
+
+	status, err := service.Probe(root)
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if !status.AppInstalled {
+		t.Fatalf("status.AppInstalled = false, want true from persisted installation")
+	}
+	if status.InstallationID != "67890" {
+		t.Fatalf("status.InstallationID = %q, want 67890", status.InstallationID)
+	}
+	if status.InstallationURL != "https://github.com/settings/installations/67890" {
+		t.Fatalf("status.InstallationURL = %q, want persisted installation settings URL", status.InstallationURL)
+	}
+}
+
 func TestProbeSurfacesIncompleteGitHubAppContract(t *testing.T) {
 	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
 	t.Setenv("OPENSHOCK_GITHUB_APP_SLUG", "openshock-app")
@@ -224,6 +259,30 @@ func TestParseRepoIdentitySupportsHTTPSAndSSH(t *testing.T) {
 				t.Fatalf("ParseRepoIdentity(%q) = (%q, %q), want (%q, %q)", testCase.remote, gotRepo, gotProvider, testCase.wantRepo, testCase.wantProv)
 			}
 		})
+	}
+}
+
+func TestLoadInstallationStateRoundTrips(t *testing.T) {
+	root := t.TempDir()
+	wantPath := filepath.Join(root, "data", "phase0", "github-app-installation.json")
+
+	if err := SaveInstallationState(root, InstallationState{
+		InstallationID:  "67890",
+		InstallationURL: "https://github.com/settings/installations/67890",
+		SetupAction:     "install",
+	}); err != nil {
+		t.Fatalf("SaveInstallationState() error = %v", err)
+	}
+
+	got, err := LoadInstallationState(root)
+	if err != nil {
+		t.Fatalf("LoadInstallationState() error = %v", err)
+	}
+	if got.InstallationID != "67890" || got.SetupAction != "install" {
+		t.Fatalf("loaded state = %#v, want persisted installation data", got)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected persisted installation state at %s: %v", wantPath, err)
 	}
 }
 
