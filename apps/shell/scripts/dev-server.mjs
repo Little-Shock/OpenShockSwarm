@@ -1894,6 +1894,14 @@ function buildOperatorConsoleState({
     stage5a: normalizedWorkspaceGovernance.stage5a,
   });
   normalizedWorkspaceGovernance.stage5c_hosted_runtime = normalizedWorkspaceGovernance.stage5c;
+  normalizedWorkspaceGovernance.stage6a = buildStage6aHostedOnboardingProjection({
+    scope,
+    workspaceGovernance: normalizedWorkspaceGovernance,
+    stage5a: normalizedWorkspaceGovernance.stage5a,
+    stage5b: normalizedWorkspaceGovernance.stage5b,
+    stage5c: normalizedWorkspaceGovernance.stage5c,
+  });
+  normalizedWorkspaceGovernance.stage6a_hosted_onboarding_access = normalizedWorkspaceGovernance.stage6a;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -3411,6 +3419,182 @@ function buildStage5cHostedRuntimeProjection({
   };
 }
 
+function buildStage6aHostedOnboardingProjection({ scope, workspaceGovernance, stage5a, stage5b, stage5c }) {
+  const stage5aStatus = stage5a?.status && typeof stage5a.status === "object" ? stage5a.status : {};
+  const stage5aHostedAccess =
+    stage5a?.hosted_access && typeof stage5a.hosted_access === "object" ? stage5a.hosted_access : {};
+  const stage5aHostedWorkbench =
+    stage5a?.hosted_workbench && typeof stage5a.hosted_workbench === "object" ? stage5a.hosted_workbench : {};
+  const stage5bStatus = stage5b?.status && typeof stage5b.status === "object" ? stage5b.status : {};
+  const stage5bHostedWorkbench =
+    stage5b?.hosted_multi_human_workbench && typeof stage5b.hosted_multi_human_workbench === "object"
+      ? stage5b.hosted_multi_human_workbench
+      : {};
+  const stage5bDefaultFlow = stage5b?.default_flow && typeof stage5b.default_flow === "object" ? stage5b.default_flow : {};
+  const stage5cStatus = stage5c?.status && typeof stage5c.status === "object" ? stage5c.status : {};
+
+  const workspaceChain =
+    workspaceGovernance?.chain && typeof workspaceGovernance.chain === "object" ? workspaceGovernance.chain : {};
+  const workspaceMembers = Array.isArray(workspaceGovernance?.members) ? workspaceGovernance.members : [];
+  const workspaceAuthIdentities = Array.isArray(workspaceGovernance?.auth_identities)
+    ? workspaceGovernance.auth_identities
+    : [];
+  const workspaceInstallations = Array.isArray(workspaceGovernance?.github_installations)
+    ? workspaceGovernance.github_installations
+    : [];
+  const workspaceRepoBindings = Array.isArray(workspaceGovernance?.repo_bindings) ? workspaceGovernance.repo_bindings : [];
+
+  const hostedEntryUrl =
+    normalizeText(stage5aHostedAccess.hosted_entry_url) ||
+    normalizeText(stage5aHostedAccess.hosted_web_url) ||
+    normalizeText(stage5bHostedWorkbench.hosted_home_url) ||
+    normalizeText(stage5aHostedWorkbench?.home?.hosted_home_url) ||
+    null;
+  let hostedAccessStatus = normalizeText(stage5aStatus.hosted_access_status);
+  if (!hostedAccessStatus) {
+    if (isNonLocalHttpUrl(hostedEntryUrl)) {
+      hostedAccessStatus = "ok";
+    } else if (hostedEntryUrl) {
+      hostedAccessStatus = "local_only";
+    } else {
+      hostedAccessStatus = "pending";
+    }
+  }
+
+  const invitedMemberCount = workspaceMembers.filter((item) => {
+    const status = normalizeText(item?.status);
+    return status === "invited" || status === "pending_invite" || status === "invite_sent";
+  }).length;
+  const joinedMemberCount = workspaceMembers.filter((item) => {
+    const status = normalizeText(item?.status);
+    return status === "active" || status === "joined" || Boolean(item?.joined_at);
+  }).length;
+  const verifiedIdentityCount = workspaceAuthIdentities.filter((item) => {
+    const status = normalizeText(item?.status);
+    return status === "linked" || status === "verified" || status === "active" || normalizeText(item?.provider_user_id).length > 0;
+  }).length;
+  const inviteVerifyJoinReady =
+    joinedMemberCount > 0 && verifiedIdentityCount > 0 && (invitedMemberCount > 0 || joinedMemberCount > 0);
+  const inviteVerifyJoinStatus = resolveStage6aHostedStatus(inviteVerifyJoinReady, hostedAccessStatus);
+
+  const activeInstallationCount = workspaceInstallations.filter((item) => {
+    const status = normalizeText(item?.status);
+    return status === "installed" || status === "active" || status === "ready";
+  }).length;
+  const activeRepoBindingCount = workspaceRepoBindings.filter((item) => {
+    const status = normalizeText(item?.status);
+    const repoRef = normalizeText(item?.repo_ref);
+    return status === "active" || status === "ready" || status === "bound" || repoRef.length > 0;
+  }).length;
+  const installationChainReady = normalizeText(workspaceChain.installation_status) === "ready";
+  const repoBindingChainReady = normalizeText(workspaceChain.repo_binding_status) === "ready";
+  const githubInstallRepoBindingReady =
+    (activeInstallationCount > 0 || installationChainReady) && (activeRepoBindingCount > 0 || repoBindingChainReady);
+  const githubInstallRepoBindingStatus = resolveStage6aHostedStatus(githubInstallRepoBindingReady, hostedAccessStatus);
+
+  const remotePairingReady = isHostedReadyStatus(normalizeText(stage5cStatus.remote_daemon_pairing_status));
+  const machineFleetReady = isHostedReadyStatus(normalizeText(stage5cStatus.machine_fleet_status));
+  const runtimeVisibilityReady = isHostedReadyStatus(normalizeText(stage5cStatus.hosted_runtime_control_visibility_status));
+  const deviceAuthorizationRuntimeAttachReady = remotePairingReady && machineFleetReady && runtimeVisibilityReady;
+  const deviceAuthorizationRuntimeAttachStatus = resolveStage6aHostedStatus(
+    deviceAuthorizationRuntimeAttachReady,
+    hostedAccessStatus,
+  );
+
+  const stage5DefaultFlowReady = isHostedReadyStatus(normalizeText(stage5bStatus.default_flow_status));
+  const stage5HostedWorkbenchReady = isHostedReadyStatus(normalizeText(stage5bStatus.hosted_multi_human_workbench_status));
+  const stage5InboxReady = isHostedReadyStatus(normalizeText(stage5bStatus.unified_inbox_status));
+  const stage5WorkbenchHandoffReady =
+    stage5DefaultFlowReady && stage5HostedWorkbenchReady && stage5InboxReady && runtimeVisibilityReady;
+  const stage5WorkbenchHandoffStatus = resolveStage6aHostedStatus(stage5WorkbenchHandoffReady, hostedAccessStatus);
+
+  const hostedOnboardingAccessReady =
+    inviteVerifyJoinReady &&
+    githubInstallRepoBindingReady &&
+    deviceAuthorizationRuntimeAttachReady &&
+    stage5WorkbenchHandoffReady;
+  const hostedOnboardingAccessStatus = resolveStage6aHostedStatus(hostedOnboardingAccessReady, hostedAccessStatus);
+
+  const scopeChannelId = normalizeText(scope?.channelId) || null;
+  const resolvedChannelId =
+    normalizeText(stage5bDefaultFlow.channel_id) || normalizeText(stage5aHostedAccess.channel_id) || scopeChannelId;
+  const resolvedThreadId = normalizeText(stage5bDefaultFlow.thread_id) || normalizeText(scope?.threadId) || null;
+  const resolvedWorkitemId =
+    normalizeText(stage5bDefaultFlow.task_id) ||
+    normalizeText(stage5bDefaultFlow.workitem_id) ||
+    normalizeText(scope?.workitemId) ||
+    null;
+
+  return {
+    status: {
+      hosted_onboarding_access_status: hostedOnboardingAccessStatus,
+      invite_verify_join_status: inviteVerifyJoinStatus,
+      github_install_repo_binding_status: githubInstallRepoBindingStatus,
+      device_authorization_runtime_attach_status: deviceAuthorizationRuntimeAttachStatus,
+      stage5_workbench_handoff_status: stage5WorkbenchHandoffStatus,
+    },
+    hosted_onboarding_access: {
+      status: hostedOnboardingAccessStatus,
+      hosted_entry_url: hostedEntryUrl,
+      hosted_access_status: hostedAccessStatus,
+      workspace_id: normalizeText(workspaceGovernance?.workspace_id) || null,
+      no_shadow_truth: true,
+      truth_family: ["/v1/channels/*", "/v1/topics/*", "/v1/runtime/*"],
+      read_surfaces: [
+        "/v1/channels/:channelId/context",
+        "/v1/channels/:channelId/repo-binding",
+        "/v1/runtime/registry",
+        "/v1/runtime/agents",
+        "/v1/runtime/deploy-runtime",
+      ],
+      source: "stage5_truth_fan_in",
+    },
+    invite_verify_join: {
+      status: inviteVerifyJoinStatus,
+      invited_member_count: invitedMemberCount,
+      verified_identity_count: verifiedIdentityCount,
+      joined_member_count: joinedMemberCount,
+      member_truth_surface: "/v1/channels/:channelId/context",
+      identity_truth_surface: "/v1/channels/:channelId/context",
+    },
+    github_install_repo_binding: {
+      status: githubInstallRepoBindingStatus,
+      active_installation_count: activeInstallationCount,
+      active_repo_binding_count: activeRepoBindingCount,
+      installation_chain_status: normalizeText(workspaceChain.installation_status) || "pending",
+      repo_binding_chain_status: normalizeText(workspaceChain.repo_binding_status) || "pending",
+      installation_truth_surface: "/v1/channels/:channelId/context",
+      repo_binding_truth_surface: "/v1/channels/:channelId/repo-binding",
+    },
+    device_authorization_runtime_attach: {
+      status: deviceAuthorizationRuntimeAttachStatus,
+      remote_daemon_pairing_status: normalizeText(stage5cStatus.remote_daemon_pairing_status) || "pending",
+      machine_fleet_status: normalizeText(stage5cStatus.machine_fleet_status) || "pending",
+      hosted_runtime_control_visibility_status:
+        normalizeText(stage5cStatus.hosted_runtime_control_visibility_status) || "pending",
+      truth_family: ["/v1/runtime/*"],
+      read_surfaces: ["/v1/runtime/registry", "/v1/runtime/agents", "/v1/runtime/deploy-runtime"],
+    },
+    stage5_workbench_handoff: {
+      status: stage5WorkbenchHandoffStatus,
+      stage5_default_flow_status: normalizeText(stage5bStatus.default_flow_status) || "pending",
+      stage5_hosted_workbench_status: normalizeText(stage5bStatus.hosted_multi_human_workbench_status) || "pending",
+      stage5_unified_inbox_status: normalizeText(stage5bStatus.unified_inbox_status) || "pending",
+      stage5_runtime_control_visibility_status:
+        normalizeText(stage5cStatus.hosted_runtime_control_visibility_status) || "pending",
+      topic_id: normalizeText(stage5bDefaultFlow.topic_id) || null,
+      channel_id: resolvedChannelId,
+      thread_id: resolvedThreadId,
+      task_id: resolvedWorkitemId,
+      hosted_workbench_url:
+        normalizeText(stage5bHostedWorkbench.hosted_home_url) ||
+        normalizeText(stage5aHostedWorkbench?.home?.hosted_home_url) ||
+        hostedEntryUrl,
+      truth_surface: "/api/v0a/shell-state",
+    },
+  };
+}
+
 function resolveStage5cHostedStatus(truthReady, hostedAccessStatus) {
   if (!truthReady) {
     return "pending";
@@ -3422,6 +3606,23 @@ function resolveStage5cHostedStatus(truthReady, hostedAccessStatus) {
     return "local_only";
   }
   return "pending";
+}
+
+function resolveStage6aHostedStatus(truthReady, hostedAccessStatus) {
+  if (!truthReady) {
+    return "pending";
+  }
+  if (hostedAccessStatus === "ok") {
+    return "ok";
+  }
+  if (hostedAccessStatus === "local_only") {
+    return "local_only";
+  }
+  return "pending";
+}
+
+function isHostedReadyStatus(value) {
+  return value === "ok" || value === "local_only";
 }
 
 function summarizeStage5bInboxItems(items) {

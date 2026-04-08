@@ -528,6 +528,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage5c_hosted_runtime && typeof governance.stage5c_hosted_runtime === "object"
       ? governance.stage5c_hosted_runtime
       : null);
+  const stage6a =
+    (governance.stage6a && typeof governance.stage6a === "object" ? governance.stage6a : null) ||
+    (governance.stage6a_hosted_onboarding_access && typeof governance.stage6a_hosted_onboarding_access === "object"
+      ? governance.stage6a_hosted_onboarding_access
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -1031,6 +1036,64 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
           : "pending",
     });
     dom.workspaceGovernanceList.append(lifecycleCard);
+  }
+
+  if (stage6a) {
+    const stage6aStatus = stage6a.status && typeof stage6a.status === "object" ? stage6a.status : {};
+    const hostedOnboardingAccess =
+      stage6a.hosted_onboarding_access && typeof stage6a.hosted_onboarding_access === "object"
+        ? stage6a.hosted_onboarding_access
+        : {};
+    const inviteVerifyJoin =
+      stage6a.invite_verify_join && typeof stage6a.invite_verify_join === "object" ? stage6a.invite_verify_join : {};
+    const githubInstallRepoBinding =
+      stage6a.github_install_repo_binding && typeof stage6a.github_install_repo_binding === "object"
+        ? stage6a.github_install_repo_binding
+        : {};
+    const deviceAuthorizationRuntimeAttach =
+      stage6a.device_authorization_runtime_attach && typeof stage6a.device_authorization_runtime_attach === "object"
+        ? stage6a.device_authorization_runtime_attach
+        : {};
+    const stage5WorkbenchHandoff =
+      stage6a.stage5_workbench_handoff && typeof stage6a.stage5_workbench_handoff === "object"
+        ? stage6a.stage5_workbench_handoff
+        : {};
+
+    const onboardingCard = queueCard({
+      title: "Stage6A Hosted Onboarding Access",
+      subtitle:
+        `entry=${normalizeText(stage6aStatus.hosted_onboarding_access_status) || "pending"} · ` +
+        `invite/verify/join=${normalizeText(stage6aStatus.invite_verify_join_status) || "pending"}`,
+      note: `${formatStage6aHostedOnboardingAccess(hostedOnboardingAccess)} · ${formatStage6aInviteVerifyJoin(inviteVerifyJoin)}`,
+      status: normalizeText(stage6aStatus.hosted_onboarding_access_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(onboardingCard);
+
+    const bindingAttachCard = queueCard({
+      title: "Stage6A GitHub Install / Runtime Attach",
+      subtitle:
+        `binding=${normalizeText(stage6aStatus.github_install_repo_binding_status) || "pending"} · ` +
+        `attach=${normalizeText(stage6aStatus.device_authorization_runtime_attach_status) || "pending"}`,
+      note:
+        `${formatStage6aGithubInstallRepoBinding(githubInstallRepoBinding)} · ` +
+        `${formatStage6aDeviceAuthorizationRuntimeAttach(deviceAuthorizationRuntimeAttach)}`,
+      status:
+        normalizeText(stage6aStatus.github_install_repo_binding_status) === "ok" &&
+        normalizeText(stage6aStatus.device_authorization_runtime_attach_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(bindingAttachCard);
+
+    const handoffCard = queueCard({
+      title: "Stage6A Stage5 Workbench Handoff",
+      subtitle:
+        `handoff=${normalizeText(stage6aStatus.stage5_workbench_handoff_status) || "pending"} · ` +
+        `no_shadow_truth=${hostedOnboardingAccess.no_shadow_truth === true ? "ok" : "pending"}`,
+      note: formatStage6aStage5WorkbenchHandoff(stage5WorkbenchHandoff),
+      status: normalizeText(stage6aStatus.stage5_workbench_handoff_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(handoffCard);
   }
 }
 
@@ -2052,6 +2115,62 @@ function formatStage5cReleaseRecoveryUpgradeHandoff(raw) {
   return (
     `lifecycle=${lifecycleStatus} · release=${releaseRef} · recovery=${recoveryRef} · ` +
     `upgrade=${upgradeRef} · handoff=${handoffRef} · latest_recovery_action=${actionSummary}`
+  );
+}
+
+function formatStage6aHostedOnboardingAccess(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted onboarding access pending";
+  }
+  const entryUrl = normalizeText(raw.hosted_entry_url) || "n/a";
+  const hostedStatus = normalizeText(raw.hosted_access_status) || "pending";
+  const source = normalizeText(raw.source) || "stage5_truth_fan_in";
+  return `entry=${entryUrl} · hosted=${hostedStatus} · source=${source}`;
+}
+
+function formatStage6aInviteVerifyJoin(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "invite/verify/join pending";
+  }
+  const invited = Number(raw.invited_member_count || 0);
+  const verified = Number(raw.verified_identity_count || 0);
+  const joined = Number(raw.joined_member_count || 0);
+  return `invited=${invited} · verified=${verified} · joined=${joined}`;
+}
+
+function formatStage6aGithubInstallRepoBinding(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "github install/repo binding pending";
+  }
+  const installations = Number(raw.active_installation_count || 0);
+  const repoBindings = Number(raw.active_repo_binding_count || 0);
+  const installChain = normalizeText(raw.installation_chain_status) || "pending";
+  const repoChain = normalizeText(raw.repo_binding_chain_status) || "pending";
+  return `installations=${installations}(${installChain}) · repo_bindings=${repoBindings}(${repoChain})`;
+}
+
+function formatStage6aDeviceAuthorizationRuntimeAttach(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "device authorization/runtime attach pending";
+  }
+  const pairing = normalizeText(raw.remote_daemon_pairing_status) || "pending";
+  const fleet = normalizeText(raw.machine_fleet_status) || "pending";
+  const control = normalizeText(raw.hosted_runtime_control_visibility_status) || "pending";
+  return `pairing=${pairing} · fleet=${fleet} · control=${control}`;
+}
+
+function formatStage6aStage5WorkbenchHandoff(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "stage5 workbench handoff pending";
+  }
+  const hostedWorkbenchUrl = normalizeText(raw.hosted_workbench_url) || "n/a";
+  const topicId = normalizeText(raw.topic_id) || "n/a";
+  const channelId = normalizeText(raw.channel_id) || "n/a";
+  const threadId = normalizeText(raw.thread_id) || "n/a";
+  const taskId = normalizeText(raw.task_id) || "n/a";
+  return (
+    `workbench=${hostedWorkbenchUrl} · topic=${topicId} · channel=${channelId} · ` +
+    `thread=${threadId} · task=${taskId}`
   );
 }
 
