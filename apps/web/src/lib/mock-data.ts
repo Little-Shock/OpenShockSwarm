@@ -37,6 +37,16 @@ export type AuthSession = {
   authMethod?: string;
   signedInAt?: string;
   lastSeenAt?: string;
+  deviceId?: string;
+  deviceLabel?: string;
+  deviceAuthStatus?: string;
+  emailVerificationStatus?: string;
+  emailVerifiedAt?: string;
+  passwordResetStatus?: string;
+  passwordResetRequestedAt?: string;
+  passwordResetCompletedAt?: string;
+  recoveryStatus?: string;
+  linkedIdentities?: AuthExternalIdentity[];
   permissions: string[];
 };
 
@@ -56,13 +66,40 @@ export type WorkspaceMember = {
   source?: string;
   addedAt?: string;
   lastSeenAt?: string;
+  recoveryEmail?: string;
+  emailVerificationStatus?: string;
+  emailVerifiedAt?: string;
+  passwordResetStatus?: string;
+  passwordResetRequestedAt?: string;
+  passwordResetCompletedAt?: string;
+  recoveryStatus?: string;
+  linkedIdentities?: AuthExternalIdentity[];
+  trustedDeviceIds?: string[];
   permissions: string[];
+};
+
+export type AuthExternalIdentity = {
+  provider: string;
+  handle: string;
+  status: string;
+  boundAt?: string;
+};
+
+export type AuthDevice = {
+  id: string;
+  memberId: string;
+  label: string;
+  status: string;
+  requestedAt?: string;
+  authorizedAt?: string;
+  lastSeenAt?: string;
 };
 
 export type AuthSnapshot = {
   session: AuthSession;
   roles: WorkspaceRole[];
   members: WorkspaceMember[];
+  devices?: AuthDevice[];
 };
 
 export type Channel = {

@@ -88,8 +88,13 @@ type PhaseZeroContextValue = {
   approvalCenterError: string | null;
   refresh: () => Promise<void>;
   refreshApprovalCenter: () => Promise<void>;
-  loginAuthSession: (input: { email: string; name?: string }) => Promise<StateMutationResponse>;
+  loginAuthSession: (input: { email: string; name?: string; deviceId?: string; deviceLabel?: string; authMethod?: string }) => Promise<StateMutationResponse>;
   logoutAuthSession: () => Promise<StateMutationResponse>;
+  verifyMemberEmail: (input?: { email?: string; memberId?: string }) => Promise<StateMutationResponse>;
+  authorizeAuthDevice: (input?: { deviceId?: string; deviceLabel?: string; memberId?: string }) => Promise<StateMutationResponse>;
+  requestPasswordReset: (input?: { email?: string; memberId?: string }) => Promise<StateMutationResponse>;
+  completePasswordReset: (input?: { email?: string; memberId?: string; deviceId?: string; deviceLabel?: string }) => Promise<StateMutationResponse>;
+  bindExternalIdentity: (input: { provider: string; handle: string; email?: string; memberId?: string }) => Promise<StateMutationResponse>;
   inviteWorkspaceMember: (input: { email: string; name?: string; role: string }) => Promise<StateMutationResponse>;
   updateWorkspaceMember: (memberId: string, input: { role?: string; status?: string }) => Promise<StateMutationResponse>;
   createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
@@ -333,8 +338,20 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     };
   }, [refresh]);
 
-  async function loginAuthSession(input: { email: string; name?: string }) {
+  async function loginAuthSession(input: { email: string; name?: string; deviceId?: string; deviceLabel?: string; authMethod?: string }) {
     const payload = await readJSON<StateMutationResponse>("/v1/auth/session", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
+  async function runAuthRecovery(input: Record<string, string | undefined>) {
+    const payload = await readJSON<StateMutationResponse>("/v1/auth/recovery", {
       method: "POST",
       body: JSON.stringify(input),
     });
@@ -354,6 +371,51 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       commitStateAndRefreshApprovalCenter(payload.state);
     }
     return payload;
+  }
+
+  async function verifyMemberEmail(input: { email?: string; memberId?: string } = {}) {
+    return runAuthRecovery({
+      action: "verify_email",
+      email: input.email,
+      memberId: input.memberId,
+    });
+  }
+
+  async function authorizeAuthDevice(input: { deviceId?: string; deviceLabel?: string; memberId?: string } = {}) {
+    return runAuthRecovery({
+      action: "authorize_device",
+      deviceId: input.deviceId,
+      deviceLabel: input.deviceLabel,
+      memberId: input.memberId,
+    });
+  }
+
+  async function requestPasswordReset(input: { email?: string; memberId?: string } = {}) {
+    return runAuthRecovery({
+      action: "request_password_reset",
+      email: input.email,
+      memberId: input.memberId,
+    });
+  }
+
+  async function completePasswordReset(input: { email?: string; memberId?: string; deviceId?: string; deviceLabel?: string } = {}) {
+    return runAuthRecovery({
+      action: "complete_password_reset",
+      email: input.email,
+      memberId: input.memberId,
+      deviceId: input.deviceId,
+      deviceLabel: input.deviceLabel,
+    });
+  }
+
+  async function bindExternalIdentity(input: { provider: string; handle: string; email?: string; memberId?: string }) {
+    return runAuthRecovery({
+      action: "bind_external_identity",
+      provider: input.provider,
+      handle: input.handle,
+      email: input.email,
+      memberId: input.memberId,
+    });
   }
 
   async function inviteWorkspaceMember(input: { email: string; name?: string; role: string }) {
@@ -593,6 +655,11 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     refreshApprovalCenter,
     loginAuthSession,
     logoutAuthSession,
+    verifyMemberEmail,
+    authorizeAuthDevice,
+    requestPasswordReset,
+    completePasswordReset,
+    bindExternalIdentity,
     inviteWorkspaceMember,
     updateWorkspaceMember,
     createIssue,

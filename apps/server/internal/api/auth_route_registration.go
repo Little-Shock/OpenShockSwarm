@@ -8,6 +8,7 @@ func init() {
 
 func registerAuthRoutes(s *Server, mux *http.ServeMux) {
 	mux.HandleFunc("/v1/auth/session", s.handleAuthSession)
+	mux.HandleFunc("/v1/auth/recovery", s.handleAuthRecovery)
 	mux.HandleFunc("/v1/workspace/members", s.handleWorkspaceMembers)
 	mux.HandleFunc("/v1/workspace/members/", s.handleWorkspaceMembers)
 }

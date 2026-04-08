@@ -50,6 +50,8 @@
   - `TKT-30` 的 destructive approval、sandbox / secret boundary 与 room / inbox / run guard truth headed evidence
 - [Test Report 2026-04-08 GitHub Installation Callback](./Test-Report-2026-04-08-github-installation-callback.md)
   - `TKT-28` 的 installation-complete callback、repo binding refresh、tracked PR backfill 与 Setup callback return evidence
+- [Test Report 2026-04-08 Device Auth / Email Recovery](./Test-Report-2026-04-08-device-auth-email-recovery.md)
+  - `TKT-29` 的 device authorization、email verification、password reset、session recovery 与 external identity binding headed evidence
 
 常用入口：
 
@@ -83,6 +85,8 @@
   - 验证 `Agent / Machine / Human` unified profile surface、shell / room drill-in、presence / capability / recent activity
 - `pnpm test:headed-destructive-guard`
   - 验证 destructive git、越界写入、secret boundary 的 guard truth，以及 Inbox / Room / Run 三处同步
+- `pnpm test:headed-device-auth-email-recovery`
+  - 验证 device authorization、email verification、password reset、session recovery 与 external identity binding
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-quick-search`

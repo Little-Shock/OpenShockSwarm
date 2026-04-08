@@ -253,8 +253,8 @@
   - [x] owner 已可在 `/access` 直接 invite 成员，并 live 调整 member role / status
   - [x] invited member 首次登录会转成 `active`，role 变化会同步反映到 session / permissions / browser probes
   - [x] Board / Room / Inbox / Setup 关键动作已和 `issue.create` / `room.reply` / `run.execute` / `inbox.review` / `inbox.decide` / `repo.admin` / `runtime.manage` / `pull_request.*` 真值对齐
+  - [x] `/access` 现在已把 device authorization、email verification、password reset、session recovery 与 external identity binding 收进同一条 live identity chain
 - 当前 GAP:
-  - [ ] 设备授权与完整邮箱验证流程仍未产品化
   - [ ] Onboarding 还没把 invite / verify / device auth / template bootstrap 收成同一条首次启动旅程
   - [ ] GitHub 仍主要是 readiness probe，不是完整授权模型
 - 对应 Test Cases: `TC-014` `TC-016` `TC-024` `TC-035` `TC-038`
@@ -372,7 +372,7 @@
   - [ ] 还没有真正的 onboarding wizard / resumable progress
   - [ ] 还没有 `开发团队 / 研究团队 / 空白自定义` 场景模板
   - [ ] 默认 channels / rooms / agent roles / notification policy / onboarding docs 还不能一键 materialize
-  - [ ] device auth / verify / template bootstrap 没有被收成同一条首次启动旅程
+  - [ ] device auth / verify 已进入 `/access` 的 live identity chain，但还没和 template bootstrap 收成同一条首次启动旅程
 - 对应 Test Cases: `TC-035` `TC-038` `TC-041`
 
 ### CHK-21 Agent Mailbox、多 Agent 协作与治理

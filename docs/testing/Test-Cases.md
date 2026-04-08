@@ -454,7 +454,7 @@
 ## TC-035 Device Authorization / Email Verification Lifecycle
 
 - 业务目标: 确认设备授权、邮箱验证、密码重置和外部身份绑定进入同一条产品化身份链。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-13`
 - 前置条件: 存在 device authorization、email verify / reset、session recovery 的真实产品流。
 - 测试步骤:
@@ -462,7 +462,7 @@
   2. 在另一设备上恢复登录并验证权限链。
   3. 触发邮箱重置并确认 session / member state 同步更新。
 - 预期结果: 身份链不再只停留在 invite / role / quick login，而是具备完整恢复和验证能力。
-- 业务结论: 当前 repo 已站住 invite / role / status / authz matrix，但 device auth / email verify / reset 仍未产品化，所以这条用例保持 `Blocked`。
+- 业务结论: 2026 年 4 月 8 日 `TKT-29` 已新增 `pnpm test:headed-device-auth-email-recovery`，在 headed Chromium 下把 invited member 登录、email verify、current-device authorization、password reset on another device、external identity binding 串成同一条 exact replay。当前 `docs/testing/Test-Report-2026-04-08-device-auth-email-recovery.md` 已记录 recovery badge、authorized device、reset recovery 与 identity chip 证据，因此这条用例当前转为 `Pass`。
 
 ## TC-036 Agent Profile / Prompt / Avatar / Memory Binding Edit
 

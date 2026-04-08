@@ -150,9 +150,10 @@
 
 - 现状:
   - invite / role / status / authz matrix 已站住
-  - 设备授权、verify / reset 邮件链、完整外部身份绑定仍未产品化
+  - device authorization、verify / reset、external identity binding 已在 `/access` 产品化
+  - 但它还没和 onboarding template bootstrap 收成同一条首次启动旅程
 - 相关合同:
-  - `CHK-13`
+  - `CHK-13` `CHK-20`
 - 优先级: P1
 
 ### GAP-18 Destructive Guard / Secret Boundary

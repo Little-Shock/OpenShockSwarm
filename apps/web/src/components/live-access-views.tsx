@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 
-import type { AuthSession, WorkspaceMember, WorkspaceRole } from "@/lib/mock-data";
+import type { AuthDevice, AuthSession, WorkspaceMember, WorkspaceRole } from "@/lib/mock-data";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 
@@ -62,6 +62,45 @@ function memberStatusLabel(status: string) {
       return "待接受";
     case "suspended":
       return "已暂停";
+    default:
+      return "未返回";
+  }
+}
+
+function emailVerificationLabel(status: string | undefined) {
+  switch (status) {
+    case "verified":
+      return "已验证";
+    case "pending":
+      return "待验证";
+    default:
+      return "未配置";
+  }
+}
+
+function deviceAuthLabel(status: string | undefined) {
+  switch (status) {
+    case "authorized":
+      return "已授权";
+    case "pending":
+      return "待授权";
+    default:
+      return "未返回";
+  }
+}
+
+function recoveryStatusLabel(status: string | undefined) {
+  switch (status) {
+    case "ready":
+      return "链路正常";
+    case "verification_required":
+      return "等邮箱验证";
+    case "device_approval_required":
+      return "等设备授权";
+    case "reset_pending":
+      return "等密码重置";
+    case "recovered":
+      return "已恢复";
     default:
       return "未返回";
   }
@@ -517,6 +556,7 @@ function SessionActionPanel({
   const { loginAuthSession, logoutAuthSession } = usePhaseZeroState();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [deviceLabel, setDeviceLabel] = useState("Current Browser");
   const [pending, setPending] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -525,7 +565,7 @@ function SessionActionPanel({
     setPending(true);
     setMutationError(null);
     try {
-      await loginAuthSession({ email, name });
+      await loginAuthSession({ email, name, deviceLabel });
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : "login failed");
     } finally {
@@ -539,7 +579,7 @@ function SessionActionPanel({
     setPending(true);
     setMutationError(null);
     try {
-      await loginAuthSession({ email: member.email, name: member.name });
+      await loginAuthSession({ email: member.email, name: member.name, deviceLabel });
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : "login failed");
     } finally {
@@ -586,7 +626,7 @@ function SessionActionPanel({
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">email login</p>
           <h3 className="mt-2 font-display text-2xl font-bold">切换当前会话</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-            这一步直接走 live `POST /v1/auth/session` / `DELETE /v1/auth/session`，不再只展示“还缺合同”的占位说明。
+            这一步直接走 live `POST /v1/auth/session` / `DELETE /v1/auth/session`；当前 device label 也会一起写进 recovery truth。
           </p>
           <div className="mt-4 grid gap-3">
             <input
@@ -597,6 +637,14 @@ function SessionActionPanel({
               className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
               placeholder="mina@openshock.dev"
               required
+            />
+            <input
+              data-testid="access-login-device-label"
+              type="text"
+              value={deviceLabel}
+              onChange={(event) => setDeviceLabel(event.target.value)}
+              className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
+              placeholder="Current Browser"
             />
             <input
               data-testid="access-login-name"
@@ -692,6 +740,26 @@ function SessionActionPanel({
             <p className="mt-2 text-sm leading-6">{valueOrPlaceholder(session.lastSeenAt, "未返回")}</p>
           </div>
         </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">device</p>
+            <p data-testid="access-session-device-label" className="mt-2 text-sm leading-6">
+              {valueOrPlaceholder(session.deviceLabel, "Current Browser")}
+            </p>
+          </div>
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">device auth</p>
+            <p data-testid="access-session-device-auth" className="mt-2 text-sm leading-6">
+              {deviceAuthLabel(session.deviceAuthStatus)}
+            </p>
+          </div>
+          <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">recovery</p>
+            <p data-testid="access-session-recovery-status" className="mt-2 text-sm leading-6">
+              {recoveryStatusLabel(session.recoveryStatus)}
+            </p>
+          </div>
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {session.permissions.length > 0 ? (
             session.permissions.map((permission) => <PermissionChip key={permission} permission={permission} />)
@@ -702,6 +770,320 @@ function SessionActionPanel({
           )}
         </div>
       </div>
+    </Panel>
+  );
+}
+
+function IdentityRecoveryPanel({
+  session,
+  members,
+  devices,
+}: {
+  session: AuthSession;
+  members: WorkspaceMember[];
+  devices: AuthDevice[];
+}) {
+  const { verifyMemberEmail, authorizeAuthDevice, requestPasswordReset, completePasswordReset, bindExternalIdentity } = usePhaseZeroState();
+  const currentMember = members.find((member) => member.id === session.memberId) ?? null;
+  const memberDevices = currentMember ? devices.filter((device) => device.memberId === currentMember.id) : [];
+  const [resetEmail, setResetEmail] = useState("");
+  const [recoveryDeviceLabel, setRecoveryDeviceLabel] = useState("Recovery Laptop");
+  const [identityProvider, setIdentityProvider] = useState("github");
+  const [identityHandle, setIdentityHandle] = useState("");
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mutationSuccess, setMutationSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentMember?.email && !resetEmail) {
+      setResetEmail(currentMember.email);
+    }
+  }, [currentMember?.email, resetEmail]);
+
+  async function runMutation(action: string, task: () => Promise<void>, successMessage: string) {
+    setPendingAction(action);
+    setMutationError(null);
+    setMutationSuccess(null);
+    try {
+      await task();
+      setMutationSuccess(successMessage);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : `${action} failed`);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  const linkedIdentities = currentMember?.linkedIdentities ?? [];
+  const devicePending = session.deviceAuthStatus !== "authorized";
+  const verifyPending = session.emailVerificationStatus !== "verified";
+
+  return (
+    <Panel tone={sessionIsActive(session) ? "white" : "paper"}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">identity recovery chain</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">把 device auth、verify、reset 和 session recovery 收成同一条产品流</h2>
+        </div>
+        <span
+          data-testid="access-recovery-status"
+          className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+        >
+          {recoveryStatusLabel(session.recoveryStatus)}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
+        当前票只收 `device authorization / email verify / reset / session recovery / external identity binding`。更大的 onboarding / durable config
+        仍留在后续票，不在这里偷混。
+      </p>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <Metric label="email verify" value={emailVerificationLabel(session.emailVerificationStatus)} />
+        <Metric label="device auth" value={deviceAuthLabel(session.deviceAuthStatus)} />
+        <Metric label="reset status" value={valueOrPlaceholder(session.passwordResetStatus, "idle")} />
+        <Metric label="linked identity" value={String(linkedIdentities.length)} />
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_0.96fr]">
+        <div className="space-y-4">
+          <div className="rounded-[22px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">current recovery actions</p>
+                <h3 className="mt-2 font-display text-2xl font-bold">先把当前 session 补齐 verify / device auth</h3>
+              </div>
+              <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
+                {sessionIsActive(session) ? "active session" : "sign in first"}
+              </span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                data-testid="access-verify-email-submit"
+                type="button"
+                disabled={!sessionIsActive(session) || !verifyPending || pendingAction !== null}
+                onClick={() =>
+                  void runMutation(
+                    "verify-email",
+                    async () => {
+                      await verifyMemberEmail();
+                    },
+                    "当前成员邮箱已转成 verified"
+                  )
+                }
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+              >
+                verify email
+              </button>
+              <button
+                data-testid="access-authorize-device-submit"
+                type="button"
+                disabled={!sessionIsActive(session) || !devicePending || pendingAction !== null}
+                onClick={() =>
+                  void runMutation(
+                    "authorize-device",
+                    async () => {
+                      await authorizeAuthDevice({ deviceId: session.deviceId, deviceLabel: session.deviceLabel });
+                    },
+                    `${valueOrPlaceholder(session.deviceLabel, "Current Browser")} 已转成 authorized`
+                  )
+                }
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+              >
+                authorize current device
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">password reset / session recovery</p>
+            <h3 className="mt-2 font-display text-2xl font-bold">在另一设备上恢复登录并确认权限链</h3>
+            <div className="mt-4 grid gap-3">
+              <input
+                data-testid="access-request-reset-email"
+                type="email"
+                value={resetEmail}
+                onChange={(event) => setResetEmail(event.target.value)}
+                className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
+                placeholder="member@openshock.dev"
+              />
+              <input
+                data-testid="access-complete-reset-device-label"
+                type="text"
+                value={recoveryDeviceLabel}
+                onChange={(event) => setRecoveryDeviceLabel(event.target.value)}
+                className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
+                placeholder="Recovery Laptop"
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                data-testid="access-request-reset-submit"
+                type="button"
+                disabled={pendingAction !== null}
+                onClick={() =>
+                  void runMutation(
+                    "request-reset",
+                    async () => {
+                      await requestPasswordReset({ email: resetEmail });
+                    },
+                    `${resetEmail.trim().toLowerCase()} 已进入 reset pending`
+                  )
+                }
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+              >
+                request reset
+              </button>
+              <button
+                data-testid="access-complete-reset-submit"
+                type="button"
+                disabled={pendingAction !== null}
+                onClick={() =>
+                  void runMutation(
+                    "complete-reset",
+                    async () => {
+                      await completePasswordReset({ email: resetEmail, deviceLabel: recoveryDeviceLabel });
+                    },
+                    `${recoveryDeviceLabel.trim() || "Recovery Laptop"} 已恢复同一条 session / permission truth`
+                  )
+                }
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white disabled:opacity-60"
+              >
+                complete reset on another device
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">external identity binding</p>
+            <h3 className="mt-2 font-display text-2xl font-bold">把外部身份挂到同一条成员真相上</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+              <select
+                data-testid="access-bind-identity-provider"
+                value={identityProvider}
+                onChange={(event) => setIdentityProvider(event.target.value)}
+                className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none"
+              >
+                <option value="github">GitHub</option>
+                <option value="google">Google</option>
+                <option value="sso">Workspace SSO</option>
+              </select>
+              <input
+                data-testid="access-bind-identity-handle"
+                type="text"
+                value={identityHandle}
+                onChange={(event) => setIdentityHandle(event.target.value)}
+                className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
+                placeholder="@openshock-member"
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                data-testid="access-bind-identity-submit"
+                type="button"
+                disabled={!sessionIsActive(session) || pendingAction !== null}
+                onClick={() =>
+                  void runMutation(
+                    "bind-identity",
+                    async () => {
+                      await bindExternalIdentity({ provider: identityProvider, handle: identityHandle });
+                    },
+                    `${identityProvider} identity 已绑定到当前成员`
+                  )
+                }
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+              >
+                bind external identity
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-[22px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">member recovery truth</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">recovery email</p>
+                <p data-testid="access-recovery-email" className="mt-2 break-all text-sm leading-6">
+                  {valueOrPlaceholder(currentMember?.recoveryEmail, "未返回")}
+                </p>
+              </div>
+              <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">email verification</p>
+                <p data-testid="access-recovery-email-status" className="mt-2 text-sm leading-6">
+                  {emailVerificationLabel(currentMember?.emailVerificationStatus)}
+                </p>
+              </div>
+              <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">password reset</p>
+                <p data-testid="access-recovery-reset-status" className="mt-2 text-sm leading-6">
+                  {valueOrPlaceholder(currentMember?.passwordResetStatus, "idle")}
+                </p>
+              </div>
+              <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">linked identity</p>
+                <p data-testid="access-recovery-identity-count" className="mt-2 text-sm leading-6">
+                  {linkedIdentities.length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">authorized devices</p>
+            <div className="mt-4 grid gap-3">
+              {memberDevices.length > 0 ? (
+                memberDevices.map((device) => (
+                  <div key={device.id} data-testid={`access-device-${device.id}`} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-display text-xl font-bold">{device.label}</p>
+                        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
+                          {valueOrPlaceholder(device.lastSeenAt, "未返回")}
+                        </p>
+                      </div>
+                      <span
+                        data-testid={`access-device-status-${device.id}`}
+                        className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+                      >
+                        {deviceAuthLabel(device.status)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.16em]">当前成员还没有 trusted device truth。</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {linkedIdentities.length > 0 ? (
+                linkedIdentities.map((identity) => (
+                  <span
+                    key={`${identity.provider}:${identity.handle}`}
+                    data-testid={`access-identity-${identity.provider}`}
+                    className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+                  >
+                    {identity.provider} · {identity.handle}
+                  </span>
+                ))
+              ) : (
+                <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]">
+                  no linked identity
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <MutationFeedback
+        error={mutationError}
+        success={mutationSuccess}
+        errorTestID="access-recovery-error"
+        successTestID="access-recovery-success"
+      />
     </Panel>
   );
 }
@@ -731,7 +1113,8 @@ export function LiveAccessContextRail() {
       label="身份检查点"
       items={[
         { label: "Session", value: `${sessionStatusLabel(session)} / ${valueOrPlaceholder(session.email, "signed out")}` },
-        { label: "Role", value: roleLabel(session.role) },
+        { label: "Recovery", value: recoveryStatusLabel(session.recoveryStatus) },
+        { label: "Device", value: deviceAuthLabel(session.deviceAuthStatus) },
         { label: "Members", value: `${state.auth.members.length} roster / ${ownerCount} owner` },
         { label: "Permissions", value: `${session.permissions.length} live permissions` },
       ]}
@@ -759,6 +1142,7 @@ export function LiveAccessOverview() {
   const session = state.auth.session;
   const members = state.auth.members;
   const roles = state.auth.roles;
+  const devices = state.auth.devices ?? [];
   const activeMembers = members.filter((member) => member.status === "active").length;
   const invitedMembers = members.filter((member) => member.status === "invited").length;
   const suspendedMembers = members.filter((member) => member.status === "suspended").length;
@@ -767,6 +1151,7 @@ export function LiveAccessOverview() {
   return (
     <div className="space-y-4">
       <SessionActionPanel session={session} members={members} />
+      <IdentityRecoveryPanel session={session} members={members} devices={devices} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_0.95fr]">
         <Panel tone="paper" className="shadow-[8px_8px_0_0_var(--shock-yellow)]">
@@ -820,7 +1205,8 @@ export function LiveAccessOverview() {
           <ol className="mt-4 space-y-3 text-sm leading-6 text-white/78">
             <li>1. `TKT-07` 已收住 login / logout / session persistence 和 access live truth。</li>
             <li>2. `TKT-08` 当前收 invite、member roster mutation、role/status management。</li>
-            <li>3. `TKT-09` 再把 issue / room / run / inbox / repo / runtime 动作全部接上 action-level authz matrix。</li>
+            <li>3. `TKT-29` 当前把 device auth / verify / reset / recovery 补成同一条身份链。</li>
+            <li>4. `TKT-09` 再把 issue / room / run / inbox / repo / runtime 动作全部接上 action-level authz matrix。</li>
           </ol>
           <div className="mt-5 grid gap-3">
             <Metric label="active members" value={String(activeMembers)} />

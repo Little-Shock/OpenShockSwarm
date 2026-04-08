@@ -284,16 +284,26 @@ type Session struct {
 }
 
 type AuthSession struct {
-	ID          string   `json:"id"`
-	MemberID    string   `json:"memberId,omitempty"`
-	Email       string   `json:"email,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Role        string   `json:"role,omitempty"`
-	Status      string   `json:"status"`
-	AuthMethod  string   `json:"authMethod,omitempty"`
-	SignedInAt  string   `json:"signedInAt,omitempty"`
-	LastSeenAt  string   `json:"lastSeenAt,omitempty"`
-	Permissions []string `json:"permissions"`
+	ID                       string                 `json:"id"`
+	MemberID                 string                 `json:"memberId,omitempty"`
+	Email                    string                 `json:"email,omitempty"`
+	Name                     string                 `json:"name,omitempty"`
+	Role                     string                 `json:"role,omitempty"`
+	Status                   string                 `json:"status"`
+	AuthMethod               string                 `json:"authMethod,omitempty"`
+	SignedInAt               string                 `json:"signedInAt,omitempty"`
+	LastSeenAt               string                 `json:"lastSeenAt,omitempty"`
+	DeviceID                 string                 `json:"deviceId,omitempty"`
+	DeviceLabel              string                 `json:"deviceLabel,omitempty"`
+	DeviceAuthStatus         string                 `json:"deviceAuthStatus,omitempty"`
+	EmailVerificationStatus  string                 `json:"emailVerificationStatus,omitempty"`
+	EmailVerifiedAt          string                 `json:"emailVerifiedAt,omitempty"`
+	PasswordResetStatus      string                 `json:"passwordResetStatus,omitempty"`
+	PasswordResetRequestedAt string                 `json:"passwordResetRequestedAt,omitempty"`
+	PasswordResetCompletedAt string                 `json:"passwordResetCompletedAt,omitempty"`
+	RecoveryStatus           string                 `json:"recoveryStatus,omitempty"`
+	LinkedIdentities         []AuthExternalIdentity `json:"linkedIdentities,omitempty"`
+	Permissions              []string               `json:"permissions"`
 }
 
 type WorkspaceRole struct {
@@ -304,21 +314,48 @@ type WorkspaceRole struct {
 }
 
 type WorkspaceMember struct {
-	ID          string   `json:"id"`
-	Email       string   `json:"email"`
-	Name        string   `json:"name"`
-	Role        string   `json:"role"`
-	Status      string   `json:"status"`
-	Source      string   `json:"source,omitempty"`
-	AddedAt     string   `json:"addedAt,omitempty"`
-	LastSeenAt  string   `json:"lastSeenAt,omitempty"`
-	Permissions []string `json:"permissions"`
+	ID                       string                 `json:"id"`
+	Email                    string                 `json:"email"`
+	Name                     string                 `json:"name"`
+	Role                     string                 `json:"role"`
+	Status                   string                 `json:"status"`
+	Source                   string                 `json:"source,omitempty"`
+	AddedAt                  string                 `json:"addedAt,omitempty"`
+	LastSeenAt               string                 `json:"lastSeenAt,omitempty"`
+	RecoveryEmail            string                 `json:"recoveryEmail,omitempty"`
+	EmailVerificationStatus  string                 `json:"emailVerificationStatus,omitempty"`
+	EmailVerifiedAt          string                 `json:"emailVerifiedAt,omitempty"`
+	PasswordResetStatus      string                 `json:"passwordResetStatus,omitempty"`
+	PasswordResetRequestedAt string                 `json:"passwordResetRequestedAt,omitempty"`
+	PasswordResetCompletedAt string                 `json:"passwordResetCompletedAt,omitempty"`
+	RecoveryStatus           string                 `json:"recoveryStatus,omitempty"`
+	LinkedIdentities         []AuthExternalIdentity `json:"linkedIdentities,omitempty"`
+	TrustedDeviceIDs         []string               `json:"trustedDeviceIds,omitempty"`
+	Permissions              []string               `json:"permissions"`
+}
+
+type AuthExternalIdentity struct {
+	Provider string `json:"provider"`
+	Handle   string `json:"handle"`
+	Status   string `json:"status"`
+	BoundAt  string `json:"boundAt,omitempty"`
+}
+
+type AuthDevice struct {
+	ID           string `json:"id"`
+	MemberID     string `json:"memberId"`
+	Label        string `json:"label"`
+	Status       string `json:"status"`
+	RequestedAt  string `json:"requestedAt,omitempty"`
+	AuthorizedAt string `json:"authorizedAt,omitempty"`
+	LastSeenAt   string `json:"lastSeenAt,omitempty"`
 }
 
 type AuthSnapshot struct {
 	Session AuthSession       `json:"session"`
 	Roles   []WorkspaceRole   `json:"roles"`
 	Members []WorkspaceMember `json:"members"`
+	Devices []AuthDevice      `json:"devices,omitempty"`
 }
 
 type MemoryGovernance struct {
