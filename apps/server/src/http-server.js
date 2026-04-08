@@ -68,6 +68,7 @@ const IDEMPOTENCY_REQUIRED_ROUTES = new Set([
 
 const DELIVERY_SERVER_OWNED_FIELDS = new Set(["run_id", "checkpoint_ref", "artifact_refs", "closeout_lineage", "merge_lifecycle_stage"]);
 const PR_WRITEBACK_SERVER_OWNED_FIELDS = new Set(["run_id", "checkpoint_ref", "artifact_refs", "closeout_lineage", "merge_lifecycle_stage"]);
+const RUNTIME_PAIRING_MODES = new Set(["remote_daemon_pairing", "local_hosted_bridge"]);
 
 function sendJson(response, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -870,6 +871,7 @@ function serializeRuntimeAgent(agent) {
     assigned_workitem_id: agent.assignedWorkitemId ?? null,
     status: agent.status,
     pairing_state: agent.pairingState ?? "unknown",
+    pairing_mode: agent.pairingMode ?? "remote_daemon_pairing",
     liveness: agent.liveness ?? "unknown",
     registered_at: agent.registeredAt ?? null,
     paired_at: agent.pairedAt ?? null,
@@ -5854,13 +5856,56 @@ export function createHttpServer(coordinator, options = {}) {
           projection: "single_operator_runtime_registry",
           contract_version: registry.contractVersion,
           mode: registry.mode,
+          truth_family: deepClone(registry.truthFamily ?? ["/v1/runtime/*"]),
           liveness_timeout_ms: registry.livenessTimeoutMs,
           summary: {
             machine_count: registry.summary.machineCount,
             agent_count: registry.summary.agentCount,
             online_agent_count: registry.summary.onlineAgentCount,
             offline_agent_count: registry.summary.offlineAgentCount,
+            paired_agent_count: registry.summary.pairedAgentCount,
+            pending_pairing_agent_count: registry.summary.pendingPairingAgentCount,
+            online_machine_count: registry.summary.onlineMachineCount,
+            offline_machine_count: registry.summary.offlineMachineCount,
             active_worktree_claim_count: registry.summary.activeWorktreeClaimCount
+          },
+          remote_daemon_pairing: {
+            mode: registry.remoteDaemonPairing?.mode ?? "remote_daemon_pairing",
+            status: registry.remoteDaemonPairing?.status ?? "not_paired",
+            total_agent_count: registry.remoteDaemonPairing?.totalAgentCount ?? 0,
+            paired_agent_count: registry.remoteDaemonPairing?.pairedAgentCount ?? 0,
+            pending_pairing_agent_ids: deepClone(registry.remoteDaemonPairing?.pendingPairingAgentIds ?? [])
+          },
+          machine_fleet: {
+            status: registry.machineFleet?.status ?? "not_paired",
+            machine_count: registry.machineFleet?.machineCount ?? 0,
+            online_machine_count: registry.machineFleet?.onlineMachineCount ?? 0,
+            offline_machine_count: registry.machineFleet?.offlineMachineCount ?? 0,
+            runtime_ids: deepClone(registry.machineFleet?.runtimeIds ?? [])
+          },
+          write_anchors: {
+            machine_upsert: registry.writeAnchors?.machineUpsert ?? "/v1/runtime/machines/:machineId",
+            agent_upsert: registry.writeAnchors?.agentUpsert ?? "/v1/runtime/agents/:agentId",
+            agent_pairing: registry.writeAnchors?.agentPairing ?? "/v1/runtime/agents/:agentId/pairing",
+            agent_heartbeat: registry.writeAnchors?.agentHeartbeat ?? "/v1/runtime/agents/:agentId/heartbeat",
+            assignment: registry.writeAnchors?.assignment ?? "/v1/runtime/agents/:agentId/assignment",
+            recovery_action: registry.writeAnchors?.recoveryAction ?? "/v1/runtime/agents/:agentId/recovery-actions",
+            worktree_claim_upsert: registry.writeAnchors?.worktreeClaimUpsert ?? "/v1/runtime/worktree-claims/:claimKey",
+            worktree_claim_release: registry.writeAnchors?.worktreeClaimRelease ?? "/v1/runtime/worktree-claims/:claimKey/release"
+          },
+          read_anchors: {
+            registry: registry.readAnchors?.registry ?? "/v1/runtime/registry",
+            machines: registry.readAnchors?.machines ?? "/v1/runtime/machines",
+            agents: registry.readAnchors?.agents ?? "/v1/runtime/agents",
+            worktree_claims: registry.readAnchors?.worktreeClaims ?? "/v1/runtime/worktree-claims",
+            recovery_actions: registry.readAnchors?.recoveryActions ?? "/v1/runtime/recovery-actions",
+            deploy_runtime: registry.readAnchors?.deployRuntime ?? "/v1/runtime/deploy-runtime"
+          },
+          timeline_anchor: {
+            runtime_config: registry.timelineAnchor?.runtimeConfig ?? "/runtime/config",
+            runtime_smoke: registry.timelineAnchor?.runtimeSmoke ?? "/runtime/smoke",
+            runtime_recovery_actions: registry.timelineAnchor?.runtimeRecoveryActions ?? "/v1/runtime/recovery-actions",
+            deploy_runtime: registry.timelineAnchor?.deployRuntime ?? "/v1/runtime/deploy-runtime"
           },
           machines: registry.machines.map((machine) => serializeRuntimeMachine(machine)),
           agents: registry.agents.map((agent) => serializeRuntimeAgent(agent)),
@@ -6015,18 +6060,41 @@ export function createHttpServer(coordinator, options = {}) {
       if (route.route === "V1_PUT_RUNTIME_AGENT_PAIRING") {
         const body = await readJsonBody(request);
         assertObjectBody(body, "invalid_runtime_pairing", "runtime pairing payload must be object");
+        const allowedPairingKeys = new Set([
+          "machine_id",
+          "status",
+          "operator_id",
+          "channel_id",
+          "thread_id",
+          "workitem_id",
+          "pairing_mode",
+          "policy_snapshot"
+        ]);
+        for (const key of Object.keys(body)) {
+          if (!allowedPairingKeys.has(key)) {
+            throw new CoordinatorError("invalid_runtime_pairing_field", `unsupported runtime pairing field: ${key}`);
+          }
+        }
+        if (body.pairing_mode !== undefined) {
+          const pairingMode = typeof body.pairing_mode === "string" ? body.pairing_mode.trim() : "";
+          if (!RUNTIME_PAIRING_MODES.has(pairingMode)) {
+            throw new CoordinatorError("invalid_runtime_pairing_mode", "pairing_mode is invalid");
+          }
+        }
         const agent = coordinator.pairRuntimeAgent(route.agentId, {
           machineId: body.machine_id,
           status: body.status,
           operatorId: body.operator_id,
           channelId: body.channel_id,
           threadId: body.thread_id,
-          workitemId: body.workitem_id
+          workitemId: body.workitem_id,
+          pairingMode: body.pairing_mode
         });
         sendJson(response, 200, {
           pairing: {
             agent: serializeRuntimeAgent(agent),
-            paired_at: agent.pairedAt ?? null
+            paired_at: agent.pairedAt ?? null,
+            pairing_mode: agent.pairingMode ?? "remote_daemon_pairing"
           },
           request_id: requestId
         });

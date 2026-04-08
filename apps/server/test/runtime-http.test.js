@@ -5825,6 +5825,148 @@ test("v1 stage5c runtime lifecycle contract keeps machine fleet health/readiness
   });
 });
 
+test("v1 stage5c runtime pairing/registry contract keeps remote pairing and machine fleet truth under /v1/runtime family", async () => {
+  const operatorId = "human_operator_stage5c_pairing";
+  const channelId = "channel_stage5c_pairing";
+  const threadId = "thread_stage5c_pairing";
+  const workitemId = "workitem_stage5c_pairing";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const machine = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/machines/machine_stage5c_01",
+      body: {
+        runtime_id: "runtime_stage5c_01",
+        status: "online",
+        capabilities: ["node", "git"]
+      }
+    });
+    assert.equal(machine.statusCode, 200);
+
+    const upsertAgentAlpha = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage5c_alpha",
+      body: {
+        machine_id: "machine_stage5c_01",
+        status: "idle",
+        operator_id: operatorId,
+        channel_id: channelId,
+        thread_id: threadId,
+        workitem_id: workitemId
+      }
+    });
+    assert.equal(upsertAgentAlpha.statusCode, 200);
+
+    const upsertAgentBeta = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage5c_beta",
+      body: {
+        machine_id: "machine_stage5c_01",
+        status: "idle",
+        operator_id: operatorId,
+        channel_id: channelId,
+        thread_id: threadId,
+        workitem_id: workitemId
+      }
+    });
+    assert.equal(upsertAgentBeta.statusCode, 200);
+
+    const registry = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/runtime/registry"
+    });
+    assert.equal(registry.statusCode, 200);
+    assert.equal(registry.body.contract_version, "v1.stage5c");
+    assert.equal(registry.body.truth_family.includes("/v1/runtime/*"), true);
+    assert.equal(registry.body.write_anchors.agent_pairing, "/v1/runtime/agents/:agentId/pairing");
+    assert.equal(registry.body.read_anchors.registry, "/v1/runtime/registry");
+    assert.equal(registry.body.timeline_anchor.runtime_recovery_actions, "/v1/runtime/recovery-actions");
+    assert.equal(registry.body.remote_daemon_pairing.mode, "remote_daemon_pairing");
+    assert.equal(registry.body.machine_fleet.machine_count, 1);
+    assert.equal(registry.body.machine_fleet.online_machine_count, 1);
+
+    const pairAgent = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage5c_beta/pairing",
+      body: {
+        machine_id: "machine_stage5c_01",
+        status: "ready",
+        pairing_mode: "remote_daemon_pairing",
+        operator_id: operatorId,
+        channel_id: channelId,
+        thread_id: threadId,
+        workitem_id: workitemId
+      }
+    });
+    assert.equal(pairAgent.statusCode, 200);
+    assert.equal(pairAgent.body.pairing.pairing_mode, "remote_daemon_pairing");
+    assert.equal(pairAgent.body.pairing.agent.pairing_mode, "remote_daemon_pairing");
+
+    const invalidPairingMode = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage5c_beta/pairing",
+      body: {
+        machine_id: "machine_stage5c_01",
+        pairing_mode: "free_debate_social",
+        operator_id: operatorId
+      }
+    });
+    assert.equal(invalidPairingMode.statusCode, 400);
+    assert.equal(invalidPairingMode.body.error.code, "invalid_runtime_pairing_mode");
+
+    const invalidPairingField = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage5c_beta/pairing",
+      body: {
+        machine_id: "machine_stage5c_01",
+        operator_id: operatorId,
+        channel_id: channelId,
+        thread_id: threadId,
+        workitem_id: workitemId,
+        pairing_mode: "remote_daemon_pairing",
+        unknown_field: true
+      }
+    });
+    assert.equal(invalidPairingField.statusCode, 400);
+    assert.equal(invalidPairingField.body.error.code, "invalid_runtime_pairing_field");
+
+    const shellCompatibility = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/compatibility/shell-adapter"
+    });
+    assert.equal(shellCompatibility.statusCode, 200);
+    assert.equal(shellCompatibility.body.backend_derived_projection.projection_surfaces.includes("/v1/runtime/registry"), true);
+    assert.equal(
+      shellCompatibility.body.backend_derived_projection.projection_surfaces.includes("/v1/runtime/agents/:agentId/pairing"),
+      true
+    );
+    assert.equal(
+      shellCompatibility.body.backend_derived_projection.lineage_anchors.runtime_registry,
+      "/v1/runtime/registry"
+    );
+    assert.equal(
+      shellCompatibility.body.backend_derived_projection.lineage_anchors.runtime_agent_pairing,
+      "/v1/runtime/agents/:agentId/pairing"
+    );
+
+    const payload = JSON.stringify({
+      registry: registry.body,
+      pairing: pairAgent.body,
+      shellCompatibility: shellCompatibility.body
+    });
+    assert.equal(payload.includes("\"stage6\""), false);
+    assert.equal(payload.includes("\"stage4_reopen\""), false);
+  });
+});
+
 test("v1 stage5b inbox attention contract keeps unified inbox/follow-up/mention routing under /v1/inbox truth family", async () => {
   const topicId = "topic_stage5b_inbox_contract";
   const actorId = "human_sample_01";

@@ -2240,6 +2240,12 @@ export class ServerCoordinator {
     const now = nowIso();
     const normalizedAgentId = agentId.trim();
     const existing = this.runtimeAgents.get(normalizedAgentId);
+    const pairingMode = normalizeOptionalScopeId(input.pairingMode) ?? normalizeOptionalScopeId(existing?.pairingMode) ?? "remote_daemon_pairing";
+    assertOrThrow(
+      DEPLOY_RUNTIME_PAIRING_MODES.has(pairingMode),
+      "invalid_runtime_pairing_mode",
+      "pairing_mode must be one of remote_daemon_pairing/local_hosted_bridge"
+    );
     const agent = {
       agentId: normalizedAgentId,
       machineId,
@@ -2249,6 +2255,7 @@ export class ServerCoordinator {
           ? input.status.trim()
           : existing?.status ?? "idle",
       pairingState: "paired",
+      pairingMode,
       ownerOperatorId: existing?.ownerOperatorId ?? null,
       assignedChannelId: existing?.assignedChannelId ?? null,
       assignedThreadId: existing?.assignedThreadId ?? null,
@@ -2590,6 +2597,12 @@ export class ServerCoordinator {
     assertOrThrow(machineId, "invalid_machine_id", "machineId is required");
     const machine = this.runtimeMachines.get(machineId);
     assertOrThrow(machine, "runtime_machine_not_found", `runtime machine ${machineId} not found`);
+    const pairingMode = normalizeOptionalScopeId(input.pairingMode) ?? normalizeOptionalScopeId(agent.pairingMode) ?? "remote_daemon_pairing";
+    assertOrThrow(
+      DEPLOY_RUNTIME_PAIRING_MODES.has(pairingMode),
+      "invalid_runtime_pairing_mode",
+      "pairing_mode must be one of remote_daemon_pairing/local_hosted_bridge"
+    );
     const now = nowIso();
     this.applyRuntimeOwnershipBoundary(agent, {
       operatorId: input.operatorId,
@@ -2603,6 +2616,7 @@ export class ServerCoordinator {
       agent.status = input.status.trim();
     }
     agent.pairingState = "paired";
+    agent.pairingMode = pairingMode;
     agent.pairedAt = now;
     agent.lastSeenAt = now;
     agent.updatedAt = now;
@@ -2746,18 +2760,85 @@ export class ServerCoordinator {
     const machines = this.listRuntimeMachines();
     const agents = this.listRuntimeAgents();
     const worktreeClaims = this.listRuntimeWorktreeClaims();
+    const pairedStates = new Set(["paired", "ready", "active"]);
     const onlineAgents = agents.filter((agent) => agent.liveness === "online").length;
     const offlineAgents = agents.filter((agent) => agent.liveness === "offline").length;
+    const pairedAgents = agents.filter((agent) => pairedStates.has(normalizeOptionalScopeId(agent.pairingState))).length;
+    const pendingPairingAgentIds = agents
+      .filter((agent) => !pairedStates.has(normalizeOptionalScopeId(agent.pairingState)))
+      .map((agent) => normalizeOptionalScopeId(agent.agentId))
+      .filter((item) => item);
+    const onlineMachines = machines.filter((machine) => machine.liveness === "online" || normalizeOptionalScopeId(machine.status) === "online").length;
+    const offlineMachines = Math.max(0, machines.length - onlineMachines);
+    const pairingStatus =
+      agents.length === 0
+        ? "not_paired"
+        : pendingPairingAgentIds.length === 0 && onlineAgents === agents.length
+          ? "ready"
+          : pairedAgents > 0
+            ? "pairing"
+            : "not_paired";
+    const machineFleetStatus =
+      machines.length === 0
+        ? "not_paired"
+        : offlineMachines === 0
+          ? "ready"
+          : onlineMachines > 0
+            ? "degraded"
+            : "pairing";
     return {
-      contractVersion: "v1.stage2",
+      contractVersion: "v1.stage5c",
       mode: "single_human_multi_agent",
+      truthFamily: ["/v1/runtime/*"],
       livenessTimeoutMs: this.runtimeLivenessMs,
       summary: {
         machineCount: machines.length,
         agentCount: agents.length,
         onlineAgentCount: onlineAgents,
         offlineAgentCount: offlineAgents,
+        pairedAgentCount: pairedAgents,
+        pendingPairingAgentCount: pendingPairingAgentIds.length,
+        onlineMachineCount: onlineMachines,
+        offlineMachineCount: offlineMachines,
         activeWorktreeClaimCount: worktreeClaims.length
+      },
+      remoteDaemonPairing: {
+        mode: "remote_daemon_pairing",
+        status: pairingStatus,
+        totalAgentCount: agents.length,
+        pairedAgentCount: pairedAgents,
+        pendingPairingAgentIds
+      },
+      machineFleet: {
+        status: machineFleetStatus,
+        machineCount: machines.length,
+        onlineMachineCount: onlineMachines,
+        offlineMachineCount: offlineMachines,
+        runtimeIds: Array.from(new Set(machines.map((item) => item.runtimeId).filter((item) => item)))
+      },
+      writeAnchors: {
+        machineUpsert: "/v1/runtime/machines/:machineId",
+        agentUpsert: "/v1/runtime/agents/:agentId",
+        agentPairing: "/v1/runtime/agents/:agentId/pairing",
+        agentHeartbeat: "/v1/runtime/agents/:agentId/heartbeat",
+        assignment: "/v1/runtime/agents/:agentId/assignment",
+        recoveryAction: "/v1/runtime/agents/:agentId/recovery-actions",
+        worktreeClaimUpsert: "/v1/runtime/worktree-claims/:claimKey",
+        worktreeClaimRelease: "/v1/runtime/worktree-claims/:claimKey/release"
+      },
+      readAnchors: {
+        registry: "/v1/runtime/registry",
+        machines: "/v1/runtime/machines",
+        agents: "/v1/runtime/agents",
+        worktreeClaims: "/v1/runtime/worktree-claims",
+        recoveryActions: "/v1/runtime/recovery-actions",
+        deployRuntime: "/v1/runtime/deploy-runtime"
+      },
+      timelineAnchor: {
+        runtimeConfig: "/runtime/config",
+        runtimeSmoke: "/runtime/smoke",
+        runtimeRecoveryActions: "/v1/runtime/recovery-actions",
+        deployRuntime: "/v1/runtime/deploy-runtime"
       },
       machines,
       agents,
@@ -7503,6 +7584,11 @@ export class ServerCoordinator {
         "/v1/channels/:channelId/memory/feedback",
         "/v1/channels/:channelId/memory/promote",
         "/v1/channels/:channelId/memory/forget",
+        "/v1/runtime/registry",
+        "/v1/runtime/agents",
+        "/v1/runtime/agents/:agentId/pairing",
+        "/v1/runtime/machines",
+        "/v1/runtime/worktree-claims",
         "/v1/runtime/deploy-runtime"
       ],
       lineage_anchors: {
@@ -7534,6 +7620,11 @@ export class ServerCoordinator {
         channel_orchestration_upgrade: "/v1/channels/:channelId/orchestration-upgrade",
         channel_external_memory_provider: "/v1/channels/:channelId/external-memory-provider",
         channel_memory_viewer: "/v1/channels/:channelId/memory-viewer",
+        runtime_registry: "/v1/runtime/registry",
+        runtime_agents: "/v1/runtime/agents",
+        runtime_agent_pairing: "/v1/runtime/agents/:agentId/pairing",
+        runtime_machines: "/v1/runtime/machines",
+        runtime_worktree_claims: "/v1/runtime/worktree-claims",
         runtime_deploy_runtime: "/v1/runtime/deploy-runtime"
       }
     };
