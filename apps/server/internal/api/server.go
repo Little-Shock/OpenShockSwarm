@@ -88,6 +88,7 @@ type RuntimeSnapshotResponse struct {
 	Machine            string                  `json:"machine"`
 	DetectedCLI        []string                `json:"detectedCli"`
 	Providers          []store.RuntimeProvider `json:"providers"`
+	Shell              string                  `json:"shell,omitempty"`
 	State              string                  `json:"state"`
 	WorkspaceRoot      string                  `json:"workspaceRoot"`
 	ReportedAt         string                  `json:"reportedAt"`
@@ -979,6 +980,7 @@ func (s *Server) handleRuntimePairing(w http.ResponseWriter, r *http.Request) {
 			Machine:       runtimeSnapshot.Machine,
 			DetectedCLI:   runtimeSnapshot.DetectedCLI,
 			Providers:     runtimeSnapshot.Providers,
+			Shell:         runtimeSnapshot.Shell,
 			State:         runtimeSnapshot.State,
 			WorkspaceRoot: runtimeSnapshot.WorkspaceRoot,
 			ReportedAt:    runtimeSnapshot.ReportedAt,
@@ -1218,6 +1220,7 @@ func runtimeHeartbeatInputFromSnapshot(snapshot RuntimeSnapshotResponse) store.R
 		Machine:            strings.TrimSpace(snapshot.Machine),
 		DetectedCLI:        snapshot.DetectedCLI,
 		Providers:          snapshot.Providers,
+		Shell:              strings.TrimSpace(snapshot.Shell),
 		State:              strings.TrimSpace(snapshot.State),
 		WorkspaceRoot:      strings.TrimSpace(snapshot.WorkspaceRoot),
 		ReportedAt:         strings.TrimSpace(snapshot.ReportedAt),
@@ -1233,6 +1236,7 @@ func runtimeSnapshotFromRecord(record store.RuntimeRecord) RuntimeSnapshotRespon
 		Machine:            record.Machine,
 		DetectedCLI:        record.DetectedCLI,
 		Providers:          record.Providers,
+		Shell:              record.Shell,
 		State:              record.State,
 		WorkspaceRoot:      record.WorkspaceRoot,
 		ReportedAt:         record.ReportedAt,
@@ -1377,6 +1381,7 @@ func offlineRuntimeSnapshot(machine, reportedAt string) RuntimeSnapshotResponse 
 		Machine:       machine,
 		DetectedCLI:   []string{},
 		Providers:     nil,
+		Shell:         "",
 		State:         "offline",
 		WorkspaceRoot: "",
 		ReportedAt:    reportedAt,

@@ -20,9 +20,14 @@ var (
 	ErrAgentAvatarRequired             = errors.New("agent avatar is required")
 	ErrAgentPromptRequired             = errors.New("agent prompt is required")
 	ErrAgentProviderPreferenceRequired = errors.New("agent provider preference is required")
+	ErrAgentModelPreferenceRequired    = errors.New("agent model preference is required")
+	ErrAgentRuntimePreferenceRequired  = errors.New("agent runtime preference is required")
 	ErrAgentRecallPolicyInvalid        = errors.New("agent recall policy is invalid")
 	ErrAgentMemoryBindingRequired      = errors.New("agent memory binding requires at least one scope")
 	ErrAgentMemorySpaceInvalid         = errors.New("agent memory space is invalid")
+	ErrAgentRuntimePreferenceInvalid   = errors.New("agent runtime preference must match a known runtime")
+	ErrAgentProviderPreferenceInvalid  = errors.New("agent provider preference must match runtime inventory")
+	ErrAgentModelPreferenceInvalid     = errors.New("agent model preference must match provider inventory")
 )
 
 type AgentProfileUpdateInput struct {
@@ -31,7 +36,9 @@ type AgentProfileUpdateInput struct {
 	Prompt                string
 	OperatingInstructions string
 	ProviderPreference    string
+	ModelPreference       string
 	RecallPolicy          string
+	RuntimePreference     string
 	MemorySpaces          []string
 	UpdatedBy             string
 }
@@ -49,6 +56,7 @@ func (s *Store) Agent(agentID string) (Agent, bool) {
 func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput) (State, Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ensureRuntimeRegistryStateLocked()
 
 	index := s.findAgentByIDLocked(agentID)
 	if index == -1 {
@@ -71,11 +79,27 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	if providerPreference == "" {
 		return State{}, Agent{}, ErrAgentProviderPreferenceRequired
 	}
+	modelPreference := strings.TrimSpace(input.ModelPreference)
+	if modelPreference == "" {
+		return State{}, Agent{}, ErrAgentModelPreferenceRequired
+	}
 	recallPolicy, err := normalizeAgentRecallPolicy(input.RecallPolicy)
 	if err != nil {
 		return State{}, Agent{}, err
 	}
 	memorySpaces, err := normalizeAgentMemorySpaces(input.MemorySpaces)
+	if err != nil {
+		return State{}, Agent{}, err
+	}
+	runtimeRecord, runtimePreference, err := resolveRuntimePreference(s.state.Runtimes, input.RuntimePreference)
+	if err != nil {
+		return State{}, Agent{}, err
+	}
+	providerRecord, providerPreference, err := resolveProviderPreference(runtimeRecord, providerPreference)
+	if err != nil {
+		return State{}, Agent{}, err
+	}
+	modelPreference, err = resolveModelPreference(providerRecord, modelPreference)
 	if err != nil {
 		return State{}, Agent{}, err
 	}
@@ -87,6 +111,8 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	changes = appendAgentProfileChange(changes, "prompt", agent.Prompt, prompt)
 	changes = appendAgentProfileChange(changes, "operatingInstructions", agent.OperatingInstructions, strings.TrimSpace(input.OperatingInstructions))
 	changes = appendAgentProfileChange(changes, "providerPreference", agent.ProviderPreference, providerPreference)
+	changes = appendAgentProfileChange(changes, "modelPreference", agent.ModelPreference, modelPreference)
+	changes = appendAgentProfileChange(changes, "runtimePreference", agent.RuntimePreference, runtimePreference)
 	changes = appendAgentProfileChange(changes, "recallPolicy", agent.RecallPolicy, recallPolicy)
 	changes = appendAgentProfileChange(changes, "memoryBinding", strings.Join(agent.MemorySpaces, ", "), strings.Join(memorySpaces, ", "))
 
@@ -94,8 +120,11 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	agent.Avatar = avatar
 	agent.Prompt = prompt
 	agent.OperatingInstructions = strings.TrimSpace(input.OperatingInstructions)
+	agent.Provider = providerPreference
 	agent.ProviderPreference = providerPreference
+	agent.ModelPreference = modelPreference
 	agent.RecallPolicy = recallPolicy
+	agent.RuntimePreference = runtimePreference
 	agent.MemorySpaces = memorySpaces
 
 	if len(changes) > 0 {
@@ -234,4 +263,43 @@ func agentWantsAgentMemory(agent Agent, policy MemoryInjectionPolicy) bool {
 		return true
 	}
 	return agentIncludesMemorySpace(agent, "user") || strings.EqualFold(strings.TrimSpace(agent.RecallPolicy), agentRecallPolicyAgentFirst)
+}
+
+func resolveRuntimePreference(runtimes []RuntimeRecord, value string) (RuntimeRecord, string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return RuntimeRecord{}, "", ErrAgentRuntimePreferenceRequired
+	}
+	for _, runtime := range runtimes {
+		if strings.EqualFold(runtime.ID, trimmed) || strings.EqualFold(runtime.Machine, trimmed) {
+			return runtime, defaultString(strings.TrimSpace(runtime.ID), runtime.Machine), nil
+		}
+	}
+	return RuntimeRecord{}, "", fmt.Errorf("%w: %s", ErrAgentRuntimePreferenceInvalid, trimmed)
+}
+
+func resolveProviderPreference(runtime RuntimeRecord, value string) (RuntimeProvider, string, error) {
+	trimmed := strings.TrimSpace(value)
+	for _, provider := range runtime.Providers {
+		if strings.EqualFold(provider.ID, trimmed) || strings.EqualFold(provider.Label, trimmed) {
+			return provider, defaultString(strings.TrimSpace(provider.Label), provider.ID), nil
+		}
+	}
+	return RuntimeProvider{}, "", fmt.Errorf("%w: %s", ErrAgentProviderPreferenceInvalid, trimmed)
+}
+
+func resolveModelPreference(provider RuntimeProvider, value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", ErrAgentModelPreferenceRequired
+	}
+	if len(provider.Models) == 0 {
+		return trimmed, nil
+	}
+	for _, model := range provider.Models {
+		if strings.EqualFold(model, trimmed) {
+			return model, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s", ErrAgentModelPreferenceInvalid, trimmed)
 }

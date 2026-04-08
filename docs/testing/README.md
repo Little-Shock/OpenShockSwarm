@@ -54,6 +54,8 @@
   - `TKT-29` 的 device authorization、email verification、password reset、session recovery 与 external identity binding headed evidence
 - [Test Report 2026-04-08 Agent Profile Editor](./Test-Report-2026-04-08-agent-profile-editor.md)
   - `TKT-32` 的 Agent profile edit、memory binding / recall policy、next-run preview 与 profile audit headed evidence
+- [Test Report 2026-04-09 Machine Profile / Local CLI Model Capability Binding](./Test-Report-2026-04-09-machine-profile-capability-binding.md)
+  - `TKT-33` 的 machine shell / daemon / provider-model inventory 与 Agent provider+model+runtime affinity headed evidence
 
 常用入口：
 
@@ -91,6 +93,8 @@
   - 验证 device authorization、email verification、password reset、session recovery 与 external identity binding
 - `pnpm test:headed-agent-profile-editor`
   - 验证 Agent profile edit、memory binding / recall policy、next-run preview 与 audit persistence
+- `pnpm test:headed-machine-profile-capability-binding`
+  - 验证 `/setup`、machine profile、`/agents` 与 Agent profile editor 是否共享同一份 machine capability / provider-model inventory truth，并允许写回 provider+model+runtime affinity
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-quick-search`

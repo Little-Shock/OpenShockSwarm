@@ -21,7 +21,9 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 		Prompt:                "Always start from live repo truth, then propose the shortest next action.",
 		OperatingInstructions: "Keep reviewer and owner windows separate.",
 		ProviderPreference:    "Claude Code CLI",
+		ModelPreference:       "claude-sonnet-4",
 		RecallPolicy:          "agent-first",
+		RuntimePreference:     "shock-main",
 		MemorySpaces:          []string{"workspace", "user"},
 		UpdatedBy:             "Larkspur",
 	})
@@ -29,8 +31,8 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 		t.Fatalf("UpdateAgentProfile() error = %v", err)
 	}
 
-	if agent.Role != "Delivery Lead" || agent.Avatar != "signal-radar" || agent.ProviderPreference != "Claude Code CLI" {
-		t.Fatalf("updated agent = %#v, want edited role/avatar/providerPreference", agent)
+	if agent.Role != "Delivery Lead" || agent.Avatar != "signal-radar" || agent.ProviderPreference != "Claude Code CLI" || agent.ModelPreference != "claude-sonnet-4" || agent.RuntimePreference != "shock-main" {
+		t.Fatalf("updated agent = %#v, want edited role/avatar/provider/model/runtime preference", agent)
 	}
 	if len(agent.ProfileAudit) == 0 || !strings.Contains(agent.ProfileAudit[0].Summary, "role") {
 		t.Fatalf("profile audit = %#v, want latest audit entry", agent.ProfileAudit)
@@ -44,7 +46,7 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 	if preview == nil {
 		t.Fatalf("session-runtime preview missing: %#v", center.Previews)
 	}
-	if !strings.Contains(preview.PromptSummary, "Delivery Lead") || !strings.Contains(preview.PromptSummary, "Claude Code CLI") || !strings.Contains(preview.PromptSummary, "agent-first") {
+	if !strings.Contains(preview.PromptSummary, "Delivery Lead") || !strings.Contains(preview.PromptSummary, "Claude Code CLI") || !strings.Contains(preview.PromptSummary, "claude-sonnet-4") || !strings.Contains(preview.PromptSummary, "shock-main") || !strings.Contains(preview.PromptSummary, "agent-first") {
 		t.Fatalf("preview summary = %q, want updated profile fields", preview.PromptSummary)
 	}
 	if !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
@@ -62,7 +64,7 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 	if !ok {
 		t.Fatalf("reloaded agent missing")
 	}
-	if reloadedAgent.Role != "Delivery Lead" || reloadedAgent.Avatar != "signal-radar" || len(reloadedAgent.ProfileAudit) == 0 {
+	if reloadedAgent.Role != "Delivery Lead" || reloadedAgent.Avatar != "signal-radar" || reloadedAgent.ModelPreference != "claude-sonnet-4" || reloadedAgent.RuntimePreference != "shock-main" || len(reloadedAgent.ProfileAudit) == 0 {
 		t.Fatalf("reloaded agent = %#v, want persisted profile edits + audit", reloadedAgent)
 	}
 }

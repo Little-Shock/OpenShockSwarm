@@ -353,8 +353,9 @@
   - [x] daemon 已能探测本地 `codex` / `claude` CLI，并把 runtime truth 暴露到 server
   - [x] `Agent / Machine / Human` 已有统一 read-only profile surface，可看到 presence、capability 与最近 room/run 关系
   - [x] Agent profile 现在可直接编辑 `prompt / avatar / role / operating instructions / memory binding / recall policy / provider preference`，并同步写回 audit 与 next-run preview
+  - [x] `/setup`、machine profile、`/agents` 与 Agent profile editor 现在会回读同一份 machine shell / daemon / provider-model inventory truth
+  - [x] Agent 现在可声明 default provider / model / runtime affinity，并与 machine inventory 对齐后直接写回后端 state
 - 当前 GAP:
-  - [ ] Machine info、本地 CLI/model inventory 与 Agent 偏好绑定还未形成统一配置面
   - [ ] 上述配置还不能作为 onboarding 默认值长期保存
 - 对应 Test Cases: `TC-030` `TC-036` `TC-037`
 

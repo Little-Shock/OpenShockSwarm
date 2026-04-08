@@ -226,6 +226,7 @@ export type AgentStatus = {
   operatingInstructions: string;
   provider: string;
   providerPreference: string;
+  modelPreference: string;
   recallPolicy: string;
   runtimePreference: string;
   memorySpaces: string[];
@@ -248,6 +249,7 @@ export type MachineStatus = {
   name: string;
   state: MachineState;
   cli: string;
+  shell: string;
   os: string;
   lastHeartbeat: string;
 };
@@ -257,6 +259,7 @@ export type RuntimeProviderStatus = {
   label: string;
   mode: string;
   capabilities: string[];
+  models: string[];
   transport: string;
 };
 
@@ -266,6 +269,7 @@ export type RuntimeRegistryRecord = {
   daemonUrl: string;
   detectedCli: string[];
   providers: RuntimeProviderStatus[];
+  shell: string;
   state: string;
   pairingState: string;
   workspaceRoot: string;
@@ -1010,6 +1014,7 @@ export const agents: AgentStatus[] = [
     operatingInstructions: "对 shared shell / runtime truth 保持谨慎，不把 stale head 当 current truth。",
     provider: "Codex CLI",
     providerPreference: "Codex CLI",
+    modelPreference: "gpt-5.3-codex",
     recallPolicy: "governed-first",
     runtimePreference: "shock-main",
     memorySpaces: ["workspace", "issue-room", "topic"],
@@ -1029,6 +1034,7 @@ export const agents: AgentStatus[] = [
     operatingInstructions: "把 current truth 和 stale window 分开，不把旧 blocker 带回当前 head。",
     provider: "Claude Code CLI",
     providerPreference: "Claude Code CLI",
+    modelPreference: "claude-sonnet-4",
     recallPolicy: "balanced",
     runtimePreference: "shock-sidecar",
     memorySpaces: ["workspace", "issue-room"],
@@ -1048,6 +1054,7 @@ export const agents: AgentStatus[] = [
     operatingInstructions: "任何 memory write 先过 governance，再决定是否 promotion 或 escalation。",
     provider: "Codex CLI",
     providerPreference: "Codex CLI",
+    modelPreference: "gpt-5.1-codex-mini",
     recallPolicy: "agent-first",
     runtimePreference: "shock-main",
     memorySpaces: ["workspace", "user", "room-notes", "topic"],
@@ -1057,8 +1064,8 @@ export const agents: AgentStatus[] = [
 ];
 
 export const machines: MachineStatus[] = [
-  { id: "machine-main", name: "shock-main", state: "busy", cli: "Codex + Claude Code", os: "Windows 11", lastHeartbeat: "8 秒前" },
-  { id: "machine-sidecar", name: "shock-sidecar", state: "online", cli: "Codex", os: "macOS", lastHeartbeat: "21 秒前" },
+  { id: "machine-main", name: "shock-main", state: "busy", cli: "Codex + Claude Code", shell: "pwsh", os: "Windows 11", lastHeartbeat: "8 秒前" },
+  { id: "machine-sidecar", name: "shock-sidecar", state: "online", cli: "Codex", shell: "zsh", os: "macOS", lastHeartbeat: "21 秒前" },
 ];
 
 export const guards: DestructiveGuard[] = [
@@ -1110,16 +1117,19 @@ export const runtimes: RuntimeRegistryRecord[] = [
         label: "Codex CLI",
         mode: "native",
         capabilities: ["exec", "review", "apply-patch"],
+        models: ["gpt-5.2", "gpt-5.3-codex", "gpt-5.1-codex-mini"],
         transport: "stdio",
       },
       {
         id: "claude",
-        label: "Claude Code",
+        label: "Claude Code CLI",
         mode: "native",
         capabilities: ["exec", "review"],
+        models: ["claude-sonnet-4", "claude-opus-4.1"],
         transport: "stdio",
       },
     ],
+    shell: "pwsh",
     state: "busy",
     pairingState: "paired",
     workspaceRoot: "/home/lark/OpenShock",
@@ -1139,9 +1149,11 @@ export const runtimes: RuntimeRegistryRecord[] = [
         label: "Codex CLI",
         mode: "native",
         capabilities: ["exec", "review"],
+        models: ["gpt-5.2", "gpt-5.3-codex", "gpt-5.1-codex-mini"],
         transport: "stdio",
       },
     ],
+    shell: "zsh",
     state: "online",
     pairingState: "available",
     workspaceRoot: "/home/lark/OpenShock",

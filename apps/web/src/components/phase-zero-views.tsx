@@ -726,12 +726,12 @@ export function AgentsListView({ agentsList = agents }: { agentsList?: AgentStat
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {agentsList.map((agent) => (
-        <Link key={agent.id} href={buildProfileHref("agent", agent.id)} className="block">
+        <Link key={agent.id} href={buildProfileHref("agent", agent.id)} className="block" data-testid={`agents-card-${agent.id}`}>
           <Panel tone={agent.state === "blocked" ? "pink" : agent.state === "running" ? "yellow" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-                  {agent.provider}
+                  {agent.providerPreference} / {agent.modelPreference}
                 </p>
                 <h3 className="mt-2 font-display text-3xl font-bold">{agent.name}</h3>
               </div>
@@ -740,8 +740,9 @@ export function AgentsListView({ agentsList = agents }: { agentsList?: AgentStat
               </span>
             </div>
             <p className="mt-3 text-base leading-7">{agent.description}</p>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
               <Metric label="泳道" value={agent.lane} />
+              <Metric label="Provider / Model" value={`${agent.providerPreference} / ${agent.modelPreference}`} />
               <Metric label="Runtime" value={agent.runtimePreference} />
             </div>
           </Panel>
@@ -765,7 +766,7 @@ export function AgentDetailView({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-                {agent.provider}
+                {agent.providerPreference} / {agent.modelPreference}
               </p>
               <h3 className="mt-2 font-display text-3xl font-bold">{agent.name}</h3>
             </div>
@@ -774,7 +775,9 @@ export function AgentDetailView({
               </span>
             </div>
             <p className="mt-3 text-base leading-7">{agent.description}</p>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <Metric label="Provider 偏好" value={agent.providerPreference} />
+            <Metric label="Model 偏好" value={agent.modelPreference} />
             <Metric label="Runtime 偏好" value={agent.runtimePreference} />
             <Metric label="当前泳道" value={agent.lane} />
           </div>

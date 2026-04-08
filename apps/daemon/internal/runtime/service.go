@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ type Heartbeat struct {
 	Machine            string     `json:"machine"`
 	DetectedCLI        []string   `json:"detectedCli"`
 	Providers          []Provider `json:"providers"`
+	Shell              string     `json:"shell,omitempty"`
 	State              string     `json:"state"`
 	WorkspaceRoot      string     `json:"workspaceRoot"`
 	ReportedAt         string     `json:"reportedAt"`
@@ -30,6 +32,7 @@ type Provider struct {
 	Label        string   `json:"label"`
 	Mode         string   `json:"mode"`
 	Capabilities []string `json:"capabilities"`
+	Models       []string `json:"models,omitempty"`
 	Transport    string   `json:"transport"`
 }
 
@@ -145,6 +148,7 @@ func (s *Service) Snapshot() Heartbeat {
 		Machine:            s.machine,
 		DetectedCLI:        detectCLI(),
 		Providers:          detectProviders(),
+		Shell:              detectShell(),
 		State:              "online",
 		WorkspaceRoot:      s.root,
 		ReportedAt:         time.Now().UTC().Format(time.RFC3339),
@@ -412,6 +416,7 @@ func detectProviders() []Provider {
 				"mcp-server",
 				"app-server",
 			},
+			Models:    []string{"gpt-5.2", "gpt-5.3-codex", "gpt-5.1-codex-mini"},
 			Transport: "http bridge",
 		})
 	}
@@ -425,10 +430,32 @@ func detectProviders() []Provider {
 				"non-interactive-print",
 				"mcp-config",
 			},
+			Models:    []string{"claude-sonnet-4", "claude-opus-4.1"},
 			Transport: "http bridge",
 		})
 	}
 	return providers
+}
+
+func detectShell() string {
+	candidates := []string{
+		os.Getenv("OPENSHOCK_RUNTIME_SHELL"),
+		os.Getenv("SHELL"),
+		os.Getenv("COMSPEC"),
+		os.Getenv("ComSpec"),
+	}
+	for _, candidate := range candidates {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return filepath.Base(trimmed)
+		}
+	}
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return "pwsh"
+	}
+	if _, err := exec.LookPath("bash"); err == nil {
+		return "bash"
+	}
+	return "unknown"
 }
 
 func buildCommand(req ExecRequest) (execPlan, error) {

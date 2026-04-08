@@ -32,7 +32,7 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 		http.DefaultClient,
 		http.MethodPatch,
 		server.URL+"/v1/agents/agent-codex-dockmaster",
-		`{"role":"Delivery Lead","avatar":"signal-radar","prompt":"Always start from live repo truth, then propose the shortest next action.","operatingInstructions":"Keep reviewer and owner windows separate.","providerPreference":"Claude Code CLI","recallPolicy":"agent-first","memorySpaces":["workspace","user"]}`,
+		`{"role":"Delivery Lead","avatar":"signal-radar","prompt":"Always start from live repo truth, then propose the shortest next action.","operatingInstructions":"Keep reviewer and owner windows separate.","providerPreference":"Claude Code CLI","modelPreference":"claude-sonnet-4","recallPolicy":"agent-first","runtimePreference":"shock-main","memorySpaces":["workspace","user"]}`,
 	)
 	defer updateResp.Body.Close()
 	if updateResp.StatusCode != http.StatusOK {
@@ -44,8 +44,8 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 		Center store.MemoryCenter `json:"center"`
 	}
 	decodeJSON(t, updateResp, &payload)
-	if payload.Agent.Role != "Delivery Lead" || payload.Agent.Avatar != "signal-radar" || payload.Agent.ProviderPreference != "Claude Code CLI" {
-		t.Fatalf("updated agent = %#v, want edited role/avatar/provider preference", payload.Agent)
+	if payload.Agent.Role != "Delivery Lead" || payload.Agent.Avatar != "signal-radar" || payload.Agent.ProviderPreference != "Claude Code CLI" || payload.Agent.ModelPreference != "claude-sonnet-4" || payload.Agent.RuntimePreference != "shock-main" {
+		t.Fatalf("updated agent = %#v, want edited role/avatar/provider/model/runtime preference", payload.Agent)
 	}
 	if len(payload.Agent.ProfileAudit) == 0 {
 		t.Fatalf("updated agent audit = %#v, want audit entry", payload.Agent.ProfileAudit)
@@ -55,7 +55,7 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 	if preview == nil {
 		t.Fatalf("session-runtime preview missing: %#v", payload.Center.Previews)
 	}
-	if !strings.Contains(preview.PromptSummary, "Delivery Lead") || !strings.Contains(preview.PromptSummary, "Claude Code CLI") || !strings.Contains(preview.PromptSummary, "agent-first") {
+	if !strings.Contains(preview.PromptSummary, "Delivery Lead") || !strings.Contains(preview.PromptSummary, "Claude Code CLI") || !strings.Contains(preview.PromptSummary, "claude-sonnet-4") || !strings.Contains(preview.PromptSummary, "shock-main") || !strings.Contains(preview.PromptSummary, "agent-first") {
 		t.Fatalf("promptSummary = %q, want updated profile fields", preview.PromptSummary)
 	}
 	if !previewHasPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
@@ -74,7 +74,7 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 	}
 	var updated store.Agent
 	decodeJSON(t, updatedDetailResp, &updated)
-	if updated.Role != "Delivery Lead" || updated.RecallPolicy != "agent-first" || len(updated.ProfileAudit) == 0 {
+	if updated.Role != "Delivery Lead" || updated.RecallPolicy != "agent-first" || updated.ModelPreference != "claude-sonnet-4" || updated.RuntimePreference != "shock-main" || len(updated.ProfileAudit) == 0 {
 		t.Fatalf("updated detail = %#v, want persisted profile edits", updated)
 	}
 }
