@@ -538,6 +538,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage6b_hosted_notification_recovery && typeof governance.stage6b_hosted_notification_recovery === "object"
       ? governance.stage6b_hosted_notification_recovery
       : null);
+  const stage6c =
+    (governance.stage6c && typeof governance.stage6c === "object" ? governance.stage6c : null) ||
+    (governance.stage6c_hosted_plan_quota && typeof governance.stage6c_hosted_plan_quota === "object"
+      ? governance.stage6c_hosted_plan_quota
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -1150,6 +1155,61 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
       status: normalizeText(stage6bStatus.recovery_reentry_status) === "ok" ? "active" : "pending",
     });
     dom.workspaceGovernanceList.append(reentryCard);
+  }
+
+  if (stage6c) {
+    const stage6cStatus = stage6c.status && typeof stage6c.status === "object" ? stage6c.status : {};
+    const hostedPlanQuota =
+      stage6c.hosted_plan_quota && typeof stage6c.hosted_plan_quota === "object" ? stage6c.hosted_plan_quota : {};
+    const planSubscriptionLimit =
+      stage6c.workspace_plan_subscription_limit && typeof stage6c.workspace_plan_subscription_limit === "object"
+        ? stage6c.workspace_plan_subscription_limit
+        : {};
+    const usageQuotaReadiness =
+      stage6c.usage_quota_readiness && typeof stage6c.usage_quota_readiness === "object"
+        ? stage6c.usage_quota_readiness
+        : {};
+
+    const planQuotaCard = queueCard({
+      title: "Stage6C Hosted Plan / Quota Reachability",
+      subtitle:
+        `entry=${normalizeText(stage6cStatus.hosted_plan_quota_status) || "pending"} · ` +
+        `plan=${normalizeText(stage6cStatus.workspace_plan_subscription_limit_status) || "pending"}`,
+      note:
+        `${formatStage6cHostedPlanQuota(hostedPlanQuota)} · ` +
+        `${formatStage6cPlanSubscriptionLimit(planSubscriptionLimit)}`,
+      status: normalizeText(stage6cStatus.hosted_plan_quota_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(planQuotaCard);
+
+    const usageCard = queueCard({
+      title: "Stage6C Usage / Quota / Readiness",
+      subtitle:
+        `usage=${normalizeText(stage6cStatus.usage_quota_readiness_status) || "pending"} · ` +
+        `capacity=${normalizeText(stage6cStatus.remaining_capacity_status) || "pending"} · ` +
+        `upgrade=${normalizeText(stage6cStatus.upgrade_readiness_status) || "pending"}`,
+      note: formatStage6cUsageQuotaReadiness(usageQuotaReadiness),
+      status:
+        normalizeText(stage6cStatus.usage_quota_readiness_status) === "ok" &&
+        normalizeText(stage6cStatus.remaining_capacity_status) === "ok" &&
+        normalizeText(stage6cStatus.upgrade_readiness_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(usageCard);
+
+    const guardrailCard = queueCard({
+      title: "Stage6C No Shadow Billing Truth",
+      subtitle:
+        `no_shadow_truth=${hostedPlanQuota.no_shadow_truth === true ? "ok" : "pending"} · ` +
+        `quota_state=${normalizeText(usageQuotaReadiness.quota_state) || "pending"}`,
+      note:
+        `truth_family=${formatStage6cTruthFamily(hostedPlanQuota.truth_family)} · ` +
+        `block_reason=${normalizeText(usageQuotaReadiness.block_reason) || "none"} · ` +
+        `upgrade_path=${normalizeText(usageQuotaReadiness.upgrade_path_ref) || "n/a"}`,
+      status: hostedPlanQuota.no_shadow_truth === true ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(guardrailCard);
   }
 }
 
@@ -2286,6 +2346,62 @@ function formatStage6bHostedReentry(raw) {
     `recovery=${recoveryUrl} · room=${channelId}/${threadId}/${taskId} · topic=${topicId} · ` +
     `run=${runAnchor} · pr=${prSurface}`
   );
+}
+
+function formatStage6cHostedPlanQuota(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted plan/quota pending";
+  }
+  const entryUrl = normalizeText(raw.hosted_entry_url) || "n/a";
+  const hostedStatus = normalizeText(raw.hosted_access_status) || "pending";
+  const source = normalizeText(raw.source) || "stage6c_truth_fan_in";
+  return `entry=${entryUrl} · hosted=${hostedStatus} · source=${source}`;
+}
+
+function formatStage6cPlanSubscriptionLimit(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "workspace plan/subscription/limit pending";
+  }
+  const planRef = normalizeText(raw.plan_ref) || "n/a";
+  const subscriptionStatus = normalizeText(raw.subscription_status) || "pending";
+  const limitStatus = normalizeText(raw.limit_status) || "pending";
+  const tokenLimit = raw.token_limit === null || raw.token_limit === undefined ? "n/a" : Number(raw.token_limit);
+  const tokenUsed = raw.token_used === null || raw.token_used === undefined ? "n/a" : Number(raw.token_used);
+  const channelId = normalizeText(raw.channel_id) || "n/a";
+  return (
+    `plan=${planRef} · subscription=${subscriptionStatus} · limit=${limitStatus} · ` +
+    `token=${tokenUsed}/${tokenLimit} · channel=${channelId}`
+  );
+}
+
+function formatStage6cUsageQuotaReadiness(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "usage/quota/readiness pending";
+  }
+  const usageStatus = normalizeText(raw.usage_status) || "pending";
+  const quotaState = normalizeText(raw.quota_state) || "pending";
+  const remaining =
+    raw.remaining_capacity === null || raw.remaining_capacity === undefined ? "n/a" : Number(raw.remaining_capacity);
+  const capacity =
+    raw.capacity_limit === null || raw.capacity_limit === undefined ? "n/a" : Number(raw.capacity_limit);
+  const blockReason = normalizeText(raw.block_reason) || "none";
+  const upgradeReadiness = normalizeText(raw.upgrade_readiness) || "pending";
+  const contextTokens = raw.context_tokens === null || raw.context_tokens === undefined ? "n/a" : Number(raw.context_tokens);
+  const windowTokens =
+    raw.context_window_tokens === null || raw.context_window_tokens === undefined
+      ? "n/a"
+      : Number(raw.context_window_tokens);
+  return (
+    `usage=${usageStatus} · quota=${quotaState} · remaining=${remaining}/${capacity} · ` +
+    `block=${blockReason} · upgrade=${upgradeReadiness} · context=${contextTokens}/${windowTokens}`
+  );
+}
+
+function formatStage6cTruthFamily(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return "pending";
+  }
+  return raw.join(",");
 }
 
 function queueCard({ title, subtitle, note, status = "pending" }) {

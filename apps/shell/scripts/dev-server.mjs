@@ -1911,6 +1911,14 @@ function buildOperatorConsoleState({
     stage6a: normalizedWorkspaceGovernance.stage6a,
   });
   normalizedWorkspaceGovernance.stage6b_hosted_notification_recovery = normalizedWorkspaceGovernance.stage6b;
+  normalizedWorkspaceGovernance.stage6c = buildStage6cHostedPlanQuotaProjection({
+    scope,
+    workspaceGovernance: normalizedWorkspaceGovernance,
+    stage5b: normalizedWorkspaceGovernance.stage5b,
+    stage5c: normalizedWorkspaceGovernance.stage5c,
+    stage6a: normalizedWorkspaceGovernance.stage6a,
+  });
+  normalizedWorkspaceGovernance.stage6c_hosted_plan_quota = normalizedWorkspaceGovernance.stage6c;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -2705,6 +2713,24 @@ function buildStage4bGovernanceProjection({
       context.tokenQuotaContext,
     ]),
   );
+  const workspacePlanSubscriptionLimitContract = normalizeStage6cWorkspacePlanSubscriptionLimitContract(
+    pickFirstDefinedValue([
+      channelContextContract?.workspace_plan_subscription_limit_contract,
+      governance.workspace_plan_subscription_limit_contract,
+      governance.workspacePlanSubscriptionLimitContract,
+      context.workspace_plan_subscription_limit_contract,
+      context.workspacePlanSubscriptionLimitContract,
+    ]),
+  );
+  const usageQuotaReadinessContract = normalizeStage6cUsageQuotaReadinessContract(
+    pickFirstDefinedValue([
+      channelContextContract?.usage_quota_readiness_contract,
+      governance.usage_quota_readiness_contract,
+      governance.usageQuotaReadinessContract,
+      context.usage_quota_readiness_contract,
+      context.usageQuotaReadinessContract,
+    ]),
+  );
   const providerReadStatus = normalizeText(channelSurface?.external_memory_provider_status) || "skipped";
   const memoryViewerReadStatus = normalizeText(channelSurface?.memory_viewer_status) || "skipped";
   const providerStatus = normalizeText(provider?.status);
@@ -2724,6 +2750,8 @@ function buildStage4bGovernanceProjection({
         : memoryViewerReadStatus;
   const skillPolicyPluginStatus = skillPolicyPlugin ? "ok" : "pending";
   const tokenQuotaContextStatus = tokenQuotaContext ? "ok" : "pending";
+  const workspacePlanSubscriptionLimitStatus = workspacePlanSubscriptionLimitContract ? "ok" : "pending";
+  const usageQuotaReadinessStatus = usageQuotaReadinessContract ? "ok" : "pending";
   const providerAuditAnchor =
     normalizeStage4a2AuditAnchor(providerContract.audit_anchor?.latest?.external_memory_provider) ||
     normalizeStage4a2AuditAnchor(auditAnchor.latest?.external_memory_provider) ||
@@ -2808,6 +2836,8 @@ function buildStage4bGovernanceProjection({
       memory_viewer_status: resolvedMemoryViewerStatus,
       skill_policy_plugin_status: skillPolicyPluginStatus,
       token_quota_context_status: tokenQuotaContextStatus,
+      workspace_plan_subscription_limit_status: workspacePlanSubscriptionLimitStatus,
+      usage_quota_readiness_status: usageQuotaReadinessStatus,
       audit_status: auditReady ? "ok" : "pending",
       timeline_status: timelineReady ? "ok" : "pending",
     },
@@ -2857,6 +2887,8 @@ function buildStage4bGovernanceProjection({
       write_anchor: normalizedWriteAnchors.token_quota_context_upsert,
       audit_anchor: tokenQuotaContextAuditAnchor,
     },
+    workspace_plan_subscription_limit_contract: workspacePlanSubscriptionLimitContract,
+    usage_quota_readiness_contract: usageQuotaReadinessContract,
     timeline: {
       anchor: normalizedWriteAnchors.timeline_anchor,
       recent_actions: stage4bTimeline.actions,
@@ -3894,6 +3926,235 @@ function buildStage6bHostedNotificationRecoveryProjection({ scope, workspaceGove
   };
 }
 
+function buildStage6cHostedPlanQuotaProjection({ scope, workspaceGovernance, stage5b, stage5c, stage6a }) {
+  const stage4b =
+    workspaceGovernance?.stage4b && typeof workspaceGovernance.stage4b === "object" ? workspaceGovernance.stage4b : {};
+  const stage4bStatus = stage4b.status && typeof stage4b.status === "object" ? stage4b.status : {};
+  const tokenQuotaContext =
+    stage4b?.token_quota_context && typeof stage4b.token_quota_context === "object"
+      ? stage4b.token_quota_context
+      : {};
+  const tokenQuotaContextValue =
+    tokenQuotaContext.value && typeof tokenQuotaContext.value === "object" ? tokenQuotaContext.value : {};
+  const workspacePlanSubscriptionLimitContract =
+    stage4b?.workspace_plan_subscription_limit_contract &&
+    typeof stage4b.workspace_plan_subscription_limit_contract === "object"
+      ? stage4b.workspace_plan_subscription_limit_contract
+      : {};
+  const usageQuotaReadinessContract =
+    stage4b?.usage_quota_readiness_contract && typeof stage4b.usage_quota_readiness_contract === "object"
+      ? stage4b.usage_quota_readiness_contract
+      : {};
+
+  const stage5bStatus = stage5b?.status && typeof stage5b.status === "object" ? stage5b.status : {};
+  const stage5bDefaultFlow = stage5b?.default_flow && typeof stage5b.default_flow === "object" ? stage5b.default_flow : {};
+
+  const stage5cStatus = stage5c?.status && typeof stage5c.status === "object" ? stage5c.status : {};
+  const stage5cHostedControlVisibility =
+    stage5c?.hosted_control_visibility && typeof stage5c.hosted_control_visibility === "object"
+      ? stage5c.hosted_control_visibility
+      : {};
+
+  const stage6aStatus = stage6a?.status && typeof stage6a.status === "object" ? stage6a.status : {};
+  const stage6aHostedOnboardingAccess =
+    stage6a?.hosted_onboarding_access && typeof stage6a.hosted_onboarding_access === "object"
+      ? stage6a.hosted_onboarding_access
+      : {};
+  const stage6aWorkbenchHandoff =
+    stage6a?.stage5_workbench_handoff && typeof stage6a.stage5_workbench_handoff === "object"
+      ? stage6a.stage5_workbench_handoff
+      : {};
+
+  const hostedEntryUrl =
+    normalizeText(stage6aHostedOnboardingAccess.hosted_entry_url) ||
+    normalizeText(stage6aWorkbenchHandoff.hosted_workbench_url) ||
+    null;
+  let hostedAccessStatus =
+    normalizeText(stage6aHostedOnboardingAccess.hosted_access_status) ||
+    normalizeText(stage6aStatus.hosted_onboarding_access_status) ||
+    normalizeText(stage5cHostedControlVisibility.hosted_access_status);
+  if (!hostedAccessStatus) {
+    if (isNonLocalHttpUrl(hostedEntryUrl)) {
+      hostedAccessStatus = "ok";
+    } else if (hostedEntryUrl) {
+      hostedAccessStatus = "local_only";
+    } else {
+      hostedAccessStatus = "pending";
+    }
+  }
+
+  const planRef =
+    normalizeText(workspacePlanSubscriptionLimitContract.plan_ref) ||
+    normalizeText(workspacePlanSubscriptionLimitContract.plan_id) ||
+    normalizeText(workspacePlanSubscriptionLimitContract.plan_code) ||
+    null;
+  const subscriptionStatus =
+    normalizeText(workspacePlanSubscriptionLimitContract.subscription_status) ||
+    normalizeText(workspacePlanSubscriptionLimitContract.plan_status) ||
+    "pending";
+  const limitStatus = normalizeText(workspacePlanSubscriptionLimitContract.limit_status) || "pending";
+  const tokenLimit =
+    workspacePlanSubscriptionLimitContract.token_limit === null ||
+    workspacePlanSubscriptionLimitContract.token_limit === undefined
+      ? tokenQuotaContextValue.token_limit === null || tokenQuotaContextValue.token_limit === undefined
+        ? null
+        : Number(tokenQuotaContextValue.token_limit)
+      : Number(workspacePlanSubscriptionLimitContract.token_limit);
+  const tokenUsed =
+    workspacePlanSubscriptionLimitContract.token_used === null ||
+    workspacePlanSubscriptionLimitContract.token_used === undefined
+      ? Number(tokenQuotaContextValue.token_used || 0)
+      : Number(workspacePlanSubscriptionLimitContract.token_used);
+  const quotaState =
+    normalizeText(usageQuotaReadinessContract.quota_state) ||
+    normalizeText(tokenQuotaContextValue.quota_state) ||
+    "pending";
+
+  const rawRemainingCapacity = pickFirstDefinedValue([
+    usageQuotaReadinessContract.remaining_capacity,
+    usageQuotaReadinessContract.remaining,
+    usageQuotaReadinessContract.capacity_remaining,
+  ]);
+  const remainingCapacity =
+    rawRemainingCapacity === null || rawRemainingCapacity === undefined
+      ? tokenLimit === null
+        ? null
+        : Math.max(tokenLimit - tokenUsed, 0)
+      : Number(rawRemainingCapacity);
+  const capacityLimit =
+    usageQuotaReadinessContract.capacity_limit === null || usageQuotaReadinessContract.capacity_limit === undefined
+      ? tokenLimit
+      : Number(usageQuotaReadinessContract.capacity_limit);
+
+  const blockReason =
+    normalizeText(usageQuotaReadinessContract.block_reason) ||
+    normalizeText(tokenQuotaContextValue.degrade_reason) ||
+    (quotaState === "blocked" ? "quota_blocked" : "none");
+  const upgradeReadiness =
+    normalizeText(usageQuotaReadinessContract.upgrade_readiness) ||
+    (quotaState === "near_limit" || quotaState === "blocked" ? "ready" : "pending");
+  const upgradePathRef =
+    normalizeText(usageQuotaReadinessContract.upgrade_path_ref) ||
+    normalizeText(usageQuotaReadinessContract.upgrade_ref) ||
+    null;
+  const usageStatus =
+    normalizeText(usageQuotaReadinessContract.usage_status) ||
+    normalizeText(usageQuotaReadinessContract.status) ||
+    "pending";
+
+  const workspaceAccessReady =
+    isHostedReadyStatus(normalizeText(stage6aStatus.hosted_onboarding_access_status)) &&
+    isHostedReadyStatus(normalizeText(stage6aStatus.stage5_workbench_handoff_status));
+  const flowSurfaceReady =
+    isHostedReadyStatus(normalizeText(stage5bStatus.default_flow_status)) &&
+    isHostedReadyStatus(normalizeText(stage5cStatus.hosted_runtime_control_visibility_status));
+
+  const planSubscriptionLimitReady =
+    Boolean(planRef) &&
+    isStage6cReadyStatus(subscriptionStatus) &&
+    isStage6cReadyStatus(limitStatus) &&
+    workspaceAccessReady;
+  const usageQuotaReadinessReady =
+    isStage6cReadyStatus(usageStatus) &&
+    isStage6cReadyStatus(quotaState) &&
+    remainingCapacity !== null &&
+    isStage6cReadyStatus(upgradeReadiness) &&
+    flowSurfaceReady;
+  const remainingCapacityReady = remainingCapacity !== null;
+  const upgradeReadinessReady = isStage6cReadyStatus(upgradeReadiness);
+  const hostedPlanQuotaReady =
+    planSubscriptionLimitReady && usageQuotaReadinessReady && remainingCapacityReady && upgradeReadinessReady;
+
+  const hostedPlanQuotaStatus = resolveStage6cHostedStatus(hostedPlanQuotaReady, hostedAccessStatus);
+  const planSubscriptionLimitStatus = resolveStage6cHostedStatus(planSubscriptionLimitReady, hostedAccessStatus);
+  const usageQuotaReadinessStatus = resolveStage6cHostedStatus(usageQuotaReadinessReady, hostedAccessStatus);
+  const remainingCapacityStatus = resolveStage6cHostedStatus(remainingCapacityReady, hostedAccessStatus);
+  const upgradeReadinessStatus = resolveStage6cHostedStatus(upgradeReadinessReady, hostedAccessStatus);
+
+  const resolvedChannelId =
+    normalizeText(stage5bDefaultFlow.channel_id) ||
+    normalizeText(stage6aWorkbenchHandoff.channel_id) ||
+    normalizeText(scope?.channelId) ||
+    null;
+  const resolvedTopicId =
+    normalizeText(stage5bDefaultFlow.topic_id) ||
+    normalizeText(stage6aWorkbenchHandoff.topic_id) ||
+    normalizeText(scope?.topicId) ||
+    null;
+
+  return {
+    status: {
+      hosted_plan_quota_status: hostedPlanQuotaStatus,
+      workspace_plan_subscription_limit_status: planSubscriptionLimitStatus,
+      usage_quota_readiness_status: usageQuotaReadinessStatus,
+      remaining_capacity_status: remainingCapacityStatus,
+      upgrade_readiness_status: upgradeReadinessStatus,
+    },
+    hosted_plan_quota: {
+      status: hostedPlanQuotaStatus,
+      hosted_entry_url: hostedEntryUrl,
+      hosted_access_status: hostedAccessStatus,
+      source: "stage6c_truth_fan_in",
+      no_shadow_truth: true,
+      truth_family: ["/v1/channels/*", "/v1/topics/*", "/v1/runtime/*"],
+      read_surfaces: [
+        "/v1/channels/:channelId/context",
+        "/v1/topics/:topicId",
+        "/v1/runtime/deploy-runtime",
+      ],
+    },
+    workspace_plan_subscription_limit: {
+      status: planSubscriptionLimitStatus,
+      contract_version: normalizeText(workspacePlanSubscriptionLimitContract.contract_version) || null,
+      plan_ref: planRef,
+      subscription_status: subscriptionStatus,
+      limit_status: limitStatus,
+      workspace_id:
+        normalizeText(workspacePlanSubscriptionLimitContract.workspace_id) ||
+        normalizeText(stage6aHostedOnboardingAccess.workspace_id) ||
+        null,
+      token_limit: tokenLimit,
+      token_used: tokenUsed,
+      token_quota_context_status: normalizeText(stage4bStatus.token_quota_context_status) || "pending",
+      channel_id: resolvedChannelId,
+      topic_id: resolvedTopicId,
+      plan_truth_surface:
+        normalizeText(workspacePlanSubscriptionLimitContract.read_anchors?.channel_context) ||
+        "/v1/channels/:channelId/context",
+      limit_truth_surface:
+        normalizeText(workspacePlanSubscriptionLimitContract.read_anchors?.token_quota_context) ||
+        "/v1/channels/:channelId/context",
+    },
+    usage_quota_readiness: {
+      status: usageQuotaReadinessStatus,
+      contract_version: normalizeText(usageQuotaReadinessContract.contract_version) || null,
+      usage_status: usageStatus,
+      quota_state: quotaState,
+      remaining_capacity: remainingCapacity,
+      capacity_limit: capacityLimit,
+      block_reason: blockReason,
+      upgrade_readiness: upgradeReadiness,
+      upgrade_path_ref: upgradePathRef,
+      context_tokens:
+        tokenQuotaContextValue.context_tokens === null || tokenQuotaContextValue.context_tokens === undefined
+          ? null
+          : Number(tokenQuotaContextValue.context_tokens),
+      context_window_tokens:
+        tokenQuotaContextValue.context_window_tokens === null || tokenQuotaContextValue.context_window_tokens === undefined
+          ? null
+          : Number(tokenQuotaContextValue.context_window_tokens),
+      recall_source: normalizeText(tokenQuotaContextValue.recall_source) || null,
+      recall_hits: Number(tokenQuotaContextValue.recall_hits || 0),
+      token_quota_context_status: normalizeText(stage4bStatus.token_quota_context_status) || "pending",
+      usage_truth_surface:
+        normalizeText(usageQuotaReadinessContract.read_anchors?.token_quota_context) ||
+        "/v1/channels/:channelId/context",
+      runtime_truth_surface:
+        normalizeText(usageQuotaReadinessContract.read_anchors?.runtime_registry) || "/v1/runtime/registry",
+    },
+  };
+}
+
 function resolveStage5cHostedStatus(truthReady, hostedAccessStatus) {
   if (!truthReady) {
     return "pending";
@@ -3933,8 +4194,34 @@ function resolveStage6bHostedStatus(truthReady, hostedAccessStatus) {
   return "pending";
 }
 
+function resolveStage6cHostedStatus(truthReady, hostedAccessStatus) {
+  if (!truthReady) {
+    return "pending";
+  }
+  if (hostedAccessStatus === "ok") {
+    return "ok";
+  }
+  if (hostedAccessStatus === "local_only") {
+    return "local_only";
+  }
+  return "pending";
+}
+
 function isHostedReadyStatus(value) {
   return value === "ok" || value === "local_only";
+}
+
+function isStage6cReadyStatus(value) {
+  const normalized = normalizeText(value);
+  return (
+    normalized === "ready" ||
+    normalized === "ok" ||
+    normalized === "active" ||
+    normalized === "healthy" ||
+    normalized === "within_limit" ||
+    normalized === "available" ||
+    normalized === "allowed"
+  );
 }
 
 function isStage6bEndpointReadyByContract(value) {
@@ -4557,6 +4844,79 @@ function normalizeStage6bAgentMailboxRoutingContract(raw) {
     },
     updated_at: raw.updated_at || raw.updatedAt || null,
     updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
+  };
+}
+
+function normalizeStage6cWorkspacePlanSubscriptionLimitContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const readAnchors = raw.read_anchors && typeof raw.read_anchors === "object" ? raw.read_anchors : {};
+  return {
+    contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
+    workspace_id: normalizeText(raw.workspace_id || raw.workspaceId) || null,
+    plan_ref: normalizeText(raw.plan_ref || raw.planRef) || null,
+    plan_id: normalizeText(raw.plan_id || raw.planId) || null,
+    plan_code: normalizeText(raw.plan_code || raw.planCode) || null,
+    subscription_status: normalizeText(raw.subscription_status || raw.subscriptionStatus) || null,
+    plan_status: normalizeText(raw.plan_status || raw.planStatus) || null,
+    limit_status: normalizeText(raw.limit_status || raw.limitStatus) || null,
+    token_limit:
+      raw.token_limit === null || raw.token_limit === undefined
+        ? null
+        : Number(raw.token_limit),
+    token_used:
+      raw.token_used === null || raw.token_used === undefined
+        ? null
+        : Number(raw.token_used),
+    read_anchors: {
+      channel_context: normalizeText(readAnchors.channel_context || readAnchors.channelContext) || null,
+      token_quota_context:
+        normalizeText(readAnchors.token_quota_context || readAnchors.tokenQuotaContext) || null,
+    },
+    write_anchor: normalizeText(raw.write_anchor || raw.writeAnchor) || null,
+    audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : null,
+  };
+}
+
+function normalizeStage6cUsageQuotaReadinessContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const readAnchors = raw.read_anchors && typeof raw.read_anchors === "object" ? raw.read_anchors : {};
+  return {
+    contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
+    usage_status: normalizeText(raw.usage_status || raw.usageStatus) || null,
+    status: normalizeText(raw.status) || null,
+    quota_state: normalizeText(raw.quota_state || raw.quotaState) || null,
+    remaining_capacity:
+      raw.remaining_capacity === null || raw.remaining_capacity === undefined
+        ? null
+        : Number(raw.remaining_capacity),
+    remaining:
+      raw.remaining === null || raw.remaining === undefined
+        ? null
+        : Number(raw.remaining),
+    capacity_remaining:
+      raw.capacity_remaining === null || raw.capacity_remaining === undefined
+        ? null
+        : Number(raw.capacity_remaining),
+    capacity_limit:
+      raw.capacity_limit === null || raw.capacity_limit === undefined
+        ? null
+        : Number(raw.capacity_limit),
+    block_reason: normalizeText(raw.block_reason || raw.blockReason) || null,
+    upgrade_readiness:
+      normalizeText(raw.upgrade_readiness || raw.upgradeReadiness || raw.upgrade_readiness_status) || null,
+    upgrade_path_ref:
+      normalizeText(raw.upgrade_path_ref || raw.upgradePathRef || raw.upgrade_ref || raw.upgradeRef) || null,
+    read_anchors: {
+      token_quota_context:
+        normalizeText(readAnchors.token_quota_context || readAnchors.tokenQuotaContext) || null,
+      runtime_registry: normalizeText(readAnchors.runtime_registry || readAnchors.runtimeRegistry) || null,
+    },
+    write_anchor: normalizeText(raw.write_anchor || raw.writeAnchor) || null,
+    audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : null,
   };
 }
 
