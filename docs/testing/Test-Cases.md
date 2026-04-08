@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.2
+**版本:** 1.3
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -463,3 +463,81 @@
   3. 触发邮箱重置并确认 session / member state 同步更新。
 - 预期结果: 身份链不再只停留在 invite / role / quick login，而是具备完整恢复和验证能力。
 - 业务结论: 当前 repo 已站住 invite / role / status / authz matrix，但 device auth / email verify / reset 仍未产品化，所以这条用例保持 `Blocked`。
+
+## TC-036 Agent Profile / Prompt / Avatar / Memory Binding Edit
+
+- 业务目标: 确认 Agent 已经从只读对象升级成可配置执行者。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-02` `CHK-10` `CHK-19`
+- 前置条件: 至少存在一个可编辑的 Agent profile surface。
+- 测试步骤:
+  1. 打开某个 Agent profile。
+  2. 编辑 `role / avatar / prompt / memory binding / provider preference`。
+  3. 保存后刷新页面，并检查 next-run preview 是否读取新配置。
+- 预期结果: Agent profile edit 会持久化并影响下一次 run 的配置注入。
+- 业务结论: 当前 repo 只有 Agent 列表与部分详情，还没有完整的 profile editor 和 memory binding 编辑链，所以这条用例保持 `Blocked`，留给 `TKT-32`。
+
+## TC-037 Machine Profile / Local CLI Model Capability Binding
+
+- 业务目标: 确认 Runtime / Machine 的真实能力可以被人类看到，并和 Agent 偏好绑定。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-14` `CHK-19` `CHK-22`
+- 前置条件: 存在 machine profile、capability inventory 和 Agent capability preference surface。
+- 测试步骤:
+  1. 打开 machine profile 或 setup capability 面。
+  2. 读取本地 CLI / provider / model inventory。
+  3. 为某个 Agent 绑定 default provider / model / runtime affinity，并验证保存结果。
+- 预期结果: Machine capability truth 和 Agent 偏好使用同一份后端配置真相。
+- 业务结论: 当前 repo 已能探测部分 CLI 与 runtime truth，但还没有完整 machine profile 和 capability binding surface，所以这条用例保持 `Blocked`，留给 `TKT-33`。
+
+## TC-038 Onboarding Wizard / Scenario Template Bootstrap
+
+- 业务目标: 确认新团队可以通过模板完成首次启动，而不是手工拼页面。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-20`
+- 前置条件: 存在 onboarding wizard、template selection 与 resumable progress。
+- 测试步骤:
+  1. 创建或进入一个全新 Workspace。
+  2. 选择 `开发团队`、`研究团队` 或 `空白自定义` 模板。
+  3. 完成 repo / GitHub / runtime pairing，并检查默认 channels、roles、agents、policy 是否被物化。
+- 预期结果: 用户可以在一个连续 flow 内完成团队启动，并在中断后继续。
+- 业务结论: 当前 repo 只有 Setup / Access 的基础启动骨架，没有真正模板化 onboarding，所以这条用例保持 `Blocked`，留给 `TKT-34`。
+
+## TC-039 Agent Mailbox / Handoff Governance Ledger
+
+- 业务目标: 确认 Agent-to-Agent 正式通信和交接可被追踪，而不是藏在隐式提示词里。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-21`
+- 前置条件: 存在 Agent Mailbox、handoff lifecycle 和 human-visible ledger。
+- 测试步骤:
+  1. 让一个 Agent 向另一个 Agent 发起 handoff。
+  2. 观察 `ack / blocked / complete` 生命周期。
+  3. 在 Room / Inbox / Mailbox 中检查上下文回链和人类 override。
+- 预期结果: 正式交接可见、可回放、可审计。
+- 业务结论: 当前 repo 已有 room / inbox / stop-resume 基线，但还没有正式 Agent Mailbox 与 handoff ledger，所以这条用例保持 `Blocked`，留给 `TKT-35`。
+
+## TC-040 Config Persistence / Recovery
+
+- 业务目标: 确认 user / workspace / agent / machine 配置能跨刷新、重启和换设备恢复。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-22`
+- 前置条件: 存在 durable store / database schema 与相关 API contract。
+- 测试步骤:
+  1. 编辑一组 workspace、agent 或 machine 配置。
+  2. 刷新浏览器并重启 server。
+  3. 在同设备或另一设备重新进入，检查配置是否保持一致。
+- 预期结果: 配置真相不依赖浏览器本地临时状态，且恢复后下一次 run 继续使用同一份设置。
+- 业务结论: 当前 repo 只有 file state、auth session persistence 和 memory governance 的局部持久化，没有统一配置 durable truth，所以这条用例保持 `Blocked`，留给 `TKT-37`。
+
+## TC-041 Multi-Agent Role Topology / Reviewer-Tester Loop
+
+- 业务目标: 确认 `开发团队 / 研究团队` 这类模板不只是静态角色表，而能形成受治理的多 Agent 响应链。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-20` `CHK-21`
+- 前置条件: 存在 team topology、Agent Mailbox、handoff policy 和 response aggregation。
+- 测试步骤:
+  1. 选择一个团队模板并创建 issue。
+  2. 观察 PM / Architect / Developer / Reviewer / QA 或研究团队变体的 handoff 流。
+  3. 检查 review / test / blocked escalation 与 human override 是否可见。
+- 预期结果: 多 Agent 分工和最终响应被治理，而不是只有一串不可解释的自动消息。
+- 业务结论: 当前 repo 还没有多 Agent team topology、mailbox 和 reviewer-tester loop，所以这条用例保持 `Blocked`，留给 `TKT-36`。

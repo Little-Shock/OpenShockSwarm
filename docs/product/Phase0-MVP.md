@@ -1,6 +1,6 @@
 # OpenShock Phase 0 MVP
 
-**版本:** 0.5
+**版本:** 0.6
 **版本日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -45,6 +45,10 @@
 - GitHub App onboarding 的浏览器级真实闭环
 - 生产级通知
 - 完整审批中心
+- 可编辑的 Agent profile：prompt / avatar / provider / memory / machine 偏好
+- 场景化 onboarding：开发团队 / 研究团队 / 空白模板
+- Agent Mailbox、多 Agent handoff 与治理链
+- user / workspace / agent / machine 配置持久化与恢复
 - 多 Agent 自治编排
 
 所以当前 Phase 0 应该被读成：

@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 0.5
+**版本:** 0.6
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -88,19 +88,55 @@
   - `CHK-17`
 - 优先级: P0
 
-### GAP-11 Board Light Planning Cleanup
+### GAP-11 Agent / Machine Profile / Local CLI Preferences
+
+- 现状:
+  - Agent / Machine 现在只有部分只读 surface 和 summary
+  - prompt / avatar / role / memory binding / provider-model 偏好还不能形成正式配置面
+- 影响:
+  - Agent 还是“看得到但配不起来”的半成品对象
+- 相关合同:
+  - `CHK-19`
+- 优先级: P1
+
+### GAP-12 Onboarding / 场景模板 / 团队启动
+
+- 现状:
+  - Setup 和 Access 已提供最基础的启动骨架
+  - 但还没有真正的 onboarding wizard、`开发团队 / 研究团队 / 空白自定义` 模板、默认 channels / roles / agents 物化
+- 相关合同:
+  - `CHK-20`
+- 优先级: P1
+
+### GAP-13 Agent Mailbox / Multi-Agent Governance
+
+- 现状:
+  - 单 Agent 的 issue -> room -> run 基线已站住
+  - 但 Agent-to-Agent 正式通信、handoff、ack、escalation、response aggregation 还没进入产品
+- 相关合同:
+  - `CHK-21`
+- 优先级: P1
+
+### GAP-14 Config Persistence / Database Truth
+
+- 现状:
+  - 现在只有 file state、auth session persistence 和 memory governance 的局部持久化
+  - user / workspace / agent / machine 配置、onboarding progress、mailbox state 还没有统一 durable truth
+- 相关合同:
+  - `CHK-22`
+- 优先级: P1
+
+### GAP-15 Board Light Planning Cleanup
 
 - 现状:
   - Board 已退到左下角次级入口
   - 但 card 语言和 room / issue / board 回跳还不够轻
-- 影响:
-  - planning mirror 还不够克制，仍会抢注意力
 - 相关合同:
   - `CHK-05`
   - `CHK-18`
 - 优先级: P2
 
-### GAP-12 GitHub App Installation-Complete Live Callback
+### GAP-16 GitHub App Installation-Complete Live Callback
 
 - 现状:
   - onboarding、webhook replay、远端 PR merge 已站住
@@ -109,7 +145,7 @@
   - `CHK-07`
 - 优先级: P1
 
-### GAP-13 Device Authorization / Email Verification
+### GAP-17 Device Authorization / Email Verification
 
 - 现状:
   - invite / role / status / authz matrix 已站住
@@ -118,7 +154,7 @@
   - `CHK-13`
 - 优先级: P1
 
-### GAP-14 Destructive Guard / Secret Boundary
+### GAP-18 Destructive Guard / Secret Boundary
 
 - 现状:
   - 权限矩阵与 run control 已站住
@@ -127,7 +163,7 @@
   - `CHK-12`
 - 优先级: P1
 
-### GAP-15 Runtime Lease Conflict / Scheduler Hardening
+### GAP-19 Runtime Lease Conflict / Scheduler Hardening
 
 - 现状:
   - failover 基线已经站住
@@ -141,12 +177,14 @@
 
 ## 四、推荐推进顺序
 
-1. 先做 `TKT-21`，把 `Quick Search / Search Results` 立住。
-2. 再做 `TKT-22` 和 `TKT-24`，把 `DM / followed thread / saved later` 与 interaction polish 先收出高频可用性。
-3. 然后做 `TKT-23`，把 room workbench tabs 接起来。
-4. 再做 `TKT-25`，补齐 `Agent / Machine / Human profile + presence`。
-5. 最后做 `TKT-26`，把 Board 的 planning 语言和回跳关系再收轻。
-6. `TKT-28/29/30/31` 作为并行后端 backlog 推进，但不抢当前前端主线优先级。
+1. 先做 `TKT-21` 与 `TKT-24`，把 `Quick Search / Search Results` 和 interaction polish 立住。
+2. 再做 `TKT-22` 与 `TKT-23`，把 DM / followed thread / room workbench 接成主工作面。
+3. 然后做 `TKT-25`，补齐 `Agent / Machine / Human profile + presence` 的可钻取入口。
+4. 并行启动 `TKT-32` `TKT-33` `TKT-37`，先把 Agent / Machine 配置与 durable truth 补起来。
+5. 再做 `TKT-34`，把 onboarding、模板和首次启动路径产品化。
+6. 然后做 `TKT-35` `TKT-36`，把 Agent Mailbox、多 Agent 治理和角色拓扑跑通。
+7. 最后做 `TKT-26`，把 Board 的 planning 语言和回跳关系再收轻。
+8. `TKT-28/29/30/31` 作为并行后端 backlog 推进，但不抢当前前端主线优先级。
 
 ---
 

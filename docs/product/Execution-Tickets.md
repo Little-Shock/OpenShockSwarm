@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.3
+**版本:** 1.4
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -26,7 +26,9 @@
 1. 前端继续向 `app.slock.ai` 学结构和密度，但保留 OpenShock 自己的字体、克制度和 room 语义。
 2. 聊天、Room、Inbox 永远先于 Board；Board 只做 planning mirror。
 3. 当前批次先收真实 quick search / DM / thread / workbench / interaction polish，再去补 profile 和 board 细节。
-4. GitHub live callback、设备授权、destructive guard、runtime hardening 作为并行后端批次推进。
+4. Agent / Machine / Onboarding / Persistence 不能继续躲在 setup 注释或 README 里，必须变成正式产品面。
+5. 多 Agent 协作必须通过 mailbox / handoff / governance ledger 被人类看见，不能只停在“以后会编排”。
+6. GitHub live callback、设备授权、destructive guard、runtime hardening 作为并行后端批次推进。
 
 ### Frontend Batch Merge Gate
 
@@ -38,6 +40,12 @@
   - 历史消息是否能稳定回滚
   - 左栏 / 下拉 / 高亮是否紧凑易读
   - Board 是否没有重新抢回主导航心智
+
+### Config / Governance Batch Merge Gate
+
+- 涉及 Agent / Machine / onboarding / preference 的票，必须补 reload 或 restart 之后的 persistence 证据。
+- 涉及多 Agent 的票，必须显式展示 handoff ledger、ack / blocked、human override。
+- 不接受只做前端 mock 表单、不写后端 truth 的配置票。
 
 ---
 
@@ -231,6 +239,108 @@
   - 对应 release / browser verify 能稳定回放
 - Checklist: `CHK-14` `CHK-15`
 - Test Cases: `TC-020` `TC-021`
+
+## TKT-32 Agent Profile Editor / Prompt Avatar Memory Binding
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把 Agent 从只读对象补成真正可编辑的 profile surface。
+- 范围:
+  - role / avatar / prompt / operating instructions 编辑
+  - memory binding / recall policy / provider preference
+  - next-run preview 与审计差异
+- 依赖: `TKT-25` `TKT-12`
+- Done When:
+  - 用户可在 Agent profile 中编辑 prompt、avatar、role 与 memory binding
+  - 编辑结果会回写到后端 truth，并影响下一次 run 的 injection preview
+  - 至少有一条 headed walkthrough 覆盖 `open profile -> edit -> save -> verify next run`
+- Checklist: `CHK-02` `CHK-10` `CHK-19`
+- Test Cases: `TC-030` `TC-036`
+
+## TKT-33 Machine Profile / Local CLI Model Capability Binding
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把 Runtime / Machine 的本地能力发现与 Agent 偏好绑定做成正式产品面。
+- 范围:
+  - machine profile：hostname / OS / shell / daemon / capability summary
+  - 本地 CLI / provider / model inventory
+  - Agent default provider / model / runtime affinity 绑定
+- 依赖: `TKT-14`
+- Done When:
+  - `/setup`、`/agents` 或 machine profile 能看到 machine capability truth
+  - Agent 可声明 default provider / model / runtime affinity，并和 machine inventory 对齐
+  - 有 store / API tests 加浏览器级 walkthrough
+- Checklist: `CHK-14` `CHK-19` `CHK-22`
+- Test Cases: `TC-037` `TC-040`
+
+## TKT-34 Onboarding Studio / Dev Team + Research Team Templates
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把首次启动和团队模板做成真正可恢复的 onboarding 流。
+- 范围:
+  - onboarding wizard / resumable progress
+  - `开发团队 / 研究团队 / 空白自定义` 模板
+  - 默认 channels / roles / agents / notification policy / onboarding notes 物化
+- 依赖: `TKT-32` `TKT-33` `TKT-37`
+- Done When:
+  - 新 workspace 可以选择模板并完成首次启动
+  - onboarding 可中断后继续，而不是一次性魔法流程
+  - 有 headed walkthrough 覆盖 `create workspace -> choose template -> pair runtime -> finish`
+- Checklist: `CHK-20` `CHK-22`
+- Test Cases: `TC-038` `TC-040` `TC-041`
+
+## TKT-35 Agent Mailbox / Handoff Contract
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 给 Agent-to-Agent 正式协作建立可观测、可追踪的消息与交接合同。
+- 范围:
+  - agent mailbox message model
+  - handoff request / ack / blocked / complete lifecycle
+  - room / inbox back-link 与 human visibility
+- 依赖: `TKT-27`
+- Done When:
+  - 一个 Agent 可以正式把上下文交给另一个 Agent
+  - handoff 生命周期能在 Room / Inbox / Mailbox surface 中被追踪
+  - 后端有 contract tests，前台有 walkthrough evidence
+- Checklist: `CHK-03` `CHK-21`
+- Test Cases: `TC-039`
+
+## TKT-36 Multi-Agent Governance / Role Topology / Reviewer-Tester Loop
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把多 Agent 分工、审批和 response aggregation 变成可治理的团队拓扑，而不是口头约定。
+- 范围:
+  - `PM / Architect / Splitter / Developer / Reviewer / QA` 与研究团队变体
+  - handoff rules / approval gates / escalation path
+  - human override 与 response aggregation
+- 依赖: `TKT-34` `TKT-35`
+- Done When:
+  - 用户可基于模板起出多 Agent 分工链
+  - review / test / blocked escalation 有显式治理面
+  - 至少有一条端到端 walkthrough 覆盖 issue -> handoff -> review -> test -> final response
+- Checklist: `CHK-20` `CHK-21`
+- Test Cases: `TC-041`
+
+## TKT-37 Workspace / User / Agent Config Persistence + Database Truth
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把 user / workspace / agent / machine 配置从临时前端状态补成 durable store truth。
+- 范围:
+  - database schema / store / migration
+  - preference / onboarding / profile / mailbox state persistence
+  - restart / reload / device switch recovery contract
+- 依赖: 无
+- Done When:
+  - 关键配置可跨刷新、重启、换设备恢复
+  - API 与 UI 读取到的是同一份 durable truth
+  - 至少有一条测试覆盖 persistence + recovery
+- Checklist: `CHK-22`
+- Test Cases: `TC-040`
 
 ---
 

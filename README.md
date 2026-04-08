@@ -102,6 +102,11 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 - `app.slock.ai` 式真实 quick search / search result、DM、saved / later、profile / presence surface
 - Room workbench tabs、Topic / PR / Context 同房间切换
+- Agent prompt / avatar / memory binding / provider-model 偏好的正式 profile editor
+- Runtime / Machine profile、本地 CLI / model capability 绑定
+- 场景化 onboarding：开发团队 / 研究团队 / 空白模板
+- Agent Mailbox、多 Agent handoff、角色治理与 response aggregation
+- user / workspace / agent / machine 配置持久化与数据库真相
 - Board 次级化后的轻量 planning card 和 room / issue 回跳
 - GitHub App installation-complete 后的 live callback / repo 持续同步
 - 设备授权 / 完整邮箱验证 / 更完整外部身份绑定

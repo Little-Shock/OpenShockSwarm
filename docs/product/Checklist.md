@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.3
+**版本:** 1.4
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -43,6 +43,9 @@
 - 主要 GAP:
   - `app.slock.ai` 式真实 quick search / search result、DM、saved/later、profile surface 仍未收平
   - Room workbench tabs、frontend interaction polish 和 Board 轻量 planning card 仍未收完
+  - Agent / Machine profile、prompt/avatar、memory binding、本地 CLI/model 偏好还没产品化
+  - 场景化 onboarding、开发团队/研究团队模板、user/workspace config 持久化仍未建立
+  - Agent Mailbox、多 Agent handoff、角色治理与 response aggregation 仍未收口
   - GitHub App installation-complete 后的 live webhook / repo 持续同步
   - 设备授权 / 完整邮箱验证 / 更完整成员权限链路
   - destructive action approval、secrets 分层、越界写保护
@@ -79,8 +82,9 @@
   - [x] Agent 与 run、runtime、workspace 关系可见
 - 当前 GAP:
   - [ ] skill 绑定、memory profile、provider/runtime 偏好还未完整产品化
+  - [ ] prompt / avatar / role / machine affinity 还不能作为 Agent profile 被编辑和审计
   - [ ] Agent 身份档案和历史沉淀能力不完整
-- 对应 Test Cases: `TC-008` `TC-014`
+- 对应 Test Cases: `TC-008` `TC-014` `TC-030` `TC-036`
 
 ### CHK-03 真相分层与核心对象模型
 
@@ -200,7 +204,8 @@
 - 当前 GAP:
   - [ ] 更重的后台整理任务（去重、压缩、打标签、TTL）仍未完成
   - [ ] 长期记忆引擎与外部 provider 编排仍停留在设计层
-- 对应 Test Cases: `TC-019` `TC-023`
+  - [ ] Agent 级 memory binding / recall policy / next-run preview 编辑还未产品化
+- 对应 Test Cases: `TC-019` `TC-023` `TC-036`
 
 ### CHK-11 工作流 H: 邀请、通知与恢复触达
 
@@ -245,8 +250,9 @@
   - [x] Board / Room / Inbox / Setup 关键动作已和 `issue.create` / `room.reply` / `run.execute` / `inbox.review` / `inbox.decide` / `repo.admin` / `runtime.manage` / `pull_request.*` 真值对齐
 - 当前 GAP:
   - [ ] 设备授权与完整邮箱验证流程仍未产品化
+  - [ ] Onboarding 还没把 invite / verify / device auth / template bootstrap 收成同一条首次启动旅程
   - [ ] GitHub 仍主要是 readiness probe，不是完整授权模型
-- 对应 Test Cases: `TC-014` `TC-016` `TC-024` `TC-035`
+- 对应 Test Cases: `TC-014` `TC-016` `TC-024` `TC-035` `TC-038`
 
 ### CHK-14 Runtime 注册、心跳与调度
 
@@ -329,14 +335,79 @@
   - [ ] Board 还没有形成更轻的 planning card 语言，内部信息仍偏重
 - 对应 Test Cases: `TC-032`
 
+### CHK-19 Agent / Machine Profile 与本地能力配置
+
+- PRD 来源: 五.1、七、十.工作流 J、十三.4、十三.5、十八.3、十八.10
+- 优先级: P1
+- 当前状态: 部分完成
+- 已落地:
+  - [x] `/agents`、`/agents/:id` 已有基础 Agent surface
+  - [x] `/setup`、`/agents` 已有 runtime pairing、scheduler 与 machine summary
+  - [x] daemon 已能探测本地 `codex` / `claude` CLI，并把 runtime truth 暴露到 server
+- 当前 GAP:
+  - [ ] Agent prompt / avatar / role / operating instructions 还不能直接编辑
+  - [ ] memory binding / recall policy / provider preference 还未形成 Agent profile contract
+  - [ ] Machine info、本地 CLI/model inventory 与 Agent 偏好绑定还未形成统一配置面
+  - [ ] 上述配置还不能作为 onboarding 默认值长期保存
+- 对应 Test Cases: `TC-030` `TC-036` `TC-037`
+
+### CHK-20 Onboarding、场景模板与团队启动
+
+- PRD 来源: 十.工作流 A、十.工作流 J、十一、十三.5、十八.10
+- 优先级: P1
+- 当前状态: 部分完成
+- 已落地:
+  - [x] `/setup` 已集中 repo binding、GitHub readiness、runtime pairing、bridge
+  - [x] `/access` 已有 invite / member / role lifecycle 基线
+  - [x] Setup / Access 已为 onboarding 提供最基础的数据真相
+- 当前 GAP:
+  - [ ] 还没有真正的 onboarding wizard / resumable progress
+  - [ ] 还没有 `开发团队 / 研究团队 / 空白自定义` 场景模板
+  - [ ] 默认 channels / rooms / agent roles / notification policy / onboarding docs 还不能一键 materialize
+  - [ ] device auth / verify / template bootstrap 没有被收成同一条首次启动旅程
+- 对应 Test Cases: `TC-035` `TC-038` `TC-041`
+
+### CHK-21 Agent Mailbox、多 Agent 协作与治理
+
+- PRD 来源: 五.5、五.11、十.工作流 B、十.工作流 K、十三.5、十八.4、十八.11
+- 优先级: P1/P2
+- 当前状态: 部分完成
+- 已落地:
+  - [x] issue -> room -> run、Inbox、stop/resume/follow-thread、人类纠偏基线已站住
+  - [x] Skill / Policy / memory governance 已有基础产品面
+- 当前 GAP:
+  - [ ] Agent Mailbox 还未产品化成正式通信面
+  - [ ] PM / Architect / Splitter / Developer / Reviewer / QA 等角色拓扑还未成为可配置 team topology
+  - [ ] Agent handoff / acknowledgement / escalation / SLA 还不可观测
+  - [ ] 多 Agent response aggregation 和 human override 还未形成正式治理面
+- 对应 Test Cases: `TC-039` `TC-041`
+
+### CHK-22 配置持久化、数据库与恢复真相
+
+- PRD 来源: 五.10、十.工作流 L、十三.5、十四、十八.11
+- 优先级: P1
+- 当前状态: 部分完成
+- 已落地:
+  - [x] server 已有文件状态存储
+  - [x] auth session persistence 已成立
+  - [x] memory artifact 已有 version / governance / external edit sync contract
+- 当前 GAP:
+  - [ ] user / workspace / agent / machine preferences 还没有统一 durable store / database schema
+  - [ ] onboarding progress、template selection、agent profile edit、mailbox state 还未持久化成同一份真相
+  - [ ] restart / 换设备后的 config recovery 还没有 browser + API 级验证
+- 对应 Test Cases: `TC-040`
+
 ---
 
 ## 四、近期收口顺序
 
 1. 先收 `CHK-16` 的 quick search / interaction polish，把当前统一壳层真正打磨到高频可用。
 2. 再收 `CHK-17`，把 DM / followed thread / profile / room workbench tabs 接成统一前台工作面。
-3. 然后处理 `CHK-18`，把 Board 的 planning card 和回跳关系轻量化。
-4. 并行保留 `CHK-07/CHK-12/CHK-13/CHK-14/CHK-15` 的 GitHub live callback、设备授权、destructive guard、scheduler hardening 与持续观测。
+3. 并行启动 `CHK-19` 和 `CHK-22`，把 Agent / Machine 配置面与持久化真相先补出来。
+4. 然后处理 `CHK-20`，把 onboarding、团队模板和首次启动路径产品化。
+5. 再推进 `CHK-21`，把 Agent Mailbox、多 Agent handoff 和治理链收口。
+6. 最后处理 `CHK-18`，把 Board 的 planning card 和回跳关系轻量化。
+7. 并行保留 `CHK-07/CHK-12/CHK-13/CHK-14/CHK-15` 的 GitHub live callback、设备授权、destructive guard、scheduler hardening 与持续观测。
 
 ---
 
@@ -357,3 +428,7 @@
 - `CHK-13` -> `TKT-29`
 - `CHK-12` -> `TKT-30`
 - `CHK-14` `CHK-15` -> `TKT-31`
+- `CHK-19` -> `TKT-25` `TKT-32` `TKT-33`
+- `CHK-20` -> `TKT-29` `TKT-34`
+- `CHK-21` -> `TKT-35` `TKT-36`
+- `CHK-22` -> `TKT-37`

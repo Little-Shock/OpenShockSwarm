@@ -1,6 +1,6 @@
 # OpenShock Team Execution Directive
 
-**版本:** 1.0
+**版本:** 1.1
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [Execution Tickets](./Execution-Tickets.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -34,6 +34,25 @@
 - 壳层继续向 `app.slock.ai` 学结构和密度，但保留 OpenShock 现有字体与更克制的审美，不做生硬复制。
 - 前端票不接受“为了展示而展示”的大卡片、大标题、大段空白；默认先压密度，再谈装饰。
 
+### Agent / Onboarding / Governance 守则
+
+- Agent profile 最小字段必须包括：`role`、`avatar`、`prompt`、`provider/model preference`、`memory binding`、`machine affinity`。
+- Machine profile 最小字段必须包括：`hostname`、`OS`、`shell`、已发现 CLI/provider/model inventory、pairing 状态。
+- onboarding 至少提供 `开发团队`、`研究团队`、`空白自定义` 三种模板，且必须可恢复继续。
+- 多 Agent 正式交接必须走 `Agent Mailbox / handoff ledger`，不能只藏在 prompt 或口头约定里。
+- 任何配置票都必须落到后端 durable truth，不接受只改前端 local state 的“假配置面”。
+
+### 下一批默认批次
+
+1. `TKT-21` `TKT-24`
+2. `TKT-22` `TKT-23`
+3. `TKT-25`
+4. `TKT-32` `TKT-33` `TKT-37`
+5. `TKT-34`
+6. `TKT-35` `TKT-36`
+7. `TKT-26`
+8. `TKT-28` `TKT-29` `TKT-30` `TKT-31`
+
 ---
 
 ## 三、每张票的提交内容必须包含
@@ -45,6 +64,7 @@
 - `Test Cases`
 - `Risks`
 - `Docs Updated`
+- `Persistence / Recovery Proof`（只要票里碰了配置、profile、onboarding、mailbox）
 
 ---
 
@@ -54,6 +74,8 @@
 - 前端票至少跑 typecheck / build
 - 涉及主链的票至少跑 `pnpm verify:release`
 - 涉及浏览器流程的票必须补 headed evidence，不能用默认 headless 冒充
+- 涉及配置持久化的票必须补 reload / restart proof
+- 涉及多 Agent 协作的票必须补 handoff / ack / override 证据
 
 ---
 
