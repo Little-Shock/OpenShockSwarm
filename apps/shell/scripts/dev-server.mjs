@@ -4687,24 +4687,44 @@ function buildStage7bHostedBillingArtifactsDiscountProjection({
     }
   }
 
-  const invoiceStatus = normalizeText(invoiceTaxReceiptContract?.invoice_status) || "pending";
-  const taxProfileStatus = normalizeText(invoiceTaxReceiptContract?.tax_profile_status) || "pending";
+  const invoiceStatus =
+    normalizeText(invoiceTaxReceiptContract?.invoice_status || invoiceTaxReceiptContract?.billing_profile_status) || "pending";
+  const taxProfileStatus =
+    normalizeText(invoiceTaxReceiptContract?.tax_profile_status || invoiceTaxReceiptContract?.invoice_tax_status) || "pending";
   const receiptExportStatus = normalizeText(invoiceTaxReceiptContract?.receipt_export_status) || "pending";
-  const documentReadinessStatus = normalizeText(invoiceTaxReceiptContract?.document_readiness_status) || "pending";
+  const documentReadinessStatus =
+    normalizeText(
+      invoiceTaxReceiptContract?.document_readiness_status || invoiceTaxReceiptContract?.workspace_invoice_tax_receipt_status,
+    ) || "pending";
   const receiptInvoiceRefsStatusRaw = normalizeText(invoiceTaxReceiptContract?.receipt_invoice_refs_status);
   const receiptInvoiceRefsStatus = receiptInvoiceRefsStatusRaw || "pending";
   const invoiceTaxReceiptAggregateStatus =
     normalizeText(invoiceTaxReceiptContract?.invoice_tax_receipt_status) ||
+    normalizeText(invoiceTaxReceiptContract?.workspace_invoice_tax_receipt_status) ||
     normalizeText(invoiceTaxReceiptContract?.status) ||
     null;
 
   const couponStatus = normalizeText(couponPromotionDiscountContract?.coupon_status) || "pending";
   const promotionStatus = normalizeText(couponPromotionDiscountContract?.promotion_status) || "pending";
-  const discountApplicationStatus = normalizeText(couponPromotionDiscountContract?.discount_application_status) || "pending";
-  const discountStateStatus = normalizeText(couponPromotionDiscountContract?.discount_state_status) || "pending";
-  const totalsProjectionStatus = normalizeText(couponPromotionDiscountContract?.totals_projection_status) || "pending";
+  const discountApplicationStatus =
+    normalizeText(
+      couponPromotionDiscountContract?.discount_application_status ||
+        couponPromotionDiscountContract?.discount_application_contract_status,
+    ) || "pending";
+  const discountStateStatus =
+    normalizeText(couponPromotionDiscountContract?.discount_state_status) ||
+    (normalizeText(couponPromotionDiscountContract?.discount_state) ? "ready" : "pending");
+  const totalsProjectionStatus =
+    normalizeText(couponPromotionDiscountContract?.totals_projection_status) ||
+    (couponPromotionDiscountContract?.subtotal_amount !== null &&
+    couponPromotionDiscountContract?.subtotal_amount !== undefined &&
+    couponPromotionDiscountContract?.total_amount !== null &&
+    couponPromotionDiscountContract?.total_amount !== undefined
+      ? "ready"
+      : "pending");
   const couponPromotionDiscountAggregateStatus =
     normalizeText(couponPromotionDiscountContract?.coupon_promotion_discount_application_status) ||
+    normalizeText(couponPromotionDiscountContract?.discount_application_contract_status) ||
     normalizeText(couponPromotionDiscountContract?.status) ||
     null;
 
@@ -4845,7 +4865,9 @@ function buildStage7bHostedBillingArtifactsDiscountProjection({
       workspace_id: resolvedWorkspaceId,
       plan_ref: resolvedPlanRef,
       invoice_status: invoiceStatus,
+      billing_profile_status: normalizeText(invoiceTaxReceiptContract?.billing_profile_status) || "pending",
       tax_profile_status: taxProfileStatus,
+      invoice_tax_status: normalizeText(invoiceTaxReceiptContract?.invoice_tax_status) || "pending",
       receipt_export_status: receiptExportStatus,
       document_readiness_status: documentReadinessStatus,
       receipt_invoice_refs_status: receiptInvoiceRefsStatus,
@@ -4870,6 +4892,8 @@ function buildStage7bHostedBillingArtifactsDiscountProjection({
       coupon_status: couponStatus,
       promotion_status: promotionStatus,
       discount_application_status: discountApplicationStatus,
+      discount_application_contract_status:
+        normalizeText(couponPromotionDiscountContract?.discount_application_contract_status) || "pending",
       discount_state_status: discountStateStatus,
       totals_projection_status: totalsProjectionStatus,
       discount_state: discountState,
@@ -6159,9 +6183,20 @@ function normalizeStage7bInvoiceTaxReceiptContract(raw) {
   return {
     contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
     workspace_id: normalizeText(raw.workspace_id || raw.workspaceId || refs.workspace_id || refs.workspaceId) || null,
+    workspace_invoice_tax_receipt_status:
+      normalizeText(
+        raw.workspace_invoice_tax_receipt_status ||
+          raw.workspaceInvoiceTaxReceiptStatus ||
+          statusSource.workspace_invoice_tax_receipt_status ||
+          statusSource.workspaceInvoiceTaxReceiptStatus,
+      ) || null,
     invoice_status:
       normalizeText(raw.invoice_status || raw.invoiceStatus || invoice.status || statusSource.invoice_status || statusSource.invoiceStatus) ||
       null,
+    billing_profile_status:
+      normalizeText(
+        raw.billing_profile_status || raw.billingProfileStatus || statusSource.billing_profile_status || statusSource.billingProfileStatus,
+      ) || null,
     tax_profile_status:
       normalizeText(
         raw.tax_profile_status ||
@@ -6170,6 +6205,9 @@ function normalizeStage7bInvoiceTaxReceiptContract(raw) {
           statusSource.tax_profile_status ||
           statusSource.taxProfileStatus,
       ) || null,
+    invoice_tax_status:
+      normalizeText(raw.invoice_tax_status || raw.invoiceTaxStatus || statusSource.invoice_tax_status || statusSource.invoiceTaxStatus) ||
+      null,
     receipt_export_status:
       normalizeText(
         raw.receipt_export_status ||
@@ -6204,8 +6242,18 @@ function normalizeStage7bInvoiceTaxReceiptContract(raw) {
       null,
     status: normalizeText(statusSource.status || statusSource.contract_status || statusSource.contractStatus) || null,
     invoice_ref:
-      normalizeText(raw.invoice_ref || raw.invoiceRef || refs.invoice_ref || refs.invoiceRef || invoice.ref || invoice.invoice_ref) ||
-      null,
+      normalizeText(
+        raw.invoice_ref ||
+          raw.invoiceRef ||
+          raw.invoice_profile_ref ||
+          raw.invoiceProfileRef ||
+          refs.invoice_ref ||
+          refs.invoiceRef ||
+          refs.invoice_profile_ref ||
+          refs.invoiceProfileRef ||
+          invoice.ref ||
+          invoice.invoice_ref,
+      ) || null,
     receipt_ref:
       normalizeText(raw.receipt_ref || raw.receiptRef || refs.receipt_ref || refs.receiptRef || receipt.ref || receipt.receipt_ref) ||
       null,
@@ -6224,11 +6272,27 @@ function normalizeStage7bInvoiceTaxReceiptContract(raw) {
     tax_profile_ref:
       normalizeText(raw.tax_profile_ref || raw.taxProfileRef || refs.tax_profile_ref || refs.taxProfileRef) || null,
     currency: normalizeText(raw.currency || totals.currency || invoice.currency || receipt.currency) || null,
-    subtotal_amount: normalizeStage7bNumeric(raw.subtotal_amount || raw.subtotalAmount || totals.subtotal || totals.subtotal_amount),
+    subtotal_amount: normalizeStage7bNumeric(
+      raw.subtotal_amount ||
+        raw.subtotalAmount ||
+        totals.subtotal ||
+        totals.subtotal_amount ||
+        totals.subtotal_amount_cents ||
+        totals.subtotalAmountCents,
+    ),
     tax_amount: normalizeStage7bNumeric(raw.tax_amount || raw.taxAmount || totals.tax || totals.tax_amount),
     discount_amount:
-      normalizeStage7bNumeric(raw.discount_amount || raw.discountAmount || totals.discount || totals.discount_amount),
-    total_amount: normalizeStage7bNumeric(raw.total_amount || raw.totalAmount || totals.total || totals.total_amount),
+      normalizeStage7bNumeric(
+        raw.discount_amount ||
+          raw.discountAmount ||
+          totals.discount ||
+          totals.discount_amount ||
+          totals.discount_amount_cents ||
+          totals.discountAmountCents,
+      ),
+    total_amount: normalizeStage7bNumeric(
+      raw.total_amount || raw.totalAmount || totals.total || totals.total_amount || totals.total_amount_cents || totals.totalAmountCents,
+    ),
     read_anchors: {
       channel_context:
         normalizeText(
@@ -6266,6 +6330,7 @@ function normalizeStage7bCouponPromotionDiscountContract(raw) {
   const promotion = raw.promotion && typeof raw.promotion === "object" ? raw.promotion : {};
   const discount = raw.discount && typeof raw.discount === "object" ? raw.discount : {};
   const totals = raw.totals && typeof raw.totals === "object" ? raw.totals : {};
+  const pricing = raw.pricing && typeof raw.pricing === "object" ? raw.pricing : {};
   return {
     contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
     workspace_id: normalizeText(raw.workspace_id || raw.workspaceId || refs.workspace_id || refs.workspaceId) || null,
@@ -6280,9 +6345,20 @@ function normalizeStage7bCouponPromotionDiscountContract(raw) {
       normalizeText(
         raw.discount_application_status ||
           raw.discountApplicationStatus ||
+          raw.discount_application_contract_status ||
+          raw.discountApplicationContractStatus ||
           discount.status ||
           statusSource.discount_application_status ||
-          statusSource.discountApplicationStatus,
+          statusSource.discountApplicationStatus ||
+          statusSource.discount_application_contract_status ||
+          statusSource.discountApplicationContractStatus,
+      ) || null,
+    discount_application_contract_status:
+      normalizeText(
+        raw.discount_application_contract_status ||
+          raw.discountApplicationContractStatus ||
+          statusSource.discount_application_contract_status ||
+          statusSource.discountApplicationContractStatus,
       ) || null,
     discount_state_status:
       normalizeText(
@@ -6295,15 +6371,21 @@ function normalizeStage7bCouponPromotionDiscountContract(raw) {
       normalizeText(
         raw.totals_projection_status ||
           raw.totalsProjectionStatus ||
+          raw.pricing_projection_status ||
+          raw.pricingProjectionStatus ||
           statusSource.totals_projection_status ||
-          statusSource.totalsProjectionStatus,
+          statusSource.totalsProjectionStatus ||
+          statusSource.pricing_projection_status ||
+          statusSource.pricingProjectionStatus,
       ) || null,
     coupon_promotion_discount_application_status:
       normalizeText(
         raw.coupon_promotion_discount_application_status ||
           raw.couponPromotionDiscountApplicationStatus ||
           statusSource.coupon_promotion_discount_application_status ||
-          statusSource.couponPromotionDiscountApplicationStatus,
+          statusSource.couponPromotionDiscountApplicationStatus ||
+          statusSource.discount_application_contract_status ||
+          statusSource.discountApplicationContractStatus,
       ) || null,
     notification_access_status:
       normalizeText(raw.notification_access_status || raw.notificationAccessStatus || statusSource.notification_access_status) ||
@@ -6314,12 +6396,39 @@ function normalizeStage7bCouponPromotionDiscountContract(raw) {
     promotion_ref:
       normalizeText(raw.promotion_ref || raw.promotionRef || refs.promotion_ref || refs.promotionRef || promotion.ref) || null,
     discount_ref: normalizeText(raw.discount_ref || raw.discountRef || refs.discount_ref || refs.discountRef || discount.ref) || null,
-    currency: normalizeText(raw.currency || totals.currency || discount.currency) || null,
-    subtotal_amount: normalizeStage7bNumeric(raw.subtotal_amount || raw.subtotalAmount || totals.subtotal || totals.subtotal_amount),
+    currency: normalizeText(raw.currency || totals.currency || pricing.billing_currency || pricing.billingCurrency || discount.currency) || null,
+    subtotal_amount: normalizeStage7bNumeric(
+      raw.subtotal_amount ||
+        raw.subtotalAmount ||
+        totals.subtotal ||
+        totals.subtotal_amount ||
+        totals.subtotal_amount_cents ||
+        totals.subtotalAmountCents ||
+        pricing.subtotal_amount_cents ||
+        pricing.subtotalAmountCents,
+    ),
     tax_amount: normalizeStage7bNumeric(raw.tax_amount || raw.taxAmount || totals.tax || totals.tax_amount),
     discount_amount:
-      normalizeStage7bNumeric(raw.discount_amount || raw.discountAmount || totals.discount || totals.discount_amount),
-    total_amount: normalizeStage7bNumeric(raw.total_amount || raw.totalAmount || totals.total || totals.total_amount),
+      normalizeStage7bNumeric(
+        raw.discount_amount ||
+          raw.discountAmount ||
+          totals.discount ||
+          totals.discount_amount ||
+          totals.discount_amount_cents ||
+          totals.discountAmountCents ||
+          pricing.discount_amount_cents ||
+          pricing.discountAmountCents,
+      ),
+    total_amount: normalizeStage7bNumeric(
+      raw.total_amount ||
+        raw.totalAmount ||
+        totals.total ||
+        totals.total_amount ||
+        totals.total_amount_cents ||
+        totals.totalAmountCents ||
+        pricing.total_amount_cents ||
+        pricing.totalAmountCents,
+    ),
     read_anchors: {
       channel_context:
         normalizeText(
