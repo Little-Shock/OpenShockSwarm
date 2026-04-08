@@ -549,6 +549,12 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     typeof governance.stage7a_hosted_billing_subscription === "object"
       ? governance.stage7a_hosted_billing_subscription
       : null);
+  const stage7b =
+    (governance.stage7b && typeof governance.stage7b === "object" ? governance.stage7b : null) ||
+    (governance.stage7b_hosted_billing_artifacts_discount &&
+    typeof governance.stage7b_hosted_billing_artifacts_discount === "object"
+      ? governance.stage7b_hosted_billing_artifacts_discount
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -1280,6 +1286,83 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
         `block_reason=${normalizeText(upgradePlanManage.block_reason) || "none"} · ` +
         `remaining=${formatStage7aRemainingCapacity(upgradePlanManage.remaining_capacity)}`,
       status: hostedBillingSubscription.no_shadow_truth === true ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(guardrailCard);
+  }
+
+  if (stage7b) {
+    const stage7bStatus = stage7b.status && typeof stage7b.status === "object" ? stage7b.status : {};
+    const hostedBillingArtifactsDiscount =
+      stage7b.hosted_billing_artifacts_discount && typeof stage7b.hosted_billing_artifacts_discount === "object"
+        ? stage7b.hosted_billing_artifacts_discount
+        : {};
+    const workspaceInvoiceTaxReceipt =
+      stage7b.workspace_invoice_tax_receipt && typeof stage7b.workspace_invoice_tax_receipt === "object"
+        ? stage7b.workspace_invoice_tax_receipt
+        : {};
+    const couponPromotionDiscountApplication =
+      stage7b.coupon_promotion_discount_application &&
+      typeof stage7b.coupon_promotion_discount_application === "object"
+        ? stage7b.coupon_promotion_discount_application
+        : {};
+    const documentReceiptInvoiceProjection =
+      stage7b.document_receipt_invoice_projection && typeof stage7b.document_receipt_invoice_projection === "object"
+        ? stage7b.document_receipt_invoice_projection
+        : {};
+    const discountTotalsProjection =
+      stage7b.discount_totals_projection && typeof stage7b.discount_totals_projection === "object"
+        ? stage7b.discount_totals_projection
+        : {};
+
+    const artifactsCard = queueCard({
+      title: "Stage7B Hosted Billing Artifacts / Discount Reachability",
+      subtitle:
+        `entry=${normalizeText(stage7bStatus.hosted_billing_artifacts_discount_status) || "pending"} · ` +
+        `invoice=${normalizeText(stage7bStatus.workspace_invoice_tax_receipt_status) || "pending"} · ` +
+        `discount=${normalizeText(stage7bStatus.coupon_promotion_discount_application_status) || "pending"}`,
+      note:
+        `${formatStage7bHostedBillingArtifactsDiscount(hostedBillingArtifactsDiscount)} · ` +
+        `${formatStage7bInvoiceTaxReceipt(workspaceInvoiceTaxReceipt)}`,
+      status: normalizeText(stage7bStatus.hosted_billing_artifacts_discount_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(artifactsCard);
+
+    const documentProjectionCard = queueCard({
+      title: "Stage7B Document Readiness / Receipt Invoice Refs",
+      subtitle:
+        `document=${normalizeText(stage7bStatus.document_readiness_status) || "pending"} · ` +
+        `refs=${normalizeText(stage7bStatus.receipt_invoice_refs_status) || "pending"}`,
+      note: formatStage7bDocumentProjection(documentReceiptInvoiceProjection),
+      status:
+        normalizeText(stage7bStatus.document_readiness_status) === "ok" &&
+        normalizeText(stage7bStatus.receipt_invoice_refs_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(documentProjectionCard);
+
+    const discountProjectionCard = queueCard({
+      title: "Stage7B Coupon Promotion / Discount Totals Projection",
+      subtitle:
+        `discount=${normalizeText(stage7bStatus.discount_state_totals_projection_status) || "pending"} · ` +
+        `application=${normalizeText(stage7bStatus.coupon_promotion_discount_application_status) || "pending"}`,
+      note:
+        `${formatStage7bCouponPromotionDiscount(couponPromotionDiscountApplication)} · ` +
+        `${formatStage7bDiscountTotalsProjection(discountTotalsProjection)}`,
+      status: normalizeText(stage7bStatus.discount_state_totals_projection_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(discountProjectionCard);
+
+    const guardrailCard = queueCard({
+      title: "Stage7B No Shadow Billing / Notification Truth",
+      subtitle:
+        `no_shadow_truth=${hostedBillingArtifactsDiscount.no_shadow_truth === true ? "ok" : "pending"} · ` +
+        `notify=${normalizeText(discountTotalsProjection.notification_delivery_status) || "pending"}`,
+      note:
+        `truth_family=${formatStage6cTruthFamily(hostedBillingArtifactsDiscount.truth_family)} · ` +
+        `invoice_ref=${normalizeText(workspaceInvoiceTaxReceipt.invoice_ref) || "n/a"} · ` +
+        `receipt_ref=${normalizeText(workspaceInvoiceTaxReceipt.receipt_ref) || "n/a"}`,
+      status: hostedBillingArtifactsDiscount.no_shadow_truth === true ? "active" : "pending",
     });
     dom.workspaceGovernanceList.append(guardrailCard);
   }
@@ -2545,6 +2628,92 @@ function formatStage7aRemainingCapacity(raw) {
     return "n/a";
   }
   return String(Number(raw));
+}
+
+function formatStage7bHostedBillingArtifactsDiscount(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted billing artifacts/discount pending";
+  }
+  const entryUrl = normalizeText(raw.hosted_entry_url) || "n/a";
+  const hostedStatus = normalizeText(raw.hosted_access_status) || "pending";
+  const source = normalizeText(raw.source) || "stage7b_truth_fan_in";
+  return `entry=${entryUrl} · hosted=${hostedStatus} · source=${source}`;
+}
+
+function formatStage7bInvoiceTaxReceipt(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "workspace invoice/tax/receipt pending";
+  }
+  const workspaceId = normalizeText(raw.workspace_id) || "n/a";
+  const planRef = normalizeText(raw.plan_ref) || "n/a";
+  const invoiceStatus = normalizeText(raw.invoice_status) || "pending";
+  const taxStatus = normalizeText(raw.tax_profile_status) || "pending";
+  const receiptStatus = normalizeText(raw.receipt_export_status) || "pending";
+  const invoiceRef = normalizeText(raw.invoice_ref) || "n/a";
+  const receiptRef = normalizeText(raw.receipt_ref) || "n/a";
+  const totalAmount = formatStage7bMoney(raw.total_amount, raw.currency);
+  return (
+    `workspace=${workspaceId} · plan=${planRef} · invoice=${invoiceStatus} · tax=${taxStatus} · ` +
+    `receipt=${receiptStatus} · total=${totalAmount} · invoice_ref=${invoiceRef} · receipt_ref=${receiptRef}`
+  );
+}
+
+function formatStage7bCouponPromotionDiscount(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "coupon/promotion/discount application pending";
+  }
+  const couponStatus = normalizeText(raw.coupon_status) || "pending";
+  const promotionStatus = normalizeText(raw.promotion_status) || "pending";
+  const discountStatus = normalizeText(raw.discount_application_status) || "pending";
+  const discountState = normalizeText(raw.discount_state) || "pending";
+  const couponRef = normalizeText(raw.coupon_ref) || "n/a";
+  const promotionRef = normalizeText(raw.promotion_ref) || "n/a";
+  const discountRef = normalizeText(raw.discount_ref) || "n/a";
+  return (
+    `coupon=${couponStatus} · promotion=${promotionStatus} · application=${discountStatus} · state=${discountState} · ` +
+    `coupon_ref=${couponRef} · promotion_ref=${promotionRef} · discount_ref=${discountRef}`
+  );
+}
+
+function formatStage7bDocumentProjection(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "document readiness / refs pending";
+  }
+  const documentReadiness = normalizeText(raw.document_readiness_status) || "pending";
+  const refsStatus = normalizeText(raw.receipt_invoice_refs_status) || "pending";
+  const invoiceRef = normalizeText(raw.invoice_ref) || "n/a";
+  const receiptRef = normalizeText(raw.receipt_ref) || "n/a";
+  const receiptExportRef = normalizeText(raw.receipt_export_ref) || "n/a";
+  return (
+    `document=${documentReadiness} · refs=${refsStatus} · invoice_ref=${invoiceRef} · ` +
+    `receipt_ref=${receiptRef} · receipt_export_ref=${receiptExportRef}`
+  );
+}
+
+function formatStage7bDiscountTotalsProjection(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "discount state / totals projection pending";
+  }
+  const discountStateStatus = normalizeText(raw.discount_state_status) || "pending";
+  const totalsStatus = normalizeText(raw.totals_projection_status) || "pending";
+  const discountState = normalizeText(raw.discount_state) || "pending";
+  const subtotalAmount = formatStage7bMoney(raw.subtotal_amount, raw.currency);
+  const taxAmount = formatStage7bMoney(raw.tax_amount, raw.currency);
+  const discountAmount = formatStage7bMoney(raw.discount_amount, raw.currency);
+  const totalAmount = formatStage7bMoney(raw.total_amount, raw.currency);
+  const quotaState = normalizeText(raw.quota_state) || "pending";
+  return (
+    `state=${discountStateStatus}/${discountState} · totals=${totalsStatus} · ` +
+    `subtotal=${subtotalAmount} tax=${taxAmount} discount=${discountAmount} total=${totalAmount} · quota=${quotaState}`
+  );
+}
+
+function formatStage7bMoney(value, currency) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "n/a";
+  }
+  const normalizedCurrency = normalizeText(currency) || "usd";
+  return `${Number(value)} ${normalizedCurrency.toUpperCase()}`;
 }
 
 function queueCard({ title, subtitle, note, status = "pending" }) {

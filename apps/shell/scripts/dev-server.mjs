@@ -1846,6 +1846,20 @@ function buildOperatorConsoleState({
             channelContextContract?.subscription_renewal_failure_cancel_resume_grace_recovery_contract ||
             channelContextContract?.subscription_recovery_contract ||
             null,
+          workspace_invoice_tax_receipt_contract:
+            channelContextContract?.workspace_invoice_tax_receipt_contract ||
+            channelContextContract?.workspace_invoice_tax_receipt ||
+            channelContextContract?.invoice_tax_receipt_contract ||
+            channelContextContract?.invoice_tax_receipt ||
+            null,
+          coupon_promotion_discount_application_contract:
+            channelContextContract?.coupon_promotion_discount_application_contract ||
+            channelContextContract?.coupon_promotion_discount_application ||
+            channelContextContract?.coupon_discount_application_contract ||
+            channelContextContract?.coupon_discount_application ||
+            channelContextContract?.price_adjustment_discount_contract ||
+            channelContextContract?.price_adjustment_discount ||
+            null,
           write_anchors: mergedWriteAnchors,
           audit_anchor: contextAuditAnchor || notificationAuditAnchor,
           updated_at: channelContextContract?.updated_at || channelNotificationEndpointContract?.updated_at || null,
@@ -1958,6 +1972,16 @@ function buildOperatorConsoleState({
     channelContextContract: channelContract,
   });
   normalizedWorkspaceGovernance.stage7a_hosted_billing_subscription = normalizedWorkspaceGovernance.stage7a;
+  normalizedWorkspaceGovernance.stage7b = buildStage7bHostedBillingArtifactsDiscountProjection({
+    scope,
+    workspaceGovernance: normalizedWorkspaceGovernance,
+    stage6a: normalizedWorkspaceGovernance.stage6a,
+    stage6b: normalizedWorkspaceGovernance.stage6b,
+    stage6c: normalizedWorkspaceGovernance.stage6c,
+    stage7a: normalizedWorkspaceGovernance.stage7a,
+    channelContextContract: channelContract,
+  });
+  normalizedWorkspaceGovernance.stage7b_hosted_billing_artifacts_discount = normalizedWorkspaceGovernance.stage7b;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -4523,6 +4547,388 @@ function buildStage7aHostedBillingSubscriptionProjection({
   };
 }
 
+function buildStage7bHostedBillingArtifactsDiscountProjection({
+  scope,
+  workspaceGovernance,
+  stage6a,
+  stage6b,
+  stage6c,
+  stage7a,
+  channelContextContract,
+}) {
+  const stage4a2 =
+    workspaceGovernance?.stage4a2 && typeof workspaceGovernance.stage4a2 === "object" ? workspaceGovernance.stage4a2 : {};
+  const stage4a2Status = stage4a2.status && typeof stage4a2.status === "object" ? stage4a2.status : {};
+
+  const stage6aStatus = stage6a?.status && typeof stage6a.status === "object" ? stage6a.status : {};
+  const stage6aHostedOnboardingAccess =
+    stage6a?.hosted_onboarding_access && typeof stage6a.hosted_onboarding_access === "object"
+      ? stage6a.hosted_onboarding_access
+      : {};
+  const stage6aWorkbenchHandoff =
+    stage6a?.stage5_workbench_handoff && typeof stage6a.stage5_workbench_handoff === "object"
+      ? stage6a.stage5_workbench_handoff
+      : {};
+
+  const stage6bStatus = stage6b?.status && typeof stage6b.status === "object" ? stage6b.status : {};
+  const stage6bNotificationDelivery =
+    stage6b?.notification_delivery && typeof stage6b.notification_delivery === "object" ? stage6b.notification_delivery : {};
+
+  const stage6cStatus = stage6c?.status && typeof stage6c.status === "object" ? stage6c.status : {};
+  const stage6cHostedPlanQuota =
+    stage6c?.hosted_plan_quota && typeof stage6c.hosted_plan_quota === "object" ? stage6c.hosted_plan_quota : {};
+  const stage6cPlanSubscriptionLimit =
+    stage6c?.workspace_plan_subscription_limit && typeof stage6c.workspace_plan_subscription_limit === "object"
+      ? stage6c.workspace_plan_subscription_limit
+      : {};
+  const stage6cUsageQuotaReadiness =
+    stage6c?.usage_quota_readiness && typeof stage6c.usage_quota_readiness === "object"
+      ? stage6c.usage_quota_readiness
+      : {};
+
+  const stage7aStatus = stage7a?.status && typeof stage7a.status === "object" ? stage7a.status : {};
+  const stage7aHostedBillingSubscription =
+    stage7a?.hosted_billing_subscription && typeof stage7a.hosted_billing_subscription === "object"
+      ? stage7a.hosted_billing_subscription
+      : {};
+  const stage7aCheckoutActivation =
+    stage7a?.checkout_payment_subscription_activation &&
+    typeof stage7a.checkout_payment_subscription_activation === "object"
+      ? stage7a.checkout_payment_subscription_activation
+      : {};
+
+  const context =
+    channelContextContract?.context && typeof channelContextContract.context === "object"
+      ? channelContextContract.context
+      : {};
+  const governance =
+    channelContextContract?.governance && typeof channelContextContract.governance === "object"
+      ? channelContextContract.governance
+      : {};
+
+  const invoiceTaxReceiptContract = normalizeStage7bInvoiceTaxReceiptContract(
+    pickFirstDefinedValue([
+      channelContextContract?.workspace_invoice_tax_receipt_contract,
+      channelContextContract?.workspace_invoice_tax_receipt,
+      channelContextContract?.invoice_tax_receipt_contract,
+      channelContextContract?.invoice_tax_receipt,
+      governance.workspace_invoice_tax_receipt_contract,
+      governance.workspaceInvoiceTaxReceiptContract,
+      governance.workspace_invoice_tax_receipt,
+      governance.workspaceInvoiceTaxReceipt,
+      governance.invoice_tax_receipt_contract,
+      governance.invoiceTaxReceiptContract,
+      governance.invoice_tax_receipt,
+      governance.invoiceTaxReceipt,
+      context.workspace_invoice_tax_receipt_contract,
+      context.workspaceInvoiceTaxReceiptContract,
+      context.workspace_invoice_tax_receipt,
+      context.workspaceInvoiceTaxReceipt,
+      context.invoice_tax_receipt_contract,
+      context.invoiceTaxReceiptContract,
+      context.invoice_tax_receipt,
+      context.invoiceTaxReceipt,
+    ]),
+  );
+
+  const couponPromotionDiscountContract = normalizeStage7bCouponPromotionDiscountContract(
+    pickFirstDefinedValue([
+      channelContextContract?.coupon_promotion_discount_application_contract,
+      channelContextContract?.coupon_promotion_discount_application,
+      channelContextContract?.coupon_discount_application_contract,
+      channelContextContract?.coupon_discount_application,
+      channelContextContract?.price_adjustment_discount_contract,
+      channelContextContract?.price_adjustment_discount,
+      governance.coupon_promotion_discount_application_contract,
+      governance.couponPromotionDiscountApplicationContract,
+      governance.coupon_promotion_discount_application,
+      governance.couponPromotionDiscountApplication,
+      governance.coupon_discount_application_contract,
+      governance.couponDiscountApplicationContract,
+      governance.coupon_discount_application,
+      governance.couponDiscountApplication,
+      governance.price_adjustment_discount_contract,
+      governance.priceAdjustmentDiscountContract,
+      governance.price_adjustment_discount,
+      governance.priceAdjustmentDiscount,
+      context.coupon_promotion_discount_application_contract,
+      context.couponPromotionDiscountApplicationContract,
+      context.coupon_promotion_discount_application,
+      context.couponPromotionDiscountApplication,
+      context.coupon_discount_application_contract,
+      context.couponDiscountApplicationContract,
+      context.coupon_discount_application,
+      context.couponDiscountApplication,
+      context.price_adjustment_discount_contract,
+      context.priceAdjustmentDiscountContract,
+      context.price_adjustment_discount,
+      context.priceAdjustmentDiscount,
+    ]),
+  );
+
+  const hostedEntryUrl =
+    normalizeText(stage7aHostedBillingSubscription.hosted_entry_url) ||
+    normalizeText(stage6aHostedOnboardingAccess.hosted_entry_url) ||
+    normalizeText(stage6aWorkbenchHandoff.hosted_workbench_url) ||
+    normalizeText(stage6cHostedPlanQuota.hosted_entry_url) ||
+    null;
+  let hostedAccessStatus =
+    normalizeText(stage7aHostedBillingSubscription.hosted_access_status) ||
+    normalizeText(stage6aHostedOnboardingAccess.hosted_access_status) ||
+    normalizeText(stage6aStatus.hosted_onboarding_access_status) ||
+    normalizeText(stage6cHostedPlanQuota.hosted_access_status);
+  if (!hostedAccessStatus) {
+    if (isNonLocalHttpUrl(hostedEntryUrl)) {
+      hostedAccessStatus = "ok";
+    } else if (hostedEntryUrl) {
+      hostedAccessStatus = "local_only";
+    } else {
+      hostedAccessStatus = "pending";
+    }
+  }
+
+  const invoiceStatus = normalizeText(invoiceTaxReceiptContract?.invoice_status) || "pending";
+  const taxProfileStatus = normalizeText(invoiceTaxReceiptContract?.tax_profile_status) || "pending";
+  const receiptExportStatus = normalizeText(invoiceTaxReceiptContract?.receipt_export_status) || "pending";
+  const documentReadinessStatus = normalizeText(invoiceTaxReceiptContract?.document_readiness_status) || "pending";
+  const receiptInvoiceRefsStatusRaw = normalizeText(invoiceTaxReceiptContract?.receipt_invoice_refs_status);
+  const receiptInvoiceRefsStatus = receiptInvoiceRefsStatusRaw || "pending";
+  const invoiceTaxReceiptAggregateStatus =
+    normalizeText(invoiceTaxReceiptContract?.invoice_tax_receipt_status) ||
+    normalizeText(invoiceTaxReceiptContract?.status) ||
+    null;
+
+  const couponStatus = normalizeText(couponPromotionDiscountContract?.coupon_status) || "pending";
+  const promotionStatus = normalizeText(couponPromotionDiscountContract?.promotion_status) || "pending";
+  const discountApplicationStatus = normalizeText(couponPromotionDiscountContract?.discount_application_status) || "pending";
+  const discountStateStatus = normalizeText(couponPromotionDiscountContract?.discount_state_status) || "pending";
+  const totalsProjectionStatus = normalizeText(couponPromotionDiscountContract?.totals_projection_status) || "pending";
+  const couponPromotionDiscountAggregateStatus =
+    normalizeText(couponPromotionDiscountContract?.coupon_promotion_discount_application_status) ||
+    normalizeText(couponPromotionDiscountContract?.status) ||
+    null;
+
+  const invoiceRef = normalizeText(invoiceTaxReceiptContract?.invoice_ref) || null;
+  const receiptRef = normalizeText(invoiceTaxReceiptContract?.receipt_ref) || null;
+  const receiptExportRef = normalizeText(invoiceTaxReceiptContract?.receipt_export_ref) || null;
+  const billingProfileRef = normalizeText(invoiceTaxReceiptContract?.billing_profile_ref) || null;
+  const taxProfileRef = normalizeText(invoiceTaxReceiptContract?.tax_profile_ref) || null;
+  const couponRef = normalizeText(couponPromotionDiscountContract?.coupon_ref) || null;
+  const promotionRef = normalizeText(couponPromotionDiscountContract?.promotion_ref) || null;
+  const discountRef = normalizeText(couponPromotionDiscountContract?.discount_ref) || null;
+  const discountState = normalizeText(couponPromotionDiscountContract?.discount_state) || "pending";
+
+  const subtotalAmount = pickFirstDefinedValue([
+    couponPromotionDiscountContract?.subtotal_amount,
+    invoiceTaxReceiptContract?.subtotal_amount,
+  ]);
+  const taxAmount = pickFirstDefinedValue([
+    couponPromotionDiscountContract?.tax_amount,
+    invoiceTaxReceiptContract?.tax_amount,
+  ]);
+  const discountAmount = pickFirstDefinedValue([
+    couponPromotionDiscountContract?.discount_amount,
+    invoiceTaxReceiptContract?.discount_amount,
+  ]);
+  const totalAmount = pickFirstDefinedValue([
+    couponPromotionDiscountContract?.total_amount,
+    invoiceTaxReceiptContract?.total_amount,
+  ]);
+  const currency =
+    normalizeText(couponPromotionDiscountContract?.currency) ||
+    normalizeText(invoiceTaxReceiptContract?.currency) ||
+    "usd";
+
+  const notificationDeliveryStatus =
+    normalizeText(invoiceTaxReceiptContract?.notification_access_status) ||
+    normalizeText(couponPromotionDiscountContract?.notification_access_status) ||
+    normalizeText(stage6bStatus.hosted_notification_recovery_status) ||
+    normalizeText(stage6bNotificationDelivery.status) ||
+    normalizeText(stage4a2Status.notification_endpoints_status) ||
+    "pending";
+  const notificationReady =
+    isHostedReadyStatus(notificationDeliveryStatus) ||
+    isStage7bReadyStatus(notificationDeliveryStatus) ||
+    isStage7aReadyStatus(notificationDeliveryStatus);
+
+  const documentReadinessReady = isStage7bReadyStatus(documentReadinessStatus);
+  const receiptInvoiceRefsReady = receiptInvoiceRefsStatusRaw
+    ? isStage7bReadyStatus(receiptInvoiceRefsStatusRaw)
+    : Boolean(invoiceRef || receiptRef || receiptExportRef);
+
+  const invoiceTaxReceiptReady = invoiceTaxReceiptAggregateStatus
+    ? isStage7bReadyStatus(invoiceTaxReceiptAggregateStatus)
+    : isStage7bReadyStatus(invoiceStatus) &&
+      isStage7bReadyStatus(taxProfileStatus) &&
+      isStage7bReadyStatus(receiptExportStatus) &&
+      documentReadinessReady &&
+      receiptInvoiceRefsReady;
+
+  const couponPromotionDiscountReady = couponPromotionDiscountAggregateStatus
+    ? isStage7bReadyStatus(couponPromotionDiscountAggregateStatus)
+    : isStage7bReadyStatus(couponStatus) &&
+      isStage7bReadyStatus(promotionStatus) &&
+      isStage7bReadyStatus(discountApplicationStatus) &&
+      isStage7bReadyStatus(discountStateStatus) &&
+      isStage7bReadyStatus(totalsProjectionStatus);
+
+  const totalsProjectionHasValues = [subtotalAmount, taxAmount, discountAmount, totalAmount].some(
+    (value) => value !== null && value !== undefined,
+  );
+  const discountProjectionReady =
+    isStage7bReadyStatus(discountStateStatus) &&
+    isStage7bReadyStatus(totalsProjectionStatus) &&
+    (totalsProjectionHasValues || Boolean(discountRef));
+
+  const stage7aBaselineReady =
+    isHostedReadyStatus(normalizeText(stage7aStatus.hosted_billing_subscription_status)) &&
+    isHostedReadyStatus(normalizeText(stage7aStatus.checkout_payment_subscription_activation_status)) &&
+    isHostedReadyStatus(normalizeText(stage7aStatus.subscription_lifecycle_recovery_status));
+  const stage6cBaselineReady =
+    isHostedReadyStatus(normalizeText(stage6cStatus.hosted_plan_quota_status)) &&
+    isHostedReadyStatus(normalizeText(stage6cStatus.usage_quota_readiness_status));
+
+  const hostedBillingArtifactsDiscountReady =
+    invoiceTaxReceiptReady &&
+    couponPromotionDiscountReady &&
+    documentReadinessReady &&
+    receiptInvoiceRefsReady &&
+    discountProjectionReady &&
+    notificationReady &&
+    stage7aBaselineReady &&
+    stage6cBaselineReady;
+
+  const hostedBillingArtifactsDiscountStatus = resolveStage7bHostedStatus(hostedBillingArtifactsDiscountReady, hostedAccessStatus);
+  const invoiceTaxReceiptStatus = resolveStage7bHostedStatus(invoiceTaxReceiptReady, hostedAccessStatus);
+  const couponPromotionDiscountStatus = resolveStage7bHostedStatus(couponPromotionDiscountReady, hostedAccessStatus);
+  const documentProjectionStatus = resolveStage7bHostedStatus(documentReadinessReady && receiptInvoiceRefsReady, hostedAccessStatus);
+  const discountProjectionStatus = resolveStage7bHostedStatus(discountProjectionReady, hostedAccessStatus);
+
+  const resolvedWorkspaceId =
+    normalizeText(invoiceTaxReceiptContract?.workspace_id) ||
+    normalizeText(couponPromotionDiscountContract?.workspace_id) ||
+    normalizeText(stage7aCheckoutActivation.workspace_id) ||
+    normalizeText(stage6cPlanSubscriptionLimit.workspace_id) ||
+    null;
+  const resolvedPlanRef =
+    normalizeText(stage7aCheckoutActivation.plan_ref) || normalizeText(stage6cPlanSubscriptionLimit.plan_ref) || null;
+  const resolvedQuotaState = normalizeText(stage6cUsageQuotaReadiness.quota_state) || "pending";
+  const resolvedChannelId =
+    normalizeText(stage6cPlanSubscriptionLimit.channel_id) || normalizeText(scope?.channelId) || null;
+  const resolvedTopicId = normalizeText(stage6cPlanSubscriptionLimit.topic_id) || normalizeText(scope?.topicId) || null;
+
+  return {
+    status: {
+      hosted_billing_artifacts_discount_status: hostedBillingArtifactsDiscountStatus,
+      workspace_invoice_tax_receipt_status: invoiceTaxReceiptStatus,
+      coupon_promotion_discount_application_status: couponPromotionDiscountStatus,
+      document_readiness_status: documentProjectionStatus,
+      receipt_invoice_refs_status: documentProjectionStatus,
+      discount_state_totals_projection_status: discountProjectionStatus,
+    },
+    hosted_billing_artifacts_discount: {
+      status: hostedBillingArtifactsDiscountStatus,
+      hosted_entry_url: hostedEntryUrl,
+      hosted_access_status: hostedAccessStatus,
+      source: "stage7b_truth_fan_in",
+      no_shadow_truth: true,
+      truth_family: ["/v1/channels/*", "/v1/topics/*", "/v1/inbox/*"],
+      read_surfaces: [
+        "/v1/channels/:channelId/context",
+        "/v1/topics/:topicId/notifications",
+        "/v1/inbox/:actorId?topic_id=:topicId",
+      ],
+    },
+    workspace_invoice_tax_receipt: {
+      status: invoiceTaxReceiptStatus,
+      contract_version: normalizeText(invoiceTaxReceiptContract?.contract_version) || null,
+      workspace_id: resolvedWorkspaceId,
+      plan_ref: resolvedPlanRef,
+      invoice_status: invoiceStatus,
+      tax_profile_status: taxProfileStatus,
+      receipt_export_status: receiptExportStatus,
+      document_readiness_status: documentReadinessStatus,
+      receipt_invoice_refs_status: receiptInvoiceRefsStatus,
+      invoice_ref: invoiceRef,
+      receipt_ref: receiptRef,
+      receipt_export_ref: receiptExportRef,
+      billing_profile_ref: billingProfileRef,
+      tax_profile_ref: taxProfileRef,
+      currency,
+      subtotal_amount: subtotalAmount,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      total_amount: totalAmount,
+      write_anchor: normalizeText(invoiceTaxReceiptContract?.write_anchor) || null,
+      channel_id: resolvedChannelId,
+      topic_id: resolvedTopicId,
+    },
+    coupon_promotion_discount_application: {
+      status: couponPromotionDiscountStatus,
+      contract_version: normalizeText(couponPromotionDiscountContract?.contract_version) || null,
+      workspace_id: resolvedWorkspaceId,
+      coupon_status: couponStatus,
+      promotion_status: promotionStatus,
+      discount_application_status: discountApplicationStatus,
+      discount_state_status: discountStateStatus,
+      totals_projection_status: totalsProjectionStatus,
+      discount_state: discountState,
+      coupon_ref: couponRef,
+      promotion_ref: promotionRef,
+      discount_ref: discountRef,
+      currency,
+      subtotal_amount: subtotalAmount,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      total_amount: totalAmount,
+      notification_access_status: notificationDeliveryStatus,
+      write_anchor: normalizeText(couponPromotionDiscountContract?.write_anchor) || null,
+      channel_id: resolvedChannelId,
+      topic_id: resolvedTopicId,
+    },
+    document_receipt_invoice_projection: {
+      status: documentProjectionStatus,
+      document_readiness_status: documentReadinessStatus,
+      receipt_invoice_refs_status: receiptInvoiceRefsStatus,
+      invoice_ref: invoiceRef,
+      receipt_ref: receiptRef,
+      receipt_export_ref: receiptExportRef,
+      hosted_entry_url: hostedEntryUrl,
+      hosted_access_status: hostedAccessStatus,
+      plan_ref: resolvedPlanRef,
+      quota_state: resolvedQuotaState,
+      notification_delivery_status: notificationDeliveryStatus,
+      channel_context_truth_surface:
+        normalizeText(invoiceTaxReceiptContract?.read_anchors?.channel_context) || "/v1/channels/:channelId/context",
+      topic_notification_truth_surface:
+        normalizeText(invoiceTaxReceiptContract?.read_anchors?.notification) || "/v1/topics/:topicId/notifications",
+    },
+    discount_totals_projection: {
+      status: discountProjectionStatus,
+      discount_state_status: discountStateStatus,
+      totals_projection_status: totalsProjectionStatus,
+      discount_state: discountState,
+      subtotal_amount: subtotalAmount,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      total_amount: totalAmount,
+      currency,
+      discount_ref: discountRef,
+      coupon_ref: couponRef,
+      promotion_ref: promotionRef,
+      plan_ref: resolvedPlanRef,
+      quota_state: resolvedQuotaState,
+      notification_delivery_status: notificationDeliveryStatus,
+      channel_context_truth_surface:
+        normalizeText(couponPromotionDiscountContract?.read_anchors?.channel_context) ||
+        "/v1/channels/:channelId/context",
+      inbox_truth_surface:
+        normalizeText(couponPromotionDiscountContract?.read_anchors?.inbox) ||
+        "/v1/inbox/:actorId?topic_id=:topicId",
+    },
+  };
+}
+
 function resolveStage5cHostedStatus(truthReady, hostedAccessStatus) {
   if (!truthReady) {
     return "pending";
@@ -4588,6 +4994,19 @@ function resolveStage7aHostedStatus(truthReady, hostedAccessStatus) {
   return "pending";
 }
 
+function resolveStage7bHostedStatus(truthReady, hostedAccessStatus) {
+  if (!truthReady) {
+    return "pending";
+  }
+  if (hostedAccessStatus === "ok") {
+    return "ok";
+  }
+  if (hostedAccessStatus === "local_only") {
+    return "local_only";
+  }
+  return "pending";
+}
+
 function isHostedReadyStatus(value) {
   return value === "ok" || value === "local_only";
 }
@@ -4636,6 +5055,26 @@ function isStage7aPlanManageStatus(value) {
     normalized === "paused" ||
     normalized === "grace_period" ||
     normalized === "auto_renewing"
+  );
+}
+
+function isStage7bReadyStatus(value) {
+  const normalized = normalizeText(value);
+  return (
+    normalized === "ready" ||
+    normalized === "ok" ||
+    normalized === "active" ||
+    normalized === "completed" ||
+    normalized === "issued" ||
+    normalized === "exported" ||
+    normalized === "applied" ||
+    normalized === "projected" ||
+    normalized === "available" ||
+    normalized === "configured" ||
+    normalized === "confirmed" ||
+    normalized === "enabled" ||
+    normalized === "allowed" ||
+    normalized === "server_owned"
   );
 }
 
@@ -5703,6 +6142,218 @@ function normalizeStage7aSubscriptionLifecycleRecoveryContract(raw) {
       ) || null,
     audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : null,
   };
+}
+
+function normalizeStage7bInvoiceTaxReceiptContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const statusSource = raw.status && typeof raw.status === "object" ? raw.status : {};
+  const refs = raw.refs && typeof raw.refs === "object" ? raw.refs : {};
+  const readAnchors = raw.read_anchors && typeof raw.read_anchors === "object" ? raw.read_anchors : {};
+  const writeAnchors = raw.write_anchors && typeof raw.write_anchors === "object" ? raw.write_anchors : {};
+  const invoice = raw.invoice && typeof raw.invoice === "object" ? raw.invoice : {};
+  const tax = raw.tax_profile && typeof raw.tax_profile === "object" ? raw.tax_profile : {};
+  const receipt = raw.receipt && typeof raw.receipt === "object" ? raw.receipt : {};
+  const totals = raw.totals && typeof raw.totals === "object" ? raw.totals : {};
+  return {
+    contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
+    workspace_id: normalizeText(raw.workspace_id || raw.workspaceId || refs.workspace_id || refs.workspaceId) || null,
+    invoice_status:
+      normalizeText(raw.invoice_status || raw.invoiceStatus || invoice.status || statusSource.invoice_status || statusSource.invoiceStatus) ||
+      null,
+    tax_profile_status:
+      normalizeText(
+        raw.tax_profile_status ||
+          raw.taxProfileStatus ||
+          tax.status ||
+          statusSource.tax_profile_status ||
+          statusSource.taxProfileStatus,
+      ) || null,
+    receipt_export_status:
+      normalizeText(
+        raw.receipt_export_status ||
+          raw.receiptExportStatus ||
+          receipt.status ||
+          statusSource.receipt_export_status ||
+          statusSource.receiptExportStatus,
+      ) || null,
+    document_readiness_status:
+      normalizeText(
+        raw.document_readiness_status ||
+          raw.documentReadinessStatus ||
+          statusSource.document_readiness_status ||
+          statusSource.documentReadinessStatus,
+      ) || null,
+    receipt_invoice_refs_status:
+      normalizeText(
+        raw.receipt_invoice_refs_status ||
+          raw.receiptInvoiceRefsStatus ||
+          statusSource.receipt_invoice_refs_status ||
+          statusSource.receiptInvoiceRefsStatus,
+      ) || null,
+    invoice_tax_receipt_status:
+      normalizeText(
+        raw.invoice_tax_receipt_status ||
+          raw.invoiceTaxReceiptStatus ||
+          statusSource.invoice_tax_receipt_status ||
+          statusSource.invoiceTaxReceiptStatus,
+      ) || null,
+    notification_access_status:
+      normalizeText(raw.notification_access_status || raw.notificationAccessStatus || statusSource.notification_access_status) ||
+      null,
+    status: normalizeText(statusSource.status || statusSource.contract_status || statusSource.contractStatus) || null,
+    invoice_ref:
+      normalizeText(raw.invoice_ref || raw.invoiceRef || refs.invoice_ref || refs.invoiceRef || invoice.ref || invoice.invoice_ref) ||
+      null,
+    receipt_ref:
+      normalizeText(raw.receipt_ref || raw.receiptRef || refs.receipt_ref || refs.receiptRef || receipt.ref || receipt.receipt_ref) ||
+      null,
+    receipt_export_ref:
+      normalizeText(
+        raw.receipt_export_ref ||
+          raw.receiptExportRef ||
+          refs.receipt_export_ref ||
+          refs.receiptExportRef ||
+          receipt.export_ref ||
+          receipt.exportRef,
+      ) || null,
+    billing_profile_ref:
+      normalizeText(raw.billing_profile_ref || raw.billingProfileRef || refs.billing_profile_ref || refs.billingProfileRef) ||
+      null,
+    tax_profile_ref:
+      normalizeText(raw.tax_profile_ref || raw.taxProfileRef || refs.tax_profile_ref || refs.taxProfileRef) || null,
+    currency: normalizeText(raw.currency || totals.currency || invoice.currency || receipt.currency) || null,
+    subtotal_amount: normalizeStage7bNumeric(raw.subtotal_amount || raw.subtotalAmount || totals.subtotal || totals.subtotal_amount),
+    tax_amount: normalizeStage7bNumeric(raw.tax_amount || raw.taxAmount || totals.tax || totals.tax_amount),
+    discount_amount:
+      normalizeStage7bNumeric(raw.discount_amount || raw.discountAmount || totals.discount || totals.discount_amount),
+    total_amount: normalizeStage7bNumeric(raw.total_amount || raw.totalAmount || totals.total || totals.total_amount),
+    read_anchors: {
+      channel_context:
+        normalizeText(
+          readAnchors.channel_context || readAnchors.channelContext || readAnchors.workspace_context || readAnchors.workspaceContext,
+        ) || null,
+      workspace_member_access:
+        normalizeText(readAnchors.workspace_member_access || readAnchors.workspaceMemberAccess) || null,
+      notification:
+        normalizeText(readAnchors.notification || readAnchors.topic_notifications || readAnchors.topicNotifications) || null,
+    },
+    write_anchor:
+      normalizeText(
+        raw.write_anchor ||
+          raw.writeAnchor ||
+          writeAnchors.invoice_upsert ||
+          writeAnchors.invoiceUpsert ||
+          writeAnchors.tax_profile_upsert ||
+          writeAnchors.taxProfileUpsert ||
+          writeAnchors.receipt_export_upsert ||
+          writeAnchors.receiptExportUpsert,
+      ) || null,
+    audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : null,
+  };
+}
+
+function normalizeStage7bCouponPromotionDiscountContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const statusSource = raw.status && typeof raw.status === "object" ? raw.status : {};
+  const refs = raw.refs && typeof raw.refs === "object" ? raw.refs : {};
+  const readAnchors = raw.read_anchors && typeof raw.read_anchors === "object" ? raw.read_anchors : {};
+  const writeAnchors = raw.write_anchors && typeof raw.write_anchors === "object" ? raw.write_anchors : {};
+  const coupon = raw.coupon && typeof raw.coupon === "object" ? raw.coupon : {};
+  const promotion = raw.promotion && typeof raw.promotion === "object" ? raw.promotion : {};
+  const discount = raw.discount && typeof raw.discount === "object" ? raw.discount : {};
+  const totals = raw.totals && typeof raw.totals === "object" ? raw.totals : {};
+  return {
+    contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
+    workspace_id: normalizeText(raw.workspace_id || raw.workspaceId || refs.workspace_id || refs.workspaceId) || null,
+    coupon_status:
+      normalizeText(raw.coupon_status || raw.couponStatus || coupon.status || statusSource.coupon_status || statusSource.couponStatus) ||
+      null,
+    promotion_status:
+      normalizeText(
+        raw.promotion_status || raw.promotionStatus || promotion.status || statusSource.promotion_status || statusSource.promotionStatus,
+      ) || null,
+    discount_application_status:
+      normalizeText(
+        raw.discount_application_status ||
+          raw.discountApplicationStatus ||
+          discount.status ||
+          statusSource.discount_application_status ||
+          statusSource.discountApplicationStatus,
+      ) || null,
+    discount_state_status:
+      normalizeText(
+        raw.discount_state_status ||
+          raw.discountStateStatus ||
+          statusSource.discount_state_status ||
+          statusSource.discountStateStatus,
+      ) || null,
+    totals_projection_status:
+      normalizeText(
+        raw.totals_projection_status ||
+          raw.totalsProjectionStatus ||
+          statusSource.totals_projection_status ||
+          statusSource.totalsProjectionStatus,
+      ) || null,
+    coupon_promotion_discount_application_status:
+      normalizeText(
+        raw.coupon_promotion_discount_application_status ||
+          raw.couponPromotionDiscountApplicationStatus ||
+          statusSource.coupon_promotion_discount_application_status ||
+          statusSource.couponPromotionDiscountApplicationStatus,
+      ) || null,
+    notification_access_status:
+      normalizeText(raw.notification_access_status || raw.notificationAccessStatus || statusSource.notification_access_status) ||
+      null,
+    status: normalizeText(statusSource.status || statusSource.contract_status || statusSource.contractStatus) || null,
+    discount_state: normalizeText(raw.discount_state || raw.discountState || discount.state || statusSource.discount_state) || null,
+    coupon_ref: normalizeText(raw.coupon_ref || raw.couponRef || refs.coupon_ref || refs.couponRef || coupon.ref) || null,
+    promotion_ref:
+      normalizeText(raw.promotion_ref || raw.promotionRef || refs.promotion_ref || refs.promotionRef || promotion.ref) || null,
+    discount_ref: normalizeText(raw.discount_ref || raw.discountRef || refs.discount_ref || refs.discountRef || discount.ref) || null,
+    currency: normalizeText(raw.currency || totals.currency || discount.currency) || null,
+    subtotal_amount: normalizeStage7bNumeric(raw.subtotal_amount || raw.subtotalAmount || totals.subtotal || totals.subtotal_amount),
+    tax_amount: normalizeStage7bNumeric(raw.tax_amount || raw.taxAmount || totals.tax || totals.tax_amount),
+    discount_amount:
+      normalizeStage7bNumeric(raw.discount_amount || raw.discountAmount || totals.discount || totals.discount_amount),
+    total_amount: normalizeStage7bNumeric(raw.total_amount || raw.totalAmount || totals.total || totals.total_amount),
+    read_anchors: {
+      channel_context:
+        normalizeText(
+          readAnchors.channel_context || readAnchors.channelContext || readAnchors.workspace_context || readAnchors.workspaceContext,
+        ) || null,
+      notification:
+        normalizeText(readAnchors.notification || readAnchors.topic_notifications || readAnchors.topicNotifications) || null,
+      inbox:
+        normalizeText(readAnchors.inbox || readAnchors.inbox_attention || readAnchors.inboxAttention) || null,
+    },
+    write_anchor:
+      normalizeText(
+        raw.write_anchor ||
+          raw.writeAnchor ||
+          writeAnchors.coupon_apply ||
+          writeAnchors.couponApply ||
+          writeAnchors.promotion_apply ||
+          writeAnchors.promotionApply ||
+          writeAnchors.discount_projection_upsert ||
+          writeAnchors.discountProjectionUpsert,
+      ) || null,
+    audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : null,
+  };
+}
+
+function normalizeStage7bNumeric(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return numeric;
 }
 
 function normalizeStage4a2SandboxProfile(raw) {
