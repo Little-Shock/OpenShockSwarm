@@ -236,6 +236,10 @@ const DEPLOY_RUNTIME_READINESS_STATUSES = new Set(["not_ready", "warming", "read
 const DEPLOY_RUNTIME_HANDOFF_STATUSES = new Set(["draft", "ready", "in_progress", "completed", "blocked"]);
 const DEPLOY_RUNTIME_MACHINE_FLEET_STATUSES = new Set(["not_paired", "pairing", "ready", "degraded"]);
 const DEPLOY_RUNTIME_PAIRING_MODES = new Set(["remote_daemon_pairing", "local_hosted_bridge"]);
+const DEPLOY_RUNTIME_ONBOARDING_FLOW_STATUSES = new Set(["pending", "ready", "blocked"]);
+const DEPLOY_RUNTIME_DEVICE_AUTHORIZATION_STATUSES = new Set(["pending", "authorized", "blocked", "revoked"]);
+const DEPLOY_RUNTIME_RUNTIME_ATTACH_STATUSES = new Set(["not_attached", "attaching", "attached", "degraded", "blocked"]);
+const DEPLOY_RUNTIME_HOSTED_ENTRY_CHAIN_STATUSES = new Set(["pending", "ready", "blocked", "local_only"]);
 const INBOX_ATTENTION_CHANNELS = new Set(["inbox", "browser_push", "email"]);
 const INBOX_FOLLOW_UP_PRIORITIES = new Set(["normal", "high", "urgent"]);
 const EXTERNAL_MEMORY_PROVIDER_CAPABILITIES = Object.freeze({
@@ -424,8 +428,26 @@ function createEmptyRuntimeDeployRuntimeContract() {
       updatedAt: null,
       updatedBy: null
     },
+    deviceAuthorizationRuntimeAttach: createEmptyRuntimeDeviceAuthorizationRuntimeAttachContract(),
     machineFleet: null,
     updatedAt: null
+  };
+}
+
+function createEmptyRuntimeDeviceAuthorizationRuntimeAttachContract() {
+  return {
+    onboardingFlowStatus: "pending",
+    deviceAuthorizationStatus: "pending",
+    authorizedDeviceCount: 0,
+    authorizationPolicyRef: null,
+    runtimeAttachStatus: "not_attached",
+    attachedRuntimeCount: 0,
+    attachAgentCount: 0,
+    attachRef: null,
+    hostedEntryChainStatus: "pending",
+    hostedEntryRef: null,
+    updatedAt: null,
+    updatedBy: null
   };
 }
 
@@ -2760,6 +2782,9 @@ export class ServerCoordinator {
     const machines = this.listRuntimeMachines();
     const agents = this.listRuntimeAgents();
     const worktreeClaims = this.listRuntimeWorktreeClaims();
+    const deployRuntimeContract = this.runtimeDeployRuntime ?? createEmptyRuntimeDeployRuntimeContract();
+    const deviceAuthorizationRuntimeAttach =
+      deployRuntimeContract.deviceAuthorizationRuntimeAttach ?? createEmptyRuntimeDeviceAuthorizationRuntimeAttachContract();
     const pairedStates = new Set(["paired", "ready", "active"]);
     const onlineAgents = agents.filter((agent) => agent.liveness === "online").length;
     const offlineAgents = agents.filter((agent) => agent.liveness === "offline").length;
@@ -2787,7 +2812,7 @@ export class ServerCoordinator {
             ? "degraded"
             : "pairing";
     return {
-      contractVersion: "v1.stage5c",
+      contractVersion: "v1.stage6a",
       mode: "single_human_multi_agent",
       truthFamily: ["/v1/runtime/*"],
       livenessTimeoutMs: this.runtimeLivenessMs,
@@ -2815,6 +2840,37 @@ export class ServerCoordinator {
         onlineMachineCount: onlineMachines,
         offlineMachineCount: offlineMachines,
         runtimeIds: Array.from(new Set(machines.map((item) => item.runtimeId).filter((item) => item)))
+      },
+      deviceAuthorizationRuntimeAttach: {
+        onboardingFlowStatus: deviceAuthorizationRuntimeAttach.onboardingFlowStatus,
+        deviceAuthorizationStatus: deviceAuthorizationRuntimeAttach.deviceAuthorizationStatus,
+        authorizedDeviceCount: deviceAuthorizationRuntimeAttach.authorizedDeviceCount,
+        authorizationPolicyRef: deviceAuthorizationRuntimeAttach.authorizationPolicyRef,
+        runtimeAttachStatus: deviceAuthorizationRuntimeAttach.runtimeAttachStatus,
+        attachedRuntimeCount: deviceAuthorizationRuntimeAttach.attachedRuntimeCount,
+        attachAgentCount: deviceAuthorizationRuntimeAttach.attachAgentCount,
+        attachRef: deviceAuthorizationRuntimeAttach.attachRef,
+        hostedEntryChainStatus: deviceAuthorizationRuntimeAttach.hostedEntryChainStatus,
+        hostedEntryRef: deviceAuthorizationRuntimeAttach.hostedEntryRef,
+        updatedAt: deviceAuthorizationRuntimeAttach.updatedAt,
+        updatedBy: deviceAuthorizationRuntimeAttach.updatedBy,
+        writeAnchors: {
+          deployRuntimeUpsert: "/v1/runtime/deploy-runtime",
+          runtimeAgentPairing: "/v1/runtime/agents/:agentId/pairing",
+          runtimeAgentHeartbeat: "/v1/runtime/agents/:agentId/heartbeat"
+        },
+        readAnchors: {
+          deployRuntime: "/v1/runtime/deploy-runtime",
+          registry: "/v1/runtime/registry",
+          agents: "/v1/runtime/agents",
+          machines: "/v1/runtime/machines"
+        },
+        timelineAnchor: {
+          runtimeConfig: "/runtime/config",
+          runtimeSmoke: "/runtime/smoke",
+          runtimeRegistry: "/v1/runtime/registry",
+          runtimeAgents: "/v1/runtime/agents"
+        }
       },
       writeAnchors: {
         machineUpsert: "/v1/runtime/machines/:machineId",
@@ -2898,19 +2954,22 @@ export class ServerCoordinator {
   getRuntimeDeployRuntimeContract() {
     const contract = this.runtimeDeployRuntime ?? createEmptyRuntimeDeployRuntimeContract();
     return deepClone({
-      contractVersion: "v1.stage5c",
+      contractVersion: "v1.stage6a",
       ownerOperatorId: contract.ownerOperatorId ?? null,
       hostedAccess: contract.hostedAccess,
       deployment: contract.deployment,
       environment: contract.environment,
       healthReadiness: contract.healthReadiness,
       releaseRecoveryUpgradeHandoff: contract.releaseRecoveryUpgradeHandoff,
+      deviceAuthorizationRuntimeAttach:
+        contract.deviceAuthorizationRuntimeAttach ?? createEmptyRuntimeDeviceAuthorizationRuntimeAttachContract(),
       machineFleet: contract.machineFleet,
       writeAnchors: {
         deployRuntimeUpsert: "/v1/runtime/deploy-runtime",
         runtimeRecoveryAction: "/v1/runtime/agents/:agentId/recovery-actions",
         runtimeMachineUpsert: "/v1/runtime/machines/:machineId",
-        runtimeAgentPairing: "/v1/runtime/agents/:agentId/pairing"
+        runtimeAgentPairing: "/v1/runtime/agents/:agentId/pairing",
+        runtimeAgentHeartbeat: "/v1/runtime/agents/:agentId/heartbeat"
       },
       auditAnchor: this.buildRuntimeDeployRuntimeAuditAnchor(),
       timelineAnchor: {
@@ -2920,6 +2979,7 @@ export class ServerCoordinator {
         runtimeMachines: "/v1/runtime/machines",
         runtimeAgents: "/v1/runtime/agents",
         runtimeAgentPairing: "/v1/runtime/agents/:agentId/pairing",
+        runtimeAgentHeartbeat: "/v1/runtime/agents/:agentId/heartbeat",
         runtimeRegistry: "/v1/runtime/registry",
         runtimeRecoveryActions: "/v1/runtime/recovery-actions"
       },
@@ -2944,6 +3004,8 @@ export class ServerCoordinator {
       "health_readiness",
       "releaseRecoveryUpgradeHandoff",
       "release_recovery_upgrade_handoff",
+      "deviceAuthorizationRuntimeAttach",
+      "device_authorization_runtime_attach",
       "machineFleet",
       "machine_fleet",
       "policySnapshot",
@@ -2962,6 +3024,8 @@ export class ServerCoordinator {
     const environmentInput = input.environment;
     const healthReadinessInput = input.healthReadiness ?? input.health_readiness;
     const handoffInput = input.releaseRecoveryUpgradeHandoff ?? input.release_recovery_upgrade_handoff;
+    const deviceAuthorizationRuntimeAttachInput =
+      input.deviceAuthorizationRuntimeAttach ?? input.device_authorization_runtime_attach;
     const machineFleetInput = input.machineFleet ?? input.machine_fleet;
 
     assertOrThrow(
@@ -2970,9 +3034,10 @@ export class ServerCoordinator {
         environmentInput !== undefined ||
         healthReadinessInput !== undefined ||
         handoffInput !== undefined ||
+        deviceAuthorizationRuntimeAttachInput !== undefined ||
         machineFleetInput !== undefined,
       "invalid_runtime_deploy_runtime",
-      "runtime deploy-runtime payload must include hosted_access/deployment/environment/health_readiness/release_recovery_upgrade_handoff/machine_fleet"
+      "runtime deploy-runtime payload must include hosted_access/deployment/environment/health_readiness/release_recovery_upgrade_handoff/device_authorization_runtime_attach/machine_fleet"
     );
 
     const operatorId = normalizeOptionalScopeId(input.operatorId ?? input.operator_id);
@@ -3299,6 +3364,130 @@ export class ServerCoordinator {
       updatedSections.push("release_recovery_upgrade_handoff");
     }
 
+    if (deviceAuthorizationRuntimeAttachInput !== undefined) {
+      assertOrThrow(
+        deviceAuthorizationRuntimeAttachInput &&
+          typeof deviceAuthorizationRuntimeAttachInput === "object" &&
+          !Array.isArray(deviceAuthorizationRuntimeAttachInput),
+        "invalid_runtime_device_authorization_runtime_attach",
+        "device_authorization_runtime_attach payload must be object"
+      );
+      const allowedDeviceAttachKeys = new Set([
+        "onboardingFlowStatus",
+        "onboarding_flow_status",
+        "deviceAuthorizationStatus",
+        "device_authorization_status",
+        "authorizedDeviceCount",
+        "authorized_device_count",
+        "authorizationPolicyRef",
+        "authorization_policy_ref",
+        "runtimeAttachStatus",
+        "runtime_attach_status",
+        "attachedRuntimeCount",
+        "attached_runtime_count",
+        "attachAgentCount",
+        "attach_agent_count",
+        "attachRef",
+        "attach_ref",
+        "hostedEntryChainStatus",
+        "hosted_entry_chain_status",
+        "hostedEntryRef",
+        "hosted_entry_ref"
+      ]);
+      for (const key of Object.keys(deviceAuthorizationRuntimeAttachInput)) {
+        assertOrThrow(
+          allowedDeviceAttachKeys.has(key),
+          "invalid_runtime_device_authorization_runtime_attach_field",
+          `unsupported device_authorization_runtime_attach field: ${key}`
+        );
+      }
+      const existingDeviceAuthorizationRuntimeAttach =
+        contract.deviceAuthorizationRuntimeAttach ?? createEmptyRuntimeDeviceAuthorizationRuntimeAttachContract();
+      const onboardingFlowStatus =
+        normalizeOptionalScopeId(
+          pick(deviceAuthorizationRuntimeAttachInput, "onboardingFlowStatus", "onboarding_flow_status")
+        ) ?? existingDeviceAuthorizationRuntimeAttach.onboardingFlowStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_ONBOARDING_FLOW_STATUSES.has(onboardingFlowStatus),
+        "invalid_runtime_onboarding_flow_status",
+        "device_authorization_runtime_attach.onboarding_flow_status is invalid"
+      );
+      const deviceAuthorizationStatus =
+        normalizeOptionalScopeId(
+          pick(deviceAuthorizationRuntimeAttachInput, "deviceAuthorizationStatus", "device_authorization_status")
+        ) ?? existingDeviceAuthorizationRuntimeAttach.deviceAuthorizationStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_DEVICE_AUTHORIZATION_STATUSES.has(deviceAuthorizationStatus),
+        "invalid_runtime_device_authorization_status",
+        "device_authorization_runtime_attach.device_authorization_status is invalid"
+      );
+      const runtimeAttachStatus =
+        normalizeOptionalScopeId(pick(deviceAuthorizationRuntimeAttachInput, "runtimeAttachStatus", "runtime_attach_status")) ??
+        existingDeviceAuthorizationRuntimeAttach.runtimeAttachStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_RUNTIME_ATTACH_STATUSES.has(runtimeAttachStatus),
+        "invalid_runtime_runtime_attach_status",
+        "device_authorization_runtime_attach.runtime_attach_status is invalid"
+      );
+      const hostedEntryChainStatus =
+        normalizeOptionalScopeId(
+          pick(deviceAuthorizationRuntimeAttachInput, "hostedEntryChainStatus", "hosted_entry_chain_status")
+        ) ?? existingDeviceAuthorizationRuntimeAttach.hostedEntryChainStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_HOSTED_ENTRY_CHAIN_STATUSES.has(hostedEntryChainStatus),
+        "invalid_runtime_hosted_entry_chain_status",
+        "device_authorization_runtime_attach.hosted_entry_chain_status is invalid"
+      );
+      const parseCount = (value, fallbackValue, code, label) => {
+        if (value === undefined) {
+          return fallbackValue;
+        }
+        const numeric = Number(value);
+        assertOrThrow(Number.isInteger(numeric) && numeric >= 0, code, `${label} must be integer >= 0`);
+        return numeric;
+      };
+      const authorizedDeviceCount = parseCount(
+        pick(deviceAuthorizationRuntimeAttachInput, "authorizedDeviceCount", "authorized_device_count"),
+        existingDeviceAuthorizationRuntimeAttach.authorizedDeviceCount ?? 0,
+        "invalid_runtime_authorized_device_count",
+        "device_authorization_runtime_attach.authorized_device_count"
+      );
+      const attachedRuntimeCount = parseCount(
+        pick(deviceAuthorizationRuntimeAttachInput, "attachedRuntimeCount", "attached_runtime_count"),
+        existingDeviceAuthorizationRuntimeAttach.attachedRuntimeCount ?? 0,
+        "invalid_runtime_attached_runtime_count",
+        "device_authorization_runtime_attach.attached_runtime_count"
+      );
+      const attachAgentCount = parseCount(
+        pick(deviceAuthorizationRuntimeAttachInput, "attachAgentCount", "attach_agent_count"),
+        existingDeviceAuthorizationRuntimeAttach.attachAgentCount ?? 0,
+        "invalid_runtime_attach_agent_count",
+        "device_authorization_runtime_attach.attach_agent_count"
+      );
+      contract.deviceAuthorizationRuntimeAttach = {
+        onboardingFlowStatus,
+        deviceAuthorizationStatus,
+        authorizedDeviceCount,
+        authorizationPolicyRef:
+          normalizeOptionalScopeId(
+            pick(deviceAuthorizationRuntimeAttachInput, "authorizationPolicyRef", "authorization_policy_ref")
+          ) ?? existingDeviceAuthorizationRuntimeAttach.authorizationPolicyRef,
+        runtimeAttachStatus,
+        attachedRuntimeCount,
+        attachAgentCount,
+        attachRef:
+          normalizeOptionalScopeId(pick(deviceAuthorizationRuntimeAttachInput, "attachRef", "attach_ref")) ??
+          existingDeviceAuthorizationRuntimeAttach.attachRef,
+        hostedEntryChainStatus,
+        hostedEntryRef:
+          normalizeOptionalScopeId(pick(deviceAuthorizationRuntimeAttachInput, "hostedEntryRef", "hosted_entry_ref")) ??
+          existingDeviceAuthorizationRuntimeAttach.hostedEntryRef,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("device_authorization_runtime_attach");
+    }
+
     if (machineFleetInput !== undefined) {
       assertOrThrow(
         machineFleetInput && typeof machineFleetInput === "object" && !Array.isArray(machineFleetInput),
@@ -3413,6 +3602,13 @@ export class ServerCoordinator {
         health_status: contract.healthReadiness.healthStatus,
         readiness_status: contract.healthReadiness.readinessStatus,
         handoff_status: contract.releaseRecoveryUpgradeHandoff.status,
+        onboarding_flow_status: contract.deviceAuthorizationRuntimeAttach?.onboardingFlowStatus ?? null,
+        device_authorization_status: contract.deviceAuthorizationRuntimeAttach?.deviceAuthorizationStatus ?? null,
+        runtime_attach_status: contract.deviceAuthorizationRuntimeAttach?.runtimeAttachStatus ?? null,
+        hosted_entry_chain_status: contract.deviceAuthorizationRuntimeAttach?.hostedEntryChainStatus ?? null,
+        authorized_device_count: contract.deviceAuthorizationRuntimeAttach?.authorizedDeviceCount ?? null,
+        attached_runtime_count: contract.deviceAuthorizationRuntimeAttach?.attachedRuntimeCount ?? null,
+        attach_agent_count: contract.deviceAuthorizationRuntimeAttach?.attachAgentCount ?? null,
         machine_fleet_pairing_mode: contract.machineFleet?.pairingMode ?? null,
         machine_fleet_pairing_status: contract.machineFleet?.pairingStatus ?? null,
         machine_fleet_health_status: contract.machineFleet?.healthStatus ?? null,

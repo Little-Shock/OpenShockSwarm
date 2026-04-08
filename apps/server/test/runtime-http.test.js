@@ -5558,7 +5558,7 @@ test("v1 stage5c hosted deploy-runtime contract keeps deployment and handoff tru
       path: "/v1/runtime/deploy-runtime"
     });
     assert.equal(defaultContract.statusCode, 200);
-    assert.equal(defaultContract.body.deploy_runtime.contract_version, "v1.stage5c");
+    assert.equal(defaultContract.body.deploy_runtime.contract_version, "v1.stage6a");
     assert.equal(defaultContract.body.deploy_runtime.write_anchors.deploy_runtime_upsert, "/v1/runtime/deploy-runtime");
     assert.equal(defaultContract.body.deploy_runtime.timeline_anchor.runtime_smoke, "/runtime/smoke");
     assert.equal(defaultContract.body.deploy_runtime.timeline_anchor.health, "/health");
@@ -5720,7 +5720,7 @@ test("v1 stage5c runtime lifecycle contract keeps machine fleet health/readiness
       }
     });
     assert.equal(upsert.statusCode, 200);
-    assert.equal(upsert.body.deploy_runtime.contract_version, "v1.stage5c");
+    assert.equal(upsert.body.deploy_runtime.contract_version, "v1.stage6a");
     assert.equal(upsert.body.deploy_runtime.machine_fleet.fleet_id, "fleet_stage5c_prod");
     assert.equal(upsert.body.deploy_runtime.machine_fleet.pairing_mode, "remote_daemon_pairing");
     assert.equal(upsert.body.deploy_runtime.machine_fleet.pairing_status, "ready");
@@ -5820,7 +5820,9 @@ test("v1 stage5c runtime lifecycle contract keeps machine fleet health/readiness
     const payload = JSON.stringify({
       deployRuntime: readback.body.deploy_runtime
     });
-    assert.equal(payload.includes("\"stage6\""), false);
+    assert.equal(payload.includes("stage6a"), true);
+    assert.equal(payload.includes("\"stage6b\""), false);
+    assert.equal(payload.includes("\"stage6c\""), false);
     assert.equal(payload.includes("\"shell_local_runtime_shadow\""), false);
   });
 });
@@ -5880,7 +5882,7 @@ test("v1 stage5c runtime pairing/registry contract keeps remote pairing and mach
       path: "/v1/runtime/registry"
     });
     assert.equal(registry.statusCode, 200);
-    assert.equal(registry.body.contract_version, "v1.stage5c");
+    assert.equal(registry.body.contract_version, "v1.stage6a");
     assert.equal(registry.body.truth_family.includes("/v1/runtime/*"), true);
     assert.equal(registry.body.write_anchors.agent_pairing, "/v1/runtime/agents/:agentId/pairing");
     assert.equal(registry.body.read_anchors.registry, "/v1/runtime/registry");
@@ -5962,8 +5964,215 @@ test("v1 stage5c runtime pairing/registry contract keeps remote pairing and mach
       pairing: pairAgent.body,
       shellCompatibility: shellCompatibility.body
     });
-    assert.equal(payload.includes("\"stage6\""), false);
+    assert.equal(payload.includes("stage6a"), true);
+    assert.equal(payload.includes("\"stage6b\""), false);
+    assert.equal(payload.includes("\"stage6c\""), false);
     assert.equal(payload.includes("\"stage4_reopen\""), false);
+  });
+});
+
+test("v1 stage6a device authorization/runtime attach contract keeps hosted attach chain under /v1/runtime truth family", async () => {
+  const operatorId = "human_operator_stage6a_attach";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const machine = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/machines/machine_stage6a_01",
+      body: {
+        runtime_id: "runtime_stage6a_01",
+        status: "online",
+        capabilities: ["node", "git"]
+      }
+    });
+    assert.equal(machine.statusCode, 200);
+
+    const upsertAgent = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/agents/agent_stage6a_alpha",
+      body: {
+        machine_id: "machine_stage6a_01",
+        status: "idle",
+        operator_id: operatorId,
+        channel_id: "channel_stage6a_attach"
+      }
+    });
+    assert.equal(upsertAgent.statusCode, 200);
+
+    const defaultContract = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/runtime/deploy-runtime"
+    });
+    assert.equal(defaultContract.statusCode, 200);
+    assert.equal(defaultContract.body.deploy_runtime.contract_version, "v1.stage6a");
+    assert.equal(
+      defaultContract.body.deploy_runtime.device_authorization_runtime_attach.device_authorization_status,
+      "pending"
+    );
+    assert.equal(
+      defaultContract.body.deploy_runtime.device_authorization_runtime_attach.runtime_attach_status,
+      "not_attached"
+    );
+
+    const upsertContract = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        device_authorization_runtime_attach: {
+          onboarding_flow_status: "ready",
+          device_authorization_status: "authorized",
+          authorized_device_count: 2,
+          authorization_policy_ref: "policy/device/stage6a",
+          runtime_attach_status: "attached",
+          attached_runtime_count: 1,
+          attach_agent_count: 1,
+          attach_ref: "/v1/runtime/agents/agent_stage6a_alpha/pairing",
+          hosted_entry_chain_status: "ready",
+          hosted_entry_ref: "/v1/runtime/deploy-runtime"
+        }
+      }
+    });
+    assert.equal(upsertContract.statusCode, 200);
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.onboarding_flow_status,
+      "ready"
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.device_authorization_status,
+      "authorized"
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.authorized_device_count,
+      2
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.runtime_attach_status,
+      "attached"
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.attached_runtime_count,
+      1
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.attach_agent_count,
+      1
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.write_anchors.runtime_agent_pairing,
+      "/v1/runtime/agents/:agentId/pairing"
+    );
+    assert.equal(
+      upsertContract.body.deploy_runtime.device_authorization_runtime_attach.write_anchors.runtime_agent_heartbeat,
+      "/v1/runtime/agents/:agentId/heartbeat"
+    );
+
+    const registry = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/runtime/registry"
+    });
+    assert.equal(registry.statusCode, 200);
+    assert.equal(registry.body.contract_version, "v1.stage6a");
+    assert.equal(
+      registry.body.device_authorization_runtime_attach.device_authorization_status,
+      "authorized"
+    );
+    assert.equal(registry.body.device_authorization_runtime_attach.runtime_attach_status, "attached");
+    assert.equal(registry.body.device_authorization_runtime_attach.authorized_device_count, 2);
+    assert.equal(registry.body.device_authorization_runtime_attach.attached_runtime_count, 1);
+    assert.equal(
+      registry.body.device_authorization_runtime_attach.read_anchors.deploy_runtime,
+      "/v1/runtime/deploy-runtime"
+    );
+    assert.equal(
+      registry.body.device_authorization_runtime_attach.timeline_anchor.runtime_registry,
+      "/v1/runtime/registry"
+    );
+
+    const invalidDeviceAttachField = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        device_authorization_runtime_attach: {
+          unknown_field: true
+        }
+      }
+    });
+    assert.equal(invalidDeviceAttachField.statusCode, 400);
+    assert.equal(
+      invalidDeviceAttachField.body.error.code,
+      "invalid_runtime_device_authorization_runtime_attach_field"
+    );
+
+    const invalidDeviceAuthorizationStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        device_authorization_runtime_attach: {
+          device_authorization_status: "trusted"
+        }
+      }
+    });
+    assert.equal(invalidDeviceAuthorizationStatus.statusCode, 400);
+    assert.equal(invalidDeviceAuthorizationStatus.body.error.code, "invalid_runtime_device_authorization_status");
+
+    const invalidRuntimeAttachStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        device_authorization_runtime_attach: {
+          runtime_attach_status: "fleet_attached"
+        }
+      }
+    });
+    assert.equal(invalidRuntimeAttachStatus.statusCode, 400);
+    assert.equal(invalidRuntimeAttachStatus.body.error.code, "invalid_runtime_runtime_attach_status");
+
+    const invalidHostedEntryChainStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        device_authorization_runtime_attach: {
+          hosted_entry_chain_status: "green"
+        }
+      }
+    });
+    assert.equal(invalidHostedEntryChainStatus.statusCode, 400);
+    assert.equal(invalidHostedEntryChainStatus.body.error.code, "invalid_runtime_hosted_entry_chain_status");
+
+    const invalidAuthorizedDeviceCount = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        device_authorization_runtime_attach: {
+          authorized_device_count: -1
+        }
+      }
+    });
+    assert.equal(invalidAuthorizedDeviceCount.statusCode, 400);
+    assert.equal(invalidAuthorizedDeviceCount.body.error.code, "invalid_runtime_authorized_device_count");
+
+    const payload = JSON.stringify({
+      deployRuntime: upsertContract.body.deploy_runtime,
+      registry: registry.body
+    });
+    assert.equal(payload.includes("stage6a"), true);
+    assert.equal(payload.includes("\"stage6b\""), false);
+    assert.equal(payload.includes("\"stage6c\""), false);
   });
 });
 

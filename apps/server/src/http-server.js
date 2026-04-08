@@ -944,7 +944,7 @@ function serializeRuntimeDeployRuntimeContract(input = {}) {
       : null;
   return {
     projection: "runtime_deploy_runtime_contract",
-    contract_version: input.contractVersion ?? "v1.stage5c",
+    contract_version: input.contractVersion ?? "v1.stage6a",
     owner_operator_id: input.ownerOperatorId ?? null,
     hosted_access: {
       hosted_entry_url: input.hostedAccess?.hostedEntryUrl ?? null,
@@ -1000,13 +1000,39 @@ function serializeRuntimeDeployRuntimeContract(input = {}) {
       updated_at: input.releaseRecoveryUpgradeHandoff?.updatedAt ?? null,
       updated_by: input.releaseRecoveryUpgradeHandoff?.updatedBy ?? null
     },
+    device_authorization_runtime_attach: {
+      onboarding_flow_status: input.deviceAuthorizationRuntimeAttach?.onboardingFlowStatus ?? "pending",
+      device_authorization_status: input.deviceAuthorizationRuntimeAttach?.deviceAuthorizationStatus ?? "pending",
+      authorized_device_count: input.deviceAuthorizationRuntimeAttach?.authorizedDeviceCount ?? 0,
+      authorization_policy_ref: input.deviceAuthorizationRuntimeAttach?.authorizationPolicyRef ?? null,
+      runtime_attach_status: input.deviceAuthorizationRuntimeAttach?.runtimeAttachStatus ?? "not_attached",
+      attached_runtime_count: input.deviceAuthorizationRuntimeAttach?.attachedRuntimeCount ?? 0,
+      attach_agent_count: input.deviceAuthorizationRuntimeAttach?.attachAgentCount ?? 0,
+      attach_ref: input.deviceAuthorizationRuntimeAttach?.attachRef ?? null,
+      hosted_entry_chain_status: input.deviceAuthorizationRuntimeAttach?.hostedEntryChainStatus ?? "pending",
+      hosted_entry_ref: input.deviceAuthorizationRuntimeAttach?.hostedEntryRef ?? null,
+      updated_at: input.deviceAuthorizationRuntimeAttach?.updatedAt ?? null,
+      updated_by: input.deviceAuthorizationRuntimeAttach?.updatedBy ?? null,
+      write_anchors: {
+        deploy_runtime_upsert: input.writeAnchors?.deployRuntimeUpsert ?? "/v1/runtime/deploy-runtime",
+        runtime_agent_pairing: input.writeAnchors?.runtimeAgentPairing ?? "/v1/runtime/agents/:agentId/pairing",
+        runtime_agent_heartbeat: input.writeAnchors?.runtimeAgentHeartbeat ?? "/v1/runtime/agents/:agentId/heartbeat"
+      },
+      read_anchors: {
+        deploy_runtime: "/v1/runtime/deploy-runtime",
+        runtime_registry: "/v1/runtime/registry",
+        runtime_agents: "/v1/runtime/agents",
+        runtime_machines: "/v1/runtime/machines"
+      }
+    },
     ...(machineFleet ? { machine_fleet: machineFleet } : {}),
     write_anchors: {
       deploy_runtime_upsert: input.writeAnchors?.deployRuntimeUpsert ?? "/v1/runtime/deploy-runtime",
       runtime_recovery_action:
         input.writeAnchors?.runtimeRecoveryAction ?? "/v1/runtime/agents/:agentId/recovery-actions",
       runtime_machine_upsert: input.writeAnchors?.runtimeMachineUpsert ?? "/v1/runtime/machines/:machineId",
-      runtime_agent_pairing: input.writeAnchors?.runtimeAgentPairing ?? "/v1/runtime/agents/:agentId/pairing"
+      runtime_agent_pairing: input.writeAnchors?.runtimeAgentPairing ?? "/v1/runtime/agents/:agentId/pairing",
+      runtime_agent_heartbeat: input.writeAnchors?.runtimeAgentHeartbeat ?? "/v1/runtime/agents/:agentId/heartbeat"
     },
     audit_anchor: {
       trail: input.auditAnchor?.trail ?? "/v1/runtime/deploy-runtime",
@@ -1028,6 +1054,7 @@ function serializeRuntimeDeployRuntimeContract(input = {}) {
       runtime_machines: input.timelineAnchor?.runtimeMachines ?? "/v1/runtime/machines",
       runtime_agents: input.timelineAnchor?.runtimeAgents ?? "/v1/runtime/agents",
       runtime_agent_pairing: input.timelineAnchor?.runtimeAgentPairing ?? "/v1/runtime/agents/:agentId/pairing",
+      runtime_agent_heartbeat: input.timelineAnchor?.runtimeAgentHeartbeat ?? "/v1/runtime/agents/:agentId/heartbeat",
       runtime_registry: input.timelineAnchor?.runtimeRegistry ?? "/v1/runtime/registry",
       runtime_recovery_actions: input.timelineAnchor?.runtimeRecoveryActions ?? "/v1/runtime/recovery-actions"
     },
@@ -5882,6 +5909,51 @@ export function createHttpServer(coordinator, options = {}) {
             online_machine_count: registry.machineFleet?.onlineMachineCount ?? 0,
             offline_machine_count: registry.machineFleet?.offlineMachineCount ?? 0,
             runtime_ids: deepClone(registry.machineFleet?.runtimeIds ?? [])
+          },
+          device_authorization_runtime_attach: {
+            onboarding_flow_status: registry.deviceAuthorizationRuntimeAttach?.onboardingFlowStatus ?? "pending",
+            device_authorization_status: registry.deviceAuthorizationRuntimeAttach?.deviceAuthorizationStatus ?? "pending",
+            authorized_device_count: registry.deviceAuthorizationRuntimeAttach?.authorizedDeviceCount ?? 0,
+            authorization_policy_ref: registry.deviceAuthorizationRuntimeAttach?.authorizationPolicyRef ?? null,
+            runtime_attach_status: registry.deviceAuthorizationRuntimeAttach?.runtimeAttachStatus ?? "not_attached",
+            attached_runtime_count: registry.deviceAuthorizationRuntimeAttach?.attachedRuntimeCount ?? 0,
+            attach_agent_count: registry.deviceAuthorizationRuntimeAttach?.attachAgentCount ?? 0,
+            attach_ref: registry.deviceAuthorizationRuntimeAttach?.attachRef ?? null,
+            hosted_entry_chain_status: registry.deviceAuthorizationRuntimeAttach?.hostedEntryChainStatus ?? "pending",
+            hosted_entry_ref: registry.deviceAuthorizationRuntimeAttach?.hostedEntryRef ?? null,
+            updated_at: registry.deviceAuthorizationRuntimeAttach?.updatedAt ?? null,
+            updated_by: registry.deviceAuthorizationRuntimeAttach?.updatedBy ?? null,
+            write_anchors: {
+              deploy_runtime_upsert:
+                registry.deviceAuthorizationRuntimeAttach?.writeAnchors?.deployRuntimeUpsert ??
+                "/v1/runtime/deploy-runtime",
+              runtime_agent_pairing:
+                registry.deviceAuthorizationRuntimeAttach?.writeAnchors?.runtimeAgentPairing ??
+                "/v1/runtime/agents/:agentId/pairing",
+              runtime_agent_heartbeat:
+                registry.deviceAuthorizationRuntimeAttach?.writeAnchors?.runtimeAgentHeartbeat ??
+                "/v1/runtime/agents/:agentId/heartbeat"
+            },
+            read_anchors: {
+              deploy_runtime:
+                registry.deviceAuthorizationRuntimeAttach?.readAnchors?.deployRuntime ?? "/v1/runtime/deploy-runtime",
+              runtime_registry:
+                registry.deviceAuthorizationRuntimeAttach?.readAnchors?.registry ?? "/v1/runtime/registry",
+              runtime_agents:
+                registry.deviceAuthorizationRuntimeAttach?.readAnchors?.agents ?? "/v1/runtime/agents",
+              runtime_machines:
+                registry.deviceAuthorizationRuntimeAttach?.readAnchors?.machines ?? "/v1/runtime/machines"
+            },
+            timeline_anchor: {
+              runtime_config:
+                registry.deviceAuthorizationRuntimeAttach?.timelineAnchor?.runtimeConfig ?? "/runtime/config",
+              runtime_smoke:
+                registry.deviceAuthorizationRuntimeAttach?.timelineAnchor?.runtimeSmoke ?? "/runtime/smoke",
+              runtime_registry:
+                registry.deviceAuthorizationRuntimeAttach?.timelineAnchor?.runtimeRegistry ?? "/v1/runtime/registry",
+              runtime_agents:
+                registry.deviceAuthorizationRuntimeAttach?.timelineAnchor?.runtimeAgents ?? "/v1/runtime/agents"
+            }
           },
           write_anchors: {
             machine_upsert: registry.writeAnchors?.machineUpsert ?? "/v1/runtime/machines/:machineId",
