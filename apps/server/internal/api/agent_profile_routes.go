@@ -23,7 +23,9 @@ type AgentProfileUpdateRequest struct {
 	Prompt                string   `json:"prompt"`
 	OperatingInstructions string   `json:"operatingInstructions"`
 	ProviderPreference    string   `json:"providerPreference"`
+	ModelPreference       string   `json:"modelPreference"`
 	RecallPolicy          string   `json:"recallPolicy"`
+	RuntimePreference     string   `json:"runtimePreference"`
 	MemorySpaces          []string `json:"memorySpaces"`
 }
 
@@ -60,7 +62,9 @@ func (s *Server) handleAgentRoutes(w http.ResponseWriter, r *http.Request) {
 			Prompt:                req.Prompt,
 			OperatingInstructions: req.OperatingInstructions,
 			ProviderPreference:    req.ProviderPreference,
+			ModelPreference:       req.ModelPreference,
 			RecallPolicy:          req.RecallPolicy,
+			RuntimePreference:     req.RuntimePreference,
 			MemorySpaces:          req.MemorySpaces,
 			UpdatedBy:             currentAuthActor(snapshot.Auth.Session),
 		})
@@ -87,9 +91,14 @@ func writeAgentProfileError(w http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrAgentAvatarRequired),
 		errors.Is(err, store.ErrAgentPromptRequired),
 		errors.Is(err, store.ErrAgentProviderPreferenceRequired),
+		errors.Is(err, store.ErrAgentModelPreferenceRequired),
+		errors.Is(err, store.ErrAgentRuntimePreferenceRequired),
 		errors.Is(err, store.ErrAgentRecallPolicyInvalid),
 		errors.Is(err, store.ErrAgentMemoryBindingRequired),
-		errors.Is(err, store.ErrAgentMemorySpaceInvalid):
+		errors.Is(err, store.ErrAgentMemorySpaceInvalid),
+		errors.Is(err, store.ErrAgentRuntimePreferenceInvalid),
+		errors.Is(err, store.ErrAgentProviderPreferenceInvalid),
+		errors.Is(err, store.ErrAgentModelPreferenceInvalid):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

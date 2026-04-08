@@ -21,7 +21,6 @@ import { RunControlSurface } from "@/components/run-control-surface";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import {
-  type AgentStatus,
   type Issue,
   type Room,
   type Run,
@@ -340,17 +339,6 @@ export function LiveRoomsPageContent() {
   );
 }
 
-function agentStateLabel(state: AgentStatus["state"]) {
-  switch (state) {
-    case "running":
-      return "执行中";
-    case "blocked":
-      return "阻塞";
-    default:
-      return "待命";
-  }
-}
-
 export function LiveAgentsPageContent() {
   const { state, loading, error } = usePhaseZeroState();
   const agents = loading || error ? [] : state.agents;
@@ -486,10 +474,10 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
         <DetailRail
           label="绑定关系"
           items={[
-            { label: "Provider", value: agent.provider },
+            { label: "Provider", value: agent.providerPreference },
+            { label: "Model", value: agent.modelPreference },
             { label: "Runtime", value: agent.runtimePreference },
             { label: "状态语气", value: agent.mood },
-            { label: "运行状态", value: agentStateLabel(agent.state) },
           ]}
         />
       }

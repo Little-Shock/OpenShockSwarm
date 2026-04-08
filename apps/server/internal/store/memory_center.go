@@ -565,11 +565,13 @@ func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, ite
 	if agent != nil {
 		lines = append(lines,
 			fmt.Sprintf(
-				"Agent `%s` profile => role:`%s` / avatar:`%s` / provider:`%s` / recall:`%s` / binding:`%s`.",
+				"Agent `%s` profile => role:`%s` / avatar:`%s` / provider:`%s` / model:`%s` / runtime:`%s` / recall:`%s` / binding:`%s`.",
 				defaultString(strings.TrimSpace(agent.Name), "unknown"),
 				defaultString(strings.TrimSpace(agent.Role), "unassigned"),
 				defaultString(strings.TrimSpace(agent.Avatar), "unset"),
 				defaultString(strings.TrimSpace(agent.ProviderPreference), defaultString(strings.TrimSpace(agent.Provider), "unset")),
+				defaultString(strings.TrimSpace(agent.ModelPreference), "unset"),
+				defaultString(strings.TrimSpace(agent.RuntimePreference), "unset"),
 				defaultString(strings.TrimSpace(agent.RecallPolicy), "unset"),
 				strings.Join(agent.MemorySpaces, ", "),
 			),

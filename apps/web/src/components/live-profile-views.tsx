@@ -143,9 +143,9 @@ function toTestID(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
-function ProfileMetric({ label, value }: { label: string; value: string }) {
+function ProfileMetric({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
-    <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+    <div data-testid={testId} className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">{label}</p>
       <p className="mt-1.5 font-display text-[18px] font-semibold leading-5">{value}</p>
     </div>
@@ -301,6 +301,92 @@ function runtimeCapabilityList(runtimes: RuntimeRegistryRecord[]) {
   );
 }
 
+function matchesRuntimePreference(runtime: RuntimeRegistryRecord, value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && (runtime.id === trimmed || runtime.machine === trimmed);
+}
+
+function findRuntimeRecordByPreference(runtimes: RuntimeRegistryRecord[], value: string) {
+  return runtimes.find((runtime) => matchesRuntimePreference(runtime, value)) ?? null;
+}
+
+function runtimeOptionLabel(runtime: RuntimeRegistryRecord) {
+  const cliLabel = runtime.detectedCli.join(" + ") || "CLI 未返回";
+  return `${runtime.machine} · ${runtime.shell || "shell 未返回"} · ${cliLabel}`;
+}
+
+function runtimeProviderLabel(provider: RuntimeRegistryRecord["providers"][number]) {
+  return provider.label || provider.id;
+}
+
+function matchesProviderPreference(
+  provider: RuntimeRegistryRecord["providers"][number],
+  value: string
+) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && (provider.id === trimmed || runtimeProviderLabel(provider) === trimmed);
+}
+
+function providerModelList(provider: RuntimeRegistryRecord["providers"][number] | null | undefined) {
+  return provider?.models ?? [];
+}
+
+function catalogIncludesModel(models: string[], value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && models.some((model) => model.toLowerCase() === trimmed.toLowerCase());
+}
+
+function RuntimeProviderInventory({
+  runtime,
+  testPrefix,
+}: {
+  runtime: RuntimeRegistryRecord;
+  testPrefix: string;
+}) {
+  return (
+    <div className="grid gap-2 md:grid-cols-2">
+      {runtime.providers.map((provider) => (
+        <div
+          key={`${runtime.id}-${provider.id}`}
+          data-testid={`${testPrefix}-provider-${provider.id}`}
+          className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3"
+        >
+          <p className="font-display text-[18px] font-semibold">{runtimeProviderLabel(provider)}</p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+            {provider.mode} · {provider.transport}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {providerModelList(provider).length > 0 ? (
+              providerModelList(provider).map((model) => (
+                <span
+                  key={`${provider.id}-${model}`}
+                  className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px]"
+                >
+                  {model}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full border border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px]">
+                no models reported
+              </span>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {provider.capabilities.map((capability) => (
+              <span
+                key={`${provider.id}-${capability}`}
+                className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]"
+              >
+                {capability}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AgentProfileSurface({
   state,
   agent,
@@ -312,17 +398,10 @@ function AgentProfileSurface({
   const { center, loading: centerLoading, error: centerError, refresh: refreshMemoryCenter } = useLiveMemoryCenter();
   const recentRuns = state.runs.filter((run) => agent.recentRunIds.includes(run.id));
   const recentRooms = state.rooms.filter((room) => recentRuns.some((run) => run.roomId === room.id));
-  const runtimeRecords = state.runtimes.filter(
-    (runtime) => runtime.machine === agent.runtimePreference || runtime.id === agent.runtimePreference
-  );
+  const runtimeRecords = state.runtimes.filter((runtime) => matchesRuntimePreference(runtime, agent.runtimePreference));
   const activeSessions = state.sessions.filter((session) => recentRuns.some((run) => run.id === session.activeRunId));
   const relatedHumans = state.auth.members.filter((member) => recentRuns.some((run) => run.owner === member.name));
   const capabilityTruth = runtimeCapabilityList(runtimeRecords);
-  const providerOptions = uniqueStrings([
-    agent.provider,
-    agent.providerPreference,
-    ...runtimeRecords.flatMap((runtime) => runtime.providers.map((provider) => provider.label)),
-  ]);
   const sessionItems = activeSessions.map((session) => {
     const linkedRun = state.runs.find((run) => run.id === session.activeRunId);
     return {
@@ -340,11 +419,39 @@ function AgentProfileSurface({
   const [promptDraft, setPromptDraft] = useState(agent.prompt);
   const [instructionsDraft, setInstructionsDraft] = useState(agent.operatingInstructions);
   const [providerPreferenceDraft, setProviderPreferenceDraft] = useState(agent.providerPreference);
+  const [modelPreferenceDraft, setModelPreferenceDraft] = useState(agent.modelPreference);
   const [recallPolicyDraft, setRecallPolicyDraft] = useState(agent.recallPolicy);
+  const [runtimePreferenceDraft, setRuntimePreferenceDraft] = useState(agent.runtimePreference);
   const [memorySpacesDraft, setMemorySpacesDraft] = useState<string[]>(agent.memorySpaces);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const runtimeOptions = state.runtimes.map((runtime) => ({
+    value: runtime.id,
+    label: runtimeOptionLabel(runtime),
+  }));
+  const selectedRuntimeRecord = findRuntimeRecordByPreference(state.runtimes, runtimePreferenceDraft);
+  const selectedRuntimeProviders = selectedRuntimeRecord?.providers ?? [];
+  const selectedRuntimeFirstProviderLabel = selectedRuntimeProviders[0]
+    ? runtimeProviderLabel(selectedRuntimeProviders[0])
+    : "";
+  const selectedProviderRecord =
+    selectedRuntimeProviders.find((provider) => matchesProviderPreference(provider, providerPreferenceDraft)) ?? null;
+  const selectedProviderCatalog = providerModelList(selectedProviderRecord);
+  const providerOptions = uniqueStrings([
+    agent.providerPreference,
+    ...selectedRuntimeProviders.map((provider) => runtimeProviderLabel(provider)),
+  ]);
+  const modelOptions = uniqueStrings([
+    agent.modelPreference,
+    ...selectedProviderCatalog,
+  ]);
+  const alternateProviderCatalog = uniqueStrings(
+    selectedRuntimeProviders
+      .filter((provider) => provider.id !== selectedProviderRecord?.id)
+      .flatMap((provider) => providerModelList(provider))
+  );
+  const modelCatalogListId = `profile-editor-model-catalog-${agent.id}`;
 
   useEffect(() => {
     setRoleDraft(agent.role);
@@ -352,22 +459,55 @@ function AgentProfileSurface({
     setPromptDraft(agent.prompt);
     setInstructionsDraft(agent.operatingInstructions);
     setProviderPreferenceDraft(agent.providerPreference);
+    setModelPreferenceDraft(agent.modelPreference);
     setRecallPolicyDraft(agent.recallPolicy);
+    setRuntimePreferenceDraft(agent.runtimePreference);
     setMemorySpacesDraft(agent.memorySpaces);
   }, [
     agent.avatar,
     agent.id,
     agent.memorySpaces,
+    agent.modelPreference,
     agent.operatingInstructions,
     agent.prompt,
     agent.providerPreference,
     agent.recallPolicy,
     agent.role,
+    agent.runtimePreference,
   ]);
 
   useEffect(() => {
     void refreshMemoryCenter().catch(() => {});
   }, [refreshMemoryCenter]);
+
+  useEffect(() => {
+    if (!selectedRuntimeRecord && runtimeOptions.length > 0) {
+      setRuntimePreferenceDraft(runtimeOptions[0]?.value ?? "");
+    }
+  }, [runtimeOptions, selectedRuntimeRecord]);
+
+  useEffect(() => {
+    if (!selectedRuntimeFirstProviderLabel || selectedProviderRecord) {
+      return;
+    }
+    setProviderPreferenceDraft(selectedRuntimeFirstProviderLabel);
+  }, [selectedProviderRecord, selectedRuntimeFirstProviderLabel]);
+
+  useEffect(() => {
+    if (selectedProviderCatalog.length === 0) {
+      return;
+    }
+    if (modelPreferenceDraft.trim() === "") {
+      setModelPreferenceDraft(selectedProviderCatalog[0] ?? "");
+      return;
+    }
+    if (catalogIncludesModel(selectedProviderCatalog, modelPreferenceDraft)) {
+      return;
+    }
+    if (catalogIncludesModel(alternateProviderCatalog, modelPreferenceDraft)) {
+      setModelPreferenceDraft(selectedProviderCatalog[0] ?? "");
+    }
+  }, [alternateProviderCatalog, modelPreferenceDraft, selectedProviderCatalog]);
 
   function toggleMemorySpace(value: string) {
     setMemorySpacesDraft((current) =>
@@ -388,7 +528,9 @@ function AgentProfileSurface({
         prompt: promptDraft,
         operatingInstructions: instructionsDraft,
         providerPreference: providerPreferenceDraft,
+        modelPreference: modelPreferenceDraft,
         recallPolicy: recallPolicyDraft,
+        runtimePreference: runtimePreferenceDraft,
         memorySpaces: memorySpacesDraft,
       });
       await refreshMemoryCenter();
@@ -407,7 +549,7 @@ function AgentProfileSurface({
       title={agent.name}
       description={agent.description}
       contextTitle="Profile Presence"
-      contextDescription="Agent profile 现在不只是只读面：同页可编辑 role / avatar / prompt / provider preference / memory binding，并直接回读 next-run preview 与审计差异。"
+      contextDescription="Agent profile 现在把 role / prompt / memory binding 和 runtime affinity contract 放在同一页：provider、model、runtime 直接对齐 machine provider truth 与 model catalog suggestion，不再长第二套 shadow state。"
       contextBody={
         <DetailRail
           label="Agent Truth"
@@ -415,8 +557,9 @@ function AgentProfileSurface({
             { label: "Presence", value: agentStateLabel(agent.state) },
             { label: "Role", value: agent.role },
             { label: "Provider Pref", value: agent.providerPreference },
+            { label: "Model", value: valueOrPlaceholder(agent.modelPreference, "未设置") },
+            { label: "Runtime", value: agent.runtimePreference },
             { label: "Recall", value: agent.recallPolicy },
-            { label: "Recent Runs", value: `${recentRuns.length} 条` },
           ]}
         />
       }
@@ -441,7 +584,7 @@ function AgentProfileSurface({
             <div className="mt-4 grid gap-2 md:grid-cols-4">
               <ProfileMetric label="lane" value={agent.lane} />
               <ProfileMetric label="provider" value={agent.providerPreference} />
-              <ProfileMetric label="recall" value={agent.recallPolicy} />
+              <ProfileMetric label="model" value={valueOrPlaceholder(agent.modelPreference, "未设置")} />
               <ProfileMetric label="runtime" value={agent.runtimePreference} />
             </div>
             <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
@@ -461,6 +604,34 @@ function AgentProfileSurface({
           </Panel>
 
           <Panel tone="paper">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Bound Runtime Catalog</p>
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                {selectedRuntimeRecord ? selectedRuntimeRecord.id : "未命中 runtime"}
+              </span>
+            </div>
+            {selectedRuntimeRecord ? (
+              <div className="mt-3 space-y-3" data-testid="profile-binding-runtime-card">
+                <div className="grid gap-2 md:grid-cols-4">
+                  <ProfileMetric label="machine" value={selectedRuntimeRecord.machine} />
+                  <ProfileMetric label="shell" value={valueOrPlaceholder(selectedRuntimeRecord.shell, "未返回")} testId="profile-binding-shell" />
+                  <ProfileMetric label="daemon" value={valueOrPlaceholder(selectedRuntimeRecord.daemonUrl, "未配对")} />
+                  <ProfileMetric
+                    label="cli"
+                    value={valueOrPlaceholder(selectedRuntimeRecord.detectedCli.join(" + "), "未返回")}
+                    testId="profile-binding-cli"
+                  />
+                </div>
+                <RuntimeProviderInventory runtime={selectedRuntimeRecord} testPrefix="profile-binding" />
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
+                当前 draft 还没命中任何 runtime provider/catalog；先从已注册 machine truth 里选一条 runtime affinity。
+              </p>
+            )}
+          </Panel>
+
+          <Panel tone="paper">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Memory Spaces</p>
             <CapabilityChips items={agent.memorySpaces} />
           </Panel>
@@ -473,7 +644,7 @@ function AgentProfileSurface({
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这层把 `role / avatar / prompt / provider preference / memory binding / recall policy` 直接写回 live server truth；保存后同页会回读 next-run preview。
+              这层把 `role / avatar / prompt / provider / model / runtime affinity / memory binding / recall policy` 直接写回 live server truth；保存后同页会回读 next-run preview。
             </p>
             {!canEdit ? (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
@@ -526,7 +697,23 @@ function AgentProfileSurface({
                 />
               </label>
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Runtime Affinity</span>
+                  <select
+                    data-testid="profile-editor-runtime-preference"
+                    className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
+                    value={runtimePreferenceDraft}
+                    onChange={(event) => setRuntimePreferenceDraft(event.target.value)}
+                    disabled={!canEdit || saving}
+                  >
+                    {runtimeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="block">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Provider Preference</span>
                   <select
@@ -543,6 +730,29 @@ function AgentProfileSurface({
                     ))}
                   </select>
                 </label>
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Default Model</span>
+                  <input
+                    data-testid="profile-editor-model-preference"
+                    list={modelCatalogListId}
+                    className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
+                    value={modelPreferenceDraft}
+                    onChange={(event) => setModelPreferenceDraft(event.target.value)}
+                    disabled={!canEdit || saving}
+                    autoComplete="off"
+                  />
+                  <datalist id={modelCatalogListId}>
+                    {modelOptions.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
+                  <p className="mt-1.5 text-xs leading-5 text-[color:rgba(24,20,14,0.64)]">
+                    runtime 侧这份 model catalog 只提供 suggestion；可直接输入本机配置里的 model id，不按静态目录做硬拒绝。
+                  </p>
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Recall Policy</span>
                   <select
@@ -724,15 +934,16 @@ function MachineProfileSurface({
       view="profiles"
       eyebrow="Machine Profile"
       title={machine.name}
-      description="Machine profile 现在直接把 heartbeat、runtime capability、最近 runs 和已绑定 agents 收成一张前台 surface。"
+      description="Machine profile 现在把 heartbeat、shell、daemon、provider-model catalog、最近 runs 和已绑定 agents 收成一张前台 surface。"
       contextTitle="Machine Presence"
-      contextDescription="这页只读 live machine/runtime truth，不去偷做后续 capability binding editor。"
+      contextDescription="这页只读 live machine/runtime truth；binding editor 继续留在 Agent profile，但 `/setup`、`/agents` 和这里都读同一份 provider/model catalog。"
       contextBody={
         <DetailRail
           label="Machine Truth"
           items={[
             { label: "Presence", value: machineStateLabel(machine.state) },
             { label: "CLI", value: machine.cli },
+            { label: "Shell", value: valueOrPlaceholder(machine.shell, "未返回") },
             { label: "Heartbeat", value: machine.lastHeartbeat },
             { label: "Leases", value: `${leases.length} 条` },
           ]}
@@ -753,8 +964,9 @@ function MachineProfileSurface({
                 {machineStateLabel(machine.state)}
               </span>
             </div>
-            <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="mt-4 grid gap-2 md:grid-cols-4">
               <ProfileMetric label="cli" value={machine.cli} />
+              <ProfileMetric label="shell" value={valueOrPlaceholder(machine.shell, "未返回")} testId="machine-profile-shell" />
               <ProfileMetric label="os" value={machine.os} />
               <ProfileMetric label="last heartbeat" value={machine.lastHeartbeat} />
             </div>
@@ -763,14 +975,32 @@ function MachineProfileSurface({
           <Panel tone="white">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Runtime Capability</p>
             <CapabilityChips items={capabilityTruth} />
-            <div className="mt-4 grid gap-2 md:grid-cols-2">
+            <div className="mt-4 space-y-3">
               {runtimeRecords.map((runtime) => (
-                <div key={runtime.id} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                  <p className="font-display text-[18px] font-semibold">{runtime.id}</p>
-                  <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                    {runtime.pairingState} · {runtime.state}
-                  </p>
-                  <p className="mt-2 text-sm leading-6">{runtime.daemonUrl}</p>
+                <div
+                  key={runtime.id}
+                  data-testid={`machine-runtime-card-${toTestID(runtime.id)}`}
+                  className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-display text-[18px] font-semibold">{runtime.id}</p>
+                      <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                        {runtime.pairingState} · {runtime.state}
+                      </p>
+                    </div>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                      {valueOrPlaceholder(runtime.shell, machine.shell || "shell 未返回")}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <ProfileMetric label="daemon" value={valueOrPlaceholder(runtime.daemonUrl, "未配对")} />
+                    <ProfileMetric label="cli" value={valueOrPlaceholder(runtime.detectedCli.join(" + "), machine.cli)} />
+                    <ProfileMetric label="models" value={`${runtime.providers.reduce((sum, provider) => sum + providerModelList(provider).length, 0)} 个`} />
+                  </div>
+                  <div className="mt-3">
+                    <RuntimeProviderInventory runtime={runtime} testPrefix={`machine-runtime-${toTestID(runtime.id)}`} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -802,7 +1032,7 @@ function MachineProfileSurface({
               id: agent.id,
               label: agent.name,
               href: buildProfileHref("agent", agent.id),
-              meta: `${agent.state} · ${agent.provider} · ${agent.lane}`,
+              meta: `${agent.state} · ${agent.providerPreference} / ${valueOrPlaceholder(agent.modelPreference, "未设置")} · ${agent.lane}`,
             }))}
           />
         </div>

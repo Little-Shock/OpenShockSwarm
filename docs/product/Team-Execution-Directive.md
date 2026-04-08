@@ -37,7 +37,7 @@
 ### Agent / Onboarding / Governance 守则
 
 - Agent profile 最小字段必须包括：`role`、`avatar`、`prompt`、`provider/model preference`、`memory binding`、`machine affinity`。
-- Machine profile 最小字段必须包括：`hostname`、`OS`、`shell`、已发现 CLI/provider/model inventory、pairing 状态。
+- Machine profile 最小字段必须包括：`hostname`、`OS`、`shell`、已发现 CLI/provider truth 与 provider model catalog、pairing 状态。
 - onboarding 至少提供 `开发团队`、`研究团队`、`空白自定义` 三种模板，且必须可恢复继续。
 - 多 Agent 正式交接必须走 `Agent Mailbox / handoff ledger`，不能只藏在 prompt 或口头约定里。
 - 任何配置票都必须落到后端 durable truth，不接受只改前端 local state 的“假配置面”。
