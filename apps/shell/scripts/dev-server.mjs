@@ -1837,6 +1837,7 @@ function buildOperatorConsoleState({
   });
   normalizedWorkspaceGovernance.stage4a2 = buildStage4a2GovernanceProjection({
     channelContextContract: channelContract,
+    channelNotificationEndpointContract,
     channelAuditTrail,
     approvalHolds,
     topicNotifications,
@@ -1902,6 +1903,14 @@ function buildOperatorConsoleState({
     stage5c: normalizedWorkspaceGovernance.stage5c,
   });
   normalizedWorkspaceGovernance.stage6a_hosted_onboarding_access = normalizedWorkspaceGovernance.stage6a;
+  normalizedWorkspaceGovernance.stage6b = buildStage6bHostedNotificationRecoveryProjection({
+    scope,
+    workspaceGovernance: normalizedWorkspaceGovernance,
+    stage5b: normalizedWorkspaceGovernance.stage5b,
+    stage5c: normalizedWorkspaceGovernance.stage5c,
+    stage6a: normalizedWorkspaceGovernance.stage6a,
+  });
+  normalizedWorkspaceGovernance.stage6b_hosted_notification_recovery = normalizedWorkspaceGovernance.stage6b;
 
   const auditEntries = buildAuditEntries({
     channelAuditTrail,
@@ -1984,6 +1993,7 @@ function buildOperatorConsoleState({
 
 function buildStage4a2GovernanceProjection({
   channelContextContract,
+  channelNotificationEndpointContract,
   channelAuditTrail,
   approvalHolds,
   topicNotifications,
@@ -2022,6 +2032,26 @@ function buildStage4a2GovernanceProjection({
       context.notificationRouting,
       context.notification_rules,
       context.notificationRules,
+    ]),
+  );
+  const notificationAccessContract = normalizeStage6bNotificationAccessContract(
+    pickFirstDefinedValue([
+      channelNotificationEndpointContract?.notification_access_contract,
+      channelContextContract?.notification_endpoint?.notification_access_contract,
+      governance.notification_access_contract,
+      governance.notificationAccessContract,
+      context.notification_access_contract,
+      context.notificationAccessContract,
+    ]),
+  );
+  const agentMailboxRoutingContract = normalizeStage6bAgentMailboxRoutingContract(
+    pickFirstDefinedValue([
+      channelNotificationEndpointContract?.agent_mailbox_routing,
+      channelContextContract?.notification_endpoint?.agent_mailbox_routing,
+      governance.agent_mailbox_routing,
+      governance.agentMailboxRouting,
+      context.agent_mailbox_routing,
+      context.agentMailboxRouting,
     ]),
   );
   const sandboxProfile = normalizeStage4a2SandboxProfile(
@@ -2080,6 +2110,8 @@ function buildStage4a2GovernanceProjection({
     notification: {
       endpoints: notificationEndpoints,
       routing_rules: routingRules,
+      notification_access_contract: notificationAccessContract,
+      agent_mailbox_routing: agentMailboxRoutingContract,
       default_rule_matrix: STAGE4A2_NOTIFICATION_RULE_REFERENCE,
       recent_signal_summary: summarizeStage4a2NotificationSignals(topicNotifications),
       audit_anchor: auditSummary.notification,
@@ -3595,6 +3627,273 @@ function buildStage6aHostedOnboardingProjection({ scope, workspaceGovernance, st
   };
 }
 
+function buildStage6bHostedNotificationRecoveryProjection({ scope, workspaceGovernance, stage5b, stage5c, stage6a }) {
+  const stage4a2 =
+    workspaceGovernance?.stage4a2 && typeof workspaceGovernance.stage4a2 === "object" ? workspaceGovernance.stage4a2 : {};
+  const stage4a2Status = stage4a2.status && typeof stage4a2.status === "object" ? stage4a2.status : {};
+  const stage4a2Notification =
+    stage4a2.notification && typeof stage4a2.notification === "object" ? stage4a2.notification : {};
+  const stage4a2Approval = stage4a2.approval && typeof stage4a2.approval === "object" ? stage4a2.approval : {};
+  const notificationEndpoints = Array.isArray(stage4a2Notification.endpoints) ? stage4a2Notification.endpoints : [];
+  const routingRules = Array.isArray(stage4a2Notification.routing_rules) ? stage4a2Notification.routing_rules : [];
+  const recentSignals =
+    stage4a2Notification.recent_signal_summary && typeof stage4a2Notification.recent_signal_summary === "object"
+      ? stage4a2Notification.recent_signal_summary
+      : {};
+  const notificationAccessContract =
+    stage4a2Notification.notification_access_contract &&
+    typeof stage4a2Notification.notification_access_contract === "object"
+      ? stage4a2Notification.notification_access_contract
+      : {};
+  const notificationAccessStatus =
+    notificationAccessContract.status && typeof notificationAccessContract.status === "object"
+      ? notificationAccessContract.status
+      : {};
+  const notificationAccessEndpointStatus =
+    notificationAccessContract.endpoint_status && typeof notificationAccessContract.endpoint_status === "object"
+      ? notificationAccessContract.endpoint_status
+      : {};
+  const agentMailboxRoutingContract =
+    stage4a2Notification.agent_mailbox_routing && typeof stage4a2Notification.agent_mailbox_routing === "object"
+      ? stage4a2Notification.agent_mailbox_routing
+      : {};
+
+  const stage5bStatus = stage5b?.status && typeof stage5b.status === "object" ? stage5b.status : {};
+  const stage5bDefaultFlow = stage5b?.default_flow && typeof stage5b.default_flow === "object" ? stage5b.default_flow : {};
+  const stage5bUnifiedInbox =
+    stage5b?.unified_inbox && typeof stage5b.unified_inbox === "object" ? stage5b.unified_inbox : {};
+  const stage5bAttentionRouting =
+    stage5b?.attention_routing && typeof stage5b.attention_routing === "object" ? stage5b.attention_routing : {};
+
+  const stage5cReleaseRecoveryUpgradeHandoff =
+    stage5c?.release_recovery_upgrade_handoff && typeof stage5c.release_recovery_upgrade_handoff === "object"
+      ? stage5c.release_recovery_upgrade_handoff
+      : {};
+
+  const stage6aStatus = stage6a?.status && typeof stage6a.status === "object" ? stage6a.status : {};
+  const stage6aHostedOnboardingAccess =
+    stage6a?.hosted_onboarding_access && typeof stage6a.hosted_onboarding_access === "object"
+      ? stage6a.hosted_onboarding_access
+      : {};
+  const stage6aWorkbenchHandoff =
+    stage6a?.stage5_workbench_handoff && typeof stage6a.stage5_workbench_handoff === "object"
+      ? stage6a.stage5_workbench_handoff
+      : {};
+
+  const hostedEntryUrl =
+    normalizeText(stage6aHostedOnboardingAccess.hosted_entry_url) ||
+    normalizeText(stage6aWorkbenchHandoff.hosted_workbench_url) ||
+    null;
+  let hostedAccessStatus =
+    normalizeText(stage6aHostedOnboardingAccess.hosted_access_status) ||
+    normalizeText(stage6aStatus.hosted_onboarding_access_status);
+  if (!hostedAccessStatus) {
+    if (isNonLocalHttpUrl(hostedEntryUrl)) {
+      hostedAccessStatus = "ok";
+    } else if (hostedEntryUrl) {
+      hostedAccessStatus = "local_only";
+    } else {
+      hostedAccessStatus = "pending";
+    }
+  }
+
+  const contractStatusPresent =
+    normalizeText(notificationAccessStatus.notification_access_status) ||
+    normalizeText(notificationAccessStatus.invite_status) ||
+    normalizeText(notificationAccessStatus.verify_status) ||
+    normalizeText(notificationAccessStatus.reset_password_status);
+  const inboxEndpointEnabled =
+    isStage6bEndpointReadyByContract(notificationAccessEndpointStatus.inbox) ||
+    isStage6bEndpointEnabled(notificationEndpoints, "inbox");
+  const browserPushEndpointEnabled =
+    isStage6bEndpointReadyByContract(notificationAccessEndpointStatus.browser_push) ||
+    isStage6bEndpointReadyByContract(notificationAccessEndpointStatus.browserPush) ||
+    isStage6bEndpointEnabled(notificationEndpoints, "browser_push");
+  const emailEndpointEnabled =
+    isStage6bEndpointReadyByContract(notificationAccessEndpointStatus.email) ||
+    isStage6bEndpointEnabled(notificationEndpoints, "email");
+  const endpointReadyByChannel = {
+    inbox: inboxEndpointEnabled,
+    browser_push: browserPushEndpointEnabled,
+    email: emailEndpointEnabled,
+  };
+
+  const inviteVerifyResetPasswordReady = contractStatusPresent
+    ? normalizeText(notificationAccessStatus.notification_access_status) === "ready" &&
+      normalizeText(notificationAccessStatus.invite_status) === "ready" &&
+      normalizeText(notificationAccessStatus.verify_status) === "ready" &&
+      normalizeText(notificationAccessStatus.reset_password_status) === "ready"
+    : emailEndpointEnabled &&
+      hasStage6bRouteCoverage(routingRules, "email", ["invite", "verify", "reset_password"]);
+  const blockedEscalationChannels = normalizeStringArray(agentMailboxRoutingContract?.blocked_escalation?.channels);
+  const approvalRequiredChannels = normalizeStringArray(agentMailboxRoutingContract?.approval_required?.channels);
+  const prReadyChannels = normalizeStringArray(agentMailboxRoutingContract?.pr_ready?.channels);
+  const agentMailboxChannels = normalizeStringArray(agentMailboxRoutingContract?.agent_mailbox?.channels);
+  const agentMailboxContractPresent =
+    normalizeText(agentMailboxRoutingContract.contract_version) ||
+    blockedEscalationChannels.length > 0 ||
+    approvalRequiredChannels.length > 0 ||
+    prReadyChannels.length > 0 ||
+    agentMailboxChannels.length > 0;
+
+  const blockedEscalationReady = agentMailboxContractPresent
+    ? areStage6bRouteChannelsReady(blockedEscalationChannels, endpointReadyByChannel)
+    : inboxEndpointEnabled &&
+      browserPushEndpointEnabled &&
+      emailEndpointEnabled &&
+      hasStage6bRouteCoverage(routingRules, "inbox", ["blocked"]) &&
+      hasStage6bRouteCoverage(routingRules, "browser_push", ["blocked", "high_priority_escalation"]) &&
+      hasStage6bRouteCoverage(routingRules, "email", ["high_priority_escalation"]);
+  const approvalRequiredPrReadyReady = agentMailboxContractPresent
+    ? areStage6bRouteChannelsReady(approvalRequiredChannels, endpointReadyByChannel) &&
+      areStage6bRouteChannelsReady(prReadyChannels, endpointReadyByChannel)
+    : inboxEndpointEnabled &&
+      browserPushEndpointEnabled &&
+      hasStage6bRouteCoverage(routingRules, "inbox", ["approval_required", "pr_pending_review"]) &&
+      hasStage6bRouteCoverage(routingRules, "browser_push", ["approval_required", "pr_pending_review"]);
+
+  const stage5MailboxReady =
+    isHostedReadyStatus(normalizeText(stage5bStatus.unified_inbox_status)) &&
+    isHostedReadyStatus(normalizeText(stage5bStatus.attention_routing_status));
+  const agentMailboxRoutingReady = agentMailboxContractPresent
+    ? areStage6bRouteChannelsReady(agentMailboxChannels, endpointReadyByChannel) && stage5MailboxReady
+    : inboxEndpointEnabled && stage5MailboxReady;
+
+  const resolvedTopicId =
+    normalizeText(stage5bDefaultFlow.topic_id) || normalizeText(stage5bUnifiedInbox.topic_id) || null;
+  const resolvedChannelId =
+    normalizeText(stage5bDefaultFlow.channel_id) ||
+    normalizeText(stage6aWorkbenchHandoff.channel_id) ||
+    normalizeText(scope?.channelId) ||
+    null;
+  const resolvedThreadId =
+    normalizeText(stage5bDefaultFlow.thread_id) ||
+    normalizeText(stage6aWorkbenchHandoff.thread_id) ||
+    normalizeText(scope?.threadId) ||
+    null;
+  const resolvedTaskId =
+    normalizeText(stage5bDefaultFlow.task_id) ||
+    normalizeText(stage6aWorkbenchHandoff.task_id) ||
+    normalizeText(scope?.workitemId) ||
+    null;
+  const runTimelineAnchor =
+    normalizeText(stage4a2Approval?.contract?.anchors?.run_timeline) ||
+    normalizeText(stage5cReleaseRecoveryUpgradeHandoff?.timeline_anchor?.runtime_recovery_actions) ||
+    "/v1/topics/:topicId/run-history";
+  const prReentrySurface =
+    normalizeText(agentMailboxRoutingContract?.pr_ready?.mailbox_ref) || "/v1/topics/:topicId/pr-writeback";
+  const hostedRecoveryEntryUrl =
+    normalizeText(stage6aWorkbenchHandoff.hosted_workbench_url) || normalizeText(stage6aHostedOnboardingAccess.hosted_entry_url) || null;
+  const recoveryReentryReady =
+    resolvedChannelId &&
+    resolvedTopicId &&
+    resolvedThreadId &&
+    resolvedTaskId &&
+    runTimelineAnchor &&
+    prReentrySurface &&
+    isHostedReadyStatus(normalizeText(stage6aStatus.stage5_workbench_handoff_status));
+
+  const hostedNotificationRecoveryReady =
+    inviteVerifyResetPasswordReady &&
+    blockedEscalationReady &&
+    approvalRequiredPrReadyReady &&
+    agentMailboxRoutingReady &&
+    recoveryReentryReady;
+
+  const inviteVerifyResetPasswordStatus = resolveStage6bHostedStatus(inviteVerifyResetPasswordReady, hostedAccessStatus);
+  const blockedEscalationStatus = resolveStage6bHostedStatus(blockedEscalationReady, hostedAccessStatus);
+  const approvalRequiredPrReadyStatus = resolveStage6bHostedStatus(approvalRequiredPrReadyReady, hostedAccessStatus);
+  const agentMailboxRoutingStatus = resolveStage6bHostedStatus(agentMailboxRoutingReady, hostedAccessStatus);
+  const recoveryReentryStatus = resolveStage6bHostedStatus(recoveryReentryReady, hostedAccessStatus);
+  const hostedNotificationRecoveryStatus = resolveStage6bHostedStatus(hostedNotificationRecoveryReady, hostedAccessStatus);
+
+  const blockedSignalCount =
+    Number(recentSignals.blocked || 0) + Number(stage5bAttentionRouting.active_blockers || 0);
+  const approvalRequiredSignalCount =
+    Number(recentSignals.approval_required || 0) + Number(stage5bAttentionRouting.pending_approval_holds || 0);
+  const prPendingReviewSignalCount = Number(recentSignals.pr_pending_review || 0);
+
+  return {
+    status: {
+      hosted_notification_recovery_status: hostedNotificationRecoveryStatus,
+      invite_verify_reset_password_status: inviteVerifyResetPasswordStatus,
+      blocked_escalation_status: blockedEscalationStatus,
+      approval_required_pr_ready_status: approvalRequiredPrReadyStatus,
+      agent_mailbox_routing_status: agentMailboxRoutingStatus,
+      recovery_reentry_status: recoveryReentryStatus,
+    },
+    hosted_notification_recovery: {
+      status: hostedNotificationRecoveryStatus,
+      hosted_entry_url: hostedEntryUrl,
+      hosted_access_status: hostedAccessStatus,
+      source: "stage6b_truth_fan_in",
+      no_shadow_truth: true,
+      truth_family: ["/v1/channels/*", "/v1/topics/*", "/v1/inbox/*"],
+      read_surfaces: [
+        "/v1/channels/:channelId/context",
+        "/v1/topics/:topicId/notifications",
+        "/v1/inbox/:actorId?topic_id=:topicId",
+      ],
+    },
+    notification_delivery: {
+      status: inviteVerifyResetPasswordStatus,
+      inbox_endpoint_status: inboxEndpointEnabled ? "enabled" : "disabled",
+      browser_push_endpoint_status: browserPushEndpointEnabled ? "enabled" : "disabled",
+      email_endpoint_status: emailEndpointEnabled ? "enabled" : "disabled",
+      invite_verify_reset_password_ready: inviteVerifyResetPasswordReady,
+      notification_access_contract_status:
+        normalizeText(notificationAccessStatus.notification_access_status) || "pending",
+      notification_access_contract_version:
+        normalizeText(notificationAccessContract.contract_version) || null,
+      endpoint_count: notificationEndpoints.length,
+      routing_rules_status: normalizeText(stage4a2Status.routing_rules_status) || "pending",
+      routing_rule_count: routingRules.length,
+      endpoint_truth_surface: "/v1/channels/:channelId/context",
+      routing_truth_surface: "/v1/channels/:channelId/context",
+    },
+    recovery_routing: {
+      status: resolveStage6bHostedStatus(
+        blockedEscalationReady && approvalRequiredPrReadyReady && agentMailboxRoutingReady,
+        hostedAccessStatus,
+      ),
+      contract_version: normalizeText(agentMailboxRoutingContract.contract_version) || null,
+      blocked_escalation_status: blockedEscalationStatus,
+      approval_required_pr_ready_status: approvalRequiredPrReadyStatus,
+      agent_mailbox_routing_status: agentMailboxRoutingStatus,
+      blocked_escalation_mailbox_ref:
+        normalizeText(agentMailboxRoutingContract?.blocked_escalation?.mailbox_ref) || "/v1/inbox/:actorId?topic_id=:topicId",
+      approval_required_mailbox_ref:
+        normalizeText(agentMailboxRoutingContract?.approval_required?.mailbox_ref) || "/v1/inbox/:actorId?topic_id=:topicId",
+      pr_ready_mailbox_ref:
+        normalizeText(agentMailboxRoutingContract?.pr_ready?.mailbox_ref) || "/v1/topics/:topicId/prs",
+      agent_mailbox_ref:
+        normalizeText(agentMailboxRoutingContract?.agent_mailbox?.mailbox_ref) ||
+        "/v1/topics/:topicId/execution-inbox?actor_id=:actorId",
+      blocked_signal_count: blockedSignalCount,
+      approval_required_signal_count: approvalRequiredSignalCount,
+      pr_pending_review_signal_count: prPendingReviewSignalCount,
+      agent_mailbox_actor_id: normalizeText(stage5bUnifiedInbox.actor_id) || null,
+      agent_mailbox_pending_items: Number(stage5bUnifiedInbox.pending_items || 0),
+      attention_required_total: Number(stage5bAttentionRouting.attention_required_total || 0),
+      inbox_truth_surface: "/v1/inbox/:actorId?topic_id=:topicId",
+      topic_notification_truth_surface: "/v1/topics/:topicId/notifications",
+    },
+    hosted_reentry: {
+      status: recoveryReentryStatus,
+      hosted_recovery_url: hostedRecoveryEntryUrl,
+      channel_id: resolvedChannelId,
+      topic_id: resolvedTopicId,
+      thread_id: resolvedThreadId,
+      task_id: resolvedTaskId,
+      run_timeline_anchor: runTimelineAnchor,
+      pr_reentry_surface: prReentrySurface,
+      room_truth_surface: "/v1/channels/:channelId/context",
+      topic_truth_surface: "/v1/topics/:topicId",
+      source: "stage5_workbench_truth_projection",
+    },
+  };
+}
+
 function resolveStage5cHostedStatus(truthReady, hostedAccessStatus) {
   if (!truthReady) {
     return "pending";
@@ -3621,8 +3920,94 @@ function resolveStage6aHostedStatus(truthReady, hostedAccessStatus) {
   return "pending";
 }
 
+function resolveStage6bHostedStatus(truthReady, hostedAccessStatus) {
+  if (!truthReady) {
+    return "pending";
+  }
+  if (hostedAccessStatus === "ok") {
+    return "ok";
+  }
+  if (hostedAccessStatus === "local_only") {
+    return "local_only";
+  }
+  return "pending";
+}
+
 function isHostedReadyStatus(value) {
   return value === "ok" || value === "local_only";
+}
+
+function isStage6bEndpointReadyByContract(value) {
+  const normalized = normalizeText(value);
+  return (
+    normalized === "ready" ||
+    normalized === "enabled" ||
+    normalized === "ok" ||
+    normalized === "server_owned"
+  );
+}
+
+function isStage6bEndpointEnabled(endpoints, channel) {
+  if (!Array.isArray(endpoints) || endpoints.length === 0) {
+    return false;
+  }
+  const normalizedChannel = normalizeStage4a2ChannelName(channel);
+  if (!normalizedChannel) {
+    return false;
+  }
+  for (const endpoint of endpoints) {
+    const endpointChannel = normalizeStage4a2ChannelName(endpoint?.channel);
+    if (endpointChannel !== normalizedChannel) {
+      continue;
+    }
+    if (endpoint?.enabled === false) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+function hasStage6bRouteCoverage(routingRules, channel, requiredEvents) {
+  if (!Array.isArray(routingRules) || routingRules.length === 0) {
+    return false;
+  }
+  const normalizedChannel = normalizeStage4a2ChannelName(channel);
+  if (!normalizedChannel) {
+    return false;
+  }
+  const required = Array.isArray(requiredEvents)
+    ? requiredEvents.map((item) => normalizeText(item)).filter((item) => item.length > 0)
+    : [];
+  if (required.length === 0) {
+    return false;
+  }
+  const events = new Set();
+  for (const rule of routingRules) {
+    const ruleChannel = normalizeStage4a2ChannelName(rule?.channel);
+    if (ruleChannel !== normalizedChannel) {
+      continue;
+    }
+    if (rule?.enabled === false) {
+      continue;
+    }
+    const ruleEvents = normalizeStringArray(rule?.events || rule?.triggers || rule?.kinds);
+    for (const eventName of ruleEvents) {
+      events.add(eventName);
+    }
+  }
+  if (events.has("all_events")) {
+    return true;
+  }
+  return required.every((eventName) => events.has(eventName));
+}
+
+function areStage6bRouteChannelsReady(channels, endpointReadyByChannel) {
+  const normalizedChannels = Array.isArray(channels) ? channels.map((item) => normalizeStage4a2ChannelName(item)).filter(Boolean) : [];
+  if (normalizedChannels.length === 0) {
+    return false;
+  }
+  return normalizedChannels.every((channel) => endpointReadyByChannel[channel] === true);
 }
 
 function summarizeStage5bInboxItems(items) {
@@ -4092,6 +4477,86 @@ function normalizeStage4a2ApprovalContract(raw) {
       run_timeline: normalizeText(anchors.run_timeline || anchors.runTimeline) || null,
       channel_audit_trail: normalizeText(anchors.channel_audit_trail || anchors.channelAuditTrail) || null,
     },
+  };
+}
+
+function normalizeStage6bNotificationAccessContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const statusSource = raw.status && typeof raw.status === "object" ? raw.status : {};
+  const endpointStatusSource = raw.endpoint_status && typeof raw.endpoint_status === "object" ? raw.endpoint_status : {};
+  const readAnchors = raw.read_anchors && typeof raw.read_anchors === "object" ? raw.read_anchors : {};
+  return {
+    contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
+    status: {
+      notification_access_status:
+        normalizeText(statusSource.notification_access_status || statusSource.notificationAccessStatus) || null,
+      invite_status: normalizeText(statusSource.invite_status || statusSource.inviteStatus) || null,
+      verify_status: normalizeText(statusSource.verify_status || statusSource.verifyStatus) || null,
+      reset_password_status:
+        normalizeText(statusSource.reset_password_status || statusSource.resetPasswordStatus) || null,
+    },
+    endpoint_status: {
+      inbox: normalizeText(endpointStatusSource.inbox) || null,
+      browser_push: normalizeText(endpointStatusSource.browser_push || endpointStatusSource.browserPush) || null,
+      email: normalizeText(endpointStatusSource.email) || null,
+    },
+    read_anchors: {
+      channel_context: normalizeText(readAnchors.channel_context || readAnchors.channelContext) || null,
+      notification_endpoint: normalizeText(readAnchors.notification_endpoint || readAnchors.notificationEndpoint) || null,
+    },
+    write_anchor: normalizeText(raw.write_anchor || raw.writeAnchor) || null,
+    audit_anchor: raw.audit_anchor && typeof raw.audit_anchor === "object" ? raw.audit_anchor : null,
+  };
+}
+
+function normalizeStage6bAgentMailboxRoutingContract(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const blockedEscalation =
+    raw.blocked_escalation && typeof raw.blocked_escalation === "object" ? raw.blocked_escalation : {};
+  const approvalRequired =
+    raw.approval_required && typeof raw.approval_required === "object" ? raw.approval_required : {};
+  const prReady = raw.pr_ready && typeof raw.pr_ready === "object" ? raw.pr_ready : {};
+  const agentMailbox = raw.agent_mailbox && typeof raw.agent_mailbox === "object" ? raw.agent_mailbox : {};
+  const readAnchors = raw.read_anchors && typeof raw.read_anchors === "object" ? raw.read_anchors : {};
+  const writeAnchors = raw.write_anchors && typeof raw.write_anchors === "object" ? raw.write_anchors : {};
+  return {
+    contract_version: normalizeText(raw.contract_version || raw.contractVersion) || null,
+    truth_family: normalizeStringArray(raw.truth_family || raw.truthFamily),
+    blocked_escalation: {
+      channels: normalizeStringArray(blockedEscalation.channels),
+      mailbox_ref: normalizeText(blockedEscalation.mailbox_ref || blockedEscalation.mailboxRef) || null,
+    },
+    approval_required: {
+      channels: normalizeStringArray(approvalRequired.channels),
+      mailbox_ref: normalizeText(approvalRequired.mailbox_ref || approvalRequired.mailboxRef) || null,
+    },
+    pr_ready: {
+      channels: normalizeStringArray(prReady.channels),
+      mailbox_ref: normalizeText(prReady.mailbox_ref || prReady.mailboxRef) || null,
+    },
+    agent_mailbox: {
+      channels: normalizeStringArray(agentMailbox.channels),
+      mailbox_ref: normalizeText(agentMailbox.mailbox_ref || agentMailbox.mailboxRef) || null,
+    },
+    read_anchors: {
+      inbox: normalizeText(readAnchors.inbox) || null,
+      topic_notifications: normalizeText(readAnchors.topic_notifications || readAnchors.topicNotifications) || null,
+      topic_prs: normalizeText(readAnchors.topic_prs || readAnchors.topicPrs) || null,
+      execution_inbox: normalizeText(readAnchors.execution_inbox || readAnchors.executionInbox) || null,
+    },
+    write_anchors: {
+      notification_endpoint_upsert:
+        normalizeText(writeAnchors.notification_endpoint_upsert || writeAnchors.notificationEndpointUpsert) || null,
+      inbox_attention_routing:
+        normalizeText(writeAnchors.inbox_attention_routing || writeAnchors.inboxAttentionRouting) || null,
+      inbox_follow_ups: normalizeText(writeAnchors.inbox_follow_ups || writeAnchors.inboxFollowUps) || null,
+    },
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    updated_by: normalizeText(raw.updated_by || raw.updatedBy) || null,
   };
 }
 

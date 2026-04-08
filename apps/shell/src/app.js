@@ -533,6 +533,11 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
     (governance.stage6a_hosted_onboarding_access && typeof governance.stage6a_hosted_onboarding_access === "object"
       ? governance.stage6a_hosted_onboarding_access
       : null);
+  const stage6b =
+    (governance.stage6b && typeof governance.stage6b === "object" ? governance.stage6b : null) ||
+    (governance.stage6b_hosted_notification_recovery && typeof governance.stage6b_hosted_notification_recovery === "object"
+      ? governance.stage6b_hosted_notification_recovery
+      : null);
 
   const chainCard = queueCard({
     title: `Workspace ${workspaceId}`,
@@ -1094,6 +1099,57 @@ function renderWorkspaceGovernance(operatorConsole, payload) {
       status: normalizeText(stage6aStatus.stage5_workbench_handoff_status) === "ok" ? "active" : "pending",
     });
     dom.workspaceGovernanceList.append(handoffCard);
+  }
+
+  if (stage6b) {
+    const stage6bStatus = stage6b.status && typeof stage6b.status === "object" ? stage6b.status : {};
+    const hostedNotificationRecovery =
+      stage6b.hosted_notification_recovery && typeof stage6b.hosted_notification_recovery === "object"
+        ? stage6b.hosted_notification_recovery
+        : {};
+    const notificationDelivery =
+      stage6b.notification_delivery && typeof stage6b.notification_delivery === "object" ? stage6b.notification_delivery : {};
+    const recoveryRouting =
+      stage6b.recovery_routing && typeof stage6b.recovery_routing === "object" ? stage6b.recovery_routing : {};
+    const hostedReentry = stage6b.hosted_reentry && typeof stage6b.hosted_reentry === "object" ? stage6b.hosted_reentry : {};
+
+    const notificationCard = queueCard({
+      title: "Stage6B Hosted Notification Reachability",
+      subtitle:
+        `entry=${normalizeText(stage6bStatus.hosted_notification_recovery_status) || "pending"} · ` +
+        `invite/verify/reset=${normalizeText(stage6bStatus.invite_verify_reset_password_status) || "pending"}`,
+      note:
+        `${formatStage6bHostedNotificationRecovery(hostedNotificationRecovery)} · ` +
+        `${formatStage6bNotificationDelivery(notificationDelivery)}`,
+      status: normalizeText(stage6bStatus.hosted_notification_recovery_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(notificationCard);
+
+    const recoveryRoutingCard = queueCard({
+      title: "Stage6B Escalation / PR Ready / Agent Mailbox",
+      subtitle:
+        `blocked=${normalizeText(stage6bStatus.blocked_escalation_status) || "pending"} · ` +
+        `approval/pr=${normalizeText(stage6bStatus.approval_required_pr_ready_status) || "pending"} · ` +
+        `mailbox=${normalizeText(stage6bStatus.agent_mailbox_routing_status) || "pending"}`,
+      note: formatStage6bRecoveryRouting(recoveryRouting),
+      status:
+        normalizeText(stage6bStatus.blocked_escalation_status) === "ok" &&
+        normalizeText(stage6bStatus.approval_required_pr_ready_status) === "ok" &&
+        normalizeText(stage6bStatus.agent_mailbox_routing_status) === "ok"
+          ? "active"
+          : "pending",
+    });
+    dom.workspaceGovernanceList.append(recoveryRoutingCard);
+
+    const reentryCard = queueCard({
+      title: "Stage6B Hosted Recovery Re-entry",
+      subtitle:
+        `reentry=${normalizeText(stage6bStatus.recovery_reentry_status) || "pending"} · ` +
+        `no_shadow_truth=${hostedNotificationRecovery.no_shadow_truth === true ? "ok" : "pending"}`,
+      note: formatStage6bHostedReentry(hostedReentry),
+      status: normalizeText(stage6bStatus.recovery_reentry_status) === "ok" ? "active" : "pending",
+    });
+    dom.workspaceGovernanceList.append(reentryCard);
   }
 }
 
@@ -2171,6 +2227,64 @@ function formatStage6aStage5WorkbenchHandoff(raw) {
   return (
     `workbench=${hostedWorkbenchUrl} · topic=${topicId} · channel=${channelId} · ` +
     `thread=${threadId} · task=${taskId}`
+  );
+}
+
+function formatStage6bHostedNotificationRecovery(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted notification/recovery pending";
+  }
+  const entryUrl = normalizeText(raw.hosted_entry_url) || "n/a";
+  const hostedStatus = normalizeText(raw.hosted_access_status) || "pending";
+  const source = normalizeText(raw.source) || "stage6b_truth_fan_in";
+  return `entry=${entryUrl} · hosted=${hostedStatus} · source=${source}`;
+}
+
+function formatStage6bNotificationDelivery(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "notification delivery pending";
+  }
+  const inbox = normalizeText(raw.inbox_endpoint_status) || "disabled";
+  const browserPush = normalizeText(raw.browser_push_endpoint_status) || "disabled";
+  const email = normalizeText(raw.email_endpoint_status) || "disabled";
+  const rules = Number(raw.routing_rule_count || 0);
+  const endpoints = Number(raw.endpoint_count || 0);
+  return `inbox=${inbox} · browser_push=${browserPush} · email=${email} · endpoints=${endpoints} · routing_rules=${rules}`;
+}
+
+function formatStage6bRecoveryRouting(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "recovery routing pending";
+  }
+  const contractVersion = normalizeText(raw.contract_version) || "v1.stage6b";
+  const blocked = Number(raw.blocked_signal_count || 0);
+  const approval = Number(raw.approval_required_signal_count || 0);
+  const prReady = Number(raw.pr_pending_review_signal_count || 0);
+  const mailbox = normalizeText(raw.agent_mailbox_actor_id) || "n/a";
+  const pending = Number(raw.agent_mailbox_pending_items || 0);
+  const attention = Number(raw.attention_required_total || 0);
+  const prRef = normalizeText(raw.pr_ready_mailbox_ref) || "/v1/topics/:topicId/prs";
+  const mailboxRef = normalizeText(raw.agent_mailbox_ref) || "/v1/topics/:topicId/execution-inbox?actor_id=:actorId";
+  return (
+    `contract=${contractVersion} · blocked=${blocked} · approval_required=${approval} · pr_pending_review=${prReady} · ` +
+    `mailbox=${mailbox} pending=${pending} attention=${attention} · pr_ref=${prRef} · mailbox_ref=${mailboxRef}`
+  );
+}
+
+function formatStage6bHostedReentry(raw) {
+  if (!raw || typeof raw !== "object") {
+    return "hosted re-entry pending";
+  }
+  const recoveryUrl = normalizeText(raw.hosted_recovery_url) || "n/a";
+  const channelId = normalizeText(raw.channel_id) || "n/a";
+  const topicId = normalizeText(raw.topic_id) || "n/a";
+  const threadId = normalizeText(raw.thread_id) || "n/a";
+  const taskId = normalizeText(raw.task_id) || "n/a";
+  const runAnchor = normalizeText(raw.run_timeline_anchor) || "n/a";
+  const prSurface = normalizeText(raw.pr_reentry_surface) || "n/a";
+  return (
+    `recovery=${recoveryUrl} · room=${channelId}/${threadId}/${taskId} · topic=${topicId} · ` +
+    `run=${runAnchor} · pr=${prSurface}`
   );
 }
 
