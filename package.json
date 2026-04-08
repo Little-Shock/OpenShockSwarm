@@ -28,6 +28,7 @@
     "test:headed-notification-preference-delivery": "node ./scripts/headed-notification-preference-delivery.mjs",
     "test:headed-stop-resume-follow-thread": "node ./scripts/headed-stop-resume-follow-thread.mjs",
     "test:headed-multi-runtime-scheduler-failover": "node ./scripts/headed-multi-runtime-scheduler-failover.mjs",
+    "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",
     "test:headed-work-shell-smoke": "node ./scripts/headed-work-shell-smoke.mjs",
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
     "test:webhook-replay": "node ./scripts/github-webhook-replay.mjs",

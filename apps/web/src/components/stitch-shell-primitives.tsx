@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import type { QuickSearchEntry, QuickSearchEntryKind } from "@/lib/quick-search";
 import type { AgentStatus, Channel, MachineStatus, Room } from "@/lib/mock-data";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -21,39 +22,6 @@ function roomStatusTone(status: Room["topic"]["status"]) {
       return "bg-[#f0de97]";
     default:
       return "bg-white";
-  }
-}
-
-function machineStateTone(state: MachineStatus["state"]) {
-  switch (state) {
-    case "busy":
-      return "bg-[var(--shock-yellow)]";
-    case "online":
-      return "bg-[var(--shock-lime)]";
-    default:
-      return "bg-white";
-  }
-}
-
-function agentStateTone(state: AgentStatus["state"]) {
-  switch (state) {
-    case "running":
-      return "bg-[var(--shock-lime)]";
-    case "blocked":
-      return "bg-[var(--shock-pink)]";
-    default:
-      return "bg-white";
-  }
-}
-
-function agentStateLabel(state: AgentStatus["state"]) {
-  switch (state) {
-    case "running":
-      return "running";
-    case "blocked":
-      return "blocked";
-    default:
-      return "ready";
   }
 }
 
@@ -107,6 +75,60 @@ function InboxIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
+      <circle cx="9" cy="9" r="5.5" />
+      <path d="m13.5 13.5 3.5 3.5" />
+    </svg>
+  );
+}
+
+function kindLabel(kind: QuickSearchEntryKind) {
+  switch (kind) {
+    case "channel":
+      return "Channel";
+    case "room":
+      return "Room";
+    case "issue":
+      return "Issue";
+    case "run":
+      return "Run";
+    case "agent":
+      return "Agent";
+  }
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightText(text: string, query: string) {
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((term) => escapeRegex(term));
+
+  if (terms.length === 0) {
+    return text;
+  }
+
+  const matcher = new RegExp(`(${terms.join("|")})`, "ig");
+  const exactMatcher = new RegExp(`^(${terms.join("|")})$`, "i");
+  const parts = text.split(matcher).filter(Boolean);
+
+  return parts.map((part, index) =>
+    exactMatcher.test(part) ? (
+      <mark key={`${part}-${index}`} className="bg-[var(--shock-yellow)] px-0.5 text-[var(--shock-ink)]">
+        {part}
+      </mark>
+    ) : (
+      <span key={`${part}-${index}`}>{part}</span>
+    )
+  );
+}
+
 type StitchSidebarProps = {
   active: "channels" | "rooms" | "board" | "inbox" | null;
   mode?: "chat" | "work";
@@ -119,6 +141,7 @@ type StitchSidebarProps = {
   selectedChannelId?: string;
   selectedRoomId?: string;
   inboxCount?: number;
+  onOpenQuickSearch?: () => void;
 };
 
 function SidebarSection({
@@ -193,6 +216,7 @@ export function StitchSidebar({
   selectedChannelId,
   selectedRoomId,
   inboxCount,
+  onOpenQuickSearch,
 }: StitchSidebarProps) {
   const navChannels = channels ?? [];
   const roomList = rooms ?? [];
@@ -247,19 +271,21 @@ export function StitchSidebar({
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
         <div className="space-y-1">
-          <Link
-            href="/chat/all"
+          <button
+            type="button"
+            onClick={onOpenQuickSearch}
+            data-testid="quick-search-trigger-sidebar"
             className={cn(
-              "flex items-center gap-2 border-2 border-[var(--shock-ink)] px-2 py-2 text-sm shadow-[var(--shock-shadow-sm)]",
+              "flex w-full items-center gap-2 border-2 border-[var(--shock-ink)] px-2 py-2 text-left text-sm shadow-[var(--shock-shadow-sm)]",
               active === "channels"
                 ? "bg-[var(--shock-pink)] font-semibold text-white"
                 : "border-transparent bg-transparent hover:border-[var(--shock-ink)] hover:bg-white"
             )}
           >
-            <HashIcon />
+            <SearchIcon />
             <span className="flex-1">Quick Search</span>
             <span className="font-mono text-[10px]">Ctrl+K</span>
-          </Link>
+          </button>
         </div>
 
         <SidebarSection title="Channels" count={navChannels.length}>
@@ -388,8 +414,16 @@ type StitchTopBarProps = {
   eyebrow?: string;
   description?: string;
   currentHref?: string;
-  tabs?: string[];
+  tabs?: Array<
+    | string
+    | {
+        label: string;
+        href?: string;
+        testId?: string;
+      }
+  >;
   activeTab?: string;
+  onOpenQuickSearch?: () => void;
 };
 
 export function StitchTopBar({
@@ -400,6 +434,7 @@ export function StitchTopBar({
   currentHref,
   tabs,
   activeTab,
+  onOpenQuickSearch,
 }: StitchTopBarProps) {
   return (
     <header className="border-b-2 border-[var(--shock-ink)] bg-white">
@@ -416,7 +451,12 @@ export function StitchTopBar({
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2">
+        <button
+          type="button"
+          onClick={onOpenQuickSearch}
+          data-testid="quick-search-trigger-topbar"
+          className="flex items-center gap-2 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 text-left"
+        >
           <span className="flex h-7 w-7 items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] font-mono text-[10px] font-bold">
             K
           </span>
@@ -426,7 +466,10 @@ export function StitchTopBar({
             </p>
             <p className="truncate font-medium text-[12px]">{searchPlaceholder}</p>
           </div>
-        </div>
+          <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.48)]">
+            Ctrl+K
+          </span>
+        </button>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           {[
@@ -453,20 +496,193 @@ export function StitchTopBar({
       {tabs && tabs.length > 0 ? (
         <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4">
           <div className="flex flex-wrap gap-0">
-            {tabs.map((tab) => (
-              <span
-                key={tab}
-                className={cn(
-                  "border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]",
-                  tab === activeTab ? "bg-[var(--shock-yellow)] font-semibold" : "bg-white text-[color:rgba(24,20,14,0.62)]"
-                )}
-              >
-                {tab}
-              </span>
-            ))}
+            {tabs.map((tab) => {
+              const resolvedTab = typeof tab === "string" ? { label: tab } : tab;
+              const className = cn(
+                "border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]",
+                resolvedTab.label === activeTab
+                  ? "bg-[var(--shock-yellow)] font-semibold"
+                  : "bg-white text-[color:rgba(24,20,14,0.62)]"
+              );
+
+              if (resolvedTab.href) {
+                return (
+                  <Link
+                    key={resolvedTab.label}
+                    href={resolvedTab.href}
+                    data-testid={resolvedTab.testId}
+                    className={className}
+                  >
+                    {resolvedTab.label}
+                  </Link>
+                );
+              }
+
+              return (
+                <span key={resolvedTab.label} data-testid={resolvedTab.testId} className={className}>
+                  {resolvedTab.label}
+                </span>
+              );
+            })}
           </div>
         </div>
       ) : null}
     </header>
+  );
+}
+
+type QuickSearchSurfaceProps = {
+  open: boolean;
+  query: string;
+  results: QuickSearchEntry[];
+  onClose: () => void;
+  onQueryChange: (value: string) => void;
+  onSelect: (entry: QuickSearchEntry) => void;
+};
+
+export function QuickSearchSurface({
+  open,
+  query,
+  results,
+  onClose,
+  onQueryChange,
+  onSelect,
+}: QuickSearchSurfaceProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [open]);
+
+  if (!open) {
+    return null;
+  }
+
+  const resolvedActiveIndex = results.length === 0 ? 0 : Math.min(activeIndex, results.length - 1);
+
+  function handleQueryChange(value: string) {
+    setActiveIndex(0);
+    onQueryChange(value);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (results.length === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((current) => (current + 1) % results.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => (current - 1 + results.length) % results.length);
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onSelect(results[resolvedActiveIndex]);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[color:rgba(24,20,14,0.56)] px-4 py-8 md:px-8 md:py-12">
+      <button type="button" aria-label="Close quick search" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div
+        className="relative z-10 flex max-h-[min(720px,100%)] w-full max-w-4xl flex-col overflow-hidden border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] shadow-[var(--shock-shadow-lg)]"
+        data-testid="quick-search-dialog"
+      >
+        <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)]">
+              <SearchIcon />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">Quick Search</p>
+              <input
+                ref={inputRef}
+                data-testid="quick-search-input"
+                value={query}
+                onChange={(event) => handleQueryChange(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Search channel / room / issue / run / agent"
+                className="mt-1 w-full bg-transparent font-display text-[24px] font-bold leading-none outline-none placeholder:text-[color:rgba(24,20,14,0.36)]"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+            >
+              Esc
+            </button>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="min-h-0 overflow-y-auto bg-[#f7f0dc] p-3">
+            {results.length > 0 ? (
+              <div className="space-y-2">
+                {results.map((entry, index) => (
+                  <button
+                    key={`${entry.kind}-${entry.id}`}
+                    type="button"
+                    onClick={() => onSelect(entry)}
+                    data-testid={`quick-search-result-${entry.kind}-${entry.id}`}
+                    className={cn(
+                      "block w-full border-2 px-3 py-3 text-left shadow-[var(--shock-shadow-sm)]",
+                      index === resolvedActiveIndex ? "border-[var(--shock-ink)] bg-white" : "border-transparent bg-white/70 hover:border-[var(--shock-ink)] hover:bg-white"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
+                        {kindLabel(entry.kind)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold">{highlightText(entry.title, query)}</p>
+                        <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.72)]">{highlightText(entry.summary, query)}</p>
+                        <p className="mt-2 truncate font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
+                          {highlightText(entry.meta, query)}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-[var(--shock-ink)] bg-white px-4 py-5">
+                <p className="font-display text-[18px] font-bold">No matches yet</p>
+                <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
+                  试试输入 channel、room、issue、run 或 agent 关键字，直接跳到对应工作面。
+                </p>
+              </div>
+            )}
+          </div>
+
+          <aside className="border-t-2 border-[var(--shock-ink)] bg-white p-3 md:border-l-2 md:border-t-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Command Hints</p>
+            <div className="mt-3 space-y-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.74)]">
+              <p><span className="font-mono">↑ ↓</span> move</p>
+              <p><span className="font-mono">Enter</span> open target</p>
+              <p><span className="font-mono">Esc</span> close palette</p>
+              <p><span className="font-mono">Ctrl/Cmd + K</span> reopen from anywhere in shell</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
   );
 }

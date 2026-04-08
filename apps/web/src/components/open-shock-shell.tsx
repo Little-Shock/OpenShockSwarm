@@ -10,7 +10,9 @@ import {
   type PresenceState,
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { useQuickSearchController } from "@/lib/quick-search";
 import {
+  QuickSearchSurface,
   StitchSidebar,
   StitchTopBar,
   WorkspaceStatusStrip,
@@ -197,9 +199,19 @@ export function OpenShockShell({
   const stats = buildGlobalStats(resolvedState);
   const disconnected = loading || Boolean(error) || resolvedState.machines.every((machine) => machine.state === "offline");
   const inboxCount = resolvedState.inbox.length;
+  const quickSearch = useQuickSearchController(resolvedState);
 
   return (
     <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <QuickSearchSurface
+        key={quickSearch.sessionKey}
+        open={quickSearch.open}
+        query={quickSearch.query}
+        results={quickSearch.results}
+        onClose={quickSearch.onCloseQuickSearch}
+        onQueryChange={quickSearch.onQueryChange}
+        onSelect={quickSearch.onSelectQuickSearch}
+      />
       <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active={activeTab}
@@ -213,6 +225,7 @@ export function OpenShockShell({
           selectedChannelId={selectedChannelId}
           selectedRoomId={selectedRoomId}
           inboxCount={inboxCount}
+          onOpenQuickSearch={quickSearch.onOpenQuickSearch}
         />
 
         <section className="flex min-h-0 flex-col bg-[var(--shock-paper)]">
@@ -221,8 +234,9 @@ export function OpenShockShell({
             eyebrow={eyebrow}
             title={title}
             description={description}
-            searchPlaceholder="Search issue / run / agent / machine"
+            searchPlaceholder="Search channel / room / issue / run / agent"
             currentHref={currentHref}
+            onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
 
           <div className="border-b-2 border-[var(--shock-ink)] bg-[#f3ead3] px-3 py-2.5 md:px-4">

@@ -298,9 +298,9 @@
   - [x] web 默认改走同源 `/api/control/*` proxy，Windows 有头浏览器下也能拿到 live workspace truth，不再卡在 `syncing`
   - [x] `Chat / Work` 顶部切换现在会按当前 surface 正确激活，Work 页不再像未激活副按钮
   - [x] `setup / issues / memory / inbox / board / room / run` 已完成 2026-04-08 headed work-shell smoke，统一壳层、去白缝和密度收紧都有当天证据
+  - [x] `pnpm test:headed-quick-search` 已把 Quick Search 收成真实 command palette：同一套 search surface 能从 `chat / room / issue / run / agent` 页面命中 `channel / room / issue / run / agent` 五类结果，并验证命中高亮与 empty state
 - 当前 GAP:
   - [ ] 仍缺 `app.slock.ai` 式 DM / saved / later / profile 级入口
-  - [ ] Quick Search 目前还是静态入口，还没有真正的 search result 面
   - [ ] 前端滚动、下拉、字号、scrollback、composer 常驻等 interaction polish 还没系统化收口
 - 对应 Test Cases: `TC-028` `TC-029` `TC-033` `TC-034`
 

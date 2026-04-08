@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
+import { useQuickSearchController } from "@/lib/quick-search";
 import {
   type Message,
   type PhaseZeroState,
@@ -11,11 +13,6 @@ import {
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import { RunControlSurface } from "@/components/run-control-surface";
-import {
-  StitchSidebar,
-  StitchTopBar,
-  WorkspaceStatusStrip,
-} from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -716,6 +713,7 @@ function ClaudeCompactComposer({
 
 export function StitchChannelsView({ channelId }: { channelId: string }) {
   const { state, approvalCenter, loading, error, postChannelMessage } = usePhaseZeroState();
+  const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const channel = loading || error ? undefined : state.channels.find((item) => item.id === channelId);
   const messages = channel ? state.channelMessages[channel.id] ?? [] : [];
   const channelThreadReplies = channel ? CHANNEL_THREAD_REPLIES[channel.id] ?? {} : {};
@@ -796,6 +794,15 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 
   return (
     <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <QuickSearchSurface
+        key={quickSearch.sessionKey}
+        open={quickSearch.open}
+        query={quickSearch.query}
+        results={quickSearch.results}
+        onClose={quickSearch.onCloseQuickSearch}
+        onQueryChange={quickSearch.onQueryChange}
+        onSelect={quickSearch.onSelectQuickSearch}
+      />
       <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active="channels"
@@ -807,6 +814,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
           workspaceSubtitle={workspaceSubtitle}
           selectedChannelId={channelId}
           inboxCount={inboxCount}
+          onOpenQuickSearch={quickSearch.onOpenQuickSearch}
         />
         <section className="flex min-h-0 flex-col bg-white">
           <WorkspaceStatusStrip
@@ -826,6 +834,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             searchPlaceholder="Search channel / thread / saved"
             tabs={["Chat", "Thread", "Saved"]}
             activeTab="Chat"
+            onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -973,6 +982,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 
 export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const { state, approvalCenter, loading, error, streamRoomMessage, createPullRequest, updatePullRequest, controlRun } = usePhaseZeroState();
+  const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const room = state.rooms.find((item) => item.id === roomId);
   const run = room ? state.runs.find((item) => item.id === room.runId) : undefined;
   const session = room ? state.sessions.find((item) => item.roomId === room.id) : undefined;
@@ -1122,6 +1132,15 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
 
   return (
     <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <QuickSearchSurface
+        key={quickSearch.sessionKey}
+        open={quickSearch.open}
+        query={quickSearch.query}
+        results={quickSearch.results}
+        onClose={quickSearch.onCloseQuickSearch}
+        onQueryChange={quickSearch.onQueryChange}
+        onSelect={quickSearch.onSelectQuickSearch}
+      />
       <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active="rooms"
@@ -1133,6 +1152,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
           workspaceSubtitle={workspaceSubtitle}
           selectedRoomId={roomId}
           inboxCount={inboxCount}
+          onOpenQuickSearch={quickSearch.onOpenQuickSearch}
         />
         <section className="flex min-h-0 flex-col bg-white">
           <WorkspaceStatusStrip
@@ -1152,6 +1172,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
             searchPlaceholder="Search room / run / PR / board"
             tabs={["Chat", "Thread", "Topic", "Run", "PR"]}
             activeTab="Chat"
+            onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
             <div className="flex flex-wrap items-center gap-2">

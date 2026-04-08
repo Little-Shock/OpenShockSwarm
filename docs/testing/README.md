@@ -30,6 +30,8 @@
   - `TKT-14` 的 multi-runtime scheduler / active lease / offline failover browser exact evidence
 - [Test Report 2026-04-08 Shell Thread Polish](./Test-Report-2026-04-08-shell-thread-polish.md)
   - `TKT-16` `TKT-17` `TKT-20` 当前这轮 shell / thread / board demotion 的 headed walkthrough evidence
+- [Test Report 2026-04-08 Quick Search](./Test-Report-2026-04-08-quick-search.md)
+  - `TKT-21` 的 real quick search / search result surface headed exact replay evidence
 - [Test Report 2026-04-08 Work Shell Smoke](./Test-Report-2026-04-08-work-shell-smoke.md)
   - `chat / setup / issues / memory / inbox / board / room / run` 在统一 workspace shell 下的当前有头走查结果
 - [Test Report 2026-04-08 Memory Governance](./Test-Report-2026-04-08-memory-governance.md)
@@ -63,6 +65,8 @@
   - 验证 stop / resume / follow-thread exact replay
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
+- `pnpm test:headed-quick-search`
+  - 验证 Quick Search 的 channel / room / issue / run / agent 命中、跳转、高亮和 empty state
 - `pnpm test:headed-work-shell-smoke`
   - 验证统一 workspace shell 下的 `chat / setup / issues / memory / inbox / board / room / run` 页面走查
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import {
   buildBoardColumns,
   type ApprovalCenterItem,
@@ -11,12 +12,8 @@ import {
   type InboxItem,
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { useQuickSearchController } from "@/lib/quick-search";
 import { hasSessionPermission, permissionStatus } from "@/lib/session-authz";
-import {
-  StitchSidebar,
-  StitchTopBar,
-  WorkspaceStatusStrip,
-} from "@/components/stitch-shell-primitives";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -148,6 +145,7 @@ function SurfaceStateMessage({
 export function StitchBoardView() {
   const router = useRouter();
   const { state, approvalCenter, loading, error, createIssue } = usePhaseZeroState();
+  const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("把真实 PR 写回接进讨论间");
   const [summary, setSummary] = useState("从房间直接创建 PR，并把 review / merge 状态回写到 Room 和 Inbox。");
@@ -187,6 +185,15 @@ export function StitchBoardView() {
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <QuickSearchSurface
+        key={quickSearch.sessionKey}
+        open={quickSearch.open}
+        query={quickSearch.query}
+        results={quickSearch.results}
+        onClose={quickSearch.onCloseQuickSearch}
+        onQueryChange={quickSearch.onQueryChange}
+        onSelect={quickSearch.onSelectQuickSearch}
+      />
       <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active="board"
@@ -197,6 +204,7 @@ export function StitchBoardView() {
           workspaceName={workspaceName}
           workspaceSubtitle={workspaceSubtitle}
           inboxCount={inboxCount}
+          onOpenQuickSearch={quickSearch.onOpenQuickSearch}
         />
         <section className="flex min-h-0 flex-col">
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
@@ -207,6 +215,7 @@ export function StitchBoardView() {
             tabs={["Rooms First", "Board", "Machines"]}
             activeTab="Board"
             searchPlaceholder="Search issue / room / run"
+            onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2">
             <div className="grid items-center gap-3 xl:grid-cols-[220px_160px_1fr_auto_auto]">
@@ -306,6 +315,7 @@ export function StitchInboxView() {
     approvalCenterError,
     applyInboxDecision,
   } = usePhaseZeroState();
+  const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const openSignals = loading || error ? [] : approvalCenter.signals.filter((item) => item.kind !== "status");
   const recentSignals = loading || error ? [] : approvalCenter.recent;
   const session = state.auth.session;
@@ -373,6 +383,15 @@ export function StitchInboxView() {
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
+      <QuickSearchSurface
+        key={quickSearch.sessionKey}
+        open={quickSearch.open}
+        query={quickSearch.query}
+        results={quickSearch.results}
+        onClose={quickSearch.onCloseQuickSearch}
+        onQueryChange={quickSearch.onQueryChange}
+        onSelect={quickSearch.onSelectQuickSearch}
+      />
       <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active="inbox"
@@ -383,6 +402,7 @@ export function StitchInboxView() {
           workspaceName={workspaceName}
           workspaceSubtitle={workspaceSubtitle}
           inboxCount={inboxCount}
+          onOpenQuickSearch={quickSearch.onOpenQuickSearch}
         />
         <section className="flex min-h-0 flex-col">
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
@@ -393,6 +413,7 @@ export function StitchInboxView() {
             tabs={["Inbox", "Review", "Recent"]}
             activeTab="Inbox"
             searchPlaceholder="Search approval / review / block"
+            onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)] px-4 py-4">
             <div className="mx-auto max-w-[1180px]">
