@@ -562,6 +562,22 @@ function matchRoute(method, pathName) {
     return { route: "V1_GET_INBOX", actorId: v1InboxMatch[1] };
   }
 
+  const v1InboxFollowUpsMatch = pathName.match(/^\/v1\/inbox\/([^/]+)\/follow-ups$/);
+  if (method === "GET" && v1InboxFollowUpsMatch) {
+    return { route: "V1_GET_INBOX_FOLLOW_UPS", actorId: v1InboxFollowUpsMatch[1] };
+  }
+  if (method === "POST" && v1InboxFollowUpsMatch) {
+    return { route: "V1_POST_INBOX_FOLLOW_UP", actorId: v1InboxFollowUpsMatch[1] };
+  }
+
+  const v1InboxAttentionRoutingMatch = pathName.match(/^\/v1\/inbox\/([^/]+)\/attention-routing$/);
+  if (method === "GET" && v1InboxAttentionRoutingMatch) {
+    return { route: "V1_GET_INBOX_ATTENTION_ROUTING", actorId: v1InboxAttentionRoutingMatch[1] };
+  }
+  if (method === "PUT" && v1InboxAttentionRoutingMatch) {
+    return { route: "V1_PUT_INBOX_ATTENTION_ROUTING", actorId: v1InboxAttentionRoutingMatch[1] };
+  }
+
   const v1InboxAckMatch = pathName.match(/^\/v1\/inbox\/([^/]+)\/acks$/);
   if (method === "POST" && v1InboxAckMatch) {
     return { route: "V1_POST_INBOX_ACKS", actorId: v1InboxAckMatch[1] };
@@ -5679,6 +5695,114 @@ export function createHttpServer(coordinator, options = {}) {
             resource: "inbox_projection",
             sourcePlane: "control_plane_projection",
             topicId: result.topic_id ?? null
+          })
+        });
+        return;
+      }
+
+      if (route.route === "V1_GET_INBOX_FOLLOW_UPS") {
+        const result = coordinator.listActorInboxFollowUps(route.actorId, {
+          topicId: parsedUrl.searchParams.get("topic_id"),
+          cursor: parsedUrl.searchParams.get("cursor"),
+          limit: parsedUrl.searchParams.get("limit")
+        });
+        sendJson(response, 200, {
+          ...result,
+          projection_meta: integrationProjectionMeta({
+            resource: "inbox_follow_up_projection",
+            sourcePlane: "control_plane_projection",
+            topicId: result.topic_id ?? null
+          })
+        });
+        return;
+      }
+
+      if (route.route === "V1_POST_INBOX_FOLLOW_UP") {
+        const body = await readJsonBody(request);
+        const result = coordinator.appendActorInboxFollowUp(route.actorId, {
+          topicId: body.topic_id,
+          operatorId: body.operator_id,
+          runId: body.run_id,
+          threadId: body.thread_id,
+          taskId: body.task_id,
+          summary: body.summary,
+          note: body.note,
+          priority: body.priority,
+          mentionActorIds: body.mention_actor_ids
+        });
+        sendJson(response, 200, {
+          ...result,
+          projection_meta: integrationProjectionMeta({
+            resource: "inbox_follow_up_projection",
+            sourcePlane: "control_plane_projection",
+            topicId: result.topic_id ?? null
+          })
+        });
+        return;
+      }
+
+      if (route.route === "V1_GET_INBOX_ATTENTION_ROUTING") {
+        const result = coordinator.getActorInboxAttentionRouting(route.actorId, {
+          topicId: parsedUrl.searchParams.get("topic_id")
+        });
+        sendJson(response, 200, {
+          projection: "control_plane_projection",
+          actor_id: result.actorId,
+          topic_id: result.topicId,
+          attention_routing: {
+            follow_up: {
+              channels: deepClone(result.followUp.channels)
+            },
+            mention: {
+              channels: deepClone(result.mention.channels)
+            },
+            updated_at: result.updatedAt,
+            updated_by: result.updatedBy
+          },
+          projection_meta: integrationProjectionMeta({
+            resource: "inbox_attention_routing_projection",
+            sourcePlane: "control_plane_projection",
+            topicId: result.topicId ?? null
+          })
+        });
+        return;
+      }
+
+      if (route.route === "V1_PUT_INBOX_ATTENTION_ROUTING") {
+        const body = await readJsonBody(request);
+        assertObjectBody(body, "invalid_attention_routing", "attention routing payload must be object");
+        const result = coordinator.upsertActorInboxAttentionRouting(route.actorId, {
+          topicId: body.topic_id,
+          operatorId: body.operator_id,
+          followUp: body.follow_up
+            ? {
+                channels: body.follow_up.channels
+              }
+            : undefined,
+          mention: body.mention
+            ? {
+                channels: body.mention.channels
+              }
+            : undefined
+        });
+        sendJson(response, 200, {
+          projection: "control_plane_projection",
+          actor_id: result.actorId,
+          topic_id: result.topicId,
+          attention_routing: {
+            follow_up: {
+              channels: deepClone(result.followUp.channels)
+            },
+            mention: {
+              channels: deepClone(result.mention.channels)
+            },
+            updated_at: result.updatedAt,
+            updated_by: result.updatedBy
+          },
+          projection_meta: integrationProjectionMeta({
+            resource: "inbox_attention_routing_projection",
+            sourcePlane: "control_plane_projection",
+            topicId: result.topicId ?? null
           })
         });
         return;

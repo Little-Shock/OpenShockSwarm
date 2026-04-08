@@ -40,7 +40,9 @@ function createEmptyTopic({ topicId, goal, constraints }) {
     integration: {
       repoBinding: null,
       prs: new Map(),
-      inboxAcks: new Map()
+      inboxAcks: new Map(),
+      inboxFollowUps: new Map(),
+      inboxAttentionRouting: new Map()
     },
     riskFlags: new Set(),
     history: [],
@@ -232,6 +234,8 @@ const DEPLOY_RUNTIME_DEPLOYMENT_STATUSES = new Set(["not_deployed", "deploying",
 const DEPLOY_RUNTIME_HEALTH_STATUSES = new Set(["unknown", "healthy", "degraded", "down"]);
 const DEPLOY_RUNTIME_READINESS_STATUSES = new Set(["not_ready", "warming", "ready", "blocked"]);
 const DEPLOY_RUNTIME_HANDOFF_STATUSES = new Set(["draft", "ready", "in_progress", "completed", "blocked"]);
+const INBOX_ATTENTION_CHANNELS = new Set(["inbox", "browser_push", "email"]);
+const INBOX_FOLLOW_UP_PRIORITIES = new Set(["normal", "high", "urgent"]);
 const EXTERNAL_MEMORY_PROVIDER_CAPABILITIES = Object.freeze({
   memory_search: true,
   memory_get: true,
@@ -1470,6 +1474,141 @@ function toNotificationItem(topic, event, index, deliveryProjection = null) {
         },
     delivery_projection: deepClone(resolvedDeliveryProjection)
   };
+}
+
+function ensureTopicInboxAcks(topic) {
+  if (!(topic.integration.inboxAcks instanceof Map)) {
+    topic.integration.inboxAcks = new Map();
+  }
+  return topic.integration.inboxAcks;
+}
+
+function ensureTopicInboxFollowUps(topic) {
+  if (!(topic.integration.inboxFollowUps instanceof Map)) {
+    topic.integration.inboxFollowUps = new Map();
+  }
+  return topic.integration.inboxFollowUps;
+}
+
+function ensureTopicInboxAttentionRouting(topic) {
+  if (!(topic.integration.inboxAttentionRouting instanceof Map)) {
+    topic.integration.inboxAttentionRouting = new Map();
+  }
+  return topic.integration.inboxAttentionRouting;
+}
+
+function createDefaultInboxAttentionRouting(actorId, topicId) {
+  return {
+    actorId,
+    topicId,
+    followUp: {
+      channels: ["inbox", "browser_push"]
+    },
+    mention: {
+      channels: ["inbox", "browser_push"]
+    },
+    updatedAt: null,
+    updatedBy: null
+  };
+}
+
+function normalizeInboxAttentionChannels(input, errorCode) {
+  assertOrThrow(Array.isArray(input), errorCode, "attention channels must be array");
+  const output = [];
+  for (const value of input) {
+    assertOrThrow(typeof value === "string" && value.trim().length > 0, errorCode, "attention channel must be string");
+    const normalized = value.trim();
+    assertOrThrow(INBOX_ATTENTION_CHANNELS.has(normalized), errorCode, `unsupported attention channel: ${normalized}`);
+    if (!output.includes(normalized)) {
+      output.push(normalized);
+    }
+  }
+  assertOrThrow(output.length > 0, errorCode, "attention channels must be non-empty");
+  return output;
+}
+
+function buildInboxFollowUpItemsForActor(topic, actorId) {
+  const followUps = ensureTopicInboxFollowUps(topic);
+  const items = [];
+  for (const followUp of followUps.values()) {
+    if (followUp.actorId !== actorId || followUp.status !== "pending") {
+      continue;
+    }
+    items.push({
+      item_id: `inbox:${topic.topicId}:follow_up:${followUp.followUpId}`,
+      topic_id: topic.topicId,
+      actor_id: actorId,
+      kind: "follow_up_pending",
+      status: "pending",
+      created_at: followUp.createdAt,
+      summary: followUp.summary,
+      priority: followUp.priority,
+      follow_up: {
+        follow_up_id: followUp.followUpId,
+        run_id: followUp.runId,
+        thread_id: followUp.threadId,
+        task_id: followUp.taskId,
+        note: followUp.note,
+        requested_by: followUp.createdBy,
+        mention_actor_ids: deepClone(followUp.mentionActorIds)
+      },
+      debug_anchor: {
+        topic_id: topic.topicId,
+        follow_up_id: followUp.followUpId,
+        run_id: followUp.runId,
+        lane_id: null,
+        message_id: null
+      }
+    });
+    if (followUp.mentionActorIds.includes(actorId)) {
+      items.push({
+        item_id: `inbox:${topic.topicId}:mention:${followUp.followUpId}:${actorId}`,
+        topic_id: topic.topicId,
+        actor_id: actorId,
+        kind: "mention_attention",
+        status: "pending",
+        created_at: followUp.createdAt,
+        summary: `mentioned in follow-up (${followUp.followUpId})`,
+        mention: {
+          source: "follow_up",
+          follow_up_id: followUp.followUpId,
+          mentioned_by: followUp.createdBy
+        },
+        debug_anchor: {
+          topic_id: topic.topicId,
+          follow_up_id: followUp.followUpId,
+          run_id: followUp.runId,
+          lane_id: null,
+          message_id: null
+        }
+      });
+    }
+  }
+  return items;
+}
+
+function buildUnifiedInboxSummary(items) {
+  const summary = {
+    total_items: items.length,
+    pending_items: 0,
+    acked_items: 0,
+    approval_hold_pending: 0,
+    conflict_unresolved: 0,
+    blocker_active: 0,
+    follow_up_pending: 0,
+    mention_attention: 0
+  };
+  for (const item of items) {
+    if (item.acked === true) {
+      summary.acked_items += 1;
+    } else {
+      summary.pending_items += 1;
+    }
+    if (summary[item.kind] !== undefined) {
+      summary[item.kind] += 1;
+    }
+  }
+  return summary;
 }
 
 function buildInboxItemsForActor(topic, actor) {
@@ -6811,8 +6950,16 @@ export class ServerCoordinator {
         }
         continue;
       }
-      const ackMap = topic.integration.inboxAcks.get(actorId) ?? new Map();
+      const ackMap = ensureTopicInboxAcks(topic).get(actorId) ?? new Map();
       for (const item of buildInboxItemsForActor(topic, actor)) {
+        const ack = ackMap.get(item.item_id) ?? null;
+        items.push({
+          ...item,
+          acked: Boolean(ack),
+          acknowledged_at: ack?.acked_at ?? null
+        });
+      }
+      for (const item of buildInboxFollowUpItemsForActor(topic, actorId)) {
         const ack = ackMap.get(item.item_id) ?? null;
         items.push({
           ...item,
@@ -6825,11 +6972,36 @@ export class ServerCoordinator {
     items.sort((a, b) => compareTimestampDesc(a.created_at, b.created_at, a.item_id, b.item_id));
     const page = items.slice(offset, offset + limit).map((item) => deepClone(item));
     const nextOffset = offset + page.length;
+    const routing = topicFilter
+      ? this.getActorInboxAttentionRouting(actorId, { topicId: topicFilter })
+      : null;
     return {
+      contract_version: "v1.stage5b",
       projection: "control_plane_projection",
       cursor_scope: topicFilter ? `actor:${actorId}:inbox:topic:${topicFilter}` : `actor:${actorId}:inbox`,
       actor_id: actorId,
       topic_id: topicFilter,
+      unified_inbox: buildUnifiedInboxSummary(items),
+      attention_routing: routing
+        ? {
+            actor_id: routing.actorId,
+            topic_id: routing.topicId,
+            follow_up: {
+              channels: deepClone(routing.followUp.channels)
+            },
+            mention: {
+              channels: deepClone(routing.mention.channels)
+            },
+            updated_at: routing.updatedAt,
+            updated_by: routing.updatedBy
+          }
+        : null,
+      write_anchors: {
+        inbox_acks: `/v1/inbox/${encodeURIComponent(actorId)}/acks`,
+        inbox_follow_ups: `/v1/inbox/${encodeURIComponent(actorId)}/follow-ups`,
+        attention_routing: `/v1/inbox/${encodeURIComponent(actorId)}/attention-routing`
+      },
+      timeline_anchor: topicFilter ? `/v1/topics/${encodeURIComponent(topicFilter)}/notifications` : null,
       items: page,
       next_cursor: nextOffset < items.length ? `o:${nextOffset}` : null
     };
@@ -6853,7 +7025,7 @@ export class ServerCoordinator {
       const actor = topic.agents.get(actorId);
       assertOrThrow(actor, "actor_not_registered", `actor ${actorId} is not registered in topic ${topicId}`);
 
-      const actorAcks = topic.integration.inboxAcks.get(actorId) ?? new Map();
+      const actorAcks = ensureTopicInboxAcks(topic).get(actorId) ?? new Map();
       const ackedAt = nowIso();
       actorAcks.set(itemId, {
         item_id: itemId,
@@ -6862,7 +7034,7 @@ export class ServerCoordinator {
         acked_at: ackedAt,
         note: typeof item.note === "string" ? item.note : null
       });
-      topic.integration.inboxAcks.set(actorId, actorAcks);
+      ensureTopicInboxAcks(topic).set(actorId, actorAcks);
       topic.updatedAt = ackedAt;
       ackedItems.push({
         item_id: itemId,
@@ -6876,6 +7048,179 @@ export class ServerCoordinator {
       projection: "control_plane_projection",
       actor_id: actorId,
       acked_items: ackedItems
+    };
+  }
+
+  getActorInboxAttentionRouting(actorId, input = {}) {
+    assertOrThrow(typeof actorId === "string" && actorId.length > 0, "actor_id_required", "actorId is required");
+    const topicId = typeof input.topicId === "string" && input.topicId.trim().length > 0 ? input.topicId.trim() : null;
+    assertOrThrow(topicId, "inbox_topic_required", "topic_id is required");
+    const topic = this.requireTopic(topicId);
+    const actor = topic.agents.get(actorId);
+    assertOrThrow(actor, "actor_not_registered", `actor ${actorId} is not registered in topic ${topicId}`);
+    const routingMap = ensureTopicInboxAttentionRouting(topic);
+    const stored = routingMap.get(actorId);
+    if (stored) {
+      return deepClone(stored);
+    }
+    return deepClone(createDefaultInboxAttentionRouting(actorId, topicId));
+  }
+
+  upsertActorInboxAttentionRouting(actorId, input = {}) {
+    assertOrThrow(typeof actorId === "string" && actorId.length > 0, "actor_id_required", "actorId is required");
+    assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "invalid_attention_routing", "attention routing payload must be object");
+    const allowedKeys = new Set(["topicId", "operatorId", "followUp", "mention"]);
+    for (const key of Object.keys(input)) {
+      assertOrThrow(allowedKeys.has(key), "invalid_attention_routing_field", `unsupported attention routing field: ${key}`);
+    }
+    const topicId = normalizeOptionalScopeId(input.topicId);
+    assertOrThrow(topicId, "inbox_topic_required", "topic_id is required");
+    const topic = this.requireTopic(topicId);
+    const actor = topic.agents.get(actorId);
+    assertOrThrow(actor, "actor_not_registered", `actor ${actorId} is not registered in topic ${topicId}`);
+    const operatorId = normalizeOptionalScopeId(input.operatorId) ?? actorId;
+    if (input.followUp !== undefined) {
+      assertOrThrow(
+        input.followUp && typeof input.followUp === "object" && !Array.isArray(input.followUp),
+        "invalid_attention_routing_follow_up",
+        "follow_up must be object"
+      );
+      for (const key of Object.keys(input.followUp)) {
+        assertOrThrow(key === "channels", "invalid_attention_routing_follow_up", `unsupported follow_up field: ${key}`);
+      }
+    }
+    if (input.mention !== undefined) {
+      assertOrThrow(
+        input.mention && typeof input.mention === "object" && !Array.isArray(input.mention),
+        "invalid_attention_routing_mention",
+        "mention must be object"
+      );
+      for (const key of Object.keys(input.mention)) {
+        assertOrThrow(key === "channels", "invalid_attention_routing_mention", `unsupported mention field: ${key}`);
+      }
+    }
+    const routingMap = ensureTopicInboxAttentionRouting(topic);
+    const existing = routingMap.get(actorId) ?? createDefaultInboxAttentionRouting(actorId, topicId);
+    const next = {
+      actorId,
+      topicId,
+      followUp: {
+        channels:
+          input.followUp && typeof input.followUp === "object" && input.followUp.channels !== undefined
+            ? normalizeInboxAttentionChannels(input.followUp.channels, "invalid_attention_routing_follow_up")
+            : deepClone(existing.followUp.channels)
+      },
+      mention: {
+        channels:
+          input.mention && typeof input.mention === "object" && input.mention.channels !== undefined
+            ? normalizeInboxAttentionChannels(input.mention.channels, "invalid_attention_routing_mention")
+            : deepClone(existing.mention.channels)
+      },
+      updatedAt: nowIso(),
+      updatedBy: operatorId
+    };
+    routingMap.set(actorId, next);
+    topic.updatedAt = next.updatedAt;
+    return deepClone(next);
+  }
+
+  listActorInboxFollowUps(actorId, input = {}) {
+    assertOrThrow(typeof actorId === "string" && actorId.length > 0, "actor_id_required", "actorId is required");
+    const topicId = typeof input.topicId === "string" && input.topicId.trim().length > 0 ? input.topicId.trim() : null;
+    assertOrThrow(topicId, "inbox_topic_required", "topic_id is required");
+    const topic = this.requireTopic(topicId);
+    const actor = topic.agents.get(actorId);
+    assertOrThrow(actor, "actor_not_registered", `actor ${actorId} is not registered in topic ${topicId}`);
+    const limit = parseLimit(input.limit, { codePrefix: "inbox_follow_up", defaultLimit: 50, maxLimit: 500 });
+    const offset = parseOffsetCursor(input.cursor, { codePrefix: "inbox_follow_up" });
+    const followUps = Array.from(ensureTopicInboxFollowUps(topic).values())
+      .filter((item) => item.actorId === actorId)
+      .sort((left, right) => compareTimestampDesc(left.createdAt, right.createdAt, left.followUpId, right.followUpId));
+    const items = followUps.slice(offset, offset + limit).map((item) => ({
+      follow_up_id: item.followUpId,
+      topic_id: topicId,
+      actor_id: actorId,
+      status: item.status,
+      priority: item.priority,
+      summary: item.summary,
+      run_id: item.runId,
+      thread_id: item.threadId,
+      task_id: item.taskId,
+      note: item.note,
+      mention_actor_ids: deepClone(item.mentionActorIds),
+      created_at: item.createdAt,
+      created_by: item.createdBy
+    }));
+    const nextOffset = offset + items.length;
+    return {
+      projection: "control_plane_projection",
+      actor_id: actorId,
+      topic_id: topicId,
+      items,
+      next_cursor: nextOffset < followUps.length ? `o:${nextOffset}` : null
+    };
+  }
+
+  appendActorInboxFollowUp(actorId, input = {}) {
+    assertOrThrow(typeof actorId === "string" && actorId.length > 0, "actor_id_required", "actorId is required");
+    assertOrThrow(input && typeof input === "object" && !Array.isArray(input), "invalid_inbox_follow_up", "follow-up payload must be object");
+    const allowedKeys = new Set(["topicId", "operatorId", "runId", "threadId", "taskId", "summary", "note", "priority", "mentionActorIds"]);
+    for (const key of Object.keys(input)) {
+      assertOrThrow(allowedKeys.has(key), "invalid_inbox_follow_up_field", `unsupported follow-up field: ${key}`);
+    }
+    const topicId = normalizeOptionalScopeId(input.topicId);
+    assertOrThrow(topicId, "inbox_topic_required", "topic_id is required");
+    const topic = this.requireTopic(topicId);
+    const actor = topic.agents.get(actorId);
+    assertOrThrow(actor, "actor_not_registered", `actor ${actorId} is not registered in topic ${topicId}`);
+    const summary = normalizeOptionalScopeId(input.summary);
+    assertOrThrow(summary, "inbox_follow_up_summary_required", "summary is required");
+    const priority = normalizeOptionalScopeId(input.priority) ?? "normal";
+    assertOrThrow(INBOX_FOLLOW_UP_PRIORITIES.has(priority), "invalid_inbox_follow_up_priority", "priority is invalid");
+    const mentionActorIdsRaw = input.mentionActorIds ?? [];
+    assertOrThrow(Array.isArray(mentionActorIdsRaw), "invalid_inbox_follow_up_mentions", "mention_actor_ids must be array");
+    const mentionActorIds = mentionActorIdsRaw
+      .filter((item) => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.trim());
+    for (const mentionActorId of mentionActorIds) {
+      assertOrThrow(topic.agents.has(mentionActorId), "actor_not_registered", `actor ${mentionActorId} is not registered in topic ${topicId}`);
+    }
+    const operatorId = normalizeOptionalScopeId(input.operatorId) ?? actorId;
+    const followUpId = generateId("followup");
+    const followUp = {
+      followUpId,
+      actorId,
+      topicId,
+      runId: normalizeOptionalScopeId(input.runId),
+      threadId: normalizeOptionalScopeId(input.threadId),
+      taskId: normalizeOptionalScopeId(input.taskId),
+      summary,
+      note: normalizeOptionalScopeId(input.note),
+      priority,
+      mentionActorIds,
+      status: "pending",
+      createdAt: nowIso(),
+      createdBy: operatorId
+    };
+    ensureTopicInboxFollowUps(topic).set(followUpId, followUp);
+    topic.updatedAt = followUp.createdAt;
+    return {
+      projection: "control_plane_projection",
+      actor_id: actorId,
+      topic_id: topicId,
+      follow_up: {
+        follow_up_id: followUp.followUpId,
+        status: followUp.status,
+        priority: followUp.priority,
+        summary: followUp.summary,
+        run_id: followUp.runId,
+        thread_id: followUp.threadId,
+        task_id: followUp.taskId,
+        note: followUp.note,
+        mention_actor_ids: deepClone(followUp.mentionActorIds),
+        created_at: followUp.createdAt,
+        created_by: followUp.createdBy
+      }
     };
   }
 
@@ -7009,6 +7354,8 @@ export class ServerCoordinator {
         "/v1/inbox/:actorId?topic_id=:topicId",
         "/v1/inbox/:actorId/acks",
         "/v1/channels/:channelId/context",
+        "/v1/inbox/:actorId/follow-ups?topic_id=:topicId",
+        "/v1/inbox/:actorId/attention-routing?topic_id=:topicId",
         "/v1/channels/:channelId/notification-endpoint",
         "/v1/channels/:channelId/orchestration-upgrade",
         "/v1/channels/:channelId/external-memory-provider",
@@ -7044,6 +7391,8 @@ export class ServerCoordinator {
         execution_debug: "/v1/execution/runs/:runId/debug?topic_id=:topicId",
         execution_inbox: "/v1/topics/:topicId/execution-inbox?actor_id=:actorId",
         channel_context: "/v1/channels/:channelId/context",
+        inbox_follow_ups: "/v1/inbox/:actorId/follow-ups?topic_id=:topicId",
+        inbox_attention_routing: "/v1/inbox/:actorId/attention-routing?topic_id=:topicId",
         channel_notification_endpoint: "/v1/channels/:channelId/notification-endpoint",
         channel_orchestration_upgrade: "/v1/channels/:channelId/orchestration-upgrade",
         channel_external_memory_provider: "/v1/channels/:channelId/external-memory-provider",

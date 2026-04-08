@@ -5692,6 +5692,203 @@ test("v1 stage5a hosted deploy-runtime contract keeps deployment and handoff tru
   });
 });
 
+test("v1 stage5b inbox attention contract keeps unified inbox/follow-up/mention routing under /v1/inbox truth family", async () => {
+  const topicId = "topic_stage5b_inbox_contract";
+  const actorId = "human_sample_01";
+  const operatorId = "human_operator_stage5b";
+
+  await withRuntimeServer(
+    {
+      fixture: {
+        topicId
+      }
+    },
+    async ({ port }) => {
+      const seeded = await requestJson({
+        port,
+        method: "POST",
+        path: "/runtime/fixtures/seed",
+        body: {}
+      });
+      assert.equal(seeded.statusCode, 200);
+
+      const registerActor = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/topics/${encodeURIComponent(topicId)}/actors/${encodeURIComponent(actorId)}`,
+        body: {
+          role: "human",
+          status: "active"
+        }
+      });
+      assert.equal(registerActor.statusCode, 200);
+
+      const routingUpsert = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/attention-routing`,
+        body: {
+          topic_id: topicId,
+          operator_id: operatorId,
+          follow_up: {
+            channels: ["inbox", "browser_push"]
+          },
+          mention: {
+            channels: ["inbox", "email"]
+          }
+        }
+      });
+      assert.equal(routingUpsert.statusCode, 200);
+      assert.equal(routingUpsert.body.attention_routing.follow_up.channels.includes("browser_push"), true);
+      assert.equal(routingUpsert.body.attention_routing.mention.channels.includes("email"), true);
+
+      const routingRead = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/attention-routing?topic_id=${encodeURIComponent(topicId)}`
+      });
+      assert.equal(routingRead.statusCode, 200);
+      assert.equal(routingRead.body.projection_meta.resource, "inbox_attention_routing_projection");
+      assert.equal(routingRead.body.attention_routing.follow_up.channels[0], "inbox");
+
+      const followUp = await requestJson({
+        port,
+        method: "POST",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/follow-ups`,
+        body: {
+          topic_id: topicId,
+          operator_id: operatorId,
+          run_id: "run_stage5b_001",
+          thread_id: "thread_stage5b_alpha",
+          task_id: "task_stage5b_attention",
+          summary: "need human follow-up on hosted thread",
+          note: "double-check mention and inbox routing",
+          priority: "high",
+          mention_actor_ids: [actorId, "lead_sample_01"]
+        }
+      });
+      assert.equal(followUp.statusCode, 200);
+      assert.equal(followUp.body.follow_up.priority, "high");
+      assert.equal(followUp.body.follow_up.mention_actor_ids.length, 2);
+
+      const followUpsRead = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/follow-ups?topic_id=${encodeURIComponent(topicId)}&limit=20`
+      });
+      assert.equal(followUpsRead.statusCode, 200);
+      assert.equal(followUpsRead.body.projection_meta.resource, "inbox_follow_up_projection");
+      assert.equal(followUpsRead.body.items.length >= 1, true);
+      assert.equal(followUpsRead.body.items[0].status, "pending");
+
+      const inbox = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}?topic_id=${encodeURIComponent(topicId)}&limit=40`
+      });
+      assert.equal(inbox.statusCode, 200);
+      assert.equal(inbox.body.contract_version, "v1.stage5b");
+      assert.equal(inbox.body.unified_inbox.follow_up_pending >= 1, true);
+      assert.equal(inbox.body.unified_inbox.mention_attention >= 1, true);
+      assert.equal(inbox.body.attention_routing.follow_up.channels.includes("browser_push"), true);
+      assert.equal(
+        inbox.body.write_anchors.inbox_follow_ups,
+        `/v1/inbox/${encodeURIComponent(actorId)}/follow-ups`
+      );
+      const followUpItem = inbox.body.items.find((item) => item.kind === "follow_up_pending");
+      assert.ok(followUpItem);
+      const mentionItem = inbox.body.items.find((item) => item.kind === "mention_attention");
+      assert.ok(mentionItem);
+
+      const ackFollowUp = await requestJson({
+        port,
+        method: "POST",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/acks`,
+        body: {
+          items: [
+            {
+              topic_id: topicId,
+              item_id: followUpItem.item_id
+            }
+          ]
+        }
+      });
+      assert.equal(ackFollowUp.statusCode, 200);
+      assert.equal(ackFollowUp.body.acked_items.length, 1);
+
+      const inboxAfterAck = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}?topic_id=${encodeURIComponent(topicId)}&limit=40`
+      });
+      assert.equal(inboxAfterAck.statusCode, 200);
+      const ackedFollowUp = inboxAfterAck.body.items.find((item) => item.item_id === followUpItem.item_id);
+      assert.ok(ackedFollowUp);
+      assert.equal(ackedFollowUp.acked, true);
+
+      const invalidAttentionChannel = await requestJson({
+        port,
+        method: "PUT",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/attention-routing`,
+        body: {
+          topic_id: topicId,
+          follow_up: {
+            channels: ["sms"]
+          }
+        }
+      });
+      assert.equal(invalidAttentionChannel.statusCode, 400);
+      assert.equal(invalidAttentionChannel.body.error.code, "invalid_attention_routing_follow_up");
+
+      const invalidMentions = await requestJson({
+        port,
+        method: "POST",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/follow-ups`,
+        body: {
+          topic_id: topicId,
+          summary: "bad mention payload",
+          mention_actor_ids: "human_sample_01"
+        }
+      });
+      assert.equal(invalidMentions.statusCode, 400);
+      assert.equal(invalidMentions.body.error.code, "invalid_inbox_follow_up_mentions");
+
+      const missingTopic = await requestJson({
+        port,
+        method: "GET",
+        path: `/v1/inbox/${encodeURIComponent(actorId)}/follow-ups`
+      });
+      assert.equal(missingTopic.statusCode, 422);
+      assert.equal(missingTopic.body.error.code, "inbox_topic_required");
+
+      const shellCompatibility = await requestJson({
+        port,
+        method: "GET",
+        path: "/v1/compatibility/shell-adapter"
+      });
+      assert.equal(shellCompatibility.statusCode, 200);
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.projection_surfaces.includes(
+          "/v1/inbox/:actorId/follow-ups?topic_id=:topicId"
+        ),
+        true
+      );
+      assert.equal(
+        shellCompatibility.body.backend_derived_projection.lineage_anchors.inbox_attention_routing,
+        "/v1/inbox/:actorId/attention-routing?topic_id=:topicId"
+      );
+
+      const payload = JSON.stringify({
+        inbox: inboxAfterAck.body,
+        shellCompatibility: shellCompatibility.body
+      });
+      assert.equal(payload.includes("\"remote_daemon_pairing\""), false);
+      assert.equal(payload.includes("\"machine_fleet\""), false);
+      assert.equal(payload.includes("\"stage4_reopen\""), false);
+    }
+  );
+});
+
 test("v1 stage4c orchestration and upgrade arbitration contract keeps formal truth with explainable human upgrade chain", async () => {
   const channelId = "channel_stage4c_orchestration_contract";
   const operatorId = "human_operator_stage4c";
