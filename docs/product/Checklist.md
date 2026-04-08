@@ -42,7 +42,7 @@
   - 执行隔离与权限控制
 - 主要 GAP:
   - `app.slock.ai` 式真实 quick search / search result、DM、saved/later、profile surface 仍未收平
-  - Room workbench tabs、frontend interaction polish 和 Board 轻量 planning card 仍未收完
+  - Room workbench tabs 和 Board 轻量 planning card 仍未收完
   - Agent / Machine profile、prompt/avatar、memory binding、本地 CLI/model 偏好还没产品化
   - 场景化 onboarding、开发团队/研究团队模板、user/workspace config 持久化仍未建立
   - Agent Mailbox、多 Agent handoff、角色治理与 response aggregation 仍未收口
@@ -299,9 +299,9 @@
   - [x] `Chat / Work` 顶部切换现在会按当前 surface 正确激活，Work 页不再像未激活副按钮
   - [x] `setup / issues / memory / inbox / board / room / run` 已完成 2026-04-08 headed work-shell smoke，统一壳层、去白缝和密度收紧都有当天证据
   - [x] `pnpm test:headed-quick-search` 已把 Quick Search 收成真实 command palette：同一套 search surface 能从 `chat / room / issue / run / agent` 页面命中 `channel / room / issue / run / agent` 五类结果，并验证命中高亮与 empty state
+  - [x] `pnpm test:headed-frontend-interaction-polish` 已锁住 sidebar / topbar hit area、channel / room scrollback、composer 常驻与窄屏无横向溢出
 - 当前 GAP:
   - [ ] 仍缺 `app.slock.ai` 式 DM / saved / later / profile 级入口
-  - [ ] 前端滚动、下拉、字号、scrollback、composer 常驻等 interaction polish 还没系统化收口
 - 对应 Test Cases: `TC-028` `TC-029` `TC-033` `TC-034`
 
 ### CHK-17 会话上下文、Presence 与 Profile Surface
@@ -401,7 +401,7 @@
 
 ## 四、近期收口顺序
 
-1. 先收 `CHK-16` 的 quick search / interaction polish，把当前统一壳层真正打磨到高频可用。
+1. 先收 `CHK-16` 剩余的 quick search / result surface，把当前统一壳层真正打磨到高频可用。
 2. 再收 `CHK-17`，把 DM / followed thread / profile / room workbench tabs 接成统一前台工作面。
 3. 并行启动 `CHK-19` 和 `CHK-22`，把 Agent / Machine 配置面与持久化真相先补出来。
 4. 然后处理 `CHK-20`，把 onboarding、团队模板和首次启动路径产品化。

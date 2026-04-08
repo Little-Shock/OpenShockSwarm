@@ -336,7 +336,7 @@ function ThreadRail({
               onClick={() => void primaryAction.onClick()}
               disabled={primaryAction.disabled}
               className={cn(
-                "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60",
+                "min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60",
                 actionTone(primaryAction.tone ?? "white")
               )}
             >
@@ -346,15 +346,15 @@ function ThreadRail({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto overscroll-y-contain p-3 [scrollbar-gutter:stable]">
         {!selectedMessage ? (
-          <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+          <section className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
             <p className="font-display text-[18px] font-bold">{emptyTitle}</p>
             <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{emptyMessage}</p>
           </section>
         ) : (
           <div className="space-y-3">
-            <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+            <section className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
                 Parent Message
               </p>
@@ -379,7 +379,7 @@ function ThreadRail({
               </div>
             </section>
 
-            <section className="border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]">
+            <section className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]">
               <div className="border-b-2 border-[var(--shock-ink)] px-3 py-2">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
                   Replies
@@ -402,7 +402,7 @@ function ThreadRail({
           type="button"
           onClick={onReply}
           disabled={!selectedMessage}
-          className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+          className="min-h-[44px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-yellow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
         >
           {selectedMessage && replyTarget?.messageId === selectedMessage.id
             ? "Reply target ready in composer"
@@ -427,14 +427,14 @@ function MessageStreamRow({
   return (
     <article
       className={cn(
-        "border-b border-[color:rgba(24,20,14,0.12)] px-4 py-4 last:border-b-0",
+        "border-b border-[color:rgba(24,20,14,0.12)] px-4 py-3.5 last:border-b-0",
         threadActive && "bg-[#fff4cc]"
       )}
     >
       <div className="flex items-start gap-3">
         <div
           className={cn(
-            "mt-0.5 flex h-8 min-w-8 items-center justify-center border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
+            "mt-0.5 flex h-7 min-w-7 items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
             messageBadgeTone(message)
           )}
         >
@@ -442,13 +442,13 @@ function MessageStreamRow({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-display text-[15px] font-bold leading-none">{message.speaker}</span>
+            <span className="font-display text-[14px] font-bold leading-none">{message.speaker}</span>
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.42)]">
               {roleLabel(message.role)}
             </span>
             <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.5)]">{message.time}</span>
           </div>
-          <div className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-7 text-[color:rgba(24,20,14,0.9)]">
+          <div className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-6 text-[color:rgba(24,20,14,0.9)]">
             {renderMarkedMessage(message.message)}
           </div>
           {typeof replyCount === "number" || onOpenThread ? (
@@ -457,7 +457,7 @@ function MessageStreamRow({
                 type="button"
                 onClick={() => onOpenThread?.(message)}
                 className={cn(
-                  "inline-flex items-center gap-1 border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]",
+                  "inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[var(--shock-ink)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fff9ec]",
                   threadActive ? "bg-[var(--shock-yellow)]" : "bg-white"
                 )}
               >
@@ -653,9 +653,9 @@ function ClaudeCompactComposer({
       <div
         ref={scrollRef}
         data-testid="room-message-list"
-        className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)]"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-[var(--shock-paper)] [scroll-padding-bottom:11rem] [scrollbar-gutter:stable]"
       >
-        <div className="mx-auto max-w-[1100px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec]">
+        <div className="mx-auto max-w-[1040px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec] pb-4">
           {messages.map((message) => (
             <MessageStreamRow
               key={message.id}
@@ -668,17 +668,17 @@ function ClaudeCompactComposer({
         </div>
       </div>
 
-      <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-        <div className="mx-auto max-w-[1100px]">
+      <div className="border-t-2 border-[var(--shock-ink)] bg-white/95 px-4 py-3 shadow-[0_-3px_0_0_var(--shock-ink)] backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <div className="mx-auto max-w-[1040px]">
           {replyTarget ? (
             <ReplyComposerChip replyTarget={replyTarget} onClear={() => onClearReplyTarget?.()} />
           ) : null}
         </div>
-        <form onSubmit={(event) => void handleSubmit(event)} className="mx-auto flex max-w-[1100px] items-center gap-2">
+        <form onSubmit={(event) => void handleSubmit(event)} className="mx-auto flex max-w-[1040px] items-center gap-2">
           <button
             type="button"
             aria-label="attach room context"
-            className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)]"
+            className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             +
           </button>
@@ -688,23 +688,23 @@ function ClaudeCompactComposer({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             disabled={!canSend || loading}
-            className="h-10 flex-1 border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[12px] outline-none"
+            className="h-11 flex-1 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[13px] outline-none transition-colors duration-150 focus:bg-white focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             placeholder={replyTarget ? `继续回复 ${replyTarget.speaker}...` : "输入指令、问题或新的约束..."}
           />
           <button
             type="submit"
             data-testid="room-send-message"
             disabled={loading || !canSend}
-            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+            className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
           >
             {loading ? "..." : "Send"}
           </button>
         </form>
-        <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1100px] font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+        <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1040px] font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
           {sendStatus}
         </p>
         {!canSend ? (
-          <p className="mx-auto mt-2 max-w-[1100px] text-sm leading-6 text-[var(--shock-pink)]">{sendBoundary}</p>
+          <p className="mx-auto mt-2 max-w-[1040px] text-sm leading-6 text-[var(--shock-pink)]">{sendBoundary}</p>
         ) : null}
       </div>
     </>
@@ -860,9 +860,9 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
               <div
                 ref={messageScrollRef}
                 data-testid="channel-message-list"
-                className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)]"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-[var(--shock-paper)] [scroll-padding-bottom:11rem] [scrollbar-gutter:stable]"
               >
-                <div className="mx-auto max-w-[1100px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec]">
+                <div className="mx-auto max-w-[1040px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec] pb-4">
                   <div className="border-b-2 border-[var(--shock-ink)] px-4 py-3">
                     <p className="font-display text-[18px] font-bold">{channel?.name ?? "等待同步"}</p>
                     <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.64)]">
@@ -900,17 +900,17 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                 </div>
               </div>
 
-              <div className="border-t-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-                <div className="mx-auto max-w-[1100px]">
+              <div className="border-t-2 border-[var(--shock-ink)] bg-white/95 px-4 py-3 shadow-[0_-3px_0_0_var(--shock-ink)] backdrop-blur supports-[backdrop-filter]:bg-white/85">
+                <div className="mx-auto max-w-[1040px]">
                   {replyTarget ? (
                     <ReplyComposerChip replyTarget={replyTarget} onClear={() => setReplyTarget(null)} />
                   ) : null}
                 </div>
-                <form onSubmit={(event) => void handleChannelSubmit(event)} className="mx-auto flex max-w-[1100px] items-center gap-2">
+                <form onSubmit={(event) => void handleChannelSubmit(event)} className="mx-auto flex max-w-[1040px] items-center gap-2">
                   <button
                     type="button"
                     aria-label="attach message context"
-                    className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)]"
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     +
                   </button>
@@ -920,7 +920,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     disabled={!channel || loading || Boolean(error) || sending}
-                    className="h-10 flex-1 border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[12px] outline-none"
+                    className="h-11 flex-1 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[13px] outline-none transition-colors duration-150 focus:bg-white focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     placeholder={
                       replyTarget
                         ? `继续回复 ${replyTarget.speaker}...`
@@ -932,7 +932,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                   <button
                     type="button"
                     aria-label="mention teammate"
-                    className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]"
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     @
                   </button>
@@ -940,13 +940,13 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     type="submit"
                     data-testid="channel-send-message"
                     disabled={!channel || loading || Boolean(error) || sending || !draft.trim()}
-                    className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+                    className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
                   >
                     {sending ? "..." : "Send"}
                   </button>
                 </form>
                 {sendError ? (
-                  <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-[1100px] text-sm leading-6 text-[var(--shock-pink)]">
+                  <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-[1040px] text-sm leading-6 text-[var(--shock-pink)]">
                     {sendError}
                   </p>
                 ) : null}
@@ -1199,13 +1199,13 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={room ? `/issues/${room.issueKey}` : "/issues"}
-                      className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+                      className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
                       Issue
                     </Link>
                     <Link
                       href="/board"
-                      className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+                      className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
                       Board
                     </Link>
