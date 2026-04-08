@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import { useQuickSearchController } from "@/lib/quick-search";
+import { buildNamedProfileHref, buildProfileHref } from "@/lib/profile-surface";
 import {
   type ApprovalCenterItem,
   type Message,
@@ -67,6 +68,11 @@ function runStatusLabel(status?: string) {
     default:
       return "待同步";
   }
+}
+
+function buildMachineProfileHref(state: PhaseZeroState, machineRef: string) {
+  const machine = state.machines.find((item) => item.id === machineRef || item.name === machineRef);
+  return buildProfileHref("machine", machine?.id ?? machineRef);
 }
 
 function DiscussionStateMessage({
@@ -567,6 +573,9 @@ function RoomContextPanels({
   pullRequest,
   issueTitle,
   activeAgents,
+  topicOwnerProfileHref,
+  runOwnerProfileHref,
+  machineProfileHref,
   sessionMemoryPaths,
   latestTimelineEvent,
   relatedSignals,
@@ -588,6 +597,9 @@ function RoomContextPanels({
   pullRequest?: PullRequest;
   issueTitle?: string;
   activeAgents: Array<{ id: string; name: string; state: string }>;
+  topicOwnerProfileHref?: string | null;
+  runOwnerProfileHref?: string | null;
+  machineProfileHref?: string | null;
   sessionMemoryPaths: string[];
   latestTimelineEvent?: Run["timeline"][number];
   relatedSignals: ApprovalCenterItem[];
@@ -615,7 +627,17 @@ function RoomContextPanels({
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
               <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Owner</p>
-              <p className="mt-2 text-sm font-semibold">{room.topic.owner}</p>
+              {topicOwnerProfileHref ? (
+                <Link
+                  href={topicOwnerProfileHref}
+                  data-testid="room-workbench-topic-owner-profile"
+                  className="mt-2 block text-sm font-semibold underline decoration-[1.5px] underline-offset-4"
+                >
+                  {room.topic.owner}
+                </Link>
+              ) : (
+                <p className="mt-2 text-sm font-semibold">{room.topic.owner}</p>
+              )}
             </div>
             <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
               <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Issue</p>
@@ -690,6 +712,26 @@ function RoomContextPanels({
         <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
           Worktree {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {machineProfileHref ? (
+            <Link
+              href={machineProfileHref}
+              data-testid="room-workbench-machine-profile"
+              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              Machine Profile
+            </Link>
+          ) : null}
+          {runOwnerProfileHref ? (
+            <Link
+              href={runOwnerProfileHref}
+              data-testid="room-workbench-run-owner-profile"
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              Owner Profile
+            </Link>
+          ) : null}
+        </div>
       </Panel>
 
       <RunControlSurface
@@ -775,12 +817,17 @@ function RoomContextPanels({
           </p>
           <div className="mt-4 space-y-2">
             {activeAgents.slice(0, 3).map((agent) => (
-              <div key={agent.id} className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+              <Link
+                key={agent.id}
+                href={buildProfileHref("agent", agent.id)}
+                data-testid={`room-workbench-active-agent-${agent.id}`}
+                className="block border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)]"
+              >
                 <p className="font-display text-[16px] font-semibold leading-5">{agent.name}</p>
                 <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
                   {agent.state}
                 </p>
-              </div>
+              </Link>
             ))}
           </div>
         </Panel>
@@ -810,10 +857,12 @@ function RoomTopicWorkbenchPanel({
   room,
   issueTitle,
   messages,
+  topicOwnerProfileHref,
 }: {
   room: Room;
   issueTitle?: string;
   messages: Message[];
+  topicOwnerProfileHref?: string | null;
 }) {
   const highlights = messages.slice(-3).reverse();
 
@@ -828,7 +877,17 @@ function RoomTopicWorkbenchPanel({
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Owner</p>
-            <p className="mt-2 font-display text-xl font-semibold">{room.topic.owner}</p>
+            {topicOwnerProfileHref ? (
+              <Link
+                href={topicOwnerProfileHref}
+                data-testid="room-topic-owner-profile"
+                className="mt-2 block font-display text-xl font-semibold underline decoration-[1.5px] underline-offset-4"
+              >
+                {room.topic.owner}
+              </Link>
+            ) : (
+              <p className="mt-2 font-display text-xl font-semibold">{room.topic.owner}</p>
+            )}
           </div>
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Board Mirror</p>
@@ -2232,6 +2291,21 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
           (agent) => agent.lane === room.issueKey || agent.recentRunIds.includes(run.id)
         )
       : [];
+  const topicOwnerProfileHref = room
+    ? buildNamedProfileHref(room.topic.owner, {
+        agents: state.agents,
+        members: state.auth.members,
+        prefer: "agent",
+      })
+    : null;
+  const runOwnerProfileHref = run
+    ? buildNamedProfileHref(run.owner, {
+        agents: state.agents,
+        members: state.auth.members,
+        prefer: "agent",
+      })
+    : null;
+  const machineProfileHref = run ? buildMachineProfileHref(state, run.machine) : null;
   const sessionMemoryPaths =
     session && session.memoryPaths.length > 0
       ? session.memoryPaths
@@ -2383,6 +2457,9 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
         pullRequest={pullRequest}
         issueTitle={issue?.title}
         activeAgents={activeAgents}
+        topicOwnerProfileHref={topicOwnerProfileHref}
+        runOwnerProfileHref={runOwnerProfileHref}
+        machineProfileHref={machineProfileHref}
         sessionMemoryPaths={sessionMemoryPaths}
         latestTimelineEvent={latestTimelineEvent}
         relatedSignals={relatedSignals}
@@ -2511,7 +2588,12 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       onOpenThread={handleOpenThread}
                     />
                   ) : activeWorkbenchTab === "topic" ? (
-                    <RoomTopicWorkbenchPanel room={room} issueTitle={issue?.title} messages={messages} />
+                    <RoomTopicWorkbenchPanel
+                      room={room}
+                      issueTitle={issue?.title}
+                      messages={messages}
+                      topicOwnerProfileHref={topicOwnerProfileHref}
+                    />
                   ) : activeWorkbenchTab === "run" ? (
                     <div data-testid="room-workbench-run-panel" className="space-y-4">
                       <RunControlSurface

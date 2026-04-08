@@ -65,10 +65,11 @@
 
 - 现状:
   - room / run / PR truth 已有
-  - 但 `Chat / Topic / Run / PR / Context` 还没在一个 room workbench 内稳定切换
-  - `Agent / Machine / Human` 也还没有统一 profile surface
+  - `Chat / Topic / Run / PR / Context` 已能在同一 room workbench 内稳定切换
+  - `Agent / Machine / Human` 已可从 shell / room drill-in 到统一 profile surface
+  - 剩余的 editor / capability binding / durable config 继续留在后续 profile/config 票
 - 影响:
-  - 用户仍要在多个详情页之间跳转
+  - 前台主工作面已收平，后续主要是 profile 配置与持久化真相
 - 相关合同:
   - `CHK-02`
   - `CHK-06`
@@ -91,7 +92,7 @@
 ### GAP-11 Agent / Machine Profile / Local CLI Preferences
 
 - 现状:
-  - Agent / Machine 现在只有部分只读 surface 和 summary
+  - Agent / Machine 现在已有统一只读 profile surface 和 summary
   - prompt / avatar / role / memory binding / provider-model 偏好还不能形成正式配置面
 - 影响:
   - Agent 还是“看得到但配不起来”的半成品对象

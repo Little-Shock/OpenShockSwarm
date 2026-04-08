@@ -389,7 +389,7 @@
 ## TC-030 Agent / Machine / Human Profile Surface
 
 - 业务目标: 确认人物与机器不只是列表项，而是可直接 drill-in 的资料面。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-02` `CHK-17`
 - 前置条件: `Agent / Machine / Human` 至少都有 profile route 或 profile panel。
 - 测试步骤:
@@ -397,7 +397,7 @@
   2. 再点击一个 Machine 和一个 Human。
   3. 检查 presence、activity、runtime/capability、最近 run/room 关系是否可见。
 - 预期结果: `Agent / Machine / Human` 都成为可导航的一等对象。
-- 业务结论: 当前 repo 只有部分 Agent 页面和 machine summary，还没有统一 profile surface；这条用例保留 `Not Run`，留给 `TKT-25`。
+- 业务结论: `TKT-25` 已把 shell / room 的 Agent、Machine、Human summary 接成统一 profile drill-in；这条用例现在按 headed `room -> agent profile -> machine profile -> human profile` 回放转 `Pass`，后续 editor / persistence 仍留 `TKT-32/33/37`。
 
 ## TC-031 Room Context Tabs / Topic Workbench
 

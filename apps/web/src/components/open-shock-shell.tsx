@@ -10,6 +10,7 @@ import {
   type PresenceState,
 } from "@/lib/mock-data";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { buildProfileHref } from "@/lib/profile-surface";
 import { useQuickSearchController } from "@/lib/quick-search";
 import {
   QuickSearchSurface,
@@ -18,7 +19,7 @@ import {
   WorkspaceStatusStrip,
 } from "@/components/stitch-shell-primitives";
 
-type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access";
+type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access" | "profiles";
 type Tone = "yellow" | "pink" | "lime";
 
 type OpenShockShellProps = {
@@ -46,7 +47,8 @@ function activeFromView(view: ShellView): "channels" | "rooms" | "inbox" | "boar
     view === "agents" ||
     view === "settings" ||
     view === "memory" ||
-    view === "access"
+    view === "access" ||
+    view === "profiles"
   ) {
     return null;
   }
@@ -134,6 +136,33 @@ function agentStateLabel(state: PresenceState) {
   }
 }
 
+function humanTone(active: boolean, status: string) {
+  if (active) {
+    return "bg-[var(--shock-lime)] text-[var(--shock-ink)]";
+  }
+  if (status === "suspended") {
+    return "bg-[var(--shock-pink)] text-white";
+  }
+  if (status === "invited") {
+    return "bg-[var(--shock-paper)] text-[var(--shock-ink)]";
+  }
+  return "bg-white text-[var(--shock-ink)]";
+}
+
+function humanStateLabel(active: boolean, status: string) {
+  if (active) {
+    return "在线";
+  }
+  switch (status) {
+    case "suspended":
+      return "停用";
+    case "invited":
+      return "待加入";
+    default:
+      return "可协作";
+  }
+}
+
 export function OpenShockShell({
   view,
   title,
@@ -199,6 +228,7 @@ export function OpenShockShell({
   const stats = buildGlobalStats(resolvedState);
   const disconnected = loading || Boolean(error) || resolvedState.machines.every((machine) => machine.state === "offline");
   const inboxCount = resolvedState.inbox.length;
+  const activeMemberId = resolvedState.auth.session.memberId;
   const quickSearch = useQuickSearchController(resolvedState);
 
   return (
@@ -288,7 +318,12 @@ export function OpenShockShell({
                   </div>
                   <div className="mt-2.5 space-y-2">
                     {resolvedState.machines.map((machine) => (
-                      <div key={machine.id} className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2.5">
+                      <Link
+                        key={machine.id}
+                        href={buildProfileHref("machine", machine.id)}
+                        data-testid={`shell-machine-profile-${machine.id}`}
+                        className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2.5 transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#efe5ce]"
+                      >
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold">{machine.name}</p>
                           <span className={cn("rounded-full border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", machineTone(machine.state))}>
@@ -298,7 +333,7 @@ export function OpenShockShell({
                         <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
                           {machine.cli}
                         </p>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 </section>
@@ -312,7 +347,8 @@ export function OpenShockShell({
                     {resolvedState.agents.slice(0, 5).map((agent) => (
                       <Link
                         key={agent.id}
-                        href={`/agents/${agent.id}`}
+                        href={buildProfileHref("agent", agent.id)}
+                        data-testid={`shell-agent-profile-${agent.id}`}
                         className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2.5 transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#efe5ce]"
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -326,6 +362,36 @@ export function OpenShockShell({
                         </p>
                       </Link>
                     ))}
+                  </div>
+                </section>
+
+                <section className="mt-2.5 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Humans</p>
+                    <span className="font-mono text-[10px] uppercase">{resolvedState.auth.members.length}</span>
+                  </div>
+                  <div className="mt-2.5 space-y-2">
+                    {resolvedState.auth.members.slice(0, 5).map((member) => {
+                      const active = activeMemberId === member.id && resolvedState.auth.session.status === "active";
+                      return (
+                        <Link
+                          key={member.id}
+                          href={buildProfileHref("human", member.id)}
+                          data-testid={`shell-human-profile-${member.id}`}
+                          className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2.5 transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#efe5ce]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="min-w-0 flex-1 truncate font-semibold">{member.name}</p>
+                            <span className={cn("rounded-full border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase", humanTone(active, member.status))}>
+                              {humanStateLabel(active, member.status)}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                            {member.role} · {member.email}
+                          </p>
+                        </Link>
+                      );
+                    })}
                   </div>
                 </section>
               </div>

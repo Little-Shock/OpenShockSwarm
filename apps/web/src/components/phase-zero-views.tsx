@@ -22,6 +22,7 @@ import {
   type SettingsSection,
   type SetupStep,
 } from "@/lib/mock-data";
+import { buildProfileHref } from "@/lib/profile-surface";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -702,7 +703,7 @@ export function AgentsListView({ agentsList = agents }: { agentsList?: AgentStat
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {agentsList.map((agent) => (
-        <Link key={agent.id} href={`/agents/${agent.id}`} className="block">
+        <Link key={agent.id} href={buildProfileHref("agent", agent.id)} className="block">
           <Panel tone={agent.state === "blocked" ? "pink" : agent.state === "running" ? "yellow" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
