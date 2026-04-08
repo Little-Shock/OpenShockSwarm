@@ -394,15 +394,14 @@
 
 - PRD 来源: 五.10、十.工作流 L、十三.5、十四、十八.11
 - 优先级: P1
-- 当前状态: 部分完成
+- 当前状态: 已完成
 - 已落地:
   - [x] server 已有文件状态存储
   - [x] auth session persistence 已成立
   - [x] memory artifact 已有 version / governance / external edit sync contract
-- 当前 GAP:
-  - [ ] user / workspace / agent / machine preferences 还没有统一 durable store / database schema
-  - [ ] onboarding progress、template selection、agent profile edit、mailbox state 还未持久化成同一份真相
-  - [ ] restart / 换设备后的 config recovery 还没有 browser + API 级验证
+- [x] workspace / member preference、GitHub identity 与既有 agent profile edit 现在可回到统一 durable store / database schema
+- [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
+- [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
 - 对应 Test Cases: `TC-040`
 
 ---

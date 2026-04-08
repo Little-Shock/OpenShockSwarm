@@ -475,7 +475,7 @@
   2. 编辑 `role / avatar / prompt / memory binding / provider preference`。
   3. 保存后刷新页面，并检查 next-run preview 是否读取新配置。
 - 预期结果: Agent profile edit 会持久化并影响下一次 run 的配置注入。
-- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine capability catalog / durable config 继续留 `TKT-33` `TKT-37`。
+- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine inventory 继续留 `TKT-33`，更宽的 workspace / member durable config 与 recovery truth 继续留 `TKT-37`。
 
 ## TC-037 Machine Profile / Local CLI Model Capability Binding
 
@@ -518,16 +518,16 @@
 
 ## TC-040 Config Persistence / Recovery
 
-- 业务目标: 确认 user / workspace / agent / machine 配置能跨刷新、重启和换设备恢复。
-- 当前执行状态: Blocked
+- 业务目标: 确认 workspace / member durable config 与 onboarding recovery truth 能跨刷新、重启和换设备恢复。
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-22`
 - 前置条件: 存在 durable store / database schema 与相关 API contract。
 - 测试步骤:
-  1. 编辑一组 workspace、agent 或 machine 配置。
+  1. 编辑一组 workspace 或 member 配置。
   2. 刷新浏览器并重启 server。
   3. 在同设备或另一设备重新进入，检查配置是否保持一致。
-- 预期结果: 配置真相不依赖浏览器本地临时状态，且恢复后下一次 run 继续使用同一份设置。
-- 业务结论: 当前 repo 只有 file state、auth session persistence 和 memory governance 的局部持久化，没有统一配置 durable truth，所以这条用例保持 `Blocked`，留给 `TKT-37`。
+- 预期结果: workspace / member 配置与 onboarding 恢复真相不依赖浏览器本地临时状态，且恢复后 `/settings`、`/access`、`/setup` 读取到同一份 durable snapshot。
+- 业务结论: 2026 年 4 月 9 日 `TKT-37` 已新增 `/v1/workspace` durable config patch、`/v1/workspace/members/:id/preferences` member preference patch，以及 headed `pnpm test:headed-config-persistence-recovery`。当前 `docs/testing/Test-Report-2026-04-09-config-persistence-recovery.md` 已记录 `/settings` 写回 workspace/member config 后，`/access` 与 `/setup` 同源投影、browser reload、server restart、second browser context recovery 的 exact evidence，因此这条用例当前转为 `Pass`。
 
 ## TC-041 Multi-Agent Role Topology / Reviewer-Tester Loop
 

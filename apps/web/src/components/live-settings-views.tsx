@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
@@ -17,7 +17,7 @@ import {
   useLiveNotifications,
 } from "@/lib/live-notifications";
 import { usePhaseZeroState } from "@/lib/live-phase0";
-import type { InboxItem } from "@/lib/mock-data";
+import type { AgentStatus, InboxItem, WorkspaceMember } from "@/lib/mock-data";
 
 type LiveNotificationsModel = ReturnType<typeof useLiveNotifications>;
 
@@ -25,8 +25,19 @@ function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+function valueOrPlaceholder(value: string | undefined, fallback: string) {
+  return value && value.trim() ? value : fallback;
+}
+
 const WORKSPACE_POLICY_OPTIONS: WorkspaceNotificationPolicy[] = ["critical", "all", "mute"];
 const SUBSCRIBER_PREFERENCE_OPTIONS: NotificationPreference[] = ["inherit", "critical", "all", "mute"];
+const ONBOARDING_STATUS_OPTIONS = [
+  { value: "not_started", label: "未开始" },
+  { value: "in_progress", label: "进行中" },
+  { value: "ready", label: "待收口" },
+  { value: "done", label: "已完成" },
+] as const;
+const START_ROUTE_OPTIONS = ["/access", "/setup", "/board", "/rooms", "/settings"] as const;
 
 function inboxKindLabel(kind: InboxItem["kind"]) {
   switch (kind) {
@@ -187,6 +198,32 @@ function toneForDeliveryStatus(status: NotificationDelivery["status"] | Notifica
   }
 }
 
+function onboardingStatusLabel(status: string) {
+  switch (status) {
+    case "not_started":
+      return "未开始";
+    case "in_progress":
+      return "进行中";
+    case "ready":
+      return "待收口";
+    case "done":
+      return "已完成";
+    default:
+      return status || "未声明";
+  }
+}
+
+function findSettingsMember(sessionMemberID: string | undefined, members: WorkspaceMember[]) {
+  return members.find((member) => member.id === sessionMemberID) ?? members.find((member) => member.role === "owner") ?? null;
+}
+
+function agentLabel(agentID: string | undefined, agents: AgentStatus[]) {
+  if (!agentID) {
+    return "未绑定";
+  }
+  return agents.find((agent) => agent.id === agentID)?.name ?? agentID;
+}
+
 function FactTile({
   label,
   value,
@@ -295,22 +332,32 @@ function findPrimaryEmailSubscriber(center: NotificationCenter, preferredEmail: 
 }
 
 function LiveSettingsContextRail({ notifications }: { notifications: LiveNotificationsModel }) {
+  const { state, loading: stateLoading, error: stateError } = usePhaseZeroState();
   const { center, loading, error } = notifications;
+  const member = findSettingsMember(state.auth.session.memberId, state.auth.members);
   return (
     <DetailRail
-      label="Notify Truth"
+      label="Config Truth"
       items={[
         {
-          label: "Subscribers",
-          value: loading ? "同步中" : error ? "读取失败" : `${center.subscribers.length} live`,
+          label: "Onboarding",
+          value: stateLoading
+            ? "同步中"
+            : stateError
+              ? "读取失败"
+              : `${valueOrPlaceholder(state.workspace.onboarding.templateId, "未选模板")} / ${onboardingStatusLabel(state.workspace.onboarding.status)}`,
+        },
+        {
+          label: "Identity",
+          value: stateLoading
+            ? "同步中"
+            : stateError
+              ? "读取失败"
+              : `${agentLabel(member?.preferences.preferredAgentId, state.agents)} / ${valueOrPlaceholder(member?.githubIdentity?.handle, "未绑 GitHub")}`,
         },
         {
           label: "Browser",
           value: loading ? "同步中" : error ? "读取失败" : preferenceLabel(center.policy.browserPush),
-        },
-        {
-          label: "Email",
-          value: loading ? "同步中" : error ? "读取失败" : preferenceLabel(center.policy.email),
         },
         {
           label: "Worker",
@@ -324,6 +371,365 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
         },
       ]}
     />
+  );
+}
+
+function WorkspaceDurableConfigPanel() {
+  const { state, updateWorkspaceConfig } = usePhaseZeroState();
+  const workspace = state.workspace;
+  const [templateId, setTemplateId] = useState("");
+  const [status, setStatus] = useState("in_progress");
+  const [currentStep, setCurrentStep] = useState("");
+  const [completedSteps, setCompletedSteps] = useState("");
+  const [resumeUrl, setResumeUrl] = useState("");
+  const [browserPush, setBrowserPush] = useState("");
+  const [memoryMode, setMemoryMode] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dirty) {
+      return;
+    }
+    setTemplateId(workspace.onboarding.templateId ?? "");
+    setStatus(workspace.onboarding.status || "in_progress");
+    setCurrentStep(workspace.onboarding.currentStep ?? "");
+    setCompletedSteps((workspace.onboarding.completedSteps ?? []).join(", "));
+    setResumeUrl(workspace.onboarding.resumeUrl ?? "");
+    setBrowserPush(workspace.browserPush ?? "");
+    setMemoryMode(workspace.memoryMode ?? "");
+  }, [dirty, workspace]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateWorkspaceConfig({
+        plan: workspace.plan,
+        browserPush,
+        memoryMode,
+        onboarding: {
+          status,
+          templateId,
+          currentStep,
+          completedSteps: completedSteps
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+          resumeUrl,
+        },
+      });
+      setDirty(false);
+      setSuccess("workspace durable truth 已写回 server，并会跨 refresh / restart 继续保留。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "workspace config update failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Panel tone="yellow">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">workspace durable truth</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">把 onboarding / repo / install / memory 配置收成同一份工作区真值</h2>
+        </div>
+        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          {onboardingStatusLabel(workspace.onboarding.status)}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
+        `#126` 这层不再把 onboarding progress、template selection、repo binding、GitHub installation 和 workspace preference 分散在多页临时状态里；
+        settings 写回后，setup / access 会读取同一份 durable snapshot。
+      </p>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <FactTile label="Template" value={valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")} testID="settings-workspace-template-value" />
+        <p className="hidden" data-testid="settings-workspace-template-text">{valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")}</p>
+        <FactTile label="Resume" value={valueOrPlaceholder(workspace.onboarding.resumeUrl, "未声明")} />
+        <FactTile label="Repo Sync" value={valueOrPlaceholder(workspace.repoBinding.syncedAt, "未回写")} />
+        <FactTile label="Install" value={workspace.githubInstallation.connectionReady ? "ready" : "pending"} />
+      </div>
+
+      <form onSubmit={handleSubmit} className="mt-5 grid gap-3 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">template</span>
+            <input
+              data-testid="settings-workspace-template"
+              value={templateId}
+              onChange={(event) => {
+                setTemplateId(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">onboarding status</span>
+            <select
+              data-testid="settings-workspace-onboarding-status"
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            >
+              {ONBOARDING_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">current step</span>
+            <input
+              data-testid="settings-workspace-current-step"
+              value={currentStep}
+              onChange={(event) => {
+                setCurrentStep(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">resume url</span>
+            <input
+              data-testid="settings-workspace-resume-url"
+              value={resumeUrl}
+              onChange={(event) => {
+                setResumeUrl(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">completed steps</span>
+            <input
+              data-testid="settings-workspace-completed-steps"
+              value={completedSteps}
+              onChange={(event) => {
+                setCompletedSteps(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">browser push</span>
+            <input
+              data-testid="settings-workspace-browser-push"
+              value={browserPush}
+              onChange={(event) => {
+                setBrowserPush(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm md:col-span-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">memory mode</span>
+            <input
+              data-testid="settings-workspace-memory-mode"
+              value={memoryMode}
+              onChange={(event) => {
+                setMemoryMode(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p data-testid="settings-workspace-onboarding-value" className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+            {onboardingStatusLabel(workspace.onboarding.status)} / {valueOrPlaceholder(workspace.onboarding.currentStep, "未声明 current step")}
+          </p>
+          <button
+            data-testid="settings-workspace-save"
+            type="submit"
+            disabled={pending}
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "写回中..." : "写回 Workspace Truth"}
+          </button>
+        </div>
+
+        {error ? (
+          <p data-testid="settings-workspace-error" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white">
+            {error}
+          </p>
+        ) : null}
+        {success ? (
+          <p data-testid="settings-workspace-success" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 text-sm">
+            {success}
+          </p>
+        ) : null}
+      </form>
+    </Panel>
+  );
+}
+
+function MemberPreferencePanel() {
+  const { state, updateWorkspaceMemberPreferences } = usePhaseZeroState();
+  const member = findSettingsMember(state.auth.session.memberId, state.auth.members);
+  const [preferredAgentId, setPreferredAgentId] = useState("");
+  const [startRoute, setStartRoute] = useState("/access");
+  const [githubHandle, setGitHubHandle] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!member || dirty) {
+      return;
+    }
+    setPreferredAgentId(member.preferences.preferredAgentId ?? "");
+    setStartRoute(member.preferences.startRoute ?? "/access");
+    setGitHubHandle(member.githubIdentity?.handle ?? "");
+  }, [dirty, member]);
+
+  if (!member) {
+    return (
+      <Panel tone="paper">
+        <p className="font-display text-3xl font-bold">当前没有可写的成员真值</p>
+        <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">先建立 active session，再写回 preferred agent / github identity / start route。</p>
+      </Panel>
+    );
+  }
+  const currentMember = member;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateWorkspaceMemberPreferences(currentMember.id, {
+        preferredAgentId,
+        startRoute,
+        githubHandle,
+      });
+      setDirty(false);
+      setSuccess("member preference truth 已写回 server，换设备后会继续读到同一份对象。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "member preference update failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Panel tone="paper">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">member durable truth</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">把 preferred agent / start route / github identity 绑回当前成员</h2>
+        </div>
+        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          {currentMember.email}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <FactTile
+          label="Preferred Agent"
+          value={agentLabel(currentMember.preferences.preferredAgentId, state.agents)}
+          testID="settings-member-preferred-agent-value"
+        />
+        <p className="hidden" data-testid="settings-member-preferred-agent-text">{agentLabel(currentMember.preferences.preferredAgentId, state.agents)}</p>
+        <FactTile label="Start Route" value={valueOrPlaceholder(currentMember.preferences.startRoute, "未声明")} testID="settings-member-start-route-value" />
+        <p className="hidden" data-testid="settings-member-start-route-text">{valueOrPlaceholder(currentMember.preferences.startRoute, "未声明")}</p>
+        <FactTile label="GitHub" value={valueOrPlaceholder(currentMember.githubIdentity?.handle, "未绑定")} testID="settings-member-github-handle-value" />
+        <p className="hidden" data-testid="settings-member-github-handle-text">{valueOrPlaceholder(currentMember.githubIdentity?.handle, "未绑定")}</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="mt-5 grid gap-3 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">preferred agent</span>
+            <select
+              data-testid="settings-member-preferred-agent"
+              value={preferredAgentId}
+              onChange={(event) => {
+                setPreferredAgentId(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            >
+              <option value="">未绑定</option>
+              {state.agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">start route</span>
+            <select
+              data-testid="settings-member-start-route"
+              value={startRoute}
+              onChange={(event) => {
+                setStartRoute(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            >
+              {START_ROUTE_OPTIONS.map((route) => (
+                <option key={route} value={route}>
+                  {route}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">github handle</span>
+            <input
+              data-testid="settings-member-github-handle"
+              value={githubHandle}
+              onChange={(event) => {
+                setGitHubHandle(event.target.value);
+                setDirty(true);
+              }}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            data-testid="settings-member-save"
+            type="submit"
+            disabled={pending}
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "写回中..." : "写回 Member Truth"}
+          </button>
+        </div>
+
+        {error ? (
+          <p data-testid="settings-member-error" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white">
+            {error}
+          </p>
+        ) : null}
+        {success ? (
+          <p data-testid="settings-member-success" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 text-sm">
+            {success}
+          </p>
+        ) : null}
+      </form>
+    </Panel>
   );
 }
 
@@ -477,12 +883,15 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
         </Panel>
       ) : null}
 
+      <WorkspaceDurableConfigPanel />
+      <MemberPreferencePanel />
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
         <Panel tone="yellow">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Delivery Truth</p>
-          <h2 className="mt-3 font-display text-4xl font-bold">把通知偏好、订阅者和 fanout receipts 摆上桌</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Notification Sidecar</p>
+          <h2 className="mt-3 font-display text-4xl font-bold">通知策略继续作为 durable config 的旁路能力存在</h2>
           <p className="mt-3 max-w-3xl text-base leading-7">
-            这页现在直接消费 `/v1/notifications`。`TC-017` 只看 browser push / email delivery 能否把 approval、blocked、review 信号主动推出去，并把失败 / retry 状态明面化。
+            `#126` 把 workspace/member durable truth 拉回当前页之后，通知策略仍继续直接消费 `/v1/notifications`。它现在是 config contract 的一部分，但不再是假装代表整页主语义。
           </p>
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             <FactTile label="Subscribers" value={notificationLoading ? "同步中" : String(center.subscribers.length)} testID="notification-subscribers-count" />
@@ -897,11 +1306,11 @@ export function LiveSettingsRoute() {
   return (
     <OpenShockShell
       view="settings"
-      eyebrow="Phase 5 通知"
-      title="把提醒系统从对象层推进到可交付 delivery loop"
-      description="这里直接消费 `/v1/notifications`，把 workspace policy、subscriber contract、browser push / email fanout 与 explicit retry receipts 收成同一页真值。"
-      contextTitle="通知真值在线"
-      contextDescription="当前页只收 `TC-017`：高时效事件能主动触达，失败 / 重试有显式状态。"
+      eyebrow="Phase 6 Durable Config"
+      title="把 workspace / member 配置从临时表单收回 durable governance truth"
+      description="这里把 onboarding、template、repo/install snapshot、preferred agent、github identity 和通知 policy 统一接回 server snapshot；refresh / restart / device switch 后继续读同一份对象。"
+      contextTitle="Durable Truth Online"
+      contextDescription="当前页主线是 `TC-040`：settings 写回的 workspace/member config，setup / access 会按同一份真相恢复。"
       contextBody={<LiveSettingsContextRail notifications={notifications} />}
     >
       <LiveSettingsView notifications={notifications} />

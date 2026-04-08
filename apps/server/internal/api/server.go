@@ -113,6 +113,21 @@ type SelectRuntimeRequest struct {
 	Machine string `json:"machine"`
 }
 
+type WorkspaceOnboardingRequest struct {
+	Status         string   `json:"status"`
+	TemplateID     string   `json:"templateId"`
+	CurrentStep    string   `json:"currentStep"`
+	CompletedSteps []string `json:"completedSteps"`
+	ResumeURL      string   `json:"resumeUrl"`
+}
+
+type WorkspaceUpdateRequest struct {
+	Plan        string                      `json:"plan"`
+	BrowserPush string                      `json:"browserPush"`
+	MemoryMode  string                      `json:"memoryMode"`
+	Onboarding  *WorkspaceOnboardingRequest `json:"onboarding,omitempty"`
+}
+
 type RuntimeSelectionResponse struct {
 	SelectedRuntime   string          `json:"selectedRuntime"`
 	SelectedDaemonURL string          `json:"selectedDaemonUrl"`
@@ -189,10 +204,54 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, s.store.Snapshot().Workspace)
+	case http.MethodPatch:
+		if !s.requireSessionPermission(w, "workspace.manage") {
+			return
+		}
+		var req WorkspaceUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		var onboarding *store.WorkspaceOnboardingSnapshot
+		if req.Onboarding != nil {
+			onboarding = &store.WorkspaceOnboardingSnapshot{
+				Status:         req.Onboarding.Status,
+				TemplateID:     req.Onboarding.TemplateID,
+				CurrentStep:    req.Onboarding.CurrentStep,
+				CompletedSteps: req.Onboarding.CompletedSteps,
+				ResumeURL:      req.Onboarding.ResumeURL,
+			}
+		}
+		nextState, workspace, err := s.store.UpdateWorkspaceConfig(store.WorkspaceConfigUpdateInput{
+			Plan:        req.Plan,
+			BrowserPush: req.BrowserPush,
+			MemoryMode:  req.MemoryMode,
+			Onboarding:  onboarding,
+		})
+		if err != nil {
+			writeWorkspaceConfigError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"workspace": workspace, "state": nextState})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
-	writeJSON(w, http.StatusOK, s.store.Snapshot().Workspace)
+}
+
+func writeWorkspaceConfigError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrWorkspaceOnboardingStatusInvalid),
+		errors.Is(err, store.ErrWorkspaceResumeURLInvalid),
+		errors.Is(err, store.ErrWorkspaceStartRouteInvalid),
+		errors.Is(err, store.ErrWorkspacePreferredAgentNotFound):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 }
 
 func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {

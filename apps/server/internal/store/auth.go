@@ -192,6 +192,8 @@ func newWorkspaceMember(id, email, name, role, status, source, addedAt, lastSeen
 		EmailVerifiedAt:         verifiedAt,
 		PasswordResetStatus:     authPasswordResetIdle,
 		RecoveryStatus:          deriveMemberRecoveryStatus(verificationStatus, authPasswordResetIdle),
+		GitHubIdentity:          AuthExternalIdentity{},
+		Preferences:             defaultWorkspaceMemberPreferences(),
 		LinkedIdentities:        []AuthExternalIdentity{},
 		TrustedDeviceIDs:        []string{},
 		Permissions:             permissionsForRole(role),
@@ -215,6 +217,8 @@ func authSessionFromMember(member WorkspaceMember, signedInAt string) AuthSessio
 		PasswordResetRequestedAt: member.PasswordResetRequestedAt,
 		PasswordResetCompletedAt: member.PasswordResetCompletedAt,
 		RecoveryStatus:           member.RecoveryStatus,
+		GitHubIdentity:           member.GitHubIdentity,
+		Preferences:              member.Preferences,
 		LinkedIdentities:         append([]AuthExternalIdentity{}, member.LinkedIdentities...),
 		Permissions:              append([]string{}, member.Permissions...),
 	}
@@ -494,6 +498,7 @@ func (s *Store) ensureAuthConsistency() {
 		if s.state.Auth.Members[index].TrustedDeviceIDs == nil {
 			s.state.Auth.Members[index].TrustedDeviceIDs = []string{}
 		}
+		syncWorkspaceMemberDefaults(&s.state.Auth.Members[index])
 		s.state.Auth.Members[index].Permissions = permissionsForRole(role)
 	}
 	s.sortWorkspaceMembersLocked()
@@ -853,6 +858,10 @@ func (s *Store) BindExternalIdentity(input AuthRecoveryInput) (State, AuthSessio
 	if !replaced {
 		member.LinkedIdentities = append(member.LinkedIdentities, binding)
 	}
+	if strings.EqualFold(binding.Provider, "github") {
+		member.GitHubIdentity = binding
+	}
+	syncWorkspaceMemberDefaults(&member)
 	s.state.Auth.Members[memberIndex] = member
 	s.refreshAuthSessionLocked()
 

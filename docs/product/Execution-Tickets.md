@@ -327,12 +327,12 @@
 
 ## TKT-37 Workspace / User / Agent Config Persistence + Database Truth
 
-- 状态: `todo`
+- 状态: `in_review`
 - 优先级: `P1`
-- 目标: 把 user / workspace / agent / machine 配置从临时前端状态补成 durable store truth。
+- 目标: 把 workspace / member / agent profile 的配置读写与治理快照从临时前端状态补成 durable store truth。
 - 范围:
-  - database schema / store / migration
-  - preference / onboarding / profile / mailbox state persistence
+  - workspace / member durable config schema / store / migration
+  - preference / onboarding / profile / repo-binding / GitHub-installation snapshot persistence
   - restart / reload / device switch recovery contract
 - 依赖: 无
 - Done When:

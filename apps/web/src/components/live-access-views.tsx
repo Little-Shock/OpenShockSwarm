@@ -21,6 +21,13 @@ function valueOrPlaceholder(value: string | undefined, fallback: string) {
   return value && value.trim() ? value : fallback;
 }
 
+function findAgentName(agentID: string | undefined, agentItems: Array<{ id: string; name: string }>) {
+  if (!agentID) {
+    return "未绑定";
+  }
+  return agentItems.find((agent) => agent.id === agentID)?.name ?? agentID;
+}
+
 function sessionIsActive(session: AuthSession) {
   return session.status === "active";
 }
@@ -1088,6 +1095,43 @@ function IdentityRecoveryPanel({
   );
 }
 
+function DurableMemberPreferencePanel() {
+  const { state } = usePhaseZeroState();
+  const member =
+    state.auth.members.find((item) => item.id === state.auth.session.memberId) ??
+    state.auth.members.find((item) => item.role === "owner") ??
+    null;
+
+  if (!member) {
+    return null;
+  }
+
+  return (
+    <Panel tone="yellow">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">durable member truth</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">当前身份页直接读取同一份 member preference / github identity snapshot</h2>
+        </div>
+        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          {member.email}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
+        这里不再自己攒一套 access 层默认值。`/settings` 写回的 preferred agent、start route 和 github identity，会在 `/access` 直接按 member truth 投影出来。
+      </p>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <Metric label="preferred agent" value={findAgentName(member.preferences.preferredAgentId, state.agents)} />
+        <p className="sr-only" data-testid="access-durable-preferred-agent">{findAgentName(member.preferences.preferredAgentId, state.agents)}</p>
+        <Metric label="start route" value={valueOrPlaceholder(member.preferences.startRoute, "未声明")} />
+        <p className="sr-only" data-testid="access-durable-start-route">{valueOrPlaceholder(member.preferences.startRoute, "未声明")}</p>
+        <Metric label="github identity" value={valueOrPlaceholder(member.githubIdentity?.handle, "未绑定")} />
+        <p className="sr-only" data-testid="access-durable-github-handle">{valueOrPlaceholder(member.githubIdentity?.handle, "未绑定")}</p>
+      </div>
+    </Panel>
+  );
+}
+
 export function LiveAccessContextRail() {
   const { state, loading, error } = usePhaseZeroState();
 
@@ -1116,6 +1160,7 @@ export function LiveAccessContextRail() {
         { label: "Recovery", value: recoveryStatusLabel(session.recoveryStatus) },
         { label: "Device", value: deviceAuthLabel(session.deviceAuthStatus) },
         { label: "Members", value: `${state.auth.members.length} roster / ${ownerCount} owner` },
+        { label: "Route", value: valueOrPlaceholder(session.preferences?.startRoute, "未声明") },
         { label: "Permissions", value: `${session.permissions.length} live permissions` },
       ]}
     />
@@ -1151,6 +1196,7 @@ export function LiveAccessOverview() {
   return (
     <div className="space-y-4">
       <SessionActionPanel session={session} members={members} />
+      <DurableMemberPreferencePanel />
       <IdentityRecoveryPanel session={session} members={members} devices={devices} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_0.95fr]">

@@ -1,0 +1,123 @@
+package api
+
+import (
+	"bytes"
+	"net/http"
+	"testing"
+
+	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
+)
+
+func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace", bytes.NewReader([]byte(`{
+		"browserPush":"全部 live 事件",
+		"memoryMode":"governed-first / recovery ready",
+		"onboarding":{
+			"status":"ready",
+			"templateId":"research-team",
+			"currentStep":"identity-proof",
+			"completedSteps":["workspace-created","repo-bound","agent-profile"],
+			"resumeUrl":"/setup?resume=tkt-37"
+		}
+	}`)))
+	if err != nil {
+		t.Fatalf("new PATCH /v1/workspace request error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH /v1/workspace error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Workspace store.WorkspaceSnapshot `json:"workspace"`
+		State     store.State             `json:"state"`
+	}
+	decodeJSON(t, resp, &payload)
+	if payload.Workspace.Onboarding.TemplateID != "research-team" || payload.Workspace.Onboarding.ResumeURL != "/setup?resume=tkt-37" {
+		t.Fatalf("workspace payload = %#v, want persisted onboarding snapshot", payload.Workspace)
+	}
+	if payload.State.Workspace.MemoryMode != "governed-first / recovery ready" {
+		t.Fatalf("state workspace = %#v, want updated memory mode", payload.State.Workspace)
+	}
+
+	getResp, err := http.Get(server.URL + "/v1/workspace")
+	if err != nil {
+		t.Fatalf("GET /v1/workspace error = %v", err)
+	}
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/workspace status = %d, want %d", getResp.StatusCode, http.StatusOK)
+	}
+
+	var workspace store.WorkspaceSnapshot
+	decodeJSON(t, getResp, &workspace)
+	if workspace.Onboarding.Status != "ready" || workspace.BrowserPush != "全部 live 事件" {
+		t.Fatalf("GET workspace = %#v, want persisted durable config", workspace)
+	}
+}
+
+func TestWorkspaceMemberPreferencesRouteAllowsSelfServiceButProtectsOtherMembers(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session error = %v", err)
+	}
+	if loginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session status = %d, want %d", loginResp.StatusCode, http.StatusOK)
+	}
+
+	selfReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/member-mina/preferences", bytes.NewReader([]byte(`{
+		"preferredAgentId":"agent-claude-review-runner",
+		"startRoute":"/rooms",
+		"githubHandle":"@mina"
+	}`)))
+	if err != nil {
+		t.Fatalf("new PATCH self preferences request error = %v", err)
+	}
+	selfReq.Header.Set("Content-Type", "application/json")
+
+	selfResp, err := http.DefaultClient.Do(selfReq)
+	if err != nil {
+		t.Fatalf("PATCH self preferences error = %v", err)
+	}
+	if selfResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH self preferences status = %d, want %d", selfResp.StatusCode, http.StatusOK)
+	}
+
+	var selfPayload struct {
+		Member store.WorkspaceMember `json:"member"`
+		State  store.State           `json:"state"`
+	}
+	decodeJSON(t, selfResp, &selfPayload)
+	if selfPayload.Member.Preferences.StartRoute != "/rooms" || selfPayload.Member.GitHubIdentity.Handle != "@mina" {
+		t.Fatalf("self payload member = %#v, want /rooms + @mina", selfPayload.Member)
+	}
+	if selfPayload.State.Auth.Session.Preferences.StartRoute != "/rooms" || selfPayload.State.Auth.Session.GitHubIdentity.Handle != "@mina" {
+		t.Fatalf("self payload session = %#v, want refreshed self-service session", selfPayload.State.Auth.Session)
+	}
+
+	otherReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/member-larkspur/preferences", bytes.NewReader([]byte(`{"startRoute":"/settings"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH other preferences request error = %v", err)
+	}
+	otherReq.Header.Set("Content-Type", "application/json")
+
+	otherResp, err := http.DefaultClient.Do(otherReq)
+	if err != nil {
+		t.Fatalf("PATCH other preferences error = %v", err)
+	}
+	if otherResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("PATCH other preferences status = %d, want %d", otherResp.StatusCode, http.StatusForbidden)
+	}
+}

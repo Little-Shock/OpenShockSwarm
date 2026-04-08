@@ -158,6 +158,7 @@ func (s *Store) hydrateMissingDefaults() {
 	s.ensureRuntimeRegistryState()
 	s.ensureSessionConsistency()
 	s.ensureAuthConsistency()
+	syncWorkspaceSnapshotDefaults(&s.state.Workspace)
 }
 
 func findAgentByID(items []Agent, agentID string) (Agent, bool) {

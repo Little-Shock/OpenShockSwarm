@@ -22,21 +22,21 @@ type RepoBindingRequest struct {
 }
 
 type RepoBindingResponse struct {
-	Repo              string `json:"repo"`
-	RepoURL           string `json:"repoUrl"`
-	Branch            string `json:"branch"`
-	Provider          string `json:"provider"`
-	BindingStatus     string `json:"bindingStatus"`
-	AuthMode          string `json:"authMode"`
-	PreferredAuthMode string `json:"preferredAuthMode,omitempty"`
-	DetectedAt        string `json:"detectedAt"`
-	ConnectionReady   bool   `json:"connectionReady"`
-	AppConfigured     bool   `json:"appConfigured"`
-	AppInstalled      bool   `json:"appInstalled"`
-	InstallationID    string `json:"installationId"`
-	InstallationURL   string `json:"installationUrl"`
+	Repo              string   `json:"repo"`
+	RepoURL           string   `json:"repoUrl"`
+	Branch            string   `json:"branch"`
+	Provider          string   `json:"provider"`
+	BindingStatus     string   `json:"bindingStatus"`
+	AuthMode          string   `json:"authMode"`
+	PreferredAuthMode string   `json:"preferredAuthMode,omitempty"`
+	DetectedAt        string   `json:"detectedAt"`
+	ConnectionReady   bool     `json:"connectionReady"`
+	AppConfigured     bool     `json:"appConfigured"`
+	AppInstalled      bool     `json:"appInstalled"`
+	InstallationID    string   `json:"installationId"`
+	InstallationURL   string   `json:"installationUrl"`
 	Missing           []string `json:"missing,omitempty"`
-	ConnectionMessage string `json:"connectionMessage"`
+	ConnectionMessage string   `json:"connectionMessage"`
 }
 
 func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
@@ -87,22 +87,36 @@ func (s *Server) handleRepoBinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) currentRepoBinding() RepoBindingResponse {
+	workspace := s.store.Snapshot().Workspace
 	connection, err := s.github.Probe(s.workspaceRoot)
 	if err != nil {
-		return bindingResponseFromWorkspace(s.store.Snapshot().Workspace, "", nil)
+		return bindingResponseFromWorkspace(workspace, "", nil)
 	}
-	return bindingResponseFromWorkspace(s.store.Snapshot().Workspace, "", &connection)
+	return bindingResponseFromWorkspace(workspace, "", &connection)
 }
 
 func bindingResponseFromWorkspace(workspace store.WorkspaceSnapshot, detectedAt string, connection *githubsvc.Status) RepoBindingResponse {
+	binding := storeBindingSnapshot(workspace)
+	installation := workspaceGitHubInstallationSnapshot(workspace)
+	if detectedAt == "" {
+		detectedAt = binding.DetectedAt
+	}
 	return enrichRepoBindingResponse(RepoBindingResponse{
-		Repo:          workspace.Repo,
-		RepoURL:       workspace.RepoURL,
-		Branch:        workspace.Branch,
-		Provider:      workspace.RepoProvider,
-		BindingStatus: workspace.RepoBindingStatus,
-		AuthMode:      workspace.RepoAuthMode,
-		DetectedAt:    detectedAt,
+		Repo:              binding.Repo,
+		RepoURL:           binding.RepoURL,
+		Branch:            binding.Branch,
+		Provider:          binding.Provider,
+		BindingStatus:     binding.BindingStatus,
+		AuthMode:          binding.AuthMode,
+		PreferredAuthMode: installation.PreferredAuthMode,
+		DetectedAt:        detectedAt,
+		ConnectionReady:   installation.ConnectionReady,
+		AppConfigured:     installation.AppConfigured,
+		AppInstalled:      installation.AppInstalled,
+		InstallationID:    installation.InstallationID,
+		InstallationURL:   installation.InstallationURL,
+		Missing:           append([]string{}, installation.Missing...),
+		ConnectionMessage: installation.ConnectionMessage,
 	}, connection)
 }
 
@@ -158,10 +172,26 @@ func mergeRepoBindingInput(detected store.RepoBindingInput, req RepoBindingReque
 	if strings.TrimSpace(merged.DetectedAt) == "" {
 		merged.DetectedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	if strings.TrimSpace(merged.SyncedAt) == "" {
+		merged.SyncedAt = merged.DetectedAt
+	}
 	return merged
 }
 
 func alignRepoBindingWithConnection(binding store.RepoBindingInput, req RepoBindingRequest, probeErr error, connection githubsvc.Status) store.RepoBindingInput {
+	binding.SyncedAt = time.Now().UTC().Format(time.RFC3339)
+	binding.PreferredAuthMode = connection.PreferredAuthMode
+	binding.ConnectionReady = connection.Ready
+	binding.AppConfigured = connection.AppConfigured
+	binding.AppInstalled = connection.AppInstalled
+	binding.InstallationID = connection.InstallationID
+	binding.InstallationURL = connection.InstallationURL
+	binding.ConnectionMessage = connection.Message
+	if len(connection.Missing) > 0 {
+		binding.Missing = append([]string(nil), connection.Missing...)
+	} else {
+		binding.Missing = nil
+	}
 	if strings.TrimSpace(req.AuthMode) != "" || probeErr != nil {
 		return binding
 	}
@@ -242,4 +272,41 @@ func runGit(workspaceRoot string, args ...string) (string, error) {
 
 func parseRepoIdentity(remoteURL string) (string, string) {
 	return githubsvc.ParseRepoIdentity(remoteURL)
+}
+
+func storeBindingSnapshot(workspace store.WorkspaceSnapshot) store.WorkspaceRepoBindingSnapshot {
+	binding := workspace.RepoBinding
+	if strings.TrimSpace(binding.Repo) == "" {
+		binding.Repo = workspace.Repo
+	}
+	if strings.TrimSpace(binding.RepoURL) == "" {
+		binding.RepoURL = workspace.RepoURL
+	}
+	if strings.TrimSpace(binding.Branch) == "" {
+		binding.Branch = workspace.Branch
+	}
+	if strings.TrimSpace(binding.Provider) == "" {
+		binding.Provider = defaultString(workspace.RepoProvider, "github")
+	}
+	if strings.TrimSpace(binding.BindingStatus) == "" {
+		binding.BindingStatus = defaultString(workspace.RepoBindingStatus, "pending")
+	}
+	if strings.TrimSpace(binding.AuthMode) == "" {
+		binding.AuthMode = defaultString(workspace.RepoAuthMode, "local-git-origin")
+	}
+	return binding
+}
+
+func workspaceGitHubInstallationSnapshot(workspace store.WorkspaceSnapshot) store.WorkspaceGitHubInstallSnapshot {
+	installation := workspace.GitHubInstallation
+	if strings.TrimSpace(installation.Provider) == "" {
+		installation.Provider = defaultString(workspace.RepoProvider, "github")
+	}
+	if strings.TrimSpace(installation.PreferredAuthMode) == "" {
+		installation.PreferredAuthMode = defaultString(workspace.RepoAuthMode, "local-git-origin")
+	}
+	if strings.TrimSpace(installation.ConnectionMessage) == "" {
+		installation.ConnectionMessage = "等待 GitHub probe 或 installation callback 返回 install truth。"
+	}
+	return installation
 }

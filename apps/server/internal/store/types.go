@@ -3,21 +3,57 @@ package store
 import "sync"
 
 type WorkspaceSnapshot struct {
-	Name              string `json:"name"`
-	Repo              string `json:"repo"`
-	RepoURL           string `json:"repoUrl"`
-	Branch            string `json:"branch"`
-	RepoProvider      string `json:"repoProvider"`
-	RepoBindingStatus string `json:"repoBindingStatus"`
-	RepoAuthMode      string `json:"repoAuthMode"`
-	Plan              string `json:"plan"`
-	PairedRuntime     string `json:"pairedRuntime"`
-	PairedRuntimeURL  string `json:"pairedRuntimeUrl"`
-	PairingStatus     string `json:"pairingStatus"`
-	DeviceAuth        string `json:"deviceAuth"`
-	LastPairedAt      string `json:"lastPairedAt"`
-	BrowserPush       string `json:"browserPush"`
-	MemoryMode        string `json:"memoryMode"`
+	Name               string                         `json:"name"`
+	Repo               string                         `json:"repo"`
+	RepoURL            string                         `json:"repoUrl"`
+	Branch             string                         `json:"branch"`
+	RepoProvider       string                         `json:"repoProvider"`
+	RepoBindingStatus  string                         `json:"repoBindingStatus"`
+	RepoAuthMode       string                         `json:"repoAuthMode"`
+	Plan               string                         `json:"plan"`
+	PairedRuntime      string                         `json:"pairedRuntime"`
+	PairedRuntimeURL   string                         `json:"pairedRuntimeUrl"`
+	PairingStatus      string                         `json:"pairingStatus"`
+	DeviceAuth         string                         `json:"deviceAuth"`
+	LastPairedAt       string                         `json:"lastPairedAt"`
+	BrowserPush        string                         `json:"browserPush"`
+	MemoryMode         string                         `json:"memoryMode"`
+	RepoBinding        WorkspaceRepoBindingSnapshot   `json:"repoBinding"`
+	GitHubInstallation WorkspaceGitHubInstallSnapshot `json:"githubInstallation"`
+	Onboarding         WorkspaceOnboardingSnapshot    `json:"onboarding"`
+}
+
+type WorkspaceRepoBindingSnapshot struct {
+	Repo          string `json:"repo"`
+	RepoURL       string `json:"repoUrl"`
+	Branch        string `json:"branch"`
+	Provider      string `json:"provider"`
+	BindingStatus string `json:"bindingStatus"`
+	AuthMode      string `json:"authMode"`
+	DetectedAt    string `json:"detectedAt,omitempty"`
+	SyncedAt      string `json:"syncedAt,omitempty"`
+}
+
+type WorkspaceGitHubInstallSnapshot struct {
+	Provider          string   `json:"provider"`
+	PreferredAuthMode string   `json:"preferredAuthMode,omitempty"`
+	ConnectionReady   bool     `json:"connectionReady"`
+	AppConfigured     bool     `json:"appConfigured"`
+	AppInstalled      bool     `json:"appInstalled"`
+	InstallationID    string   `json:"installationId,omitempty"`
+	InstallationURL   string   `json:"installationUrl,omitempty"`
+	Missing           []string `json:"missing,omitempty"`
+	ConnectionMessage string   `json:"connectionMessage,omitempty"`
+	SyncedAt          string   `json:"syncedAt,omitempty"`
+}
+
+type WorkspaceOnboardingSnapshot struct {
+	Status         string   `json:"status"`
+	TemplateID     string   `json:"templateId,omitempty"`
+	CurrentStep    string   `json:"currentStep,omitempty"`
+	CompletedSteps []string `json:"completedSteps,omitempty"`
+	ResumeURL      string   `json:"resumeUrl,omitempty"`
+	UpdatedAt      string   `json:"updatedAt,omitempty"`
 }
 
 type Channel struct {
@@ -311,26 +347,28 @@ type Session struct {
 }
 
 type AuthSession struct {
-	ID                       string                 `json:"id"`
-	MemberID                 string                 `json:"memberId,omitempty"`
-	Email                    string                 `json:"email,omitempty"`
-	Name                     string                 `json:"name,omitempty"`
-	Role                     string                 `json:"role,omitempty"`
-	Status                   string                 `json:"status"`
-	AuthMethod               string                 `json:"authMethod,omitempty"`
-	SignedInAt               string                 `json:"signedInAt,omitempty"`
-	LastSeenAt               string                 `json:"lastSeenAt,omitempty"`
-	DeviceID                 string                 `json:"deviceId,omitempty"`
-	DeviceLabel              string                 `json:"deviceLabel,omitempty"`
-	DeviceAuthStatus         string                 `json:"deviceAuthStatus,omitempty"`
-	EmailVerificationStatus  string                 `json:"emailVerificationStatus,omitempty"`
-	EmailVerifiedAt          string                 `json:"emailVerifiedAt,omitempty"`
-	PasswordResetStatus      string                 `json:"passwordResetStatus,omitempty"`
-	PasswordResetRequestedAt string                 `json:"passwordResetRequestedAt,omitempty"`
-	PasswordResetCompletedAt string                 `json:"passwordResetCompletedAt,omitempty"`
-	RecoveryStatus           string                 `json:"recoveryStatus,omitempty"`
-	LinkedIdentities         []AuthExternalIdentity `json:"linkedIdentities,omitempty"`
-	Permissions              []string               `json:"permissions"`
+	ID                       string                     `json:"id"`
+	MemberID                 string                     `json:"memberId,omitempty"`
+	Email                    string                     `json:"email,omitempty"`
+	Name                     string                     `json:"name,omitempty"`
+	Role                     string                     `json:"role,omitempty"`
+	Status                   string                     `json:"status"`
+	AuthMethod               string                     `json:"authMethod,omitempty"`
+	SignedInAt               string                     `json:"signedInAt,omitempty"`
+	LastSeenAt               string                     `json:"lastSeenAt,omitempty"`
+	DeviceID                 string                     `json:"deviceId,omitempty"`
+	DeviceLabel              string                     `json:"deviceLabel,omitempty"`
+	DeviceAuthStatus         string                     `json:"deviceAuthStatus,omitempty"`
+	EmailVerificationStatus  string                     `json:"emailVerificationStatus,omitempty"`
+	EmailVerifiedAt          string                     `json:"emailVerifiedAt,omitempty"`
+	PasswordResetStatus      string                     `json:"passwordResetStatus,omitempty"`
+	PasswordResetRequestedAt string                     `json:"passwordResetRequestedAt,omitempty"`
+	PasswordResetCompletedAt string                     `json:"passwordResetCompletedAt,omitempty"`
+	RecoveryStatus           string                     `json:"recoveryStatus,omitempty"`
+	GitHubIdentity           AuthExternalIdentity       `json:"githubIdentity,omitempty"`
+	Preferences              WorkspaceMemberPreferences `json:"preferences"`
+	LinkedIdentities         []AuthExternalIdentity     `json:"linkedIdentities,omitempty"`
+	Permissions              []string                   `json:"permissions"`
 }
 
 type WorkspaceRole struct {
@@ -341,24 +379,32 @@ type WorkspaceRole struct {
 }
 
 type WorkspaceMember struct {
-	ID                       string                 `json:"id"`
-	Email                    string                 `json:"email"`
-	Name                     string                 `json:"name"`
-	Role                     string                 `json:"role"`
-	Status                   string                 `json:"status"`
-	Source                   string                 `json:"source,omitempty"`
-	AddedAt                  string                 `json:"addedAt,omitempty"`
-	LastSeenAt               string                 `json:"lastSeenAt,omitempty"`
-	RecoveryEmail            string                 `json:"recoveryEmail,omitempty"`
-	EmailVerificationStatus  string                 `json:"emailVerificationStatus,omitempty"`
-	EmailVerifiedAt          string                 `json:"emailVerifiedAt,omitempty"`
-	PasswordResetStatus      string                 `json:"passwordResetStatus,omitempty"`
-	PasswordResetRequestedAt string                 `json:"passwordResetRequestedAt,omitempty"`
-	PasswordResetCompletedAt string                 `json:"passwordResetCompletedAt,omitempty"`
-	RecoveryStatus           string                 `json:"recoveryStatus,omitempty"`
-	LinkedIdentities         []AuthExternalIdentity `json:"linkedIdentities,omitempty"`
-	TrustedDeviceIDs         []string               `json:"trustedDeviceIds,omitempty"`
-	Permissions              []string               `json:"permissions"`
+	ID                       string                     `json:"id"`
+	Email                    string                     `json:"email"`
+	Name                     string                     `json:"name"`
+	Role                     string                     `json:"role"`
+	Status                   string                     `json:"status"`
+	Source                   string                     `json:"source,omitempty"`
+	AddedAt                  string                     `json:"addedAt,omitempty"`
+	LastSeenAt               string                     `json:"lastSeenAt,omitempty"`
+	RecoveryEmail            string                     `json:"recoveryEmail,omitempty"`
+	EmailVerificationStatus  string                     `json:"emailVerificationStatus,omitempty"`
+	EmailVerifiedAt          string                     `json:"emailVerifiedAt,omitempty"`
+	PasswordResetStatus      string                     `json:"passwordResetStatus,omitempty"`
+	PasswordResetRequestedAt string                     `json:"passwordResetRequestedAt,omitempty"`
+	PasswordResetCompletedAt string                     `json:"passwordResetCompletedAt,omitempty"`
+	RecoveryStatus           string                     `json:"recoveryStatus,omitempty"`
+	GitHubIdentity           AuthExternalIdentity       `json:"githubIdentity,omitempty"`
+	Preferences              WorkspaceMemberPreferences `json:"preferences"`
+	LinkedIdentities         []AuthExternalIdentity     `json:"linkedIdentities,omitempty"`
+	TrustedDeviceIDs         []string                   `json:"trustedDeviceIds,omitempty"`
+	Permissions              []string                   `json:"permissions"`
+}
+
+type WorkspaceMemberPreferences struct {
+	PreferredAgentID string `json:"preferredAgentId,omitempty"`
+	StartRoute       string `json:"startRoute,omitempty"`
+	UpdatedAt        string `json:"updatedAt,omitempty"`
 }
 
 type AuthExternalIdentity struct {
@@ -506,6 +552,16 @@ type RepoBindingInput struct {
 	Provider   string
 	AuthMode   string
 	DetectedAt string
+	SyncedAt   string
+
+	PreferredAuthMode string
+	ConnectionReady   bool
+	AppConfigured     bool
+	AppInstalled      bool
+	InstallationID    string
+	InstallationURL   string
+	Missing           []string
+	ConnectionMessage string
 }
 
 type Store struct {

@@ -326,6 +326,7 @@ func (s *Store) UpdateRepoBinding(req RepoBindingInput) (State, error) {
 	provider := defaultString(strings.TrimSpace(req.Provider), "github")
 	authMode := defaultString(strings.TrimSpace(req.AuthMode), "local-git-origin")
 	detectedAt := defaultString(strings.TrimSpace(req.DetectedAt), time.Now().UTC().Format(time.RFC3339))
+	syncedAt := defaultString(strings.TrimSpace(req.SyncedAt), detectedAt)
 	if repo == "" || repoURL == "" {
 		return State{}, fmt.Errorf("repo binding requires repo and repoUrl")
 	}
@@ -336,6 +337,18 @@ func (s *Store) UpdateRepoBinding(req RepoBindingInput) (State, error) {
 	s.state.Workspace.RepoProvider = provider
 	s.state.Workspace.RepoBindingStatus = "bound"
 	s.state.Workspace.RepoAuthMode = authMode
+	s.state.Workspace.RepoBinding = WorkspaceRepoBindingSnapshot{
+		Repo:          repo,
+		RepoURL:       repoURL,
+		Branch:        branch,
+		Provider:      provider,
+		BindingStatus: "bound",
+		AuthMode:      authMode,
+		DetectedAt:    detectedAt,
+		SyncedAt:      syncedAt,
+	}
+	s.applyRepoBindingConnectionLocked(req, syncedAt)
+	syncWorkspaceSnapshotDefaults(&s.state.Workspace)
 
 	now := shortClock()
 	s.appendChannelMessageLocked("announcements", Message{

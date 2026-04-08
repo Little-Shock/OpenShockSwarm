@@ -28,6 +28,12 @@ type WorkspaceMemberUpdateRequest struct {
 	Status string `json:"status"`
 }
 
+type WorkspaceMemberPreferencesRequest struct {
+	PreferredAgentID string `json:"preferredAgentId"`
+	StartRoute       string `json:"startRoute"`
+	GitHubHandle     string `json:"githubHandle"`
+}
+
 type AuthRecoveryRequest struct {
 	Action      string `json:"action"`
 	Email       string `json:"email"`
@@ -104,9 +110,28 @@ func (s *Server) handleWorkspaceMembers(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workspace member not found"})
 		return
 	}
+	preferencesRoute := false
+	if strings.HasSuffix(memberID, "/preferences") {
+		preferencesRoute = true
+		memberID = strings.TrimSuffix(memberID, "/preferences")
+	}
+	memberID = strings.TrimSpace(memberID)
+	if memberID == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workspace member not found"})
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
+		if preferencesRoute {
+			member, ok := s.store.WorkspaceMember(memberID)
+			if !ok {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workspace member not found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, member.Preferences)
+			return
+		}
 		member, ok := s.store.WorkspaceMember(memberID)
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workspace member not found"})
@@ -114,6 +139,24 @@ func (s *Server) handleWorkspaceMembers(w http.ResponseWriter, r *http.Request) 
 		}
 		writeJSON(w, http.StatusOK, member)
 	case http.MethodPatch:
+		if preferencesRoute {
+			var req WorkspaceMemberPreferencesRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+				return
+			}
+			nextState, member, err := s.store.UpdateWorkspaceMemberPreferences(memberID, store.WorkspaceMemberPreferencesInput{
+				PreferredAgentID: req.PreferredAgentID,
+				StartRoute:       req.StartRoute,
+				GitHubHandle:     req.GitHubHandle,
+			})
+			if err != nil {
+				writeAuthError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"member": member, "state": nextState})
+			return
+		}
 		var req WorkspaceMemberUpdateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -202,7 +245,11 @@ func writeAuthError(w http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrAuthIdentityProviderRequired),
 		errors.Is(err, store.ErrAuthIdentityHandleRequired),
 		errors.Is(err, store.ErrWorkspaceRoleInvalid),
-		errors.Is(err, store.ErrWorkspaceMemberStatusInvalid):
+		errors.Is(err, store.ErrWorkspaceMemberStatusInvalid),
+		errors.Is(err, store.ErrWorkspaceOnboardingStatusInvalid),
+		errors.Is(err, store.ErrWorkspaceResumeURLInvalid),
+		errors.Is(err, store.ErrWorkspaceStartRouteInvalid),
+		errors.Is(err, store.ErrWorkspacePreferredAgentNotFound):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrAuthSessionRequired):
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})

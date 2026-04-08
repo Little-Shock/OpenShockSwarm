@@ -64,6 +64,16 @@ function pairingStateLabel(state: string) {
   }
 }
 
+function githubInstallLabel(ready: boolean, installed: boolean) {
+  if (ready) {
+    return "ready";
+  }
+  if (installed) {
+    return "installed";
+  }
+  return "pending";
+}
+
 function runtimeSchedulerStrategyLabel(strategy: string) {
   switch (strategy) {
     case "selected_runtime":
@@ -94,11 +104,21 @@ function runtimeLeaseIsActive(status?: string) {
   return Boolean(status && status.trim() && status !== "done");
 }
 
-function WorkspaceMetric({ label, value, testId }: { label: string; value: string; testId?: string }) {
+function WorkspaceMetric({
+  label,
+  value,
+  testId,
+  testID,
+}: {
+  label: string;
+  value: string;
+  testId?: string;
+  testID?: string;
+}) {
   return (
     <div data-testid={testId} className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
-      <p className="mt-1.5 break-all font-display text-[17px] font-semibold leading-5">{value}</p>
+      <p data-testid={testID} className="mt-1.5 break-all font-display text-[17px] font-semibold leading-5">{value}</p>
     </div>
   );
 }
@@ -185,6 +205,14 @@ export function LiveSetupContextRail() {
             : error
               ? "未同步"
               : valueOrPlaceholder(workspace.repoBindingStatus, "待绑定"),
+        },
+        {
+          label: "Onboarding",
+          value: loading
+            ? "同步中"
+            : error
+              ? "未同步"
+              : `${valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")} / ${valueOrPlaceholder(workspace.onboarding.status, "未声明")}`,
         },
         {
           label: "Runtime",
@@ -302,6 +330,11 @@ export function LiveSetupOverview() {
           }
           active={state.pullRequests.length > 0}
         />
+        <SetupCheckpointCard
+          title="Onboarding 恢复"
+          summary={`当前模板 ${valueOrPlaceholder(workspace.onboarding.templateId, "未声明")}，状态 ${valueOrPlaceholder(workspace.onboarding.status, "未声明")}，current step 为 ${valueOrPlaceholder(workspace.onboarding.currentStep, "未声明")}。reload / restart 后仍应回到 ${valueOrPlaceholder(workspace.onboarding.resumeUrl, "/setup")}。`}
+          active={workspace.onboarding.status !== "not_started"}
+        />
       </div>
 
       <div className="space-y-3">
@@ -320,6 +353,10 @@ export function LiveSetupOverview() {
             <WorkspaceMetric label="调度策略" value={runtimeSchedulerStrategyLabel(scheduler.strategy)} />
             <WorkspaceMetric label="心跳节奏" value={selectedHeartbeatCadence} />
             <WorkspaceMetric label="记忆" value={valueOrPlaceholder(workspace.memoryMode, "当前未返回 memory mode")} />
+            <WorkspaceMetric label="模板" value={valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")} testID="setup-onboarding-template" />
+            <WorkspaceMetric label="Onboarding" value={valueOrPlaceholder(workspace.onboarding.status, "未声明")} testID="setup-onboarding-status" />
+            <WorkspaceMetric label="恢复入口" value={valueOrPlaceholder(workspace.onboarding.resumeUrl, "未声明")} testID="setup-onboarding-resume-url" />
+            <WorkspaceMetric label="GitHub Install" value={githubInstallLabel(workspace.githubInstallation.connectionReady, workspace.githubInstallation.appInstalled)} testID="setup-installation-status" />
           </dl>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
             当前 runtime control plane 已把 registry、selection 与 pairing 拆开：主状态里已收下 {state.runtimes.length} 条 runtime truth，

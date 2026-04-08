@@ -25,6 +25,48 @@ export type WorkspaceSnapshot = {
   lastPairedAt: string;
   browserPush: string;
   memoryMode: string;
+  repoBinding: WorkspaceRepoBindingSnapshot;
+  githubInstallation: WorkspaceGitHubInstallSnapshot;
+  onboarding: WorkspaceOnboardingSnapshot;
+};
+
+export type WorkspaceRepoBindingSnapshot = {
+  repo: string;
+  repoUrl: string;
+  branch: string;
+  provider: string;
+  bindingStatus: string;
+  authMode: string;
+  detectedAt?: string;
+  syncedAt?: string;
+};
+
+export type WorkspaceGitHubInstallSnapshot = {
+  provider: string;
+  preferredAuthMode?: string;
+  connectionReady: boolean;
+  appConfigured: boolean;
+  appInstalled: boolean;
+  installationId?: string;
+  installationUrl?: string;
+  missing?: string[];
+  connectionMessage?: string;
+  syncedAt?: string;
+};
+
+export type WorkspaceOnboardingSnapshot = {
+  status: string;
+  templateId?: string;
+  currentStep?: string;
+  completedSteps?: string[];
+  resumeUrl?: string;
+  updatedAt?: string;
+};
+
+export type WorkspaceMemberPreferences = {
+  preferredAgentId?: string;
+  startRoute?: string;
+  updatedAt?: string;
 };
 
 export type AuthSession = {
@@ -46,6 +88,8 @@ export type AuthSession = {
   passwordResetRequestedAt?: string;
   passwordResetCompletedAt?: string;
   recoveryStatus?: string;
+  githubIdentity?: AuthExternalIdentity;
+  preferences: WorkspaceMemberPreferences;
   linkedIdentities?: AuthExternalIdentity[];
   permissions: string[];
 };
@@ -73,6 +117,8 @@ export type WorkspaceMember = {
   passwordResetRequestedAt?: string;
   passwordResetCompletedAt?: string;
   recoveryStatus?: string;
+  githubIdentity?: AuthExternalIdentity;
+  preferences: WorkspaceMemberPreferences;
   linkedIdentities?: AuthExternalIdentity[];
   trustedDeviceIds?: string[];
   permissions: string[];
@@ -490,6 +536,32 @@ export const workspace: WorkspaceSnapshot = {
   lastPairedAt: "刚刚",
   browserPush: "只推高优先级",
   memoryMode: "MEMORY.md + notes/ + decisions/",
+  repoBinding: {
+    repo: "Larkspur-Wang/OpenShock",
+    repoUrl: "https://github.com/Larkspur-Wang/OpenShock",
+    branch: "main",
+    provider: "github",
+    bindingStatus: "bound",
+    authMode: "local-git-origin",
+    syncedAt: "2026-04-07T05:35:00Z",
+  },
+  githubInstallation: {
+    provider: "github",
+    preferredAuthMode: "github-app",
+    connectionReady: false,
+    appConfigured: false,
+    appInstalled: false,
+    connectionMessage: "当前还没有 GitHub App install truth；保持沿本地 repo binding 推进。",
+    syncedAt: "2026-04-07T05:35:00Z",
+  },
+  onboarding: {
+    status: "in_progress",
+    templateId: "delivery-ops",
+    currentStep: "repo-binding",
+    completedSteps: ["workspace-created", "member-seeded"],
+    resumeUrl: "/setup",
+    updatedAt: "2026-04-07T05:35:00Z",
+  },
 };
 
 export const auth: AuthSnapshot = {
@@ -503,6 +575,17 @@ export const auth: AuthSnapshot = {
     authMethod: "email-link",
     signedInAt: "2026-04-07T04:12:00Z",
     lastSeenAt: "2026-04-07T05:35:00Z",
+    githubIdentity: {
+      provider: "github",
+      handle: "@larkspur",
+      status: "bound",
+      boundAt: "2026-04-07T05:35:00Z",
+    },
+    preferences: {
+      preferredAgentId: "agent-codex-dockmaster",
+      startRoute: "/setup",
+      updatedAt: "2026-04-07T05:35:00Z",
+    },
     permissions: [
       "workspace.manage",
       "members.manage",
@@ -573,6 +656,17 @@ export const auth: AuthSnapshot = {
       source: "seed",
       addedAt: "2026-04-07T04:10:00Z",
       lastSeenAt: "2026-04-07T05:35:00Z",
+      githubIdentity: {
+        provider: "github",
+        handle: "@larkspur",
+        status: "bound",
+        boundAt: "2026-04-07T05:35:00Z",
+      },
+      preferences: {
+        preferredAgentId: "agent-codex-dockmaster",
+        startRoute: "/setup",
+        updatedAt: "2026-04-07T05:35:00Z",
+      },
       permissions: [
         "workspace.manage",
         "members.manage",
@@ -599,6 +693,9 @@ export const auth: AuthSnapshot = {
       source: "seed",
       addedAt: "2026-04-07T04:10:00Z",
       lastSeenAt: "2026-04-07T05:18:00Z",
+      preferences: {
+        startRoute: "/access",
+      },
       permissions: [
         "issue.create",
         "room.reply",
@@ -618,6 +715,9 @@ export const auth: AuthSnapshot = {
       source: "seed",
       addedAt: "2026-04-07T04:10:00Z",
       lastSeenAt: "2026-04-07T05:05:00Z",
+      preferences: {
+        startRoute: "/access",
+      },
       permissions: ["room.read", "run.read", "inbox.read", "memory.read", "pull_request.read"],
     },
   ],

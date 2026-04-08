@@ -74,6 +74,25 @@ type AgentProfileUpdateInput = {
   memorySpaces: string[];
 };
 
+type WorkspaceConfigUpdateInput = {
+  plan: string;
+  browserPush: string;
+  memoryMode: string;
+  onboarding: {
+    status: string;
+    templateId: string;
+    currentStep: string;
+    completedSteps: string[];
+    resumeUrl: string;
+  };
+};
+
+type WorkspaceMemberPreferencesInput = {
+  preferredAgentId: string;
+  startRoute: string;
+  githubHandle: string;
+};
+
 type PhaseZeroStreamPresence = {
   onlineMachines: number;
   busyMachines: number;
@@ -109,6 +128,8 @@ type PhaseZeroContextValue = {
   bindExternalIdentity: (input: { provider: string; handle: string; email?: string; memberId?: string }) => Promise<StateMutationResponse>;
   inviteWorkspaceMember: (input: { email: string; name?: string; role: string }) => Promise<StateMutationResponse>;
   updateWorkspaceMember: (memberId: string, input: { role?: string; status?: string }) => Promise<StateMutationResponse>;
+  updateWorkspaceConfig: (input: WorkspaceConfigUpdateInput) => Promise<StateMutationResponse>;
+  updateWorkspaceMemberPreferences: (memberId: string, input: WorkspaceMemberPreferencesInput) => Promise<StateMutationResponse>;
   updateAgentProfile: (agentId: string, input: AgentProfileUpdateInput) => Promise<StateMutationResponse>;
   createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
   postChannelMessage: (channelId: string, prompt: string) => Promise<StateMutationResponse>;
@@ -142,11 +163,30 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
     lastPairedAt: "",
     browserPush: "",
     memoryMode: "",
+    repoBinding: {
+      repo: "",
+      repoUrl: "",
+      branch: "",
+      provider: "",
+      bindingStatus: "",
+      authMode: "",
+    },
+    githubInstallation: {
+      provider: "",
+      connectionReady: false,
+      appConfigured: false,
+      appInstalled: false,
+    },
+    onboarding: {
+      status: "",
+      completedSteps: [],
+    },
   },
   auth: {
     session: {
       id: "auth-session-current",
       status: "signed_out",
+      preferences: {},
       permissions: [],
     },
     roles: [],
@@ -455,6 +495,30 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     return payload;
   }
 
+  async function updateWorkspaceConfig(input: WorkspaceConfigUpdateInput) {
+    const payload = await readJSON<StateMutationResponse>("/v1/workspace", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
+  async function updateWorkspaceMemberPreferences(memberId: string, input: WorkspaceMemberPreferencesInput) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/workspace/members/${memberId}/preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
   async function updateAgentProfile(agentId: string, input: AgentProfileUpdateInput) {
     const payload = await readJSON<StateMutationResponse>(`/v1/agents/${agentId}`, {
       method: "PATCH",
@@ -687,6 +751,8 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     bindExternalIdentity,
     inviteWorkspaceMember,
     updateWorkspaceMember,
+    updateWorkspaceConfig,
+    updateWorkspaceMemberPreferences,
     updateAgentProfile,
     createIssue,
     postChannelMessage,

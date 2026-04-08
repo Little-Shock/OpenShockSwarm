@@ -122,10 +122,12 @@
 ### GAP-14 Config Persistence / Database Truth
 
 - 现状:
-  - 现在只有 file state、auth session persistence 和 memory governance 的局部持久化
-  - user / workspace / agent / machine 配置、onboarding progress、mailbox state 还没有统一 durable truth
+  - `TKT-37` 已把 workspace / member durable config、onboarding progress、repo-binding / GitHub installation snapshot 收成同一份 state/store truth，agent profile edit 也已回到同一条持久化链
+  - machine profile / local CLI inventory，以及 mailbox state / handoff ledger 还没有统一 durable truth
 - 相关合同:
   - `CHK-22`
+  - `TKT-33`
+  - `TKT-35`
 - 优先级: P1
 
 ### GAP-15 Board Light Planning Cleanup
