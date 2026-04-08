@@ -162,10 +162,27 @@ export type AgentStatus = {
   mood: string;
   state: PresenceState;
   lane: string;
+  role: string;
+  avatar: string;
+  prompt: string;
+  operatingInstructions: string;
   provider: string;
+  providerPreference: string;
+  recallPolicy: string;
   runtimePreference: string;
   memorySpaces: string[];
   recentRunIds: string[];
+  profileAudit: Array<{
+    id: string;
+    updatedAt: string;
+    updatedBy: string;
+    summary: string;
+    changes: Array<{
+      field: string;
+      previous: string;
+      current: string;
+    }>;
+  }>;
 };
 
 export type MachineStatus = {
@@ -926,10 +943,17 @@ export const agents: AgentStatus[] = [
     mood: "正在接 runtime 卡片",
     state: "running",
     lane: "OPS-12",
+    role: "Platform Architect",
+    avatar: "control-tower",
+    prompt: "先给出 live truth，再给最短可执行动作。",
+    operatingInstructions: "对 shared shell / runtime truth 保持谨慎，不把 stale head 当 current truth。",
     provider: "Codex CLI",
+    providerPreference: "Codex CLI",
+    recallPolicy: "governed-first",
     runtimePreference: "shock-main",
     memorySpaces: ["workspace", "issue-room", "topic"],
     recentRunIds: ["run_runtime_01"],
+    profileAudit: [],
   },
   {
     id: "agent-claude-review-runner",
@@ -938,10 +962,17 @@ export const agents: AgentStatus[] = [
     mood: "等待产品核对",
     state: "idle",
     lane: "OPS-19",
+    role: "Review Runner",
+    avatar: "review-lantern",
+    prompt: "优先给 exact-head reviewer verdict 和 scope-local blocker。",
+    operatingInstructions: "把 current truth 和 stale window 分开，不把旧 blocker 带回当前 head。",
     provider: "Claude Code CLI",
+    providerPreference: "Claude Code CLI",
+    recallPolicy: "balanced",
     runtimePreference: "shock-sidecar",
     memorySpaces: ["workspace", "issue-room"],
     recentRunIds: ["run_inbox_01"],
+    profileAudit: [],
   },
   {
     id: "agent-memory-clerk",
@@ -950,10 +981,17 @@ export const agents: AgentStatus[] = [
     mood: "等待策略输入",
     state: "blocked",
     lane: "OPS-27",
+    role: "Memory Steward",
+    avatar: "ledger-stack",
+    prompt: "把 next-run injection、promotion 和 version audit 保持成可解释真值。",
+    operatingInstructions: "任何 memory write 先过 governance，再决定是否 promotion 或 escalation。",
     provider: "Codex CLI",
+    providerPreference: "Codex CLI",
+    recallPolicy: "agent-first",
     runtimePreference: "shock-main",
-    memorySpaces: ["workspace", "user", "room-notes"],
+    memorySpaces: ["workspace", "user", "room-notes", "topic"],
     recentRunIds: ["run_memory_01"],
+    profileAudit: [],
   },
 ];
 

@@ -46,6 +46,8 @@
   - `TKT-23` 的 room-first `Chat / Topic / Run / PR / Context` workbench、reload persistence 与 inbox back-link evidence
 - [Test Report 2026-04-08 Profile Surface](./Test-Report-2026-04-08-profile-surface.md)
   - `TKT-25` 的 `Agent / Machine / Human` unified profile surface、shell / room drill-in 与 live presence evidence
+- [Test Report 2026-04-08 Agent Profile Editor](./Test-Report-2026-04-08-agent-profile-editor.md)
+  - `TKT-32` 的 Agent profile edit、memory binding / recall policy、next-run preview 与 profile audit headed evidence
 
 常用入口：
 
@@ -77,6 +79,8 @@
   - 验证 room-first `Chat / Topic / Run / PR / Context` workbench、follow_thread、PR surface 与 inbox back-link
 - `pnpm test:headed-profile-surface`
   - 验证 `Agent / Machine / Human` unified profile surface、shell / room drill-in、presence / capability / recent activity
+- `pnpm test:headed-agent-profile-editor`
+  - 验证 Agent profile edit、memory binding / recall policy、next-run preview 与 audit persistence
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-quick-search`

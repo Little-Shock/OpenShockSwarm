@@ -467,7 +467,7 @@
 ## TC-036 Agent Profile / Prompt / Avatar / Memory Binding Edit
 
 - 业务目标: 确认 Agent 已经从只读对象升级成可配置执行者。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-02` `CHK-10` `CHK-19`
 - 前置条件: 至少存在一个可编辑的 Agent profile surface。
 - 测试步骤:
@@ -475,7 +475,7 @@
   2. 编辑 `role / avatar / prompt / memory binding / provider preference`。
   3. 保存后刷新页面，并检查 next-run preview 是否读取新配置。
 - 预期结果: Agent profile edit 会持久化并影响下一次 run 的配置注入。
-- 业务结论: 当前 repo 只有 Agent 列表与部分详情，还没有完整的 profile editor 和 memory binding 编辑链，所以这条用例保持 `Blocked`，留给 `TKT-32`。
+- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine inventory / durable config 继续留 `TKT-33` `TKT-37`。
 
 ## TC-037 Machine Profile / Local CLI Model Capability Binding
 

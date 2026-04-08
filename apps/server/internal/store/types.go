@@ -113,16 +113,37 @@ type Run struct {
 }
 
 type Agent struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	Mood              string   `json:"mood"`
-	State             string   `json:"state"`
-	Lane              string   `json:"lane"`
-	Provider          string   `json:"provider"`
-	RuntimePreference string   `json:"runtimePreference"`
-	MemorySpaces      []string `json:"memorySpaces"`
-	RecentRunIDs      []string `json:"recentRunIds"`
+	ID                    string                   `json:"id"`
+	Name                  string                   `json:"name"`
+	Description           string                   `json:"description"`
+	Mood                  string                   `json:"mood"`
+	State                 string                   `json:"state"`
+	Lane                  string                   `json:"lane"`
+	Role                  string                   `json:"role"`
+	Avatar                string                   `json:"avatar"`
+	Prompt                string                   `json:"prompt"`
+	OperatingInstructions string                   `json:"operatingInstructions"`
+	Provider              string                   `json:"provider"`
+	ProviderPreference    string                   `json:"providerPreference"`
+	RecallPolicy          string                   `json:"recallPolicy"`
+	RuntimePreference     string                   `json:"runtimePreference"`
+	MemorySpaces          []string                 `json:"memorySpaces"`
+	RecentRunIDs          []string                 `json:"recentRunIds"`
+	ProfileAudit          []AgentProfileAuditEntry `json:"profileAudit"`
+}
+
+type AgentProfileAuditEntry struct {
+	ID        string                    `json:"id"`
+	UpdatedAt string                    `json:"updatedAt"`
+	UpdatedBy string                    `json:"updatedBy"`
+	Summary   string                    `json:"summary"`
+	Changes   []AgentProfileAuditChange `json:"changes"`
+}
+
+type AgentProfileAuditChange struct {
+	Field    string `json:"field"`
+	Previous string `json:"previous"`
+	Current  string `json:"current"`
 }
 
 type Machine struct {

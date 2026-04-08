@@ -82,9 +82,9 @@
   - [x] Agent 与 run、runtime、workspace 关系可见
   - [x] `Agent` 现在可从 shell / room drill-in 到统一 profile surface，并直接看到 presence、runtime capability 与最近 run/room 关系
 - 当前 GAP:
-  - [ ] skill 绑定、memory profile、provider/runtime 偏好还未完整产品化
-  - [ ] prompt / avatar / role / machine affinity 还不能作为 Agent profile 被编辑和审计
-  - [ ] Agent profile 现已可读，但历史审计、编辑与长期配置沉淀仍不完整
+  - [ ] Agent profile editor 已落地，但 skill 绑定与更重的 memory profile 编排仍未完整产品化
+  - [ ] machine affinity 与 machine capability binding 还不能作为 Agent profile 的正式偏好层被编辑
+  - [ ] Agent profile 已可编辑并保留审计，但默认模板与长期配置沉淀仍不完整
 - 对应 Test Cases: `TC-008` `TC-014` `TC-030` `TC-036`
 
 ### CHK-03 真相分层与核心对象模型
@@ -208,7 +208,7 @@
 - 当前 GAP:
   - [ ] 更重的后台整理任务（去重、压缩、打标签、TTL）仍未完成
   - [ ] 长期记忆引擎与外部 provider 编排仍停留在设计层
-  - [ ] Agent 级 memory binding / recall policy / next-run preview 编辑还未产品化
+  - [ ] Agent 级 memory binding / recall policy / next-run preview 已可编辑，但跨 Agent 的更重治理与后台编排仍留后续
 - 对应 Test Cases: `TC-019` `TC-023` `TC-036`
 
 ### CHK-11 工作流 H: 邀请、通知与恢复触达
@@ -351,9 +351,8 @@
   - [x] `/setup`、`/agents` 已有 runtime pairing、scheduler 与 machine summary
   - [x] daemon 已能探测本地 `codex` / `claude` CLI，并把 runtime truth 暴露到 server
   - [x] `Agent / Machine / Human` 已有统一 read-only profile surface，可看到 presence、capability 与最近 room/run 关系
+  - [x] Agent profile 现在可直接编辑 `prompt / avatar / role / operating instructions / memory binding / recall policy / provider preference`，并同步写回 audit 与 next-run preview
 - 当前 GAP:
-  - [ ] Agent prompt / avatar / role / operating instructions 还不能直接编辑
-  - [ ] memory binding / recall policy / provider preference 还未形成 Agent profile contract
   - [ ] Machine info、本地 CLI/model inventory 与 Agent 偏好绑定还未形成统一配置面
   - [ ] 上述配置还不能作为 onboarding 默认值长期保存
 - 对应 Test Cases: `TC-030` `TC-036` `TC-037`
