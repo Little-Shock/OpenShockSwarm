@@ -271,7 +271,7 @@ export function RepoBindingConsole() {
             data-testid="setup-repo-binding-return-steps"
             className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]"
           >
-            完成安装或补齐配置后，回到 Setup，先点“重新探测 GitHub”，再点“同步 Repo Binding”。
+            完成安装后，GitHub 会先回跳到 OpenShock callback，把 installation truth、repo binding 与现有 PR backfill 一次性收口；只有自动回流失败时，才需要回这里手动补同步。
           </p>
         </div>
       </div>

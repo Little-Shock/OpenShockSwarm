@@ -203,6 +203,76 @@ func TestSyncPullRequestFailsClosedWhenGitHubAppReviewDecisionQueryFails(t *test
 	}
 }
 
+func TestSyncPullRequestUsesPersistedInstallationStateWhenEnvInstallationIDIsMissing(t *testing.T) {
+	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
+	t.Setenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY", testGitHubAppPrivateKeyPEM(t))
+
+	root := t.TempDir()
+	if err := SaveInstallationState(root, InstallationState{
+		InstallationID:  "67890",
+		InstallationURL: "https://github.com/settings/installations/67890",
+		SetupAction:     "install",
+	}); err != nil {
+		t.Fatalf("SaveInstallationState() error = %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/67890/access_tokens":
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "app-install-token"})
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/Larkspur-Wang/OpenShock/pulls/73":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number":     73,
+				"html_url":   "https://github.com/Larkspur-Wang/OpenShock/pull/73",
+				"title":      "Sync Remote PR",
+				"state":      "open",
+				"draft":      false,
+				"merged":     false,
+				"updated_at": "2026-04-06T11:22:00Z",
+				"head":       map[string]any{"ref": "feat/runtime-shell"},
+				"base":       map[string]any{"ref": "main"},
+				"user":       map[string]any{"login": "CodexDockmaster"},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequest": map[string]any{
+							"reviewDecision": "APPROVED",
+						},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("OPENSHOCK_GITHUB_API_BASE_URL", server.URL)
+	t.Setenv("OPENSHOCK_GITHUB_GRAPHQL_URL", server.URL+"/graphql")
+
+	service := NewService(fakeRunner{
+		outputs: map[string]fakeOutput{
+			"git -C " + root + " remote get-url origin":       {text: "https://github.com/Larkspur-Wang/OpenShock.git"},
+			"git -C " + root + " rev-parse --abbrev-ref HEAD": {text: "main"},
+		},
+	})
+
+	pullRequest, err := service.SyncPullRequest(root, SyncPullRequestInput{
+		Repo:   "Larkspur-Wang/OpenShock",
+		Number: 73,
+	})
+	if err != nil {
+		t.Fatalf("SyncPullRequest() error = %v", err)
+	}
+	if pullRequest.Number != 73 || pullRequest.ReviewDecision != "APPROVED" {
+		t.Fatalf("pull request = %#v, want persisted-installation synced snapshot", pullRequest)
+	}
+	if _, err := LoadInstallationState(root); err != nil {
+		t.Fatalf("LoadInstallationState() error = %v", err)
+	}
+}
+
 func TestMergePullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 	t.Setenv("OPENSHOCK_GITHUB_APP_ID", "12345")
 	t.Setenv("OPENSHOCK_GITHUB_APP_INSTALLATION_ID", "67890")

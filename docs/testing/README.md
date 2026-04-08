@@ -48,6 +48,8 @@
   - `TKT-25` 的 `Agent / Machine / Human` unified profile surface、shell / room drill-in 与 live presence evidence
 - [Test Report 2026-04-08 Destructive Guard](./Test-Report-2026-04-08-destructive-guard.md)
   - `TKT-30` 的 destructive approval、sandbox / secret boundary 与 room / inbox / run guard truth headed evidence
+- [Test Report 2026-04-08 GitHub Installation Callback](./Test-Report-2026-04-08-github-installation-callback.md)
+  - `TKT-28` 的 installation-complete callback、repo binding refresh、tracked PR backfill 与 Setup callback return evidence
 
 常用入口：
 

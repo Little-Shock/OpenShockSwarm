@@ -198,7 +198,7 @@
 ## TC-015 GitHub App 安装与 Webhook
 
 - 业务目标: 确认 GitHub 授权和事件回流进入真实产品闭环。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-07` `CHK-13`
 - 前置条件: 存在 GitHub App 安装流、webhook ingest 与签名校验。
 - 测试步骤:
@@ -206,7 +206,7 @@
   2. 触发 webhook 事件。
   3. 检查 state / inbox / room / PR 是否同步更新。
 - 预期结果: GitHub 事件可以持续同步回 OpenShock。
-- 业务结论: 2026 年 4 月 7 日已同时补齐 installation pending 的 blocked-path 浏览器验收，以及 `TKT-05` 的 signed webhook exact replay harness；但它们仍不是 installation-complete 后的真实 GitHub callback，所以这条完整安装 + webhook 用例继续保持 Blocked。
+- 业务结论: 2026 年 4 月 8 日 `TKT-28` 新增 `/v1/github/installation-callback` 与 `/setup/github/callback`，把 installation-complete 回跳直接写回 installation truth，并在同一次 callback 内前滚 repo binding 与 tracked PR backfill；同日 exact-head 还新增了 fail-closed 的空 `installationId` 探测与 `repo.admin` 权限 guard。结合 2026 年 4 月 7 日 `TKT-05` 已通过的 signed webhook replay harness，当前 `installation-complete callback -> repo sync -> UI update -> webhook replay` 已具备近实机闭环证据，因此这条用例现在可按 Pass 收口；剩余未覆盖的是 GitHub-hosted 公网 callback / webhook delivery 的生产态复核，而不是产品 contract 缺失。
 
 ## TC-016 真实远端 PR 创建、同步与合并
 

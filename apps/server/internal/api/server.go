@@ -167,6 +167,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/runtime/selection", s.handleRuntimeSelection)
 	mux.HandleFunc("/v1/repo/binding", s.handleRepoBinding)
 	mux.HandleFunc("/v1/github/connection", s.handleGitHubConnection)
+	mux.HandleFunc("/v1/github/installation-callback", s.handleGitHubInstallationCallback)
 	mux.HandleFunc("/v1/github/webhook", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/exec", s.handleExecRoute)
 	for _, register := range serverRouteRegistrars {

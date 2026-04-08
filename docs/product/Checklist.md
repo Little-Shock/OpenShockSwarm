@@ -163,8 +163,9 @@
   - [x] repo binding 在 preferred path=`github-app` 且 installation 未完成时会返回显式 blocked contract，而不是静默退回旧路径
   - [x] signed webhook replay harness 已可通过真实 HTTP 请求回放 review / comment / check / merge，并验证 failure-path observability
   - [x] headed browser harness 已在安全 sandbox base branch 上完成真实远端 PR create / sync / merge 闭环，并验证 no-auth failure path 的 UI / inbox / room blocked 可见性
+  - [x] installation-complete callback 现已把 GitHub App 回跳直接写回 OpenShock，并前滚 repo binding / tracked PR sync / Setup callback UI
 - 当前 GAP:
-  - [ ] GitHub App installation-complete 回跳后的 live webhook / repo 持续同步仍缺少本轮实机验证
+  - [ ] GitHub-hosted callback URL 与真实公网 webhook delivery 还没有在公共 ingress 上做当天复核；当前先以 installation callback contract + signed webhook replay 近实机证据收口
 - 对应 Test Cases: `TC-010` `TC-015` `TC-016` `TC-022` `TC-025` `TC-026`
 
 ### CHK-08 工作流 E: Blocked 与人工纠偏

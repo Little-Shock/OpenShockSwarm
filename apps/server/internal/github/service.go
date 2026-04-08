@@ -111,7 +111,7 @@ func (s *Service) Probe(workspaceRoot string) (Status, error) {
 		status.Branch = branch
 	}
 
-	appStatus := detectGitHubAppProbe()
+	appStatus := detectGitHubAppProbe(workspaceRoot)
 	status.AppID = appStatus.AppID
 	status.AppSlug = appStatus.AppSlug
 	status.AppConfigured = appStatus.Configured
@@ -241,7 +241,7 @@ func (s *Service) SyncPullRequest(workspaceRoot string, input SyncPullRequestInp
 		return PullRequest{}, fmt.Errorf("pull request number is required")
 	}
 	if status, err := s.Probe(workspaceRoot); err == nil && strings.EqualFold(strings.TrimSpace(status.AuthMode), "github-app") {
-		return s.viewPullRequestWithGitHubApp(input.Repo, input.Number, true)
+		return s.viewPullRequestWithGitHubApp(workspaceRoot, input.Repo, input.Number, true)
 	}
 	return s.syncPullRequestWithGHCLI(input)
 }
@@ -261,7 +261,7 @@ func (s *Service) MergePullRequest(workspaceRoot string, input MergePullRequestI
 		return PullRequest{}, fmt.Errorf("pull request number is required")
 	}
 	if status, err := s.Probe(workspaceRoot); err == nil && strings.EqualFold(strings.TrimSpace(status.AuthMode), "github-app") {
-		return s.mergePullRequestWithGitHubApp(input)
+		return s.mergePullRequestWithGitHubApp(workspaceRoot, input)
 	}
 	return s.mergePullRequestWithGHCLI(workspaceRoot, input)
 }
@@ -400,13 +400,21 @@ type appProbeStatus struct {
 	Missing         []string
 }
 
-func detectGitHubAppProbe() appProbeStatus {
+func detectGitHubAppProbe(workspaceRoot string) appProbeStatus {
 	appID := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_ID"))
 	appSlug := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_SLUG"))
 	installationID := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_INSTALLATION_ID"))
 	privateKey := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY"))
 	privateKeyPath := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_PRIVATE_KEY_PATH"))
 	installationURL := strings.TrimSpace(os.Getenv("OPENSHOCK_GITHUB_APP_INSTALL_URL"))
+	persisted := loadInstallationStateFallback(workspaceRoot)
+
+	if installationID == "" {
+		installationID = strings.TrimSpace(persisted.InstallationID)
+	}
+	if installationURL == "" {
+		installationURL = strings.TrimSpace(persisted.InstallationURL)
+	}
 
 	enabled := appID != "" || appSlug != "" || installationID != "" || privateKey != "" || privateKeyPath != "" || installationURL != ""
 	configured := appID != "" && (privateKey != "" || privateKeyPath != "")
