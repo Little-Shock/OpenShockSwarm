@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { useLiveMemoryCenter } from "@/lib/live-memory";
 import type {
   AgentStatus,
+  AuthSession,
   MachineStatus,
   PhaseZeroState,
   Room,
@@ -15,6 +18,20 @@ import type {
   WorkspaceMember,
 } from "@/lib/mock-data";
 import { buildProfileHref, isProfileKind, type ProfileKind } from "@/lib/profile-surface";
+
+const PROFILE_MEMORY_SPACE_OPTIONS = [
+  { value: "workspace", label: "Workspace", summary: "MEMORY.md / work-log" },
+  { value: "issue-room", label: "Issue Room", summary: "当前 issue 的房间上下文" },
+  { value: "room-notes", label: "Room Notes", summary: "notes/rooms/* ledger" },
+  { value: "topic", label: "Topic", summary: "decision / topic context" },
+  { value: "user", label: "Agent Memory", summary: ".openshock/agents/*/MEMORY.md" },
+] as const;
+
+const AGENT_RECALL_POLICY_OPTIONS = [
+  { value: "governed-first", label: "Governed First" },
+  { value: "balanced", label: "Balanced" },
+  { value: "agent-first", label: "Agent First" },
+] as const;
 
 function valueOrPlaceholder(value: string | undefined | null, fallback: string) {
   return value && value.trim() ? value : fallback;
@@ -100,6 +117,32 @@ function toneForHuman(member: WorkspaceMember, session?: PhaseZeroState["auth"][
   return statusTone("white");
 }
 
+function hasPermission(session: AuthSession, permission: string) {
+  return session.status === "active" && session.permissions.includes(permission);
+}
+
+function formatTimestamp(value?: string) {
+  if (!value) {
+    return "尚未记录";
+  }
+  try {
+    return new Intl.DateTimeFormat("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function toTestID(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+}
+
 function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
@@ -177,6 +220,59 @@ function CapabilityChips({ items }: { items: string[] }) {
   );
 }
 
+function findPreviewForAgent(center: ReturnType<typeof useLiveMemoryCenter>["center"], agent: AgentStatus, sessionId?: string) {
+  if (sessionId) {
+    const direct = center.previews.find((item) => item.sessionId === sessionId);
+    if (direct) {
+      return direct;
+    }
+  }
+  return center.previews.find((item) => agent.recentRunIds.includes(item.runId));
+}
+
+function AgentProfileAuditPanel({ audit = [] }: { audit?: AgentStatus["profileAudit"] }) {
+  return (
+    <Panel tone="white">
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Profile Audit</p>
+      <div className="mt-4 space-y-3">
+        {audit.length > 0 ? (
+          audit.map((entry, index) => (
+            <div
+              key={entry.id}
+              data-testid={index === 0 ? "profile-audit-entry" : undefined}
+              className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-display text-[18px] font-semibold">{entry.summary}</p>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                  {entry.updatedBy} · {formatTimestamp(entry.updatedAt)}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {entry.changes.map((change) => (
+                  <div key={`${entry.id}-${change.field}`} className="rounded-[14px] border border-[var(--shock-ink)] bg-white px-3 py-2">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">{change.field}</p>
+                    <p className="mt-1 text-sm leading-6">
+                      <span className="font-semibold">Before:</span> {valueOrPlaceholder(change.previous, "empty")}
+                    </p>
+                    <p className="text-sm leading-6">
+                      <span className="font-semibold">After:</span> {valueOrPlaceholder(change.current, "empty")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-[18px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+            这条 agent 还没有 profile audit 记录。
+          </p>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function findRunsByRoomIds(runs: Run[], roomIds: string[]) {
   const set = new Set(roomIds);
   return runs.filter((run) => set.has(run.roomId));
@@ -212,6 +308,8 @@ function AgentProfileSurface({
   state: PhaseZeroState;
   agent: AgentStatus;
 }) {
+  const { updateAgentProfile } = usePhaseZeroState();
+  const { center, loading: centerLoading, error: centerError, refresh: refreshMemoryCenter } = useLiveMemoryCenter();
   const recentRuns = state.runs.filter((run) => agent.recentRunIds.includes(run.id));
   const recentRooms = state.rooms.filter((room) => recentRuns.some((run) => run.roomId === room.id));
   const runtimeRecords = state.runtimes.filter(
@@ -220,6 +318,11 @@ function AgentProfileSurface({
   const activeSessions = state.sessions.filter((session) => recentRuns.some((run) => run.id === session.activeRunId));
   const relatedHumans = state.auth.members.filter((member) => recentRuns.some((run) => run.owner === member.name));
   const capabilityTruth = runtimeCapabilityList(runtimeRecords);
+  const providerOptions = uniqueStrings([
+    agent.provider,
+    agent.providerPreference,
+    ...runtimeRecords.flatMap((runtime) => runtime.providers.map((provider) => provider.label)),
+  ]);
   const sessionItems = activeSessions.map((session) => {
     const linkedRun = state.runs.find((run) => run.id === session.activeRunId);
     return {
@@ -229,6 +332,73 @@ function AgentProfileSurface({
       meta: `${session.status} · ${session.machine} · ${session.worktree}`,
     };
   });
+  const previewSessionId = activeSessions[0]?.id;
+  const preview = findPreviewForAgent(center, agent, previewSessionId);
+  const canEdit = hasPermission(state.auth.session, "workspace.manage");
+  const [roleDraft, setRoleDraft] = useState(agent.role);
+  const [avatarDraft, setAvatarDraft] = useState(agent.avatar);
+  const [promptDraft, setPromptDraft] = useState(agent.prompt);
+  const [instructionsDraft, setInstructionsDraft] = useState(agent.operatingInstructions);
+  const [providerPreferenceDraft, setProviderPreferenceDraft] = useState(agent.providerPreference);
+  const [recallPolicyDraft, setRecallPolicyDraft] = useState(agent.recallPolicy);
+  const [memorySpacesDraft, setMemorySpacesDraft] = useState<string[]>(agent.memorySpaces);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setRoleDraft(agent.role);
+    setAvatarDraft(agent.avatar);
+    setPromptDraft(agent.prompt);
+    setInstructionsDraft(agent.operatingInstructions);
+    setProviderPreferenceDraft(agent.providerPreference);
+    setRecallPolicyDraft(agent.recallPolicy);
+    setMemorySpacesDraft(agent.memorySpaces);
+  }, [
+    agent.avatar,
+    agent.id,
+    agent.memorySpaces,
+    agent.operatingInstructions,
+    agent.prompt,
+    agent.providerPreference,
+    agent.recallPolicy,
+    agent.role,
+  ]);
+
+  useEffect(() => {
+    void refreshMemoryCenter().catch(() => {});
+  }, [refreshMemoryCenter]);
+
+  function toggleMemorySpace(value: string) {
+    setMemorySpacesDraft((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
+  }
+
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+    setSaveStatus(null);
+
+    try {
+      await updateAgentProfile(agent.id, {
+        role: roleDraft,
+        avatar: avatarDraft,
+        prompt: promptDraft,
+        operatingInstructions: instructionsDraft,
+        providerPreference: providerPreferenceDraft,
+        recallPolicy: recallPolicyDraft,
+        memorySpaces: memorySpacesDraft,
+      });
+      await refreshMemoryCenter();
+      setSaveStatus("Agent profile 已写回后端 truth，next-run preview 已同步刷新。");
+    } catch (mutationError) {
+      setSaveError(mutationError instanceof Error ? mutationError.message : "保存 Agent profile 失败。");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <OpenShockShell
@@ -237,26 +407,27 @@ function AgentProfileSurface({
       title={agent.name}
       description={agent.description}
       contextTitle="Profile Presence"
-      contextDescription="Agent profile 现在是前台读面：presence、runtime/capability、最近 run/room 关系和 memory spaces 都直接挂在同一张 surface。"
+      contextDescription="Agent profile 现在不只是只读面：同页可编辑 role / avatar / prompt / provider preference / memory binding，并直接回读 next-run preview 与审计差异。"
       contextBody={
         <DetailRail
           label="Agent Truth"
           items={[
             { label: "Presence", value: agentStateLabel(agent.state) },
-            { label: "Provider", value: agent.provider },
-            { label: "Runtime", value: agent.runtimePreference },
+            { label: "Role", value: agent.role },
+            { label: "Provider Pref", value: agent.providerPreference },
+            { label: "Recall", value: agent.recallPolicy },
             { label: "Recent Runs", value: `${recentRuns.length} 条` },
           ]}
         />
       }
     >
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_0.88fr]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.16fr)_0.84fr]">
         <div className="space-y-4">
           <Panel tone={toneForAgent(agent)}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-                  {agent.provider}
+                  {agent.role} · {agent.avatar}
                 </p>
                 <h2 data-testid="profile-surface-title" className="mt-2 font-display text-[30px] font-bold leading-8">
                   {agent.name}
@@ -267,11 +438,18 @@ function AgentProfileSurface({
               </span>
             </div>
             <p className="mt-3 text-sm leading-6">{agent.description}</p>
-            <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="mt-4 grid gap-2 md:grid-cols-4">
               <ProfileMetric label="lane" value={agent.lane} />
+              <ProfileMetric label="provider" value={agent.providerPreference} />
+              <ProfileMetric label="recall" value={agent.recallPolicy} />
               <ProfileMetric label="runtime" value={agent.runtimePreference} />
-              <ProfileMetric label="mood" value={agent.mood} />
             </div>
+            <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
+              <span className="font-semibold">Prompt:</span> {agent.prompt}
+            </p>
+            <p className="mt-2 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
+              <span className="font-semibold">Operating Instructions:</span> {valueOrPlaceholder(agent.operatingInstructions, "尚未写 operating instructions")}
+            </p>
           </Panel>
 
           <Panel tone="white">
@@ -286,9 +464,196 @@ function AgentProfileSurface({
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Memory Spaces</p>
             <CapabilityChips items={agent.memorySpaces} />
           </Panel>
+
+          <Panel tone="white">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Agent Profile Editor</p>
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                {canEdit ? "workspace.manage" : "read only"}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+              这层把 `role / avatar / prompt / provider preference / memory binding / recall policy` 直接写回 live server truth；保存后同页会回读 next-run preview。
+            </p>
+            {!canEdit ? (
+              <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
+                当前 session 没有 `workspace.manage`。仍可检查 profile / preview / audit，但编辑保持只读。
+              </p>
+            ) : null}
+            <form className="mt-4 space-y-4" onSubmit={handleSave}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Role</span>
+                  <input
+                    data-testid="profile-editor-role"
+                    className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
+                    value={roleDraft}
+                    onChange={(event) => setRoleDraft(event.target.value)}
+                    disabled={!canEdit || saving}
+                  />
+                </label>
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Avatar</span>
+                  <input
+                    data-testid="profile-editor-avatar"
+                    className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
+                    value={avatarDraft}
+                    onChange={(event) => setAvatarDraft(event.target.value)}
+                    disabled={!canEdit || saving}
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Prompt</span>
+                <textarea
+                  data-testid="profile-editor-prompt"
+                  className="mt-1.5 min-h-[110px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6"
+                  value={promptDraft}
+                  onChange={(event) => setPromptDraft(event.target.value)}
+                  disabled={!canEdit || saving}
+                />
+              </label>
+
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Operating Instructions</span>
+                <textarea
+                  data-testid="profile-editor-operating-instructions"
+                  className="mt-1.5 min-h-[96px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6"
+                  value={instructionsDraft}
+                  onChange={(event) => setInstructionsDraft(event.target.value)}
+                  disabled={!canEdit || saving}
+                />
+              </label>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Provider Preference</span>
+                  <select
+                    data-testid="profile-editor-provider-preference"
+                    className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
+                    value={providerPreferenceDraft}
+                    onChange={(event) => setProviderPreferenceDraft(event.target.value)}
+                    disabled={!canEdit || saving}
+                  >
+                    {providerOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Recall Policy</span>
+                  <select
+                    data-testid="profile-editor-recall-policy"
+                    className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
+                    value={recallPolicyDraft}
+                    onChange={(event) => setRecallPolicyDraft(event.target.value)}
+                    disabled={!canEdit || saving}
+                  >
+                    {AGENT_RECALL_POLICY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Memory Binding</p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {PROFILE_MEMORY_SPACE_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex items-start gap-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                    >
+                      <input
+                        data-testid={`profile-editor-memory-space-${option.value}`}
+                        type="checkbox"
+                        checked={memorySpacesDraft.includes(option.value)}
+                        onChange={() => toggleMemorySpace(option.value)}
+                        disabled={!canEdit || saving}
+                      />
+                      <span>
+                        <span className="block font-semibold">{option.label}</span>
+                        <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{option.summary}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  data-testid="profile-editor-save"
+                  disabled={!canEdit || saving}
+                  className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:bg-[var(--shock-paper)]"
+                >
+                  {saving ? "Saving..." : "Save Profile"}
+                </button>
+                {saveStatus ? (
+                  <span data-testid="profile-editor-save-status" className="text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
+                    {saveStatus}
+                  </span>
+                ) : null}
+                {saveError ? (
+                  <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.9)]">{saveError}</span>
+                ) : null}
+              </div>
+            </form>
+          </Panel>
         </div>
 
         <div className="space-y-4">
+          <Panel tone="paper">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Next-Run Preview</p>
+            <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+              这块直接吃 `/v1/memory-center` 的 session-level preview；profile save 后这里应立刻反映新的 recall policy、memory binding 和 prompt skeleton。
+            </p>
+            {centerLoading ? (
+              <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">正在同步 next-run preview…</p>
+            ) : centerError ? (
+              <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">{centerError}</p>
+            ) : preview ? (
+              <div className="mt-3 space-y-3">
+                <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                    {preview.sessionId} · {preview.recallPolicy}
+                  </p>
+                  <pre
+                    data-testid="profile-next-run-preview-summary"
+                    className="mt-2 whitespace-pre-wrap font-mono text-[12px] leading-6 text-[color:rgba(24,20,14,0.82)]"
+                  >
+                    {preview.promptSummary}
+                  </pre>
+                </div>
+                <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Mounted Files</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {preview.files.map((path) => (
+                      <span
+                        key={path}
+                        data-testid={`profile-next-run-preview-file-${toTestID(path)}`}
+                        className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px]"
+                      >
+                        {path}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
+                当前 agent 还没有可对齐的 session preview。
+              </p>
+            )}
+          </Panel>
+
+          <AgentProfileAuditPanel audit={agent.profileAudit} />
+
           <RelationshipList
             title="Recent Runs"
             items={recentRuns.map((run) => ({

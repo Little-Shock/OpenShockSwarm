@@ -102,7 +102,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 - `app.slock.ai` 式真实 quick search / search result、DM、saved / later、profile / presence surface
 - Room workbench tabs、Topic / PR / Context 同房间切换
-- Agent prompt / avatar / memory binding / provider-model 偏好的正式 profile editor
+- Agent profile editor 已落地，但 machine affinity、本地 CLI / model capability 绑定与 durable config 仍未收平
 - Runtime / Machine profile、本地 CLI / model capability 绑定
 - 场景化 onboarding：开发团队 / 研究团队 / 空白模板
 - Agent Mailbox、多 Agent handoff、角色治理与 response aggregation

@@ -90,6 +90,39 @@ func (s *Store) hydrateMissingDefaults() {
 	if len(s.state.Machines) == 0 {
 		s.state.Machines = defaults.Machines
 	}
+	if len(s.state.Agents) == 0 {
+		s.state.Agents = defaults.Agents
+	}
+	for index := range s.state.Agents {
+		defaultAgent, ok := findAgentByID(defaults.Agents, s.state.Agents[index].ID)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(s.state.Agents[index].Role) == "" {
+			s.state.Agents[index].Role = defaultAgent.Role
+		}
+		if strings.TrimSpace(s.state.Agents[index].Avatar) == "" {
+			s.state.Agents[index].Avatar = defaultAgent.Avatar
+		}
+		if strings.TrimSpace(s.state.Agents[index].Prompt) == "" {
+			s.state.Agents[index].Prompt = defaultAgent.Prompt
+		}
+		if strings.TrimSpace(s.state.Agents[index].OperatingInstructions) == "" {
+			s.state.Agents[index].OperatingInstructions = defaultAgent.OperatingInstructions
+		}
+		if strings.TrimSpace(s.state.Agents[index].ProviderPreference) == "" {
+			s.state.Agents[index].ProviderPreference = defaultAgent.ProviderPreference
+		}
+		if strings.TrimSpace(s.state.Agents[index].RecallPolicy) == "" {
+			s.state.Agents[index].RecallPolicy = defaultAgent.RecallPolicy
+		}
+		if len(s.state.Agents[index].MemorySpaces) == 0 {
+			s.state.Agents[index].MemorySpaces = append([]string{}, defaultAgent.MemorySpaces...)
+		}
+		if s.state.Agents[index].ProfileAudit == nil {
+			s.state.Agents[index].ProfileAudit = []AgentProfileAuditEntry{}
+		}
+	}
 	for index := range s.state.Machines {
 		if strings.TrimSpace(s.state.Machines[index].DaemonURL) == "" && machineMatches(s.state.Machines[index], s.state.Workspace.PairedRuntime) {
 			s.state.Machines[index].DaemonURL = s.state.Workspace.PairedRuntimeURL
@@ -116,6 +149,15 @@ func (s *Store) hydrateMissingDefaults() {
 	s.ensureRuntimeRegistryState()
 	s.ensureSessionConsistency()
 	s.ensureAuthConsistency()
+}
+
+func findAgentByID(items []Agent, agentID string) (Agent, bool) {
+	for _, item := range items {
+		if item.ID == agentID {
+			return item, true
+		}
+	}
+	return Agent{}, false
 }
 
 func (s *Store) ensureFilesystemArtifacts() error {

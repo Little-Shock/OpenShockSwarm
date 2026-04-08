@@ -37,42 +37,42 @@ var (
 )
 
 type MemoryInjectionPolicy struct {
-	Mode                    string `json:"mode"`
-	IncludeRoomNotes        bool   `json:"includeRoomNotes"`
-	IncludeDecisionLedger   bool   `json:"includeDecisionLedger"`
-	IncludeAgentMemory      bool   `json:"includeAgentMemory"`
-	IncludePromotedArtifacts bool  `json:"includePromotedArtifacts"`
-	MaxItems                int    `json:"maxItems"`
-	UpdatedAt               string `json:"updatedAt"`
-	UpdatedBy               string `json:"updatedBy"`
+	Mode                     string `json:"mode"`
+	IncludeRoomNotes         bool   `json:"includeRoomNotes"`
+	IncludeDecisionLedger    bool   `json:"includeDecisionLedger"`
+	IncludeAgentMemory       bool   `json:"includeAgentMemory"`
+	IncludePromotedArtifacts bool   `json:"includePromotedArtifacts"`
+	MaxItems                 int    `json:"maxItems"`
+	UpdatedAt                string `json:"updatedAt"`
+	UpdatedBy                string `json:"updatedBy"`
 }
 
 type MemoryInjectionPreviewItem struct {
-	ArtifactID   string           `json:"artifactId"`
-	Path         string           `json:"path"`
-	Scope        string           `json:"scope"`
-	Kind         string           `json:"kind"`
-	Version      int              `json:"version"`
-	Summary      string           `json:"summary"`
-	LatestWrite  string           `json:"latestWrite,omitempty"`
-	Reason       string           `json:"reason"`
-	Snippet      string           `json:"snippet,omitempty"`
-	Required     bool             `json:"required"`
-	Governance   MemoryGovernance `json:"governance"`
+	ArtifactID  string           `json:"artifactId"`
+	Path        string           `json:"path"`
+	Scope       string           `json:"scope"`
+	Kind        string           `json:"kind"`
+	Version     int              `json:"version"`
+	Summary     string           `json:"summary"`
+	LatestWrite string           `json:"latestWrite,omitempty"`
+	Reason      string           `json:"reason"`
+	Snippet     string           `json:"snippet,omitempty"`
+	Required    bool             `json:"required"`
+	Governance  MemoryGovernance `json:"governance"`
 }
 
 type MemoryInjectionPreview struct {
-	ID           string                       `json:"id"`
-	SessionID    string                       `json:"sessionId"`
-	RunID        string                       `json:"runId"`
-	RoomID       string                       `json:"roomId"`
-	IssueKey     string                       `json:"issueKey"`
-	Title        string                       `json:"title"`
-	RecallPolicy string                       `json:"recallPolicy"`
-	PromptSummary string                      `json:"promptSummary"`
-	Files        []string                     `json:"files"`
-	Tools        []string                     `json:"tools"`
-	Items        []MemoryInjectionPreviewItem `json:"items"`
+	ID            string                       `json:"id"`
+	SessionID     string                       `json:"sessionId"`
+	RunID         string                       `json:"runId"`
+	RoomID        string                       `json:"roomId"`
+	IssueKey      string                       `json:"issueKey"`
+	Title         string                       `json:"title"`
+	RecallPolicy  string                       `json:"recallPolicy"`
+	PromptSummary string                       `json:"promptSummary"`
+	Files         []string                     `json:"files"`
+	Tools         []string                     `json:"tools"`
+	Items         []MemoryInjectionPreviewItem `json:"items"`
 }
 
 type MemoryPromotion struct {
@@ -97,12 +97,12 @@ type MemoryPromotion struct {
 }
 
 type MemoryCenter struct {
-	Policy        MemoryInjectionPolicy   `json:"policy"`
+	Policy        MemoryInjectionPolicy    `json:"policy"`
 	Previews      []MemoryInjectionPreview `json:"previews"`
-	Promotions    []MemoryPromotion       `json:"promotions"`
-	PendingCount  int                     `json:"pendingCount"`
-	ApprovedCount int                     `json:"approvedCount"`
-	RejectedCount int                     `json:"rejectedCount"`
+	Promotions    []MemoryPromotion        `json:"promotions"`
+	PendingCount  int                      `json:"pendingCount"`
+	ApprovedCount int                      `json:"approvedCount"`
+	RejectedCount int                      `json:"rejectedCount"`
 }
 
 type MemoryPolicyInput struct {
@@ -380,6 +380,14 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 		required bool
 	}
 
+	run := findRunForSession(snapshot, session.ID, session.ActiveRunID)
+	var agent *Agent
+	if run != nil {
+		if found, ok := findAgentByOwner(snapshot, run.Owner); ok {
+			agent = &found
+		}
+	}
+
 	candidates := []candidate{}
 	seen := map[string]bool{}
 	addCandidate := func(path, reason string, required bool) {
@@ -399,15 +407,16 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 		if !shouldIncludeSessionMemoryPath(path, policy) {
 			continue
 		}
+		if agent != nil && !agentAllowsMemoryPath(*agent, path) {
+			continue
+		}
 		addCandidate(path, "session recall path", true)
 	}
 
-	if policy.IncludeAgentMemory {
-		if run := findRunForSession(snapshot, session.ID, session.ActiveRunID); run != nil {
-			agentSlug := slugify(run.Owner)
-			if agentSlug != "" {
-				addCandidate(filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), "owner agent memory", false)
-			}
+	if run != nil && (policy.IncludeAgentMemory || (agent != nil && agentWantsAgentMemory(*agent, policy))) {
+		agentSlug := slugify(run.Owner)
+		if agentSlug != "" {
+			addCandidate(filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), "owner agent memory", false)
 		}
 	}
 
@@ -467,7 +476,7 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 		IssueKey:      session.IssueKey,
 		Title:         title,
 		RecallPolicy:  fmt.Sprintf("%s / max %d items / room:%t / decision:%t / agent:%t / promoted:%t", policy.Mode, policy.MaxItems, policy.IncludeRoomNotes, policy.IncludeDecisionLedger, policy.IncludeAgentMemory, policy.IncludePromotedArtifacts),
-		PromptSummary: buildMemoryPromptSummary(policy, session, items),
+		PromptSummary: buildMemoryPromptSummary(policy, session, items, agent),
 		Files:         files,
 		Tools:         tools,
 		Items:         items,
@@ -551,14 +560,36 @@ func trimMemoryPreviewItems(items []MemoryInjectionPreviewItem, maxItems int) []
 	return trimmed
 }
 
-func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem) string {
-	if len(items) == 0 {
-		return "当前 session 还没有可注入的 governed memory。"
+func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem, agent *Agent) string {
+	lines := []string{}
+	if agent != nil {
+		lines = append(lines,
+			fmt.Sprintf(
+				"Agent `%s` profile => role:`%s` / avatar:`%s` / provider:`%s` / recall:`%s` / binding:`%s`.",
+				defaultString(strings.TrimSpace(agent.Name), "unknown"),
+				defaultString(strings.TrimSpace(agent.Role), "unassigned"),
+				defaultString(strings.TrimSpace(agent.Avatar), "unset"),
+				defaultString(strings.TrimSpace(agent.ProviderPreference), defaultString(strings.TrimSpace(agent.Provider), "unset")),
+				defaultString(strings.TrimSpace(agent.RecallPolicy), "unset"),
+				strings.Join(agent.MemorySpaces, ", "),
+			),
+		)
+		if prompt := strings.TrimSpace(agent.Prompt); prompt != "" {
+			lines = append(lines, fmt.Sprintf("Prompt skeleton: %s", summarizeMemoryPromptLine(prompt)))
+		}
+		if instructions := strings.TrimSpace(agent.OperatingInstructions); instructions != "" {
+			lines = append(lines, fmt.Sprintf("Operating instructions: %s", summarizeMemoryPromptLine(instructions)))
+		}
 	}
 
-	lines := []string{
-		fmt.Sprintf("Session `%s` 采用 `%s` recall policy，优先注入 %d 份 governed artifacts。", defaultString(strings.TrimSpace(session.ID), "unknown"), policy.Mode, len(items)),
+	if len(items) == 0 {
+		lines = append(lines, "当前 session 还没有可注入的 governed memory。")
+		return strings.Join(lines, "\n")
 	}
+
+	lines = append(lines,
+		fmt.Sprintf("Session `%s` 采用 `%s` recall policy，优先注入 %d 份 governed artifacts。", defaultString(strings.TrimSpace(session.ID), "unknown"), policy.Mode, len(items)),
+	)
 
 	for index, item := range items {
 		if index >= 4 {
@@ -570,6 +601,14 @@ func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, ite
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func summarizeMemoryPromptLine(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\n", " "))
+	if len(value) <= 120 {
+		return value
+	}
+	return strings.TrimSpace(value[:117]) + "..."
 }
 
 func memoryContentSnippet(content string) string {

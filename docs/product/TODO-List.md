@@ -92,10 +92,10 @@
 ### GAP-11 Agent / Machine Profile / Local CLI Preferences
 
 - 现状:
-  - Agent / Machine 现在已有统一只读 profile surface 和 summary
-  - prompt / avatar / role / memory binding / provider-model 偏好还不能形成正式配置面
+  - Agent / Machine 现在已有统一 profile surface，其中 Agent 已能编辑 `prompt / avatar / role / operating instructions / memory binding / recall policy / provider preference`
+  - 剩余缺口集中在 machine inventory、本地 CLI / model capability 绑定、以及 durable config 默认值
 - 影响:
-  - Agent 还是“看得到但配不起来”的半成品对象
+  - Agent 已经可配置，但 machine/runtime 偏好与长期配置真相仍未收平
 - 相关合同:
   - `CHK-19`
 - 优先级: P1
