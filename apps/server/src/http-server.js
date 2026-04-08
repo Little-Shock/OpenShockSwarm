@@ -920,9 +920,29 @@ function serializeRuntimeRecoveryAction(action) {
 }
 
 function serializeRuntimeDeployRuntimeContract(input = {}) {
+  const machineFleet =
+    input.machineFleet && typeof input.machineFleet === "object" && !Array.isArray(input.machineFleet)
+      ? {
+          fleet_id: input.machineFleet.fleetId ?? null,
+          runtime_id: input.machineFleet.runtimeId ?? null,
+          pairing_mode: input.machineFleet.pairingMode ?? "remote_daemon_pairing",
+          pairing_status: input.machineFleet.pairingStatus ?? "not_paired",
+          health_status: input.machineFleet.healthStatus ?? "unknown",
+          readiness_status: input.machineFleet.readinessStatus ?? "not_ready",
+          publish_ref: input.machineFleet.publishRef ?? null,
+          recovery_ref: input.machineFleet.recoveryRef ?? null,
+          upgrade_ref: input.machineFleet.upgradeRef ?? null,
+          handoff_ref: input.machineFleet.handoffRef ?? null,
+          audit_ref: input.machineFleet.auditRef ?? "/v1/runtime/deploy-runtime",
+          timeline_ref: input.machineFleet.timelineRef ?? "/v1/runtime/registry",
+          notes: input.machineFleet.notes ?? null,
+          updated_at: input.machineFleet.updatedAt ?? null,
+          updated_by: input.machineFleet.updatedBy ?? null
+        }
+      : null;
   return {
     projection: "runtime_deploy_runtime_contract",
-    contract_version: input.contractVersion ?? "v1.stage5a",
+    contract_version: input.contractVersion ?? "v1.stage5c",
     owner_operator_id: input.ownerOperatorId ?? null,
     hosted_access: {
       hosted_entry_url: input.hostedAccess?.hostedEntryUrl ?? null,
@@ -978,10 +998,13 @@ function serializeRuntimeDeployRuntimeContract(input = {}) {
       updated_at: input.releaseRecoveryUpgradeHandoff?.updatedAt ?? null,
       updated_by: input.releaseRecoveryUpgradeHandoff?.updatedBy ?? null
     },
+    ...(machineFleet ? { machine_fleet: machineFleet } : {}),
     write_anchors: {
       deploy_runtime_upsert: input.writeAnchors?.deployRuntimeUpsert ?? "/v1/runtime/deploy-runtime",
       runtime_recovery_action:
-        input.writeAnchors?.runtimeRecoveryAction ?? "/v1/runtime/agents/:agentId/recovery-actions"
+        input.writeAnchors?.runtimeRecoveryAction ?? "/v1/runtime/agents/:agentId/recovery-actions",
+      runtime_machine_upsert: input.writeAnchors?.runtimeMachineUpsert ?? "/v1/runtime/machines/:machineId",
+      runtime_agent_pairing: input.writeAnchors?.runtimeAgentPairing ?? "/v1/runtime/agents/:agentId/pairing"
     },
     audit_anchor: {
       trail: input.auditAnchor?.trail ?? "/v1/runtime/deploy-runtime",
@@ -1000,6 +1023,9 @@ function serializeRuntimeDeployRuntimeContract(input = {}) {
       runtime_config: input.timelineAnchor?.runtimeConfig ?? "/runtime/config",
       runtime_smoke: input.timelineAnchor?.runtimeSmoke ?? "/runtime/smoke",
       health: input.timelineAnchor?.health ?? "/health",
+      runtime_machines: input.timelineAnchor?.runtimeMachines ?? "/v1/runtime/machines",
+      runtime_agents: input.timelineAnchor?.runtimeAgents ?? "/v1/runtime/agents",
+      runtime_agent_pairing: input.timelineAnchor?.runtimeAgentPairing ?? "/v1/runtime/agents/:agentId/pairing",
       runtime_registry: input.timelineAnchor?.runtimeRegistry ?? "/v1/runtime/registry",
       runtime_recovery_actions: input.timelineAnchor?.runtimeRecoveryActions ?? "/v1/runtime/recovery-actions"
     },
@@ -5870,6 +5896,7 @@ export function createHttpServer(coordinator, options = {}) {
           hostedAccess: body.hosted_access,
           healthReadiness: body.health_readiness,
           releaseRecoveryUpgradeHandoff: body.release_recovery_upgrade_handoff,
+          machineFleet: body.machine_fleet,
           policySnapshot: body.policy_snapshot
         });
         sendJson(response, 200, {

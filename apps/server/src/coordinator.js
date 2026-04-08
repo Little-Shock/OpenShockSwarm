@@ -234,6 +234,8 @@ const DEPLOY_RUNTIME_DEPLOYMENT_STATUSES = new Set(["not_deployed", "deploying",
 const DEPLOY_RUNTIME_HEALTH_STATUSES = new Set(["unknown", "healthy", "degraded", "down"]);
 const DEPLOY_RUNTIME_READINESS_STATUSES = new Set(["not_ready", "warming", "ready", "blocked"]);
 const DEPLOY_RUNTIME_HANDOFF_STATUSES = new Set(["draft", "ready", "in_progress", "completed", "blocked"]);
+const DEPLOY_RUNTIME_MACHINE_FLEET_STATUSES = new Set(["not_paired", "pairing", "ready", "degraded"]);
+const DEPLOY_RUNTIME_PAIRING_MODES = new Set(["remote_daemon_pairing", "local_hosted_bridge"]);
 const INBOX_ATTENTION_CHANNELS = new Set(["inbox", "browser_push", "email"]);
 const INBOX_FOLLOW_UP_PRIORITIES = new Set(["normal", "high", "urgent"]);
 const EXTERNAL_MEMORY_PROVIDER_CAPABILITIES = Object.freeze({
@@ -422,7 +424,28 @@ function createEmptyRuntimeDeployRuntimeContract() {
       updatedAt: null,
       updatedBy: null
     },
+    machineFleet: null,
     updatedAt: null
+  };
+}
+
+function createEmptyRuntimeMachineFleetContract() {
+  return {
+    fleetId: null,
+    runtimeId: null,
+    pairingMode: "remote_daemon_pairing",
+    pairingStatus: "not_paired",
+    healthStatus: "unknown",
+    readinessStatus: "not_ready",
+    publishRef: null,
+    recoveryRef: null,
+    upgradeRef: null,
+    handoffRef: null,
+    auditRef: "/v1/runtime/deploy-runtime",
+    timelineRef: "/v1/runtime/registry",
+    notes: null,
+    updatedAt: null,
+    updatedBy: null
   };
 }
 
@@ -2794,22 +2817,28 @@ export class ServerCoordinator {
   getRuntimeDeployRuntimeContract() {
     const contract = this.runtimeDeployRuntime ?? createEmptyRuntimeDeployRuntimeContract();
     return deepClone({
-      contractVersion: "v1.stage5a",
+      contractVersion: "v1.stage5c",
       ownerOperatorId: contract.ownerOperatorId ?? null,
       hostedAccess: contract.hostedAccess,
       deployment: contract.deployment,
       environment: contract.environment,
       healthReadiness: contract.healthReadiness,
       releaseRecoveryUpgradeHandoff: contract.releaseRecoveryUpgradeHandoff,
+      machineFleet: contract.machineFleet,
       writeAnchors: {
         deployRuntimeUpsert: "/v1/runtime/deploy-runtime",
-        runtimeRecoveryAction: "/v1/runtime/agents/:agentId/recovery-actions"
+        runtimeRecoveryAction: "/v1/runtime/agents/:agentId/recovery-actions",
+        runtimeMachineUpsert: "/v1/runtime/machines/:machineId",
+        runtimeAgentPairing: "/v1/runtime/agents/:agentId/pairing"
       },
       auditAnchor: this.buildRuntimeDeployRuntimeAuditAnchor(),
       timelineAnchor: {
         runtimeConfig: "/runtime/config",
         runtimeSmoke: "/runtime/smoke",
         health: "/health",
+        runtimeMachines: "/v1/runtime/machines",
+        runtimeAgents: "/v1/runtime/agents",
+        runtimeAgentPairing: "/v1/runtime/agents/:agentId/pairing",
         runtimeRegistry: "/v1/runtime/registry",
         runtimeRecoveryActions: "/v1/runtime/recovery-actions"
       },
@@ -2834,6 +2863,8 @@ export class ServerCoordinator {
       "health_readiness",
       "releaseRecoveryUpgradeHandoff",
       "release_recovery_upgrade_handoff",
+      "machineFleet",
+      "machine_fleet",
       "policySnapshot",
       "policy_snapshot"
     ]);
@@ -2850,15 +2881,17 @@ export class ServerCoordinator {
     const environmentInput = input.environment;
     const healthReadinessInput = input.healthReadiness ?? input.health_readiness;
     const handoffInput = input.releaseRecoveryUpgradeHandoff ?? input.release_recovery_upgrade_handoff;
+    const machineFleetInput = input.machineFleet ?? input.machine_fleet;
 
     assertOrThrow(
       hostedAccessInput !== undefined ||
         deploymentInput !== undefined ||
         environmentInput !== undefined ||
         healthReadinessInput !== undefined ||
-        handoffInput !== undefined,
+        handoffInput !== undefined ||
+        machineFleetInput !== undefined,
       "invalid_runtime_deploy_runtime",
-      "runtime deploy-runtime payload must include hosted_access/deployment/environment/health_readiness/release_recovery_upgrade_handoff"
+      "runtime deploy-runtime payload must include hosted_access/deployment/environment/health_readiness/release_recovery_upgrade_handoff/machine_fleet"
     );
 
     const operatorId = normalizeOptionalScopeId(input.operatorId ?? input.operator_id);
@@ -3185,6 +3218,106 @@ export class ServerCoordinator {
       updatedSections.push("release_recovery_upgrade_handoff");
     }
 
+    if (machineFleetInput !== undefined) {
+      assertOrThrow(
+        machineFleetInput && typeof machineFleetInput === "object" && !Array.isArray(machineFleetInput),
+        "invalid_runtime_machine_fleet",
+        "machine_fleet payload must be object"
+      );
+      const allowedMachineFleetKeys = new Set([
+        "fleetId",
+        "fleet_id",
+        "runtimeId",
+        "runtime_id",
+        "pairingMode",
+        "pairing_mode",
+        "pairingStatus",
+        "pairing_status",
+        "healthStatus",
+        "health_status",
+        "readinessStatus",
+        "readiness_status",
+        "publishRef",
+        "publish_ref",
+        "recoveryRef",
+        "recovery_ref",
+        "upgradeRef",
+        "upgrade_ref",
+        "handoffRef",
+        "handoff_ref",
+        "auditRef",
+        "audit_ref",
+        "timelineRef",
+        "timeline_ref",
+        "notes"
+      ]);
+      for (const key of Object.keys(machineFleetInput)) {
+        assertOrThrow(
+          allowedMachineFleetKeys.has(key),
+          "invalid_runtime_machine_fleet_field",
+          `unsupported machine_fleet field: ${key}`
+        );
+      }
+      const existingMachineFleet = contract.machineFleet ?? createEmptyRuntimeMachineFleetContract();
+      const pairingMode =
+        normalizeOptionalScopeId(pick(machineFleetInput, "pairingMode", "pairing_mode")) ?? existingMachineFleet.pairingMode;
+      assertOrThrow(
+        DEPLOY_RUNTIME_PAIRING_MODES.has(pairingMode),
+        "invalid_runtime_machine_fleet_pairing_mode",
+        "machine_fleet.pairing_mode is invalid"
+      );
+      const pairingStatus =
+        normalizeOptionalScopeId(pick(machineFleetInput, "pairingStatus", "pairing_status")) ??
+        existingMachineFleet.pairingStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_MACHINE_FLEET_STATUSES.has(pairingStatus),
+        "invalid_runtime_machine_fleet_pairing_status",
+        "machine_fleet.pairing_status is invalid"
+      );
+      const healthStatus =
+        normalizeOptionalScopeId(pick(machineFleetInput, "healthStatus", "health_status")) ??
+        existingMachineFleet.healthStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_HEALTH_STATUSES.has(healthStatus),
+        "invalid_runtime_machine_fleet_health_status",
+        "machine_fleet.health_status is invalid"
+      );
+      const readinessStatus =
+        normalizeOptionalScopeId(pick(machineFleetInput, "readinessStatus", "readiness_status")) ??
+        existingMachineFleet.readinessStatus;
+      assertOrThrow(
+        DEPLOY_RUNTIME_READINESS_STATUSES.has(readinessStatus),
+        "invalid_runtime_machine_fleet_readiness_status",
+        "machine_fleet.readiness_status is invalid"
+      );
+      contract.machineFleet = {
+        fleetId: normalizeOptionalScopeId(pick(machineFleetInput, "fleetId", "fleet_id")) ?? existingMachineFleet.fleetId,
+        runtimeId:
+          normalizeOptionalScopeId(pick(machineFleetInput, "runtimeId", "runtime_id")) ?? existingMachineFleet.runtimeId,
+        pairingMode,
+        pairingStatus,
+        healthStatus,
+        readinessStatus,
+        publishRef:
+          normalizeOptionalScopeId(pick(machineFleetInput, "publishRef", "publish_ref")) ?? existingMachineFleet.publishRef,
+        recoveryRef:
+          normalizeOptionalScopeId(pick(machineFleetInput, "recoveryRef", "recovery_ref")) ??
+          existingMachineFleet.recoveryRef,
+        upgradeRef:
+          normalizeOptionalScopeId(pick(machineFleetInput, "upgradeRef", "upgrade_ref")) ?? existingMachineFleet.upgradeRef,
+        handoffRef:
+          normalizeOptionalScopeId(pick(machineFleetInput, "handoffRef", "handoff_ref")) ?? existingMachineFleet.handoffRef,
+        auditRef:
+          normalizeOptionalScopeId(pick(machineFleetInput, "auditRef", "audit_ref")) ?? existingMachineFleet.auditRef,
+        timelineRef:
+          normalizeOptionalScopeId(pick(machineFleetInput, "timelineRef", "timeline_ref")) ?? existingMachineFleet.timelineRef,
+        notes: normalizeOptionalScopeId(pick(machineFleetInput, "notes", "notes")) ?? existingMachineFleet.notes,
+        updatedAt: now,
+        updatedBy: operatorId
+      };
+      updatedSections.push("machine_fleet");
+    }
+
     contract.ownerOperatorId = contract.ownerOperatorId ?? operatorId;
     contract.updatedAt = now;
     this.runtimeDeployRuntime = contract;
@@ -3198,7 +3331,11 @@ export class ServerCoordinator {
         deployment_status: contract.deployment.status,
         health_status: contract.healthReadiness.healthStatus,
         readiness_status: contract.healthReadiness.readinessStatus,
-        handoff_status: contract.releaseRecoveryUpgradeHandoff.status
+        handoff_status: contract.releaseRecoveryUpgradeHandoff.status,
+        machine_fleet_pairing_mode: contract.machineFleet?.pairingMode ?? null,
+        machine_fleet_pairing_status: contract.machineFleet?.pairingStatus ?? null,
+        machine_fleet_health_status: contract.machineFleet?.healthStatus ?? null,
+        machine_fleet_readiness_status: contract.machineFleet?.readinessStatus ?? null
       }
     });
     return this.getRuntimeDeployRuntimeContract();

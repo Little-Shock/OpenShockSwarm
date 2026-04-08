@@ -5548,7 +5548,7 @@ test("v1 stage4c digital twin and operational capability contract keeps twin-as-
   });
 });
 
-test("v1 stage5a hosted deploy-runtime contract keeps deployment and handoff truth with stable read path plus write/audit/timeline anchors", async () => {
+test("v1 stage5c hosted deploy-runtime contract keeps deployment and handoff truth with stable read path plus write/audit/timeline anchors", async () => {
   const operatorId = "human_operator_stage5a";
 
   await withRuntimeServer({}, async ({ port }) => {
@@ -5558,7 +5558,7 @@ test("v1 stage5a hosted deploy-runtime contract keeps deployment and handoff tru
       path: "/v1/runtime/deploy-runtime"
     });
     assert.equal(defaultContract.statusCode, 200);
-    assert.equal(defaultContract.body.deploy_runtime.contract_version, "v1.stage5a");
+    assert.equal(defaultContract.body.deploy_runtime.contract_version, "v1.stage5c");
     assert.equal(defaultContract.body.deploy_runtime.write_anchors.deploy_runtime_upsert, "/v1/runtime/deploy-runtime");
     assert.equal(defaultContract.body.deploy_runtime.timeline_anchor.runtime_smoke, "/runtime/smoke");
     assert.equal(defaultContract.body.deploy_runtime.timeline_anchor.health, "/health");
@@ -5689,6 +5689,139 @@ test("v1 stage5a hosted deploy-runtime contract keeps deployment and handoff tru
     assert.equal(payload.includes("\"remote_daemon_pairing\""), false);
     assert.equal(payload.includes("\"machine_fleet\""), false);
     assert.equal(payload.includes("\"stage4_reopen\""), false);
+  });
+});
+
+test("v1 stage5c runtime lifecycle contract keeps machine fleet health/readiness and publish/recovery/upgrade/handoff under /v1/runtime truth family", async () => {
+  const operatorId = "human_operator_stage5c";
+
+  await withRuntimeServer({}, async ({ port }) => {
+    const upsert = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        machine_fleet: {
+          fleet_id: "fleet_stage5c_prod",
+          runtime_id: "runtime_stage5c_prod",
+          pairing_mode: "remote_daemon_pairing",
+          pairing_status: "ready",
+          health_status: "healthy",
+          readiness_status: "ready",
+          publish_ref: "release/stage5c_publish_001",
+          recovery_ref: "runbook/recovery/stage5c",
+          upgrade_ref: "runbook/upgrade/stage5c",
+          handoff_ref: "docs/handoff/stage5c",
+          audit_ref: "/v1/runtime/deploy-runtime",
+          timeline_ref: "/v1/runtime/registry",
+          notes: "fleet lifecycle green"
+        }
+      }
+    });
+    assert.equal(upsert.statusCode, 200);
+    assert.equal(upsert.body.deploy_runtime.contract_version, "v1.stage5c");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.fleet_id, "fleet_stage5c_prod");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.pairing_mode, "remote_daemon_pairing");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.pairing_status, "ready");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.health_status, "healthy");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.readiness_status, "ready");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.publish_ref, "release/stage5c_publish_001");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.recovery_ref, "runbook/recovery/stage5c");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.upgrade_ref, "runbook/upgrade/stage5c");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.handoff_ref, "docs/handoff/stage5c");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.audit_ref, "/v1/runtime/deploy-runtime");
+    assert.equal(upsert.body.deploy_runtime.machine_fleet.timeline_ref, "/v1/runtime/registry");
+    assert.equal(upsert.body.deploy_runtime.write_anchors.runtime_machine_upsert, "/v1/runtime/machines/:machineId");
+    assert.equal(upsert.body.deploy_runtime.write_anchors.runtime_agent_pairing, "/v1/runtime/agents/:agentId/pairing");
+    assert.equal(upsert.body.deploy_runtime.timeline_anchor.runtime_machines, "/v1/runtime/machines");
+    assert.equal(upsert.body.deploy_runtime.timeline_anchor.runtime_agents, "/v1/runtime/agents");
+    assert.equal(upsert.body.deploy_runtime.timeline_anchor.runtime_agent_pairing, "/v1/runtime/agents/:agentId/pairing");
+
+    const readback = await requestJson({
+      port,
+      method: "GET",
+      path: "/v1/runtime/deploy-runtime"
+    });
+    assert.equal(readback.statusCode, 200);
+    assert.equal(readback.body.deploy_runtime.machine_fleet.runtime_id, "runtime_stage5c_prod");
+    assert.equal(readback.body.deploy_runtime.machine_fleet.notes, "fleet lifecycle green");
+
+    const invalidMachineFleetField = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        machine_fleet: {
+          bad_field: "should fail"
+        }
+      }
+    });
+    assert.equal(invalidMachineFleetField.statusCode, 400);
+    assert.equal(invalidMachineFleetField.body.error.code, "invalid_runtime_machine_fleet_field");
+
+    const invalidPairingMode = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        machine_fleet: {
+          pairing_mode: "free_debate_social"
+        }
+      }
+    });
+    assert.equal(invalidPairingMode.statusCode, 400);
+    assert.equal(invalidPairingMode.body.error.code, "invalid_runtime_machine_fleet_pairing_mode");
+
+    const invalidPairingStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        machine_fleet: {
+          pairing_status: "autoscaled"
+        }
+      }
+    });
+    assert.equal(invalidPairingStatus.statusCode, 400);
+    assert.equal(invalidPairingStatus.body.error.code, "invalid_runtime_machine_fleet_pairing_status");
+
+    const invalidReadinessStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        machine_fleet: {
+          readiness_status: "fleet_ready"
+        }
+      }
+    });
+    assert.equal(invalidReadinessStatus.statusCode, 400);
+    assert.equal(invalidReadinessStatus.body.error.code, "invalid_runtime_machine_fleet_readiness_status");
+
+    const invalidHealthStatus = await requestJson({
+      port,
+      method: "PUT",
+      path: "/v1/runtime/deploy-runtime",
+      body: {
+        operator_id: operatorId,
+        machine_fleet: {
+          health_status: "fleet_green"
+        }
+      }
+    });
+    assert.equal(invalidHealthStatus.statusCode, 400);
+    assert.equal(invalidHealthStatus.body.error.code, "invalid_runtime_machine_fleet_health_status");
+
+    const payload = JSON.stringify({
+      deployRuntime: readback.body.deploy_runtime
+    });
+    assert.equal(payload.includes("\"stage6\""), false);
+    assert.equal(payload.includes("\"shell_local_runtime_shadow\""), false);
   });
 });
 
