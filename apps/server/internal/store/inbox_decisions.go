@@ -83,6 +83,7 @@ func (s *Store) applyApprovalInboxDecisionLocked(index int, item InboxItem, deci
 		runItem.ApprovalRequired = false
 		runItem.NextAction = "继续执行已批准的高风险动作，并把结果同步回讨论间。"
 		runItem.Stdout = append(runItem.Stdout, logLine)
+		s.updateDestructiveGuardLocked(item.GuardID, "ready", summary, false)
 	case "deferred":
 		title = "高风险动作已暂缓"
 		summary = "人类暂缓了当前高风险动作，等待更安全方案或下一次批准。"
@@ -101,6 +102,7 @@ func (s *Store) applyApprovalInboxDecisionLocked(index int, item InboxItem, deci
 		runItem.ApprovalRequired = true
 		runItem.NextAction = "改写方案、准备更安全的 diff，或再次请求批准。"
 		runItem.Stderr = append(runItem.Stderr, logLine)
+		s.updateDestructiveGuardLocked(item.GuardID, "approval_required", summary, true)
 	default:
 		return State{}, fmt.Errorf("unsupported approval decision %q", decision)
 	}
@@ -189,6 +191,7 @@ func (s *Store) applyBlockedInboxDecisionLocked(index int, item InboxItem, decis
 		runItem.ApprovalRequired = false
 		runItem.NextAction = "按最新的人类决策恢复执行，并把结果同步回讨论间。"
 		runItem.Stdout = append(runItem.Stdout, logLine)
+		s.updateDestructiveGuardLocked(item.GuardID, "ready", summary, false)
 	case "deferred":
 		title = "阻塞继续挂起"
 		summary = "人类选择继续挂起当前阻塞，等待后续处理。"
@@ -206,6 +209,7 @@ func (s *Store) applyBlockedInboxDecisionLocked(index int, item InboxItem, decis
 		runItem.Summary = summary
 		runItem.NextAction = "保持阻塞，等待下一次人类决策。"
 		runItem.Stderr = append(runItem.Stderr, logLine)
+		s.updateDestructiveGuardLocked(item.GuardID, "blocked", summary, true)
 	default:
 		return State{}, fmt.Errorf("unsupported blocked decision %q", decision)
 	}
@@ -294,4 +298,19 @@ func (s *Store) prependStatusInboxLocked(title, roomTitle, summary, href string)
 		Action:  "打开房间",
 		Href:    href,
 	}}, s.state.Inbox...)
+}
+
+func (s *Store) updateDestructiveGuardLocked(guardID, status, summary string, approvalRequired bool) {
+	if strings.TrimSpace(guardID) == "" {
+		return
+	}
+	for index := range s.state.Guards {
+		if s.state.Guards[index].ID != guardID {
+			continue
+		}
+		s.state.Guards[index].Status = status
+		s.state.Guards[index].Summary = summary
+		s.state.Guards[index].ApprovalRequired = approvalRequired
+		return
+	}
 }

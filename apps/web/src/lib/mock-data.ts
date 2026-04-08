@@ -6,6 +6,8 @@ export type PresenceState = "running" | "idle" | "blocked";
 export type MachineState = "online" | "busy" | "offline";
 export type InboxKind = "blocked" | "approval" | "review" | "status";
 export type PullRequestStatus = "draft" | "open" | "in_review" | "changes_requested" | "merged";
+export type DestructiveGuardStatus = "approval_required" | "blocked" | "ready";
+export type DestructiveGuardRisk = "destructive_git" | "filesystem_write" | "secret_scope";
 
 export type WorkspaceSnapshot = {
   name: string;
@@ -119,6 +121,25 @@ export type RunEvent = {
   label: string;
   at: string;
   tone: "paper" | "yellow" | "lime" | "pink";
+};
+
+export type GuardBoundary = {
+  label: string;
+  value: string;
+};
+
+export type DestructiveGuard = {
+  id: string;
+  title: string;
+  summary: string;
+  status: DestructiveGuardStatus;
+  risk: DestructiveGuardRisk;
+  scope: string;
+  roomId?: string;
+  runId?: string;
+  inboxItemId?: string;
+  approvalRequired: boolean;
+  boundaries: GuardBoundary[];
 };
 
 export type ToolCall = {
@@ -267,6 +288,7 @@ export type InboxItem = {
   summary: string;
   action: string;
   href: string;
+  guardId?: string;
 };
 
 export type InboxDecision =
@@ -289,6 +311,7 @@ export type ApprovalCenterItem = {
   room: string;
   roomId?: string;
   runId?: string;
+  guardId?: string;
   title: string;
   summary: string;
   action: string;
@@ -406,6 +429,7 @@ export type PhaseZeroState = {
   sessions: Session[];
   runtimeLeases: RuntimeLeaseRecord[];
   runtimeScheduler: RuntimeScheduler;
+  guards: DestructiveGuard[];
   memory: MemoryArtifact[];
 };
 
@@ -1000,6 +1024,43 @@ export const machines: MachineStatus[] = [
   { id: "machine-sidecar", name: "shock-sidecar", state: "online", cli: "Codex", os: "macOS", lastHeartbeat: "21 秒前" },
 ];
 
+export const guards: DestructiveGuard[] = [
+  {
+    id: "guard-runtime-destructive-git",
+    title: "Destructive Git Cleanup Guard",
+    summary: "这次请求会删除过时 branch / worktree；系统先把动作停在 approval_required，不会直接执行。",
+    status: "approval_required",
+    risk: "destructive_git",
+    scope: "当前 repo 清理",
+    roomId: "room-runtime",
+    runId: "run_runtime_01",
+    inboxItemId: "inbox-approval-runtime",
+    approvalRequired: true,
+    boundaries: [
+      { label: "Action", value: "git branch -D / git worktree remove / clean stale files" },
+      { label: "Sandbox", value: "只允许当前 workspace root；越界写入继续被拦截" },
+      { label: "Secrets", value: "GitHub token / workspace secret 在批准前不会注入" },
+    ],
+  },
+  {
+    id: "guard-memory-boundary",
+    title: "Cross-scope Write Boundary",
+    summary: "写回同时命中 room / workspace / user memory；系统先阻断跨 scope 写入，等待人类确认优先级规则。",
+    status: "blocked",
+    risk: "filesystem_write",
+    scope: "记忆写回",
+    roomId: "room-memory",
+    runId: "run_memory_01",
+    inboxItemId: "inbox-blocked-memory",
+    approvalRequired: true,
+    boundaries: [
+      { label: "Target", value: "MEMORY.md / notes/work-log.md / notes/rooms/room-memory.md" },
+      { label: "Sandbox", value: "跨 scope 写入先 blocked，不会直接落盘" },
+      { label: "Secrets", value: "用户私有记忆与后续 credential scope 保持封闭" },
+    ],
+  },
+];
+
 export const runtimes: RuntimeRegistryRecord[] = [
   {
     id: "runtime-shock-main",
@@ -1064,6 +1125,7 @@ export const inboxItems: InboxItem[] = [
     summary: "这个 Run 想在视觉核对通过后清理过时分支。",
     action: "查看批准",
     href: "/runs/run_runtime_01",
+    guardId: "guard-runtime-destructive-git",
   },
   {
     id: "inbox-blocked-memory",
@@ -1074,6 +1136,7 @@ export const inboxItems: InboxItem[] = [
     summary: "写回前需要先确定 topic、房间、工作区、用户和 agent 的优先级规则。",
     action: "解除阻塞",
     href: "/runs/run_memory_01",
+    guardId: "guard-memory-boundary",
   },
   {
     id: "inbox-review-copy",
@@ -1278,5 +1341,6 @@ export const fallbackState: PhaseZeroState = {
     summary: "当前 fallback state 仍按 workspace selection 指向 shock-main。",
     candidates: [],
   },
+  guards,
   memory: [],
 };

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import { useQuickSearchController } from "@/lib/quick-search";
 import { buildNamedProfileHref, buildProfileHref } from "@/lib/profile-surface";
 import {
   type ApprovalCenterItem,
+  type DestructiveGuard,
   type Message,
   type PhaseZeroState,
   type PullRequest,
@@ -578,6 +580,7 @@ function RoomContextPanels({
   machineProfileHref,
   sessionMemoryPaths,
   latestTimelineEvent,
+  relatedGuards,
   relatedSignals,
   recentSignals,
   canControlRun,
@@ -602,6 +605,7 @@ function RoomContextPanels({
   machineProfileHref?: string | null;
   sessionMemoryPaths: string[];
   latestTimelineEvent?: Run["timeline"][number];
+  relatedGuards: DestructiveGuard[];
   relatedSignals: ApprovalCenterItem[];
   recentSignals: ApprovalCenterItem[];
   canControlRun: boolean;
@@ -743,6 +747,31 @@ function RoomContextPanels({
         controlBoundary={runControlBoundary}
         onControl={onRunControl}
       />
+
+      {relatedGuards.length > 0 ? (
+        <Panel tone="paper">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Guard Truth</p>
+              <p className="mt-2 font-display text-[20px] font-bold leading-6">Destructive / Secret Boundary</p>
+            </div>
+            <span className="rounded-[4px] border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]">
+              {relatedGuards.length} active
+            </span>
+          </div>
+          <div className="mt-4 space-y-3">
+            {relatedGuards.map((guard) => (
+              <DestructiveGuardCard
+                key={guard.id}
+                guard={guard}
+                compact
+                contextHref={buildRoomWorkbenchHref(room.id, "run")}
+                testIdPrefix="room-guard"
+              />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <Panel tone="white">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2345,6 +2374,10 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
             item.href.includes(room.id) ||
             item.href.includes(run.id)
         );
+  const relatedGuards =
+    loading || error || !room || !run
+      ? []
+      : state.guards.filter((guard) => guard.roomId === room.id || guard.runId === run.id);
   const workbenchTabs = ROOM_WORKBENCH_TABS.map((tab) => ({
     label: ROOM_WORKBENCH_TAB_LABEL[tab],
     href: buildRoomWorkbenchHref(roomId, tab),
@@ -2462,6 +2495,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
         machineProfileHref={machineProfileHref}
         sessionMemoryPaths={sessionMemoryPaths}
         latestTimelineEvent={latestTimelineEvent}
+        relatedGuards={relatedGuards}
         relatedSignals={relatedSignals}
         recentSignals={recentSignals}
         canControlRun={canControlRun}
@@ -2605,7 +2639,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                         controlBoundary={runControlBoundary}
                         onControl={handleRunControl}
                       />
-                      <RunDetailView run={run} statusTestId="room-workbench-run-detail-status" />
+                      <RunDetailView
+                        run={run}
+                        statusTestId="room-workbench-run-detail-status"
+                        guards={relatedGuards.filter((guard) => guard.runId === run.id)}
+                      />
                     </div>
                   ) : activeWorkbenchTab === "pr" ? (
                     <RoomPullRequestWorkbenchPanel

@@ -78,6 +78,25 @@ type RunEvent struct {
 	Tone  string `json:"tone"`
 }
 
+type GuardBoundary struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+type DestructiveGuard struct {
+	ID               string          `json:"id"`
+	Title            string          `json:"title"`
+	Summary          string          `json:"summary"`
+	Status           string          `json:"status"`
+	Risk             string          `json:"risk"`
+	Scope            string          `json:"scope"`
+	RoomID           string          `json:"roomId,omitempty"`
+	RunID            string          `json:"runId,omitempty"`
+	InboxItemID      string          `json:"inboxItemId,omitempty"`
+	ApprovalRequired bool            `json:"approvalRequired"`
+	Boundaries       []GuardBoundary `json:"boundaries"`
+}
+
 type ToolCall struct {
 	ID      string `json:"id"`
 	Tool    string `json:"tool"`
@@ -229,6 +248,7 @@ type InboxItem struct {
 	Summary string `json:"summary"`
 	Action  string `json:"action"`
 	Href    string `json:"href"`
+	GuardID string `json:"guardId,omitempty"`
 }
 
 type PullRequest struct {
@@ -377,6 +397,7 @@ type State struct {
 	Sessions         []Session                          `json:"sessions"`
 	RuntimeLeases    []RuntimeLease                     `json:"runtimeLeases,omitempty"`
 	RuntimeScheduler RuntimeScheduler                   `json:"runtimeScheduler"`
+	Guards           []DestructiveGuard                 `json:"guards,omitempty"`
 	Auth             AuthSnapshot                       `json:"auth"`
 	Memory           []MemoryArtifact                   `json:"memory"`
 	MemoryVersions   map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`

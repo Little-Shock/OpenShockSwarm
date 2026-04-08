@@ -351,14 +351,14 @@
 ## TC-027 Sandbox / Destructive Approval Guard
 
 - 业务目标: 确认 destructive git、越界写入、敏感凭证使用会进入审批保护，而不是默认执行。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-12`
 - 前置条件: 存在 sandbox mode 与 approval-required contract。
 - 测试步骤:
   1. 触发 destructive git 或越界写入动作。
   2. 检查系统是否拦截并生成 approval item。
 - 预期结果: 高风险动作不会直接执行，系统产生显式审批记录。
-- 业务结论: 2026 年 4 月 7 日 `TKT-09` 已把 role / permission action matrix 收进真实前台与后端 guard，但 destructive git、越界写入、敏感凭证使用的 approval-required contract 仍未系统化产品化；因此这条安全 gate 继续保留 `Not Run`，由下一轮 `TKT-30` 继续吸收。
+- 业务结论: 2026 年 4 月 8 日 `TKT-30` 已新增 `pnpm test:headed-destructive-guard -- --report docs/testing/Test-Report-2026-04-08-destructive-guard.md`。当前 destructive git 与跨 scope 写入都会先进入显式 guard truth，`/inbox` 能看到 `Action / Sandbox / Secrets / Target` 边界，`/rooms/:roomId` 与 `/runs/:runId` 也会复用同一 guard 状态；并且 non-happy `defer` 路径会把 destructive run 保持在 `blocked + approval_required`，不会静默继续执行。因此这条安全 gate 当前转为 `Pass`。
 
 ## TC-028 app.slock.ai Shell / Sidebar / Search Entry
 

@@ -52,6 +52,16 @@ func TestInboxDecisionRouteApprovesApprovalItem(t *testing.T) {
 	if !strings.Contains(run.NextAction, "批准") {
 		t.Fatalf("nextAction = %q, want approval language", run.NextAction)
 	}
+	guard, ok := findGuardByID(payload.State, "guard-runtime-destructive-git")
+	if !ok {
+		t.Fatalf("guard-runtime-destructive-git missing from state")
+	}
+	if guard.Status != "ready" || guard.ApprovalRequired {
+		t.Fatalf("runtime guard = %#v, want ready + approvalRequired=false", guard)
+	}
+	if !strings.Contains(guard.Summary, "批准") {
+		t.Fatalf("runtime guard summary = %q, want approval language", guard.Summary)
+	}
 	if _, ok := findInboxByID(t, payload.State.Inbox, "inbox-approval-runtime"); ok {
 		t.Fatalf("approval inbox item still present after approval")
 	}
@@ -100,6 +110,16 @@ func TestInboxDecisionRouteResolvesBlockedItem(t *testing.T) {
 	}
 	if run.Status != "running" {
 		t.Fatalf("run status = %q, want running", run.Status)
+	}
+	guard, ok := findGuardByID(payload.State, "guard-memory-boundary")
+	if !ok {
+		t.Fatalf("guard-memory-boundary missing from state")
+	}
+	if guard.Status != "ready" || guard.ApprovalRequired {
+		t.Fatalf("memory guard = %#v, want ready + approvalRequired=false", guard)
+	}
+	if !strings.Contains(guard.Summary, "恢复执行") {
+		t.Fatalf("memory guard summary = %q, want resolution language", guard.Summary)
 	}
 	if _, ok := findInboxByID(t, payload.State.Inbox, "inbox-blocked-memory"); ok {
 		t.Fatalf("blocked inbox item still present after resolve")
@@ -272,4 +292,13 @@ func findInboxByTitle(items []store.InboxItem, title string) (store.InboxItem, b
 		}
 	}
 	return store.InboxItem{}, false
+}
+
+func findGuardByID(state store.State, guardID string) (store.DestructiveGuard, bool) {
+	for _, guard := range state.Guards {
+		if guard.ID == guardID {
+			return guard, true
+		}
+	}
+	return store.DestructiveGuard{}, false
 }

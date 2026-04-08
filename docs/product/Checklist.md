@@ -235,8 +235,8 @@
   - [x] 本地 CLI 通过 daemon bridge 执行
   - [x] issue 创建类操作具备基本 401/403 权限防护
   - [x] issue / room / run / inbox / repo / runtime 的关键写入口已按 live session permission 进入 allow / disable split
+  - [x] destructive action approval、secret / credential scope、越界写保护现在都以统一 guard truth 出现在 room / inbox / run，并且人类决策会回写 run lifecycle
 - 当前 GAP:
-  - [ ] destructive action approval、secrets 分层、越界写保护还未系统化产品化
   - [ ] 沙盒能力目前仍主要继承本地环境
 - 对应 Test Cases: `TC-011` `TC-024` `TC-027`
 

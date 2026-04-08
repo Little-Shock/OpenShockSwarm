@@ -158,8 +158,9 @@
 ### GAP-18 Destructive Guard / Secret Boundary
 
 - 现状:
-  - 权限矩阵与 run control 已站住
-  - destructive action approval、secret boundary、越界写保护仍未产品化
+  - 权限矩阵、run control 与 destructive guard truth 已站住
+  - destructive action approval、secret boundary、越界写保护现在都能在 room / inbox / run 被看见并被人工决策收口
+  - 剩余缺口主要是更严格的 runtime sandbox capability，而不是 guard truth 本身缺席
 - 相关合同:
   - `CHK-12`
 - 优先级: P1

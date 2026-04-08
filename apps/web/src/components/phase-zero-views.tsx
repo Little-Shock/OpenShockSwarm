@@ -2,9 +2,11 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ClaudeAgentConsole } from "@/components/claude-agent-console";
+import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import {
   agents,
   type AgentStatus,
+  type DestructiveGuard,
   getBoardColumns,
   getIssueByRoomId,
   getRunById,
@@ -373,9 +375,11 @@ export function RoomOverview({ room }: { room: Room }) {
 export function RunDetailView({
   run,
   statusTestId,
+  guards = [],
 }: {
   run: Run;
   statusTestId?: string;
+  guards?: DestructiveGuard[];
 }) {
   return (
     <div className="space-y-4">
@@ -417,6 +421,25 @@ export function RunDetailView({
           </p>
         </Panel>
       </div>
+
+      {guards.length > 0 ? (
+        <Panel tone={run.approvalRequired ? "paper" : "white"}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Guard Truth</p>
+              <h3 className="mt-2 font-display text-2xl font-bold">Destructive / Secret Boundary</h3>
+            </div>
+            <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+              {guards.length} active
+            </span>
+          </div>
+          <div className="mt-4 space-y-3">
+            {guards.map((guard) => (
+              <DestructiveGuardCard key={guard.id} guard={guard} testIdPrefix="run-detail-guard" />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel tone="white">

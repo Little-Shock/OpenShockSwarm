@@ -86,6 +86,7 @@ type ApprovalCenterItem struct {
 	Room              string   `json:"room"`
 	RoomID            string   `json:"roomId,omitempty"`
 	RunID             string   `json:"runId,omitempty"`
+	GuardID           string   `json:"guardId,omitempty"`
 	Title             string   `json:"title"`
 	Summary           string   `json:"summary"`
 	Action            string   `json:"action"`
@@ -488,6 +489,7 @@ func buildNotificationCenter(snapshot State, state notificationStateFile, worker
 			Kind:            inboxItem.Kind,
 			Priority:        notificationPriorityForInboxKind(inboxItem.Kind),
 			Room:            inboxItem.Room,
+			GuardID:         inboxItem.GuardID,
 			Title:           inboxItem.Title,
 			Summary:         inboxItem.Summary,
 			Action:          inboxItem.Action,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import {
   buildBoardColumns,
@@ -483,6 +484,7 @@ export function StitchInboxView() {
                   filteredSignals.map((item, index) => {
                     const pullRequest = findPullRequestForItem(item);
                     const room = findRoomForItem(item);
+                    const guard = item.guardId ? state.guards.find((entry) => entry.id === item.guardId) : undefined;
                     const preferredRoomTab = item.kind === "review" ? "pr" : "context";
                     const roomHref = room
                       ? `/rooms/${room.id}?tab=${preferredRoomTab}`
@@ -531,6 +533,16 @@ export function StitchInboxView() {
                         </div>
                         <h3 className="mt-2 font-display text-[18px] font-bold leading-6">{item.title}</h3>
                         <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{item.summary}</p>
+                        {guard ? (
+                          <div className="mt-4">
+                            <DestructiveGuardCard
+                              guard={guard}
+                              compact
+                              contextHref={item.runId && item.roomId ? `/rooms/${item.roomId}?tab=run` : roomHref}
+                              testIdPrefix="approval-center-guard"
+                            />
+                          </div>
+                        ) : null}
                         <div className="mt-4 flex flex-wrap gap-2">
                           <Link
                             data-testid={`approval-center-room-link-${item.id}`}

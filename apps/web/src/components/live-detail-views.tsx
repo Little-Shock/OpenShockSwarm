@@ -745,7 +745,11 @@ export function LiveRunPageContent({
           controlBoundary={runControlBoundary}
           onControl={handleRunControl}
         />
-        <RunDetailView run={currentRun} statusTestId="run-detail-status" />
+        <RunDetailView
+          run={currentRun}
+          statusTestId="run-detail-status"
+          guards={state.guards.filter((guard) => guard.runId === currentRun.id)}
+        />
       </div>
     </OpenShockShell>
   );

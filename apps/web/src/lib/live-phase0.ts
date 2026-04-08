@@ -167,6 +167,7 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
     summary: "",
     candidates: [],
   },
+  guards: [],
   memory: [],
 };
 

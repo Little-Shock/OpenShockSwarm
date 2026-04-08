@@ -33,6 +33,7 @@
     "test:headed-frontend-interaction-polish": "node ./scripts/headed-frontend-interaction-polish.mjs",
     "test:headed-room-workbench-topic-context": "node ./scripts/headed-room-workbench-topic-context.mjs",
     "test:headed-profile-surface": "node ./scripts/headed-profile-surface.mjs",
+    "test:headed-destructive-guard": "node ./scripts/headed-destructive-guard.mjs",
     "test:headed-agent-profile-editor": "node ./scripts/headed-agent-profile-editor.mjs",
     "test:headed-work-shell-smoke": "node ./scripts/headed-work-shell-smoke.mjs",
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
