@@ -386,7 +386,7 @@ async function main() {
 
     browser = await chromium.launch({
       executablePath: resolveChromiumExecutable(),
-      headless: true,
+      headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
     });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
 

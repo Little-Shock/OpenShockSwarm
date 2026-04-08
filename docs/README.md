@@ -31,11 +31,11 @@
 ### 测试与验证
 
 - [Testing Index](./testing/README.md)
-  - 测试文档索引
+  - 当前全部测试报告、headed harness 和证据入口
 - [Test Cases](./testing/Test-Cases.md)
   - 按 `PRD -> Checklist -> Test Case` 整理的全量验证项
-- [Test Report 2026-04-06 Main](./testing/Test-Report-2026-04-06-main.md)
-  - 当前 `main` 基线上的真实执行结果
+- [Test Report 2026-04-08 Work Shell Smoke](./testing/Test-Report-2026-04-08-work-shell-smoke.md)
+  - 这轮 `chat / setup / issues / memory / inbox / board / room / run` 统一壳层走查结果
 
 ### 设计与品牌
 
@@ -66,8 +66,8 @@
 
 ### 还不能在文档里写成“已完成”的能力
 
-- `app.slock.ai` 式 workspace shell、DM、thread、search、profile surface
-- Board 次级化后的前端信息架构
+- `app.slock.ai` 式真实 quick search / search result、DM、thread、saved/later、profile surface
+- Room workbench tabs 与 Board 的轻量 planning 语言
 - GitHub App installation-complete 后的 live callback / repo 持续同步
 - 设备授权 / 完整邮箱验证 / 更完整外部身份绑定
 - destructive action approval、secret boundary、越界写保护

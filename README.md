@@ -37,7 +37,8 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 当前仓库已经不是纯静态设计稿。它已经具备一条可跑通的 Phase 0 基线：
 
-- web 壳可以展示 `Chat / Board / Inbox / Issues / Rooms / Agents / Setup / Settings`
+- web 壳已经把 `Chat / Inbox / Board / Setup / Issues / Runs / Agents / Memory / Access / Settings` 收进同一套 workspace shell
+- `Chat / Work` 切换、同源 `/api/control/*` proxy、message-centric thread rail 和 room/run/inbox 控制面已经站住
 - server 有文件持久化状态、Issue 创建、Room/Run/Session 读取、PR 状态回写、runtime pairing、repo binding、GitHub readiness probe，以及 `gh CLI / GitHub App` 双 auth path 的 PR contract
 - daemon 可以探测本地 `codex` / `claude`，支持同步执行、流式执行，以及 `git worktree` lane 创建
 - 当前 `main` 也已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread 和 multi-runtime scheduler / failover 的第一轮闭环
@@ -54,6 +55,8 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - `/rooms/[roomId]`、`/rooms/[roomId]/runs/[runId]`
   - `/agents`、`/agents/[agentId]`
   - `/setup`
+  - `/memory`
+  - `/access`
   - `/settings`
 - Setup 脊柱：
   - repo binding
@@ -97,8 +100,9 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 ### 还没有做成“完整产品闭环”的部分
 
-- `app.slock.ai` 式 workspace shell、DM、thread、search、profile surface
-- Board 次级化后的前端信息架构
+- `app.slock.ai` 式真实 quick search / search result、DM、saved / later、profile / presence surface
+- Room workbench tabs、Topic / PR / Context 同房间切换
+- Board 次级化后的轻量 planning card 和 room / issue 回跳
 - GitHub App installation-complete 后的 live callback / repo 持续同步
 - 设备授权 / 完整邮箱验证 / 更完整外部身份绑定
 - destructive action approval、secret boundary、越界写保护
@@ -113,7 +117,8 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - 能力合同与 GAP: [docs/product/Checklist.md](./docs/product/Checklist.md)
 - 未完成功能拆票: [docs/product/Execution-Tickets.md](./docs/product/Execution-Tickets.md)
 - 全量测试用例: [docs/testing/Test-Cases.md](./docs/testing/Test-Cases.md)
-- 本轮测试报告: [docs/testing/Test-Report-2026-04-06-main.md](./docs/testing/Test-Report-2026-04-06-main.md)
+- 测试报告索引: [docs/testing/README.md](./docs/testing/README.md)
+- 最新壳层走查: [docs/testing/Test-Report-2026-04-08-work-shell-smoke.md](./docs/testing/Test-Report-2026-04-08-work-shell-smoke.md)
 
 ## 仓库结构
 

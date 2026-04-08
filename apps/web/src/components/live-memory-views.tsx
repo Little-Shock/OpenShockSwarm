@@ -185,9 +185,9 @@ function ArtifactFact({
   testID?: string;
 }) {
   return (
-    <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3" data-testid={testID}>
+    <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5" data-testid={testID}>
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
-      <p className="mt-2 text-sm leading-6">{value}</p>
+      <p className="mt-1.5 text-sm leading-6">{value}</p>
     </div>
   );
 }
@@ -207,7 +207,7 @@ function StatusRow({
     <div
       data-testid={testID}
       className={cn(
-        "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-3",
+        "rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-2.5",
         tone === "yellow" && "bg-[var(--shock-yellow)]",
         tone === "lime" && "bg-[var(--shock-lime)]",
         tone === "pink" && "bg-[var(--shock-pink)] text-white",
@@ -222,7 +222,7 @@ function StatusRow({
       >
         {label}
       </p>
-      <p className="mt-2 text-sm leading-6">{value}</p>
+      <p className="mt-1.5 text-sm leading-6">{value}</p>
     </div>
   );
 }
@@ -491,7 +491,7 @@ export function LiveMemoryView() {
         </Panel>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <ArtifactFact label="Artifacts" value={loading ? "同步中" : `${memory.length} items`} testID="memory-artifact-count" />
         <ArtifactFact label="Governed" value={loading ? "同步中" : `${governedArtifacts} governed`} testID="memory-governed-count" />
         <ArtifactFact
@@ -506,12 +506,12 @@ export function LiveMemoryView() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <Panel tone="paper">
+      <div className="grid gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <Panel tone="paper" className="!p-3.5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Memory Registry</p>
-              <h2 className="mt-2 font-display text-3xl font-bold">可治理记忆面</h2>
+              <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">可治理记忆面</h2>
             </div>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
               {loading ? "syncing" : `${memory.length} artifacts`}
@@ -521,14 +521,14 @@ export function LiveMemoryView() {
             这页现在不只读 detail。它会把 injection policy、next-run preview、promotion review queue 和 version audit 收成同一套 live truth。
           </p>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-1">
             <StatusRow label="Governed Artifacts" value={`${governedArtifacts} artifacts`} tone="white" />
             <StatusRow label="Decision Ledgers" value={`${decisionArtifacts} ledgers`} tone="yellow" />
             <StatusRow label="Promoted Ledgers" value={`${promotedLedgers} ledgers`} tone="lime" />
             <StatusRow label="Current Policy" value={centerLoading ? "同步中" : policyModeLabel(center.policy.mode)} tone="white" />
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-2">
             {memory.length === 0 ? (
               <EmptyState title="memory registry 为空" message="等 server 返回 `/v1/memory` 真值后，这里会展开 governed artifact registry。" />
             ) : (
@@ -542,21 +542,21 @@ export function LiveMemoryView() {
                     data-testid={testID}
                     onClick={() => setSelectedArtifactId(artifact.id)}
                     className={cn(
-                      "w-full rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left transition-transform hover:-translate-y-0.5",
+                      "w-full rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3 text-left transition-transform hover:-translate-y-0.5",
                       active ? "bg-[var(--shock-yellow)] shadow-[4px_4px_0_0_var(--shock-ink)]" : governanceTone(artifact.governance)
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">{artifact.scope}</p>
-                        <p className="mt-2 font-display text-xl font-bold">{artifact.path}</p>
+                        <p className="mt-1.5 font-display text-[18px] font-bold leading-5">{artifact.path}</p>
                       </div>
                       <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
                         v{artifact.version ?? 0}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm leading-6">{artifact.summary}</p>
-                    <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                    <p className="mt-2 text-sm leading-6">{artifact.summary}</p>
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
                       {summarizeGovernance(artifact.governance)}
                     </p>
                   </button>
@@ -567,11 +567,11 @@ export function LiveMemoryView() {
         </Panel>
 
         <div className="space-y-4">
-          <Panel tone="white">
+          <Panel tone="white" className="!p-3.5">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Artifact Detail</p>
-                <h2 data-testid="memory-detail-path" className="mt-2 font-display text-3xl font-bold">
+                <h2 data-testid="memory-detail-path" className="mt-1.5 font-display text-[24px] font-bold leading-7">
                   {selectedArtifact?.path ?? "等待选择"}
                 </h2>
               </div>
@@ -586,7 +586,7 @@ export function LiveMemoryView() {
               </p>
             ) : null}
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               <ArtifactFact label="Version" value={selectedArtifact ? `v${selectedArtifact.version ?? 0}` : "未选择"} />
               <ArtifactFact label="Latest Write" value={valueOrFallback(selectedArtifact?.latestWrite, "未记录")} />
               <ArtifactFact
@@ -607,8 +607,8 @@ export function LiveMemoryView() {
               />
             </div>
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_0.85fr]">
-              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_0.85fr]">
+              <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Current Content</p>
                 <pre
                   data-testid="memory-detail-content"
@@ -618,7 +618,7 @@ export function LiveMemoryView() {
                 </pre>
               </div>
 
-              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+              <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Diff Preview</p>
                 <p className="mt-3 text-sm leading-6">
                   {previousVersion ? `v${previousVersion.version} -> v${latestVersion?.version ?? "?"}` : "只有基线版本，还没有上一版可对比。"}
@@ -633,11 +633,11 @@ export function LiveMemoryView() {
             </div>
           </Panel>
 
-          <Panel tone={canMutate ? "yellow" : "paper"}>
+          <Panel tone={canMutate ? "yellow" : "paper"} className="!p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Injection Policy</p>
-                <h2 className="mt-2 font-display text-3xl font-bold">下一条任务真正会注入什么</h2>
+                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">下一条任务真正会注入什么</h2>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
                 {canMutate ? "memory.write live" : "read-only session"}

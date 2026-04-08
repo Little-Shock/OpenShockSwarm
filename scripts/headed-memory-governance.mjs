@@ -257,7 +257,7 @@ try {
   const { webURL } = await startServices(runDir);
   browser = await chromium.launch({
     executablePath: resolveChromiumExecutable(),
-    headless: true,
+    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
   });
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });

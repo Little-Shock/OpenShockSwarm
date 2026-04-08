@@ -287,7 +287,7 @@ try {
   const { webURL, serverURL } = await startServices(runDir);
   browser = await chromium.launch({
     executablePath: resolveChromiumExecutable(),
-    headless: true,
+    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
   });
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
@@ -325,7 +325,7 @@ try {
   assert(stoppedState.run.followThread === false, "stop action should not force follow-thread");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
-  await waitForText(page, "approval-center-recent-count", "2");
+  await waitForContains(page, "approval-center-recent-count", "2");
   await waitForPageContains(page, "Run 已暂停");
   await capture(page, screenshotsDir, "inbox-stop-status");
 
@@ -389,7 +389,7 @@ try {
   await capture(page, screenshotsDir, "run-resumed");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
-  await waitForText(page, "approval-center-recent-count", "4");
+  await waitForContains(page, "approval-center-recent-count", "4");
   await waitForPageContains(page, "已锁定当前线程");
   await waitForPageContains(page, "Run 已恢复");
   await capture(page, screenshotsDir, "inbox-recent-ledger");

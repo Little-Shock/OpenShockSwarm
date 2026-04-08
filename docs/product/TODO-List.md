@@ -1,16 +1,16 @@
 # OpenShock To Do List
 
-**版本:** 0.4
-**更新日期:** 2026 年 4 月 7 日
+**版本:** 0.5
+**更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
 
 ## 一、这份文档现在只做什么
 
+- 只维护当前最需要推进的 GAP、优先级和推荐顺序
 - 不再把“完整产品范围”和“当前已完成实现”混在一起
 - 不再把“contract 已落地”和“浏览器级 / 线上级闭环已验证”混写
-- 只维护当前最需要推进的 GAP、优先级和推荐顺序
 
 如果 live board 和文档冲突：
 
@@ -22,78 +22,103 @@
 
 ## 二、当前已经站住的基线
 
+- 统一 workspace shell 已站住:
+  - `chat / inbox / board / setup / issues / runs / agents / memory / access / settings` 已共享同一套壳体
+  - `Chat / Work` 顶部切换、同源 `/api/control/*` proxy、work surface 去白缝与密度收紧已完成当天有头走查
 - Setup 主链、runtime pairing 冷启动一致性、release smoke gate 已站住
 - 真实远端 PR browser loop、signed webhook replay 已站住
 - login / session / invite / member role / action-level authz matrix 已站住
 - approval center、notification delivery、memory governance、stop/resume/follow-thread 已站住
 - multi-runtime scheduler / active lease / offline failover 已站住
 
-这些能力的详细验收见 [Product Checklist](./Checklist.md) 中的 `CHK-04/07/08/09/10/11/12/13/14/15`。
+这些能力的详细验收见 [Product Checklist](./Checklist.md) 和 [Testing Index](../testing/README.md)。
 
 ---
 
 ## 三、当前必须先收的 GAP
 
-### GAP-07 app.slock.ai 壳层对齐
+### GAP-07 Quick Search / Search Results
 
 - 现状:
-  - 当前已有 chat-first 路由和全屏壳层原语，但整体还是“多页面控制台”
-  - `app.slock.ai` 式 workspace shell、sidebar order、search、threads/saved 入口还没形成
+  - 左栏已经有 `Quick Search` 入口，但还只是静态按钮
+  - 没有真正的结果面、跳转动作、键盘导航
 - 影响:
-  - 前端气质仍偏后台，不够像真正的协作壳
-  - 用户仍需要在多个 utility page 之间跳转
+  - 用户仍要靠翻左栏和人工记路径切页面
 - 相关合同:
   - `CHK-01`
   - `CHK-16`
 - 优先级: P0
 
-### GAP-08 DM / Thread / Profile / Presence 工作面
+### GAP-08 DM / Followed Thread / Saved Later
 
 - 现状:
-  - room / run / topic / machine / agent truth 已有数据基础
-  - 但 `DM / followed thread / saved / agent-machine-human profile / room workbench tabs` 还未形成统一前台工作流
+  - thread rail 和回复子区已经存在
+  - 但 `DM / followed thread / saved later` 还没形成完整消息工作流
 - 影响:
-  - OpenShock 还不像 `app.slock.ai` 那样以“会话 + 人物/机器资料面”驱动工作
-  - 线程、人物、机器、run truth 仍过度依赖分散页面
+  - OpenShock 还不像 `app.slock.ai` 那样以消息和回访驱动协作
+- 相关合同:
+  - `CHK-16`
+  - `CHK-17`
+- 优先级: P0
+
+### GAP-09 Room Workbench / Profile / Presence
+
+- 现状:
+  - room / run / PR truth 已有
+  - 但 `Chat / Topic / Run / PR / Context` 还没在一个 room workbench 内稳定切换
+  - `Agent / Machine / Human` 也还没有统一 profile surface
+- 影响:
+  - 用户仍要在多个详情页之间跳转
 - 相关合同:
   - `CHK-02`
   - `CHK-06`
   - `CHK-17`
 - 优先级: P0/P1
 
-### GAP-09 Board 次级化
+### GAP-10 Frontend Interaction Polish
 
 - 现状:
-  - `/board` 已接 live issue truth，并能创建 issue 后进入 room
-  - 但 Board 目前仍是主导航中的高优先级入口
+  - 这轮已经收掉共享壳体白缝、Work 页过大卡片和部分密度问题
+  - 但滚动回看、下拉位置、字号、输入框、侧栏高亮、窄屏抽查还没有系统化验收
 - 影响:
-  - 产品心智仍会被“任务板”拉偏，不够像 Slock 式协作壳
-  - Room / Topic / Run 的工作台主线不够突出
+  - 产品容易在高频使用时暴露“能用但不顺手”的问题
+- 相关合同:
+  - `CHK-01`
+  - `CHK-16`
+  - `CHK-17`
+- 优先级: P0
+
+### GAP-11 Board Light Planning Cleanup
+
+- 现状:
+  - Board 已退到左下角次级入口
+  - 但 card 语言和 room / issue / board 回跳还不够轻
+- 影响:
+  - planning mirror 还不够克制，仍会抢注意力
 - 相关合同:
   - `CHK-05`
   - `CHK-18`
 - 优先级: P2
 
-### GAP-10 GitHub App installation-complete live callback
+### GAP-12 GitHub App Installation-Complete Live Callback
 
 - 现状:
-  - onboarding、webhook replay、远端 PR merge 已经站住
+  - onboarding、webhook replay、远端 PR merge 已站住
   - installation-complete 后的 live callback / repo 持续同步仍缺实机闭环
 - 相关合同:
   - `CHK-07`
 - 优先级: P1
 
-### GAP-11 设备授权 / 完整邮箱验证
+### GAP-13 Device Authorization / Email Verification
 
 - 现状:
-  - login / invite / role / authz matrix 已站住
+  - invite / role / status / authz matrix 已站住
   - 设备授权、verify / reset 邮件链、完整外部身份绑定仍未产品化
 - 相关合同:
-  - `CHK-12`
   - `CHK-13`
 - 优先级: P1
 
-### GAP-12 Destructive Guard / Secret Boundary
+### GAP-14 Destructive Guard / Secret Boundary
 
 - 现状:
   - 权限矩阵与 run control 已站住
@@ -102,15 +127,26 @@
   - `CHK-12`
 - 优先级: P1
 
+### GAP-15 Runtime Lease Conflict / Scheduler Hardening
+
+- 现状:
+  - failover 基线已经站住
+  - 更细的 lease conflict、scheduler policy 与恢复策略还没有继续收紧
+- 相关合同:
+  - `CHK-14`
+  - `CHK-15`
+- 优先级: P1
+
 ---
 
 ## 四、推荐推进顺序
 
-1. 先做 `TKT-16`，把 `GAP-07` 的 shell / sidebar / search / workspace context 立住。
-2. 再做 `TKT-17`，把 `DM / thread / saved / search` 接进同一条前台消息工作流。
-3. 然后做 `TKT-18` 和 `TKT-19`，把 `Agent / Machine / Human profile` 与 `Room workbench tabs` 做成完整协作面。
-4. 最后再做 `TKT-20`，把 Board 明确降到次级 planning surface。
-5. `GAP-10/11/12` 继续保留并行 backlog，但不抢当前前端主线优先级。
+1. 先做 `TKT-21`，把 `Quick Search / Search Results` 立住。
+2. 再做 `TKT-22` 和 `TKT-24`，把 `DM / followed thread / saved later` 与 interaction polish 先收出高频可用性。
+3. 然后做 `TKT-23`，把 room workbench tabs 接起来。
+4. 再做 `TKT-25`，补齐 `Agent / Machine / Human profile + presence`。
+5. 最后做 `TKT-26`，把 Board 的 planning 语言和回跳关系再收轻。
+6. `TKT-28/29/30/31` 作为并行后端 backlog 推进，但不抢当前前端主线优先级。
 
 ---
 
@@ -125,11 +161,11 @@
 - `Related Checklist IDs`
 - `Related Test Case IDs`
 
-没有这 7 项，不进入 active execution。
+没有这 8 项，不进入 active execution。
 
 ---
 
-## 八、每一轮固定 Loop
+## 六、每一轮固定 Loop
 
 每一轮开发固定按这个顺序：
 
@@ -152,7 +188,7 @@
 
 ---
 
-## 九、维护规则
+## 七、维护规则
 
 - 每一轮收口后，先更新这份文档，再开下一轮 planning 票
 - 如果 live board 已经收掉某条 face，对应条目要同步从“下一步”挪到“已完成”

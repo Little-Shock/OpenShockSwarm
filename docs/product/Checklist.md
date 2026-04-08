@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.2
+**版本:** 1.3
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -41,8 +41,8 @@
   - 多 runtime 调度与 failover
   - 执行隔离与权限控制
 - 主要 GAP:
-  - `app.slock.ai` 式 workspace shell、DM、thread、search、profile surface 仍未收平
-  - Board 还没有退到次级 planning surface
+  - `app.slock.ai` 式真实 quick search / search result、DM、saved/later、profile surface 仍未收平
+  - Room workbench tabs、frontend interaction polish 和 Board 轻量 planning card 仍未收完
   - GitHub App installation-complete 后的 live webhook / repo 持续同步
   - 设备授权 / 完整邮箱验证 / 更完整成员权限链路
   - destructive action approval、secrets 分层、越界写保护
@@ -58,14 +58,15 @@
 - 优先级: P0
 - 当前状态: 部分完成
 - 已落地:
-  - [x] `Chat / Board / Inbox / Issues / Rooms / Runs / Agents / Setup / Settings` 已有真实页面
+  - [x] `Chat / Board / Inbox / Issues / Rooms / Runs / Agents / Setup / Memory / Access / Settings` 已有真实页面
   - [x] OpenShock 已经是 chat-first 壳，而不是单页看板
   - [x] 主要页面可在浏览器走查中打开
   - [x] room / run 现在已有真实的 `stop / resume / follow-thread` 控制面，不再只停在协作文案
+  - [x] Board 已退到左下角次级入口，不再和频道 / room 同层抢主导航
 - 当前 GAP:
-  - [ ] `app.slock.ai` 式 workspace shell、search、threads/saved 还未成型
+  - [ ] `app.slock.ai` 式 workspace shell、quick search、threads/saved 还未完全成型
   - [ ] `DM / Machine / Topic / Thread` 仍未形成完整的一等入口
-  - [ ] Board 仍偏主入口，尚未退到次级 planning surface
+  - [ ] Board 虽已退到次级入口，但 planning card 语言和 room / issue 回跳还没收平
 - 对应 Test Cases: `TC-001` `TC-007` `TC-018`
 
 ### CHK-02 Agent 一等公民模型
@@ -245,7 +246,7 @@
 - 当前 GAP:
   - [ ] 设备授权与完整邮箱验证流程仍未产品化
   - [ ] GitHub 仍主要是 readiness probe，不是完整授权模型
-- 对应 Test Cases: `TC-014` `TC-016` `TC-024`
+- 对应 Test Cases: `TC-014` `TC-016` `TC-024` `TC-035`
 
 ### CHK-14 Runtime 注册、心跳与调度
 
@@ -289,12 +290,13 @@
   - [x] `/v1/state` 已能把 channels / agents / machines / inbox / rooms 收成同一份 workspace truth
   - [x] `/setup`、`/inbox`、`/board` 等次级 surface 已统一进入同一套 workspace shell，不再和 chat/room 使用两套左栏
   - [x] web 默认改走同源 `/api/control/*` proxy，Windows 有头浏览器下也能拿到 live workspace truth，不再卡在 `syncing`
+  - [x] `Chat / Work` 顶部切换现在会按当前 surface 正确激活，Work 页不再像未激活副按钮
+  - [x] `setup / issues / memory / inbox / board / room / run` 已完成 2026-04-08 headed work-shell smoke，统一壳层、去白缝和密度收紧都有当天证据
 - 当前 GAP:
   - [ ] 仍缺 `app.slock.ai` 式 DM / saved / later / profile 级入口
-  - [ ] Quick switch 目前还是静态入口，还没有真正的 search result / switcher 面
-  - [ ] `Issues / Runs / Agents / Memory / Access / Settings` 虽已统一进同一壳层，但信息密度和 drill-in 细节还没完全收平
-  - [ ] `DM` 还没有成为一等协作入口
-- 对应 Test Cases: `TC-028` `TC-029`
+  - [ ] Quick Search 目前还是静态入口，还没有真正的 search result 面
+  - [ ] 前端滚动、下拉、字号、scrollback、composer 常驻等 interaction polish 还没系统化收口
+- 对应 Test Cases: `TC-028` `TC-029` `TC-033` `TC-034`
 
 ### CHK-17 会话上下文、Presence 与 Profile Surface
 
@@ -311,7 +313,7 @@
   - [ ] `Thread / followed thread / saved later` 还没形成完整回访工作流，当前仍缺 follow list / reopen / saved 列表
   - [ ] `Agent / Machine / Human` 还没有像 `app.slock.ai` 那样的一等 profile route / panel
   - [ ] Room 还缺稳定的 `Chat / Topic / Run / PR / Context` 工作台 tabs，用户仍需频繁跨页面跳转
-- 对应 Test Cases: `TC-030` `TC-031`
+- 对应 Test Cases: `TC-029` `TC-030` `TC-031` `TC-034`
 
 ### CHK-18 Board 次级规划面
 
@@ -325,17 +327,16 @@
 - 当前 GAP:
   - [ ] Board 虽已降级，但 room / issue / board 的回跳还不够顺手
   - [ ] Board 还没有形成更轻的 planning card 语言，内部信息仍偏重
-  - [ ] Board 与 room / topic / run context 的回跳关系仍不够紧
 - 对应 Test Cases: `TC-032`
 
 ---
 
 ## 四、近期收口顺序
 
-1. 先收 `CHK-16`，把 `app.slock.ai` 式 shell、sidebar order、search、workspace context 和 DM 框架立住。
-2. 再收 `CHK-17`，把 thread / profile / presence / room workbench tabs 接成统一前台工作面。
-3. 然后处理 `CHK-18`，把 Board 明确降为次级 planning surface，不再主导首页心智。
-4. 并行保留 `CHK-07/CHK-12/CHK-13/CHK-15` 的 GitHub live callback、设备授权、destructive guard 与持续观测，但不抢当前前端主线批次。
+1. 先收 `CHK-16` 的 quick search / interaction polish，把当前统一壳层真正打磨到高频可用。
+2. 再收 `CHK-17`，把 DM / followed thread / profile / room workbench tabs 接成统一前台工作面。
+3. 然后处理 `CHK-18`，把 Board 的 planning card 和回跳关系轻量化。
+4. 并行保留 `CHK-07/CHK-12/CHK-13/CHK-14/CHK-15` 的 GitHub live callback、设备授权、destructive guard、scheduler hardening 与持续观测。
 
 ---
 
@@ -348,7 +349,11 @@
 - `CHK-10` -> `TKT-12`
 - `CHK-09` -> `TKT-13`
 - `CHK-14` -> `TKT-14`
-- `CHK-12` -> `TKT-15`
-- `CHK-01` `CHK-16` -> `TKT-16` `TKT-17`
-- `CHK-02` `CHK-06` `CHK-17` -> `TKT-18` `TKT-19`
-- `CHK-05` `CHK-18` -> `TKT-20`
+- `CHK-12` -> `TKT-15` `TKT-30`
+- `CHK-01` `CHK-16` -> `TKT-16` `TKT-21` `TKT-24`
+- `CHK-02` `CHK-06` `CHK-17` -> `TKT-22` `TKT-23` `TKT-25` `TKT-27`
+- `CHK-05` `CHK-18` -> `TKT-20` `TKT-26`
+- `CHK-07` -> `TKT-28`
+- `CHK-13` -> `TKT-29`
+- `CHK-12` -> `TKT-30`
+- `CHK-14` `CHK-15` -> `TKT-31`

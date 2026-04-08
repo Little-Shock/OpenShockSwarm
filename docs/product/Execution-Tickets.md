@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.2
+**版本:** 1.3
 **更新日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -23,121 +23,214 @@
 
 ## 二、当前批次优先级
 
-1. 前端主线先往 `app.slock.ai` 的协作壳靠拢。
-2. Board 保留，但降为次级 planning surface。
-3. destructive guard、GitHub live callback、设备授权继续保留在并行 backlog，不抢当前前端批次。
+1. 前端继续向 `app.slock.ai` 学结构和密度，但保留 OpenShock 自己的字体、克制度和 room 语义。
+2. 聊天、Room、Inbox 永远先于 Board；Board 只做 planning mirror。
+3. 当前批次先收真实 quick search / DM / thread / workbench / interaction polish，再去补 profile 和 board 细节。
+4. GitHub live callback、设备授权、destructive guard、runtime hardening 作为并行后端批次推进。
 
 ### Frontend Batch Merge Gate
 
-- 每张前端票都必须补 headed browser walkthrough 证据，不接受只跑 headless。
+- 每张前端票都必须补 headed browser walkthrough 证据，不接受用默认 headless 冒充。
 - 每张前端票都必须更新 `Checklist -> Test Cases -> Ticket` 的映射。
-- 每张前端票都必须做桌面主视口走查；如改布局，还要补一轮窄屏抽查。
+- 每张前端票都必须做桌面主视口走查；改布局还要补窄屏抽查。
+- 每张前端票都必须显式检查:
+  - composer 是否常驻可见
+  - 历史消息是否能稳定回滚
+  - 左栏 / 下拉 / 高亮是否紧凑易读
+  - Board 是否没有重新抢回主导航心智
 
 ---
 
-## 三、当前待收口票
+## 三、下一轮待收口票
 
-## TKT-16 app.slock.ai Shell / Workspace Navigation Reframe
+## TKT-21 Real Quick Search / Search Result Surface
 
-- 状态: `active`
+- 状态: `todo`
 - 优先级: `P0`
-- 目标: 把当前多页面控制台壳重排成 `app.slock.ai` 风格的 workspace-scoped collaboration shell，让 `Channel / Room / Inbox / DM / Presence` 成为默认入口。
+- 目标: 把当前静态 Quick Search 做成真正可切换 `channel / room / issue / run / agent` 的结果面。
 - 范围:
-  - sidebar order、workspace context、global search 入口、threads / saved 入口占位
-  - utility pages 降级为 secondary surfaces，不再和聊天壳抢主导航
-  - 现有 route regroup、shell primitives、responsive layout
-- 依赖: 无
+  - 搜索输入与结果列表
+  - 结果高亮、键盘导航、跳转后保持当前壳层上下文
+  - `channel / room / issue / run / agent` 最小结果卡
+- 依赖: `TKT-16`
 - Done When:
-  - 用户进入应用后先落到统一工作区壳，而不是分散 utility page
-  - `Channel / Room / Inbox / Agent / Machine` 能在同一层级被发现
-  - headed walkthrough 能稳定覆盖新壳
+  - Quick Search 不再只是入口按钮，而是真正可切换工作面的命令面板
+  - 搜索后能跳到目标页面，并保持当前壳层高亮正确
+  - 有 headed walkthrough 证据覆盖 `open -> search -> jump`
 - Checklist: `CHK-01` `CHK-16`
-- Test Cases: `TC-028` `TC-031`
+- Test Cases: `TC-033`
 
-## TKT-17 DM / Thread / Search / Saved Surface
+## TKT-22 DM / Followed Thread / Saved Later Surface
 
-- 状态: `active`
+- 状态: `todo`
 - 优先级: `P0`
-- 目标: 补齐 Slock 壳最缺的消息型 surface，让 `DM / followed thread / saved / search` 成为真实前台入口。
+- 目标: 补齐 `DM / followed thread / saved later` 这条消息工作流。
 - 范围:
-  - DM 数据模型到前端入口
-  - followed thread / deep-link / unread semantics
-  - search / quick switch 入口与基础结果面
-  - saved / later 列表或等价暂存面
-- 依赖: `TKT-16`
+  - DM 数据模型与前台入口
+  - followed thread 列表
+  - saved / later 列表
+  - 基础 unread 语义与回访入口
+- 依赖: `TKT-21`
 - Done When:
-  - 用户可从壳层进入 DM、线程回访和 search
-  - 线程可以被 follow / reopen，而不是只停在 run control 的 `follow-thread` 语义
-  - 至少有一条 headed browser walkthrough 覆盖 `channel -> thread -> reopen` 或等价 DM 流程
+  - 用户可从同一套壳层进入 DM、followed thread 和 saved later
+  - thread 不再只停在右 rail 回复区，而是可被 follow / reopen
+  - 至少有一条 headed browser walkthrough 覆盖 `channel -> thread -> follow -> reopen`
 - Checklist: `CHK-16` `CHK-17`
-- Test Cases: `TC-029` `TC-031`
+- Test Cases: `TC-029`
 
-## TKT-18 Agent / Machine / Human Profile + Presence
-
-- 状态: `todo`
-- 优先级: `P1`
-- 目标: 把 `Agent / Machine / Human` 做成像 `app.slock.ai` 一样的一等资料面和 activity surface。
-- 范围:
-  - profile routes / panel
-  - presence badges / activity summary / capability facts
-  - shell / room 内的 drill-in entry
-- 依赖: `TKT-16`
-- Done When:
-  - shell 内任一 `Agent / Machine / Human` 可跳到 profile surface
-  - live state 的 presence / runtime / capability truth 被直接消费
-  - profile surface 不再只是孤立详情页
-- Checklist: `CHK-02` `CHK-17`
-- Test Cases: `TC-030`
-
-## TKT-19 Room Context Tabs / Topic Workbench
+## TKT-23 Room Workbench Tabs / Topic Context
 
 - 状态: `todo`
-- 优先级: `P1`
-- 目标: 把 Room 收成主工作台，让 `Chat / Topic / Run / PR / Context` 在一个 workbench 里切换，而不是频繁跳页。
+- 优先级: `P0`
+- 目标: 把 Room 收成默认工作台，让 `Chat / Topic / Run / PR / Context` 在同一页稳定切换。
 - 范围:
   - room header tabs
-  - topic summary / run truth / PR truth / memory-context back-links
+  - topic summary / run truth / PR truth / context back-links
   - room-first navigation and state persistence
-- 依赖: `TKT-16` `TKT-18`
+- 依赖: `TKT-16`
 - Done When:
-  - Room 变成默认工作台
-  - `Chat / Topic / Run / PR` 切换不丢当前上下文
+  - 用户围绕一个 room 完成讨论、执行、PR、回看，不需要频繁跳详情页
   - run control、PR entry、inbox back-link 保持可用
+  - room 切 tab 不丢当前上下文
 - Checklist: `CHK-06` `CHK-17`
 - Test Cases: `TC-031`
 
-## TKT-20 Board Secondary Planning Surface
+## TKT-24 Frontend Interaction Polish Sweep
 
-- 状态: `active`
-- 优先级: `P2`
-- 目标: 保留 Board，但把它降为 issue / room 的次级规划面，不再主导首页心智。
+- 状态: `todo`
+- 优先级: `P0`
+- 目标: 系统化收前端的人机工学问题，不再靠零散截图驱动微调。
 - 范围:
-  - board nav demotion
-  - room / issue context back-links
-  - 更轻的 planning cards，与 issue lane 对齐
-- 依赖: `TKT-19`
+  - sidebar / channel / room dropdown 与高亮位置
+  - channel / room scrollback 稳定性
+  - composer 常驻可见性
+  - 字号、间距、密度、Work 页卡片收缩
+  - 下拉、hover、focus 和点击区的人类可用性
+- 依赖: `TKT-16`
 - Done When:
-  - Board 仍可创建 / 浏览 issue，但不再是 primary shell center
-  - 进入 Room / Issue 后能顺手打开 planning surface 再回来
-  - 文档、导航和用词都不再把 Board 写成默认中心
-- Checklist: `CHK-05` `CHK-18`
-- Test Cases: `TC-032`
+  - 主要聊天与工作面不存在“输入框看不到”“历史消息滚不回去”“高亮位置飘”“空白过大”这类高频问题
+  - 有明确的 headed walkthrough 覆盖桌面主视口和窄屏抽查
+  - 文档里形成固定的 interaction polish 验收项
+- Checklist: `CHK-01` `CHK-16` `CHK-17`
+- Test Cases: `TC-028` `TC-034`
 
-## TKT-15 Sandbox / Secrets / Destructive Action Guard
+## TKT-25 Agent / Machine / Human Profile + Presence
 
 - 状态: `todo`
 - 优先级: `P1`
-- 目标: 把执行安全从“继承本地环境”推进到产品化 guard。
+- 目标: 把 `Agent / Machine / Human` 做成可 drill-in 的 profile surface，而不是散落的 badge。
 - 范围:
-  - secret boundary
-  - destructive git / filesystem approval
-  - sandbox mode visibility
+  - profile routes / panels
+  - presence、activity、capability、最近 room/run 关系
+  - shell / room 内的统一 drill-in entry
+- 依赖: `TKT-23`
+- Done When:
+  - 任一 `Agent / Machine / Human` 都可从壳层或 room 进入 profile surface
+  - presence / capability / 最近活动直接消费 live truth
+  - profile 不再只是孤立详情页
+- Checklist: `CHK-02` `CHK-17`
+- Test Cases: `TC-030`
+
+## TKT-26 Board Light Planning Cleanup
+
+- 状态: `todo`
+- 优先级: `P2`
+- 目标: 保留 Board 的次级位置，但把 planning card 和回跳关系做轻。
+- 范围:
+  - board card 信息压缩
+  - room / issue / board 回跳关系
+  - planning 语言与主壳一致，不再像独立后台
+- 依赖: `TKT-20`
+- Done When:
+  - Board 明显是 planning mirror，而不是默认中心
+  - 从 room / issue 打开 planning surface 再回来足够顺手
+  - card 语言比当前更轻、更少噪音
+- Checklist: `CHK-05` `CHK-18`
+- Test Cases: `TC-032`
+
+## TKT-27 DM / Thread / Search Backend Contracts
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 给下一轮消息型前端补最小 server truth，不靠纯本地 mock 撑 DM / followed thread / search。
+- 范围:
+  - DM / thread follow / saved later 的 state contract
+  - search result contract
+  - unread / reopen / jump target contract
 - 依赖: 无
 - Done When:
-  - destructive action 进入 approval required
-  - secrets 与 runtime capability 边界清楚
+  - 前端不需要再拿硬编码占位结构伪装 DM / thread search
+  - 基础 browser flow 能直接打 live API
+  - 合同有对应后端 tests
+- Checklist: `CHK-03` `CHK-16` `CHK-17`
+- Test Cases: `TC-029` `TC-033`
+
+## TKT-28 GitHub App Installation-Complete Callback / Repo Sync
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 补齐 GitHub App 安装完成后的 live callback、repo 持续同步与前台回流。
+- 范围:
+  - installation-complete callback
+  - repo sync / webhook backfill
+  - room / inbox / PR state 回流
+- 依赖: `TKT-06`
+- Done When:
+  - 完整 GitHub App 安装后，OpenShock 能持续收到 repo truth
+  - 不再只停在 installation pending 的 blocked-path
+  - 有实机或近实机证据覆盖 callback -> sync -> UI update
+- Checklist: `CHK-07`
+- Test Cases: `TC-015`
+
+## TKT-29 Device Authorization / Email Verification / Reset
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把 invite / role / quick login 补成完整身份恢复链。
+- 范围:
+  - device authorization
+  - email verification / reset
+  - session recovery / external identity binding
+- 依赖: `TKT-08`
+- Done When:
+  - 新成员、换设备、忘记密码这些链路都能被产品化验证
+  - 身份真相会回写到 session / member / permission surface
+- Checklist: `CHK-13`
+- Test Cases: `TC-035`
+
+## TKT-30 Destructive Guard / Secret Boundary
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把 destructive action approval、secret boundary 和越界写保护做成产品化 guard。
+- 范围:
+  - destructive git / filesystem approval
+  - sandbox boundary visibility
+  - secret / credential scope
+- 依赖: 无
+- Done When:
+  - 高风险动作不会直接执行，而会进入 approval required
+  - secrets 和 runtime capability 边界清晰
+  - room / inbox / run 都能看到 guard truth
 - Checklist: `CHK-12`
 - Test Cases: `TC-027`
+
+## TKT-31 Runtime Lease Conflict / Scheduler Hardening
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 在当前 failover 基线上继续补 lease conflict guard、scheduler observability 和恢复策略。
+- 范围:
+  - lease conflict
+  - scheduler policy visibility
+  - failover / recover consistency
+- 依赖: `TKT-14`
+- Done When:
+  - 多 runtime 不会因为 lease 漂移或 stale state 做出错误调度
+  - `/setup` 与 `/agents` 能稳定显示当前决策原因
+  - 对应 release / browser verify 能稳定回放
+- Checklist: `CHK-14` `CHK-15`
+- Test Cases: `TC-020` `TC-021`
 
 ---
 
@@ -166,8 +259,20 @@
 - `TKT-11` `done`
   - browser push / email preference / delivery chain 已站住。
 - `TKT-12` `done`
-  - memory injection / promotion / governance surface 已站住。
+  - memory injection / promotion / governance surface 已站住，并已在 2026-04-08 再次完成 headed 重跑。
 - `TKT-13` `done`
-  - stop / resume / follow-thread 人类接管链已站住。
+  - stop / resume / follow-thread 人类接管链已站住，并已在 2026-04-08 再次完成 headed 重跑。
 - `TKT-14` `done`
   - multi-runtime scheduler / lease / failover 已站住。
+- `TKT-15` `done`
+  - 权限矩阵已站住，但更完整 destructive guard 已拆成新的 `TKT-30`。
+- `TKT-16` `done`
+  - 统一 workspace shell、shared sidebar/topbar、同源 `/api/control/*` proxy、Work 激活态与 2026-04-08 work-shell smoke 已收口。
+- `TKT-17` `done`
+  - 原大票已拆分为 `TKT-21` `TKT-22` `TKT-23`，不再把 search / DM / thread / workbench 混成一个不可收口的范围。
+- `TKT-18` `done`
+  - 原 profile 方向已重组为更清晰的 `TKT-25`。
+- `TKT-19` `done`
+  - 原 room workbench 方向已重组为更清晰的 `TKT-23`。
+- `TKT-20` `done`
+  - Board 已降到左下角次级入口；后续轻量 planning cleanup 继续由 `TKT-26` 收尾。

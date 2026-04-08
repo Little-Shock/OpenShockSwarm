@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
-**版本:** 1.1
-**更新日期:** 2026 年 4 月 7 日
+**版本:** 1.2
+**更新日期:** 2026 年 4 月 8 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -358,20 +358,20 @@
   1. 触发 destructive git 或越界写入动作。
   2. 检查系统是否拦截并生成 approval item。
 - 预期结果: 高风险动作不会直接执行，系统产生显式审批记录。
-- 业务结论: 2026 年 4 月 7 日 `TKT-09` 已把 role / permission action matrix 收进真实前台与后端 guard，但 destructive git、越界写入、敏感凭证使用的 approval-required contract 仍未系统化产品化；因此这条安全 gate 继续保留 `Not Run`，留给 `TKT-15` 继续吸收。
+- 业务结论: 2026 年 4 月 7 日 `TKT-09` 已把 role / permission action matrix 收进真实前台与后端 guard，但 destructive git、越界写入、敏感凭证使用的 approval-required contract 仍未系统化产品化；因此这条安全 gate 继续保留 `Not Run`，由下一轮 `TKT-30` 继续吸收。
 
 ## TC-028 app.slock.ai Shell / Sidebar / Search Entry
 
 - 业务目标: 确认 OpenShock 已从“多页面控制台”收成 `app.slock.ai` 式 workspace shell。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-01` `CHK-16`
 - 前置条件: 新壳已接到 live workspace state。
 - 测试步骤:
   1. 打开默认入口，确认先进入统一 workspace shell。
-  2. 检查 sidebar 是否存在 workspace context、频道、DM、threads/saved、inbox、presence 等主入口。
-  3. 检查 search / quick switch 入口是否常驻可见。
+  2. 检查 sidebar 是否存在 workspace context、频道、讨论间、inbox、board、presence 和 `Chat / Work` 切换。
+  3. 检查 Quick Search 入口是否常驻可见，且 `setup / issues / memory / inbox / board / room / run` 都处于同一套壳层内。
 - 预期结果: 用户在同一层级完成主要协作导航，不需要先跳到 setup/board 之类 utility page。
-- 业务结论: 当前 repo 仍以 `频道 / 讨论间 / 收件箱 / 任务板 + 多个 utility pages` 组合呈现，尚未完成 `app.slock.ai` 式 workspace shell，对应下一批 `TKT-16`。
+- 业务结论: 2026 年 4 月 8 日新的 work shell smoke 已在有头浏览器下连续走查 `/chat/all`、`/setup`、`/issues`、`/memory`、`/inbox`、`/board`、`/rooms/room-runtime`、`/runs/run_runtime_01`；当前统一壳层、`Chat / Work` 激活态、同源 proxy 与次级 Board 位置都已站住，因此这条用例当前转为 `Pass`。真正的 search result / command palette 能力继续拆给后续票，不和这条壳层收口混写。
 
 ## TC-029 DM / Thread / Saved Workflow
 
@@ -384,7 +384,7 @@
   2. 在频道中打开并 follow 一条 thread。
   3. 从 saved/later 或 followed threads 再次回到该 thread。
 - 预期结果: DM、线程回访和暂存面在同一套壳层里闭环可用。
-- 业务结论: 当前 repo 还没有完整 DM / followed thread / saved 工作流，这条用例继续保持 `Blocked`，留给 `TKT-17`。
+- 业务结论: 当前 repo 还没有完整 DM / followed thread / saved 工作流，这条用例继续保持 `Blocked`，留给下一轮 `TKT-22` 和 `TKT-27`。
 
 ## TC-030 Agent / Machine / Human Profile Surface
 
@@ -397,7 +397,7 @@
   2. 再点击一个 Machine 和一个 Human。
   3. 检查 presence、activity、runtime/capability、最近 run/room 关系是否可见。
 - 预期结果: `Agent / Machine / Human` 都成为可导航的一等对象。
-- 业务结论: 当前 repo 只有部分 Agent 页面和 machine summary，还没有统一 profile surface；这条用例保留 `Not Run`，留给 `TKT-18`。
+- 业务结论: 当前 repo 只有部分 Agent 页面和 machine summary，还没有统一 profile surface；这条用例保留 `Not Run`，留给 `TKT-25`。
 
 ## TC-031 Room Context Tabs / Topic Workbench
 
@@ -410,7 +410,7 @@
   2. 在不离开 room 的情况下切换 `Chat / Topic / Run / PR / Context`。
   3. 验证 run control、PR entry、inbox back-link 仍保持可用。
 - 预期结果: 用户围绕同一条 room 完成讨论、执行、交付和回溯，不需要频繁跨页。
-- 业务结论: 当前 room / run / PR truth 虽已存在，但 workbench tabs 还未成型；这条用例保留 `Not Run`，留给 `TKT-16` `TKT-17` `TKT-19` 共同收口。
+- 业务结论: 当前 room / run / PR truth 虽已存在，但 workbench tabs 还未成型；这条用例保留 `Not Run`，留给 `TKT-23` 继续收口。
 
 ## TC-032 Board Secondary Planning Surface
 
@@ -423,4 +423,43 @@
   2. 查看 board lane 并创建或打开一条 issue。
   3. 返回 room，确认 Board 不是默认首页心智中心。
 - 预期结果: Board 服务于规划，不抢占协作壳主路径。
-- 业务结论: 当前 `/board` 已有 live issue truth，但仍是主导航高优先级入口；这条用例保留 `Not Run`，留给 `TKT-20`。
+- 业务结论: 当前 `/board` 已经退到左下角次级入口，但 planning card 语言和 room / issue 回跳还没完全收平；这条用例保留 `Not Run`，留给 `TKT-26`。
+
+## TC-033 Quick Search / Search Result Surface
+
+- 业务目标: 确认 Quick Search 不只是静态入口，而是可真正切换 channel / room / issue / run / agent 的结果面。
+- 当前执行状态: Not Run
+- 对应 Checklist: `CHK-16`
+- 前置条件: 存在 Quick Search 数据源、结果列表与跳转动作。
+- 测试步骤:
+  1. 打开 Quick Search。
+  2. 输入 channel、room、issue、run、agent 关键词。
+  3. 选择结果并验证跳转与高亮。
+- 预期结果: 用户不需要人工翻左栏，就能快速切换到目标工作面。
+- 业务结论: 当前 Quick Search 仍只是静态入口，没有真正的结果面与切换动作；这条用例留给下一轮 search / command palette 票。
+
+## TC-034 Frontend Interaction Polish Sweep
+
+- 业务目标: 确认聊天工作台的滚动、下拉、字号、输入框与高亮位置都符合高频使用习惯。
+- 当前执行状态: Not Run
+- 对应 Checklist: `CHK-01` `CHK-16` `CHK-17`
+- 前置条件: 统一壳层已经存在，并可在浏览器里持续操作 channel / room / inbox / setup。
+- 测试步骤:
+  1. 在 channel 和 room 中来回滚动历史消息，确认滚动位置不会异常丢失。
+  2. 检查 sidebar / channel / room 下拉与高亮位置是否稳定、紧凑、易读。
+  3. 检查 composer 是否始终可见，字号和间距是否不会把信息打散。
+- 预期结果: 产品在高频聊天和切换场景下保持顺手，而不是只有静态截图好看。
+- 业务结论: 这轮已经收掉共享壳体的白缝和 Work 页密度，但完整的人机工学扫尾还没系统化，因此这条用例保留 `Not Run`，作为下一轮前端 polish 主票的验收面。
+
+## TC-035 Device Authorization / Email Verification Lifecycle
+
+- 业务目标: 确认设备授权、邮箱验证、密码重置和外部身份绑定进入同一条产品化身份链。
+- 当前执行状态: Blocked
+- 对应 Checklist: `CHK-13`
+- 前置条件: 存在 device authorization、email verify / reset、session recovery 的真实产品流。
+- 测试步骤:
+  1. 新成员首次登录后触发邮箱验证或设备授权。
+  2. 在另一设备上恢复登录并验证权限链。
+  3. 触发邮箱重置并确认 session / member state 同步更新。
+- 预期结果: 身份链不再只停留在 invite / role / quick login，而是具备完整恢复和验证能力。
+- 业务结论: 当前 repo 已站住 invite / role / status / authz matrix，但 device auth / email verify / reset 仍未产品化，所以这条用例保持 `Blocked`。

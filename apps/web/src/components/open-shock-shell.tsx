@@ -56,6 +56,27 @@ function activeFromView(view: ShellView): "channels" | "rooms" | "inbox" | "boar
   return view;
 }
 
+function shellModeFromView(view: ShellView): "chat" | "work" {
+  return activeFromView(view) === null ? "work" : "chat";
+}
+
+function topBarHrefFromView(view: ShellView) {
+  switch (view) {
+    case "issues":
+      return "/issues";
+    case "runs":
+      return "/runs";
+    case "agents":
+      return "/agents";
+    case "setup":
+      return "/setup";
+    case "memory":
+      return "/memory";
+    default:
+      return undefined;
+  }
+}
+
 function statTone(tone: Tone) {
   switch (tone) {
     case "yellow":
@@ -124,6 +145,8 @@ export function OpenShockShell({
   children,
 }: OpenShockShellProps) {
   const activeTab = activeFromView(view);
+  const shellMode = shellModeFromView(view);
+  const currentHref = topBarHrefFromView(view);
   const { state, loading, error } = usePhaseZeroState();
   const hasWorkspaceTruth = Boolean(state.workspace.name || state.workspace.repo || state.workspace.branch);
   const hasCollectionTruth =
@@ -177,9 +200,10 @@ export function OpenShockShell({
 
   return (
     <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
-      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] md:grid-cols-[298px_minmax(0,1fr)]">
         <StitchSidebar
           active={activeTab}
+          mode={shellMode}
           channels={resolvedState.channels}
           rooms={resolvedState.rooms}
           machines={resolvedState.machines}
@@ -191,17 +215,18 @@ export function OpenShockShell({
           inboxCount={inboxCount}
         />
 
-        <section className="flex min-h-0 flex-col bg-white">
+        <section className="flex min-h-0 flex-col bg-[var(--shock-paper)]">
           <WorkspaceStatusStrip workspaceName={workspaceTitle} disconnected={disconnected} />
           <StitchTopBar
             eyebrow={eyebrow}
             title={title}
             description={description}
             searchPlaceholder="Search issue / run / agent / machine"
+            currentHref={currentHref}
           />
 
-          <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+          <div className="border-b-2 border-[var(--shock-ink)] bg-[#f3ead3] px-3 py-2.5 md:px-4">
+            <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
               <div>
                 <p className="font-display text-[18px] font-bold">{contextTitle}</p>
                 <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
@@ -224,12 +249,14 @@ export function OpenShockShell({
             </div>
           </div>
 
-          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="min-h-0 overflow-y-auto bg-white p-4 xl:min-h-0">{children}</div>
-            <aside className="hidden min-h-0 border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex xl:flex-col">
-              <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_304px]">
+            <div className="min-h-0 overflow-y-auto bg-[var(--shock-paper)] px-2 py-3 md:px-3 xl:min-h-0">
+              {children}
+            </div>
+            <aside className="hidden min-h-0 border-l-2 border-[var(--shock-ink)] bg-[#efe5ce] xl:flex xl:flex-col">
+              <div className="flex-1 overflow-y-auto p-3">
                 {contextBody ?? (
-                  <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                  <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em]">MVP Contract</p>
                     <ul className="mt-3 space-y-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.76)]">
                       <li>频道负责轻松讨论，不直接背负执行压力。</li>
@@ -240,7 +267,7 @@ export function OpenShockShell({
                   </section>
                 )}
 
-                <section className="mt-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                <section className="mt-3 border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Live Machines</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.machines.length}</span>
@@ -262,7 +289,7 @@ export function OpenShockShell({
                   </div>
                 </section>
 
-                <section className="mt-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                <section className="mt-3 border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Agents</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.agents.length}</span>

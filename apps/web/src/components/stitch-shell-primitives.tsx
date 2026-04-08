@@ -109,6 +109,7 @@ function InboxIcon() {
 
 type StitchSidebarProps = {
   active: "channels" | "rooms" | "board" | "inbox" | null;
+  mode?: "chat" | "work";
   channels?: Channel[];
   rooms?: Room[];
   machines?: MachineStatus[];
@@ -182,6 +183,7 @@ export function WorkspaceStatusStrip({
 
 export function StitchSidebar({
   active,
+  mode = "chat",
   channels,
   rooms,
   machines,
@@ -219,14 +221,24 @@ export function StitchSidebar({
       <div className="grid grid-cols-2 border-b-2 border-[var(--shock-ink)] bg-white">
         <Link
           href="/chat/all"
-          className="flex items-center justify-center gap-2 border-r-2 border-[var(--shock-ink)] bg-white px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]"
+          className={cn(
+            "flex items-center justify-center gap-2 border-r-2 border-[var(--shock-ink)] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
+            mode === "chat"
+              ? "bg-white text-[var(--shock-ink)]"
+              : "bg-[var(--shock-paper)] text-[color:rgba(24,20,14,0.72)] hover:bg-white"
+          )}
         >
           <ChatModeIcon />
           Chat
         </Link>
         <Link
           href="/setup"
-          className="flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.72)] hover:bg-[var(--shock-paper)]"
+          className={cn(
+            "flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em]",
+            mode === "work"
+              ? "bg-white text-[var(--shock-ink)]"
+              : "text-[color:rgba(24,20,14,0.72)] hover:bg-[var(--shock-paper)]"
+          )}
         >
           <WorkspaceModeIcon />
           Work
@@ -245,7 +257,7 @@ export function StitchSidebar({
             )}
           >
             <HashIcon />
-            <span className="flex-1">Quick switch</span>
+            <span className="flex-1">Quick Search</span>
             <span className="font-mono text-[10px]">Ctrl+K</span>
           </Link>
         </div>
@@ -375,6 +387,7 @@ type StitchTopBarProps = {
   searchPlaceholder: string;
   eyebrow?: string;
   description?: string;
+  currentHref?: string;
   tabs?: string[];
   activeTab?: string;
 };
@@ -384,6 +397,7 @@ export function StitchTopBar({
   searchPlaceholder,
   eyebrow,
   description,
+  currentHref,
   tabs,
   activeTab,
 }: StitchTopBarProps) {
@@ -418,13 +432,17 @@ export function StitchTopBar({
           {[
             { href: "/issues", label: "Issues" },
             { href: "/runs", label: "Runs" },
+            { href: "/agents", label: "Agents" },
             { href: "/setup", label: "Setup" },
             { href: "/memory", label: "Memory" },
           ].map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] hover:bg-[var(--shock-paper)]"
+              className={cn(
+                "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]",
+                currentHref === link.href ? "bg-[var(--shock-yellow)]" : "bg-white hover:bg-[var(--shock-paper)]"
+              )}
             >
               {link.label}
             </Link>

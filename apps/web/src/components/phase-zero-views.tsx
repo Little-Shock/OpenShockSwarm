@@ -167,15 +167,15 @@ export function DetailRail({
   items: Array<{ label: string; value: string }>;
 }) {
   return (
-    <Panel tone="paper">
+    <Panel tone="paper" className="!p-3.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{label}</p>
       <dl className="mt-3 space-y-2">
         {items.map((item) => (
-          <div key={item.label} className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+          <div key={item.label} className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
             <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.6)]">
               {item.label}
             </dt>
-            <dd className="mt-2 font-display text-[18px] font-semibold leading-6">{item.value}</dd>
+            <dd className="mt-1.5 font-display text-[16px] font-semibold leading-5">{item.value}</dd>
           </div>
         ))}
       </dl>
@@ -185,9 +185,9 @@ export function DetailRail({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+    <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
-      <p className="mt-2 font-display text-[18px] font-semibold leading-6">{value}</p>
+      <p className="mt-1.5 font-display text-[16px] font-semibold leading-5">{value}</p>
     </div>
   );
 }
@@ -596,23 +596,23 @@ export function BoardView() {
 
 export function IssuesListView({ issues: issueList }: { issues: Issue[] }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       {issueList.map((issue) => (
         <Link key={issue.id} href={`/issues/${issue.key}`} className="block">
-          <Panel tone={issue.state === "blocked" ? "pink" : issue.state === "review" ? "lime" : "white"}>
+          <Panel tone={issue.state === "blocked" ? "pink" : issue.state === "review" ? "lime" : "white"} className="!p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
                   {issue.key} / {priorityLabel(issue.priority)}
                 </p>
-                <h3 className="mt-2 font-display text-3xl font-bold">{issue.title}</h3>
+                <h3 className="mt-1.5 font-display text-[24px] font-bold leading-7">{issue.title}</h3>
               </div>
-              <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(issue.state))}>
+              <span className={cn("rounded-full border-2 border-[var(--shock-ink)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em]", statusTone(issue.state))}>
                 {runStatusLabel(issue.state)}
               </span>
             </div>
-            <p className="mt-3 text-base leading-7">{issue.summary}</p>
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <p className="mt-2.5 text-sm leading-6">{issue.summary}</p>
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
               <Metric label="负责人" value={issue.owner} />
               <Metric label="讨论间" value={issue.roomId} />
               <Metric label="PR" value={issue.pullRequest} />

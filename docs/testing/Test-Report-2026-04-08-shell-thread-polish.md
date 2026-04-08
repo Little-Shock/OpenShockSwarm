@@ -36,6 +36,6 @@
 
 ## Remaining Gaps
 
-- `DM / followed thread / saved later / real quick switch results` 仍未闭环，所以 `TKT-16` `TKT-17` 继续保持 `active`
+- `DM / followed thread / saved later / real quick search results` 仍未闭环，所以这部分已拆到下一轮票继续推进
 - room 右 rail 已有 `Context / Thread` 切换，但还没把 `Topic / Run / PR` 收成真正稳定的单房间 workbench
 - 现有持久化 state 里还残留部分早前乱码历史文案（例如旧 issue / room 标题与消息），这不是这轮字体 fallback 的问题，而是历史数据本身需要清理

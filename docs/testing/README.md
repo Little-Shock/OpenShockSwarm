@@ -30,6 +30,12 @@
   - `TKT-14` 的 multi-runtime scheduler / active lease / offline failover browser exact evidence
 - [Test Report 2026-04-08 Shell Thread Polish](./Test-Report-2026-04-08-shell-thread-polish.md)
   - `TKT-16` `TKT-17` `TKT-20` 当前这轮 shell / thread / board demotion 的 headed walkthrough evidence
+- [Test Report 2026-04-08 Work Shell Smoke](./Test-Report-2026-04-08-work-shell-smoke.md)
+  - `chat / setup / issues / memory / inbox / board / room / run` 在统一 workspace shell 下的当前有头走查结果
+- [Test Report 2026-04-08 Memory Governance](./Test-Report-2026-04-08-memory-governance.md)
+  - `TKT-12` 当天重跑后的有头记忆治理证据
+- [Test Report 2026-04-08 Stop Resume Follow-thread](./Test-Report-2026-04-08-stop-resume-follow-thread.md)
+  - `TKT-13` 当天重跑后的有头 stop / resume / follow-thread 证据
 
 常用入口：
 
@@ -57,6 +63,13 @@
   - 验证 stop / resume / follow-thread exact replay
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
+- `pnpm test:headed-work-shell-smoke`
+  - 验证统一 workspace shell 下的 `chat / setup / issues / memory / inbox / board / room / run` 页面走查
+
+说明：
+
+- 名字带 `headed` 的浏览器脚本现在默认都按有头模式执行。
+- 如果确实要在无显示环境里回放，再显式传 `OPENSHOCK_E2E_HEADLESS=1`。
 
 如果 `Test Cases` 和 `Test Report` 冲突：
 

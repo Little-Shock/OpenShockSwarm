@@ -108,18 +108,18 @@ function LiveStateNotice({
   message: string;
 }) {
   return (
-    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-6 py-6">
-      <p className="font-display text-2xl font-bold">{title}</p>
-      <p className="mt-3 max-w-2xl text-base leading-7 text-[color:rgba(24,20,14,0.76)]">{message}</p>
+    <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+      <p className="font-display text-[22px] font-bold leading-7">{title}</p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{message}</p>
     </div>
   );
 }
 
 function FactTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+    <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
-      <p className="mt-2 font-display text-xl font-semibold">{value}</p>
+      <p className="mt-1.5 font-display text-[17px] font-semibold leading-5">{value}</p>
     </div>
   );
 }
@@ -134,45 +134,45 @@ function RoomSnapshotCard({
   run?: Run;
 }) {
   return (
-    <Panel tone={panelToneForStatus(room.topic.status)}>
+    <Panel tone={panelToneForStatus(room.topic.status)} className="!p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
             {room.issueKey} / {issue ? priorityLabel(issue.priority) : "讨论间"}
           </p>
-          <h3 className="mt-2 font-display text-3xl font-bold">{room.title}</h3>
+          <h3 className="mt-1.5 font-display text-[24px] font-bold leading-7">{room.title}</h3>
         </div>
         <span
           className={cn(
-            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            "rounded-full border-2 border-[var(--shock-ink)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em]",
             statusBadgeTone(room.topic.status)
           )}
         >
           {runStatusLabel(room.topic.status)}
         </span>
       </div>
-      <p className="mt-3 text-base leading-7">{room.summary}</p>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <p className="mt-2.5 text-sm leading-6">{room.summary}</p>
+      <div className="mt-4 grid gap-2 md:grid-cols-3">
         <FactTile label="当前 Topic" value={room.topic.title} />
         <FactTile label="负责人" value={room.topic.owner} />
         <FactTile label="Run" value={run?.id ?? room.runId} />
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
         <FactTile label="任务卡" value={`${room.boardCount} 张`} />
         <FactTile label="未读" value={`${room.unread} 条`} />
         <FactTile label="分支" value={run?.branch ?? "待接入"} />
       </div>
-      <div className="mt-5 flex flex-wrap gap-3">
+      <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={`/rooms/${room.id}`}
-          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+          className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
           打开讨论间
         </Link>
         {run ? (
           <Link
             href={`/runs/${run.id}`}
-            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+            className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
             查看 Run
           </Link>
@@ -180,7 +180,7 @@ function RoomSnapshotCard({
         {issue ? (
           <Link
             href={`/issues/${issue.key}`}
-            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+            className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
             查看 Issue
           </Link>
@@ -200,56 +200,56 @@ function RunSnapshotCard({
   issue?: Issue;
 }) {
   return (
-    <Panel tone={panelToneForStatus(run.status)}>
+    <Panel tone={panelToneForStatus(run.status)} className="!p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.62)]">
             {run.issueKey} / {room?.title ?? run.roomId}
           </p>
-          <h3 className="mt-2 font-display text-3xl font-bold">{run.id}</h3>
+          <h3 className="mt-1.5 font-display text-[24px] font-bold leading-7">{run.id}</h3>
         </div>
         <span
           className={cn(
-            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            "rounded-full border-2 border-[var(--shock-ink)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em]",
             statusBadgeTone(run.status)
           )}
         >
           {runStatusLabel(run.status)}
         </span>
       </div>
-      <p className="mt-3 text-base leading-7">{run.summary}</p>
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
+      <p className="mt-2.5 text-sm leading-6">{run.summary}</p>
+      <div className="mt-4 grid gap-2 md:grid-cols-4">
         <FactTile label="Runtime" value={run.runtime} />
         <FactTile label="Provider" value={run.provider} />
         <FactTile label="负责人" value={run.owner} />
         <FactTile label="时长" value={run.duration} />
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
         <FactTile label="分支" value={run.branch} />
         <FactTile label="Worktree" value={run.worktree} />
         <FactTile label="下一步" value={run.nextAction} />
       </div>
-      <p className="mt-5 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+      <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
         {run.approvalRequired
           ? "这条 Run 当前需要人工批准后才能继续推进。"
           : `当前已绑定 ${issue?.pullRequest ?? run.pullRequest}，可继续沿着 Room / Run / PR 同步收口。`}
       </p>
-      <div className="mt-5 flex flex-wrap gap-3">
+      <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={`/runs/${run.id}`}
-          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+          className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
           打开 Run
         </Link>
         <Link
           href={`/rooms/${run.roomId}`}
-          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+          className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
           回到讨论间
         </Link>
         <Link
           href={`/issues/${run.issueKey}`}
-          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+          className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
           查看 Issue
         </Link>

@@ -1,7 +1,7 @@
 # OpenShock Team Execution Directive
 
 **版本:** 1.0
-**更新日期:** 2026 年 4 月 7 日
+**更新日期:** 2026 年 4 月 8 日
 **关联文档:** [Execution Tickets](./Execution-Tickets.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -25,6 +25,15 @@
    - 相关票据状态
 5. reviewer 先看 blocker，再看风格；没有 blocker 就尽快合。
 
+### 前端守则
+
+- 聊天、Room、Inbox 永远比 Board 更重要；Board 只做 planning mirror。
+- 不新增“Rooms 总览”式独立心智；默认从 channel / issue / inbox 进入具体 room。
+- Thread 只作为某条消息的回复子区，不升级成新的首页级对象。
+- composer 必须常驻可见；历史消息必须能稳定回滚，不允许输入框把消息区顶没。
+- 壳层继续向 `app.slock.ai` 学结构和密度，但保留 OpenShock 现有字体与更克制的审美，不做生硬复制。
+- 前端票不接受“为了展示而展示”的大卡片、大标题、大段空白；默认先压密度，再谈装饰。
+
 ---
 
 ## 三、每张票的提交内容必须包含
@@ -44,7 +53,7 @@
 - 后端票至少跑相关 `go test`
 - 前端票至少跑 typecheck / build
 - 涉及主链的票至少跑 `pnpm verify:release`
-- 涉及浏览器流程的票必须补 headed evidence
+- 涉及浏览器流程的票必须补 headed evidence，不能用默认 headless 冒充
 
 ---
 

@@ -1,7 +1,7 @@
 # OpenShock Phase 0 MVP
 
-**版本:** 0.4
-**版本日期:** 2026 年 4 月 6 日
+**版本:** 0.5
+**版本日期:** 2026 年 4 月 8 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -25,13 +25,16 @@
 当前仓库已经有：
 
 - Next.js 前端壳
+- 统一的 workspace shell，`chat / inbox / board / setup / issues / runs / agents / memory / access / settings` 不再各走各的导航
 - Go server 控制面
 - Go daemon 本地 runtime bridge
 - 文件状态存储
 - 基础 worktree lane 创建
 - issue -> room -> run -> session 的对象主链
 - room message 同步 / 流式执行桥
+- channel / room message-centric thread rail
 - repo binding / GitHub readiness / runtime pairing 控制面
+- 同源 `/api/control/*` proxy，Windows 有头浏览器下也能稳定读到 live control truth
 - PR 状态对象和 Inbox 卡片
 - `gh CLI / GitHub App` 双 auth path 的 PR contract
 - 文件级记忆与 version/governance contract

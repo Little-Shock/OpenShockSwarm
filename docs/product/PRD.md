@@ -1,7 +1,7 @@
 # 产品需求文档 (PRD): OpenShock.ai
 
-**版本:** 2.4 (全量基线恢复版)
-**版本日期:** 2026 年 4 月 6 日
+**版本:** 2.5 (全量基线恢复版)
+**版本日期:** 2026 年 4 月 8 日
 **产品定位:** 面向 AI 原生研发团队的本地优先协作操作系统
 **产品总纲:** **Slock 的壳，Multica 的骨，Lody 的隔离执行。**
 
@@ -31,7 +31,7 @@
 
 - 当前仓库已经做到哪一层，看 [Phase 0 MVP](./Phase0-MVP.md)
 - 需求拆解和当前 GAP，看 [Product Checklist](./Checklist.md)
-- 验证项与执行结果，看 [Test Cases](../testing/Test-Cases.md) 和 [Test Report](../testing/Test-Report-2026-04-06-main.md)
+- 验证项与执行结果，看 [Test Cases](../testing/Test-Cases.md) 和 [Testing Index](../testing/README.md)
 
 ---
 
@@ -196,6 +196,9 @@ Agent 不能只是一个“被分配对象”，而必须同时拥有：
 
 - 首页优先看到 Chat、Room、Topic、Inbox、Machine、Agent 状态
 - 看板保留，但属于控制视图，不是产品气质中心
+- `Room` 不做独立总览心智，默认通过 channel / issue / inbox 进入具体房间
+- `Thread` 只作为某条消息的回复子区，不升级成新的首页级对象
+- `Inbox` 保留为次级决策入口，应该待在壳层次级位置，而不是压过聊天主路径
 
 ### 3. 一个 Topic 只做一件事
 

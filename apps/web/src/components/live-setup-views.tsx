@@ -85,9 +85,9 @@ function runtimeLeaseIsActive(status?: string) {
 
 function WorkspaceMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+    <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
-      <p className="mt-2 font-display text-xl font-semibold break-all">{value}</p>
+      <p className="mt-1.5 break-all font-display text-[17px] font-semibold leading-5">{value}</p>
     </div>
   );
 }
@@ -102,9 +102,9 @@ function SetupStateNotice({
   tone?: "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
 }) {
   return (
-    <Panel tone={tone}>
-      <p className="font-display text-3xl font-bold">{title}</p>
-      <p className="mt-3 max-w-2xl text-base leading-7 text-[color:rgba(24,20,14,0.76)]">{message}</p>
+    <Panel tone={tone} className="!p-3.5">
+      <p className="font-display text-2xl font-bold">{title}</p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{message}</p>
     </Panel>
   );
 }
@@ -119,24 +119,24 @@ function SetupCheckpointCard({
   active: boolean;
 }) {
   return (
-    <Panel tone={statusTone(active)}>
+    <Panel tone={statusTone(active)} className="!p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
             {active ? "已接通" : "待补全"}
           </p>
-          <h3 className="mt-2 font-display text-3xl font-bold">{title}</h3>
+          <h3 className="mt-1.5 font-display text-[24px] font-bold leading-7">{title}</h3>
         </div>
         <span
           className={cn(
-            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            "rounded-full border-2 border-[var(--shock-ink)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em]",
             active ? "bg-[var(--shock-lime)]" : "bg-white"
           )}
         >
           {active ? "live" : "pending"}
         </span>
       </div>
-      <p className="mt-3 text-base leading-7">{summary}</p>
+      <p className="mt-2.5 text-sm leading-6">{summary}</p>
     </Panel>
   );
 }
@@ -252,8 +252,8 @@ export function LiveSetupOverview() {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_0.85fr]">
-      <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_0.95fr]">
+      <div className="grid gap-3 md:grid-cols-2">
         <SetupCheckpointCard
           title="仓库绑定"
           summary={
@@ -292,10 +292,10 @@ export function LiveSetupOverview() {
         />
       </div>
 
-      <div className="space-y-4">
-        <Panel tone="yellow">
+      <div className="space-y-3">
+        <Panel tone="yellow" className="!p-3.5">
           <p className="font-mono text-[11px] uppercase tracking-[0.24em]">工作区在线状态</p>
-          <dl className="mt-4 grid gap-3">
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2">
             <WorkspaceMetric label="仓库" value={valueOrPlaceholder(workspace.repo, "当前未返回 repo")} />
             <WorkspaceMetric label="分支" value={valueOrPlaceholder(workspace.branch, "当前未返回 branch")} />
             <WorkspaceMetric label="Runtime" value={`${selectedRuntimeLabel} / ${pairingStatusLabel(pairingStatus)}`} />
@@ -304,18 +304,18 @@ export function LiveSetupOverview() {
             <WorkspaceMetric label="心跳节奏" value={selectedHeartbeatCadence} />
             <WorkspaceMetric label="记忆" value={valueOrPlaceholder(workspace.memoryMode, "当前未返回 memory mode")} />
           </dl>
-          <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+          <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
             当前 runtime control plane 已把 registry、selection 与 pairing 拆开：主状态里已收下 {state.runtimes.length} 条 runtime truth，
             当前有 {selectableRuntimes} 台可调度，默认指向 {selectedRuntimeLabel}
             {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}。
           </p>
-          <p className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
+          <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6">
             {scheduler.summary || "当前还没有 scheduler truth。"}
           </p>
         </Panel>
-        <Panel tone="paper">
+        <Panel tone="paper" className="!p-3.5">
           <p className="font-mono text-[11px] uppercase tracking-[0.24em]">多 Runtime 真值</p>
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-2">
             {registryRuntimes.length === 0 ? (
               <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
                 当前还没有已注册 runtime。先完成 daemon 配对，再继续做 selection 和调度验证。
@@ -334,13 +334,13 @@ export function LiveSetupOverview() {
                   <div
                     key={runtime.id}
                     className={cn(
-                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-3",
+                      "rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3",
                       assigned ? "bg-[var(--shock-lime)]" : selected ? "bg-[var(--shock-yellow)]" : "bg-white"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-display text-xl font-semibold">{runtime.machine}</p>
+                        <p className="font-display text-[18px] font-semibold leading-5">{runtime.machine}</p>
                         <p className="mt-1 text-sm text-[color:rgba(24,20,14,0.72)]">
                           {runtime.detectedCli.join(" + ") || machine?.cli || "未返回 CLI 标签"}
                         </p>
@@ -355,18 +355,16 @@ export function LiveSetupOverview() {
                       <p>{formatHeartbeatCadence(runtime.heartbeatIntervalSeconds, runtime.heartbeatTimeoutSeconds)}</p>
                       <p>active leases: {activeLeaseCount} / schedulable: {candidate?.schedulable ? "yes" : "no"}</p>
                     </div>
-                    {candidate?.reason ? (
-                      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p>
-                    ) : null}
+                    {candidate?.reason ? <p className="mt-2.5 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p> : null}
                   </div>
                 );
               })
             )}
           </div>
         </Panel>
-        <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
+        <Panel tone="ink" className="!p-3.5 shadow-[6px_6px_0_0_var(--shock-pink)]">
           <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前协作基线</p>
-          <ol className="mt-4 space-y-3 text-sm leading-6 text-white/78">
+          <ol className="mt-3 space-y-2 text-sm leading-6 text-white/78">
             <li>1. Workspace 直接显示 live repo / branch / runtime selection 真值。</li>
             <li>2. Setup 不再把静态步骤卡当成当前环境状态。</li>
             <li>3. 当前工作区已有 {state.issues.length} 条 live issue、{state.runs.length} 条 live run。</li>
