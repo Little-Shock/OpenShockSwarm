@@ -68,7 +68,9 @@ type AgentProfileUpdateInput = {
   prompt: string;
   operatingInstructions?: string;
   providerPreference: string;
+  modelPreference: string;
   recallPolicy: string;
+  runtimePreference: string;
   memorySpaces: string[];
 };
 

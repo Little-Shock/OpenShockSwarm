@@ -180,6 +180,7 @@ type Agent struct {
 	OperatingInstructions string                   `json:"operatingInstructions"`
 	Provider              string                   `json:"provider"`
 	ProviderPreference    string                   `json:"providerPreference"`
+	ModelPreference       string                   `json:"modelPreference,omitempty"`
 	RecallPolicy          string                   `json:"recallPolicy"`
 	RuntimePreference     string                   `json:"runtimePreference"`
 	MemorySpaces          []string                 `json:"memorySpaces"`
@@ -207,6 +208,7 @@ type Machine struct {
 	State         string `json:"state"`
 	DaemonURL     string `json:"daemonUrl"`
 	CLI           string `json:"cli"`
+	Shell         string `json:"shell,omitempty"`
 	OS            string `json:"os"`
 	LastHeartbeat string `json:"lastHeartbeat"`
 }
@@ -216,7 +218,10 @@ type RuntimeProvider struct {
 	Label        string   `json:"label"`
 	Mode         string   `json:"mode"`
 	Capabilities []string `json:"capabilities"`
-	Transport    string   `json:"transport"`
+	// Models is a runtime-surfaced suggestion catalog for the UI. It is not a hard allowlist
+	// unless the daemon starts deriving it from a real local source.
+	Models    []string `json:"models,omitempty"`
+	Transport string   `json:"transport"`
 }
 
 type RuntimeRecord struct {
@@ -225,6 +230,7 @@ type RuntimeRecord struct {
 	DaemonURL          string            `json:"daemonUrl"`
 	DetectedCLI        []string          `json:"detectedCli"`
 	Providers          []RuntimeProvider `json:"providers"`
+	Shell              string            `json:"shell,omitempty"`
 	State              string            `json:"state"`
 	PairingState       string            `json:"pairingState"`
 	WorkspaceRoot      string            `json:"workspaceRoot"`
@@ -519,6 +525,7 @@ type RuntimePairingInput struct {
 	Machine       string
 	DetectedCLI   []string
 	Providers     []RuntimeProvider
+	Shell         string
 	State         string
 	WorkspaceRoot string
 	ReportedAt    string
@@ -530,6 +537,7 @@ type RuntimeHeartbeatInput struct {
 	Machine            string
 	DetectedCLI        []string
 	Providers          []RuntimeProvider
+	Shell              string
 	State              string
 	WorkspaceRoot      string
 	ReportedAt         string

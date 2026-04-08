@@ -89,13 +89,34 @@ function runtimeSchedulerStrategyLabel(strategy: string) {
   }
 }
 
+function runtimeProviderInventoryLabel(
+  providers: Array<{ label: string; models: string[] }>
+) {
+  return providers
+    .map((provider) => {
+      const models = provider.models.length > 0 ? provider.models.join(" / ") : "no models";
+      return `${provider.label}: ${models}`;
+    })
+    .join(" · ");
+}
+
 function runtimeLeaseIsActive(status?: string) {
   return Boolean(status && status.trim() && status !== "done");
 }
 
-function WorkspaceMetric({ label, value, testID }: { label: string; value: string; testID?: string }) {
+function WorkspaceMetric({
+  label,
+  value,
+  testId,
+  testID,
+}: {
+  label: string;
+  value: string;
+  testId?: string;
+  testID?: string;
+}) {
   return (
-    <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+    <div data-testid={testId} className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">{label}</p>
       <p data-testid={testID} className="mt-1.5 break-all font-display text-[17px] font-semibold leading-5">{value}</p>
     </div>
@@ -242,6 +263,7 @@ export function LiveSetupOverview() {
   const selectedRuntimeTruth = selectedRuntimeRecord ?? selectedRuntimeStateRecord;
   const selectedRuntimeCLI =
     selectedRuntimeTruth?.detectedCli.join(" + ") || selectedRuntimeTruth?.providers.map((item) => item.label).join(" / ");
+  const selectedRuntimeInventory = runtimeProviderInventoryLabel(selectedRuntimeTruth?.providers ?? []);
   const selectedHeartbeatCadence = formatHeartbeatCadence(
     selectedRuntimeTruth?.heartbeatIntervalSeconds,
     selectedRuntimeTruth?.heartbeatTimeoutSeconds
@@ -322,6 +344,11 @@ export function LiveSetupOverview() {
             <WorkspaceMetric label="仓库" value={valueOrPlaceholder(workspace.repo, "当前未返回 repo")} />
             <WorkspaceMetric label="分支" value={valueOrPlaceholder(workspace.branch, "当前未返回 branch")} />
             <WorkspaceMetric label="Runtime" value={`${selectedRuntimeLabel} / ${pairingStatusLabel(pairingStatus)}`} />
+            <WorkspaceMetric
+              label="Shell"
+              value={valueOrPlaceholder(selectedRuntimeTruth?.shell, "未返回")}
+              testId="setup-selected-runtime-shell"
+            />
             <WorkspaceMetric label="下一条 Lane" value={assignedRuntimeLabel} />
             <WorkspaceMetric label="调度策略" value={runtimeSchedulerStrategyLabel(scheduler.strategy)} />
             <WorkspaceMetric label="心跳节奏" value={selectedHeartbeatCadence} />
@@ -334,7 +361,8 @@ export function LiveSetupOverview() {
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
             当前 runtime control plane 已把 registry、selection 与 pairing 拆开：主状态里已收下 {state.runtimes.length} 条 runtime truth，
             当前有 {selectableRuntimes} 台可调度，默认指向 {selectedRuntimeLabel}
-            {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}。
+            {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}
+            {selectedRuntimeInventory ? `，provider/model catalog 为 ${selectedRuntimeInventory}` : ""}。
           </p>
           <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6">
             {scheduler.summary || "当前还没有 scheduler truth。"}
@@ -360,6 +388,7 @@ export function LiveSetupOverview() {
                 return (
                   <div
                     key={runtime.id}
+                    data-testid={`setup-runtime-card-${runtime.id}`}
                     className={cn(
                       "rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3",
                       assigned ? "bg-[var(--shock-lime)]" : selected ? "bg-[var(--shock-yellow)]" : "bg-white"
@@ -378,9 +407,20 @@ export function LiveSetupOverview() {
                     </div>
                     <div className="mt-3 space-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
                       <p>{machine?.os || "Local"} / {machine?.lastHeartbeat || runtime.lastHeartbeatAt || "未返回心跳"}</p>
+                      <p>{runtime.shell || machine?.shell || "shell 未返回"}</p>
                       <p>{runtime.daemonUrl || "未配对 daemon"} / {pairingStateLabel(runtime.pairingState)}</p>
                       <p>{formatHeartbeatCadence(runtime.heartbeatIntervalSeconds, runtime.heartbeatTimeoutSeconds)}</p>
                       <p>active leases: {activeLeaseCount} / schedulable: {candidate?.schedulable ? "yes" : "no"}</p>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {runtime.providers.map((provider) => (
+                        <span
+                          key={`${runtime.id}-${provider.id}`}
+                          className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px]"
+                        >
+                          {provider.label}: {(provider.models ?? []).join(" / ") || "no models"}
+                        </span>
+                      ))}
                     </div>
                     {candidate?.reason ? <p className="mt-2.5 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p> : null}
                   </div>

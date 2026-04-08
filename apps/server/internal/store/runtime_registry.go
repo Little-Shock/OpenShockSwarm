@@ -65,6 +65,7 @@ func ensureRuntimeRegistryState(state *State) {
 			Machine:         defaultString(machine.Name, runtimeID),
 			DaemonURL:       machine.DaemonURL,
 			DetectedCLI:     parseMachineCLI(machine.CLI),
+			Shell:           machine.Shell,
 			State:           machine.State,
 			WorkspaceRoot:   "",
 			ReportedAt:      defaultReportedAt,
@@ -106,6 +107,7 @@ func upsertRuntimeHeartbeatLocked(state *State, req RuntimeHeartbeatInput) Runti
 		DaemonURL:          strings.TrimRight(strings.TrimSpace(req.DaemonURL), "/"),
 		DetectedCLI:        req.DetectedCLI,
 		Providers:          req.Providers,
+		Shell:              strings.TrimSpace(req.Shell),
 		State:              req.State,
 		WorkspaceRoot:      strings.TrimSpace(req.WorkspaceRoot),
 		ReportedAt:         strings.TrimSpace(req.ReportedAt),
@@ -193,6 +195,7 @@ func normalizeRuntimeRecord(item RuntimeRecord, fallbackReportedAt string) Runti
 	item.DaemonURL = strings.TrimRight(strings.TrimSpace(item.DaemonURL), "/")
 	item.DetectedCLI = normalizeDetectedCLI(item.DetectedCLI)
 	item.Providers = normalizeRuntimeProviders(item.Providers)
+	item.Shell = strings.TrimSpace(item.Shell)
 	item.State = normalizeRuntimeState(item.State)
 	item.PairingState = defaultString(strings.TrimSpace(item.PairingState), runtimePairingAvailable)
 	item.WorkspaceRoot = strings.TrimSpace(item.WorkspaceRoot)
@@ -229,6 +232,7 @@ func syncMachineForRuntime(state *State, record RuntimeRecord) {
 			State:         record.State,
 			DaemonURL:     record.DaemonURL,
 			CLI:           cliLabel,
+			Shell:         record.Shell,
 			OS:            "Local",
 			LastHeartbeat: lastHeartbeat,
 		}}, state.Machines...)
@@ -240,6 +244,9 @@ func syncMachineForRuntime(state *State, record RuntimeRecord) {
 	state.Machines[index].State = record.State
 	state.Machines[index].DaemonURL = record.DaemonURL
 	state.Machines[index].CLI = cliLabel
+	if strings.TrimSpace(record.Shell) != "" {
+		state.Machines[index].Shell = record.Shell
+	}
 	state.Machines[index].LastHeartbeat = lastHeartbeat
 }
 
@@ -323,7 +330,23 @@ func normalizeRuntimeProviders(items []RuntimeProvider) []RuntimeProvider {
 		item.Mode = strings.TrimSpace(item.Mode)
 		item.Transport = strings.TrimSpace(item.Transport)
 		item.Capabilities = normalizeDetectedCLI(item.Capabilities)
+		item.Models = normalizeRuntimeModels(item.Models)
 		result = append(result, item)
+	}
+	return result
+}
+
+func normalizeRuntimeModels(items []string) []string {
+	seen := make(map[string]bool, len(items))
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		key := strings.ToLower(trimmed)
+		if trimmed == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, trimmed)
 	}
 	return result
 }

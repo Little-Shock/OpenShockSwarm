@@ -238,7 +238,7 @@ function AgentLaneCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-            {agent.provider}
+            {agent.providerPreference} / {agent.modelPreference}
           </p>
           <h4 className="mt-2 font-display text-2xl font-bold">{agent.name}</h4>
         </div>
@@ -247,10 +247,14 @@ function AgentLaneCard({
         </span>
       </div>
       <p className="mt-3 text-sm leading-6">{agent.description}</p>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">当前泳道</p>
           <p className="mt-2 text-sm leading-6">{agent.lane}</p>
+        </div>
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">Provider / Model</p>
+          <p className="mt-2 text-sm leading-6">{agent.providerPreference} / {agent.modelPreference}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">Runtime 偏好</p>

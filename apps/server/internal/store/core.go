@@ -113,6 +113,12 @@ func (s *Store) hydrateMissingDefaults() {
 		if strings.TrimSpace(s.state.Agents[index].ProviderPreference) == "" {
 			s.state.Agents[index].ProviderPreference = defaultAgent.ProviderPreference
 		}
+		if strings.TrimSpace(s.state.Agents[index].ModelPreference) == "" {
+			s.state.Agents[index].ModelPreference = defaultAgent.ModelPreference
+		}
+		if strings.TrimSpace(s.state.Agents[index].RuntimePreference) == "" {
+			s.state.Agents[index].RuntimePreference = defaultAgent.RuntimePreference
+		}
 		if strings.TrimSpace(s.state.Agents[index].RecallPolicy) == "" {
 			s.state.Agents[index].RecallPolicy = defaultAgent.RecallPolicy
 		}
@@ -126,6 +132,9 @@ func (s *Store) hydrateMissingDefaults() {
 	for index := range s.state.Machines {
 		if strings.TrimSpace(s.state.Machines[index].DaemonURL) == "" && machineMatches(s.state.Machines[index], s.state.Workspace.PairedRuntime) {
 			s.state.Machines[index].DaemonURL = s.state.Workspace.PairedRuntimeURL
+		}
+		if defaultMachine, ok := findMachineByID(defaults.Machines, s.state.Machines[index].ID, s.state.Machines[index].Name); ok && strings.TrimSpace(s.state.Machines[index].Shell) == "" {
+			s.state.Machines[index].Shell = defaultMachine.Shell
 		}
 	}
 	if len(s.state.PullRequests) == 0 {
@@ -159,6 +168,15 @@ func findAgentByID(items []Agent, agentID string) (Agent, bool) {
 		}
 	}
 	return Agent{}, false
+}
+
+func findMachineByID(items []Machine, machineID, machineName string) (Machine, bool) {
+	for _, item := range items {
+		if item.ID == machineID || item.Name == machineName {
+			return item, true
+		}
+	}
+	return Machine{}, false
 }
 
 func (s *Store) ensureFilesystemArtifacts() error {

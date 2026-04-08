@@ -265,6 +265,7 @@ func (s *Store) UpdateRuntimePairing(req RuntimePairingInput) (State, error) {
 		Machine:            machine,
 		DetectedCLI:        req.DetectedCLI,
 		Providers:          req.Providers,
+		Shell:              req.Shell,
 		State:              runtimeState,
 		WorkspaceRoot:      req.WorkspaceRoot,
 		ReportedAt:         reportedAt,

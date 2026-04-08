@@ -37,6 +37,7 @@
     "test:headed-profile-surface": "node ./scripts/headed-profile-surface.mjs",
     "test:headed-destructive-guard": "node ./scripts/headed-destructive-guard.mjs",
     "test:headed-agent-profile-editor": "node ./scripts/headed-agent-profile-editor.mjs",
+    "test:headed-machine-profile-capability-binding": "node ./scripts/headed-machine-profile-capability-binding.mjs",
     "test:headed-work-shell-smoke": "node ./scripts/headed-work-shell-smoke.mjs",
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
     "test:webhook-replay": "node ./scripts/github-webhook-replay.mjs",
