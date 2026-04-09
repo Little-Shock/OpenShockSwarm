@@ -6,8 +6,8 @@
 
 ## Environment
 
-- server URL: `http://127.0.0.1:43278`
-- web URL: `http://127.0.0.1:43990`
+- server URL: `http://127.0.0.1:44238`
+- web URL: `http://127.0.0.1:45048`
 - runtimes:
   - selected runtime: `shock-main`
   - pressured runtime: `shock-sidecar`
@@ -37,6 +37,6 @@
 
 ## Screenshots
 
-- setup-lease-recovery: `/tmp/openshock-tkt31-runtime-lease-PaXidE/screenshots/01-setup-lease-recovery.png`
-- agents-lease-recovery: `/tmp/openshock-tkt31-runtime-lease-PaXidE/screenshots/02-agents-lease-recovery.png`
-- run-lease-recovery: `/tmp/openshock-tkt31-runtime-lease-PaXidE/screenshots/03-run-lease-recovery.png`
+- setup-lease-recovery: `/tmp/openshock-tkt31-runtime-lease-dxMLxo/screenshots/01-setup-lease-recovery.png`
+- agents-lease-recovery: `/tmp/openshock-tkt31-runtime-lease-dxMLxo/screenshots/02-agents-lease-recovery.png`
+- run-lease-recovery: `/tmp/openshock-tkt31-runtime-lease-dxMLxo/screenshots/03-run-lease-recovery.png`
