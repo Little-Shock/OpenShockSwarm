@@ -1151,6 +1151,110 @@ func TestPullRequestRouteSyncsAndMergesRemoteState(t *testing.T) {
 	}
 }
 
+func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "PR Detail Route",
+		Summary:  "verify PR detail backlinks",
+		Owner:    "Codex Dockmaster",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+	_, pullRequestID, err := s.CreatePullRequestFromRemote(created.RoomID, store.PullRequestRemoteSnapshot{
+		Number:         91,
+		Title:          "PR Detail Route",
+		Status:         "in_review",
+		Branch:         created.Branch,
+		BaseBranch:     "main",
+		Author:         "CodexDockmaster",
+		Provider:       "github",
+		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/91",
+		ReviewDecision: "REVIEW_REQUIRED",
+	})
+	if err != nil {
+		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
+	}
+	if _, err := s.UpsertPullRequestConversationFromWebhook(pullRequestID, githubsvc.NormalizedWebhookEvent{
+		DeliveryID:        "delivery-pr-detail",
+		Event:             "pull_request_review_comment",
+		Kind:              "review_comment",
+		Action:            "created",
+		Sender:            "review-bot",
+		Repository:        "Larkspur-Wang/OpenShock",
+		PullRequestNumber: 91,
+		PullRequestTitle:  "PR Detail Route",
+		PullRequestURL:    "https://github.com/Larkspur-Wang/OpenShock/pull/91",
+		ConversationKey:   "review_comment:9101",
+		ConversationURL:   "https://github.com/Larkspur-Wang/OpenShock/pull/91#discussion_r9101",
+		ConversationPath:  "apps/server/internal/api/server.go",
+		ConversationLine:  742,
+		ConversationAt:    "2026-04-09T01:49:00Z",
+		CommentBody:       "please add PR detail route",
+	}); err != nil {
+		t.Fatalf("UpsertPullRequestConversationFromWebhook() error = %v", err)
+	}
+
+	github := &fakeGitHubClient{
+		synced: map[int]githubsvc.PullRequest{
+			91: {
+				Number:         91,
+				URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/91",
+				Title:          "PR Detail Route",
+				State:          "OPEN",
+				HeadRefName:    created.Branch,
+				BaseRefName:    "main",
+				Author:         "CodexDockmaster",
+				ReviewDecision: "REVIEW_REQUIRED",
+			},
+		},
+	}
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+		GitHub:        github,
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID + "/detail")
+	if err != nil {
+		t.Fatalf("GET pull request detail error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET pull request detail status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var detail store.PullRequestDetail
+	decodeJSON(t, resp, &detail)
+	if detail.PullRequest.ID != pullRequestID {
+		t.Fatalf("detail pull request = %#v, want %q", detail.PullRequest, pullRequestID)
+	}
+	if detail.Room.ID != created.RoomID || detail.Run.ID != created.RunID || detail.Issue.RoomID != created.RoomID {
+		t.Fatalf("detail backlinks malformed: %#v", detail)
+	}
+	if len(detail.Conversation) != 1 || detail.Conversation[0].ID != "review_comment:9101" {
+		t.Fatalf("detail conversation = %#v, want one review_comment entry", detail.Conversation)
+	}
+	if len(detail.RelatedInbox) == 0 {
+		t.Fatalf("detail related inbox = %#v, want PR-linked inbox card", detail.RelatedInbox)
+	}
+}
+
 func TestPullRequestRouteEscalatesBlockedOnGitHubSyncFailure(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

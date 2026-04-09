@@ -21,6 +21,8 @@ func sanitizeLivePayload(payload any) any {
 		return sanitizeLiveState(typed)
 	case store.RoomDetail:
 		return sanitizeRoomDetail(typed)
+	case store.PullRequestDetail:
+		return sanitizePullRequestDetail(typed)
 	case store.Channel:
 		return sanitizeChannel(typed)
 	case []store.Channel:
@@ -95,10 +97,18 @@ func sanitizeLivePayload(payload any) any {
 		return items
 	case store.PullRequest:
 		return sanitizePullRequest(typed)
+	case store.PullRequestConversationEntry:
+		return sanitizePullRequestConversationEntry(typed)
 	case []store.PullRequest:
 		items := make([]store.PullRequest, len(typed))
 		for index, item := range typed {
 			items[index] = sanitizePullRequest(item)
+		}
+		return items
+	case []store.PullRequestConversationEntry:
+		items := make([]store.PullRequestConversationEntry, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizePullRequestConversationEntry(item)
 		}
 		return items
 	case store.Session:
@@ -197,6 +207,16 @@ func sanitizeRoomDetail(detail store.RoomDetail) store.RoomDetail {
 	return detail
 }
 
+func sanitizePullRequestDetail(detail store.PullRequestDetail) store.PullRequestDetail {
+	detail.PullRequest = sanitizePullRequest(detail.PullRequest)
+	detail.Room = sanitizeRoom(detail.Room)
+	detail.Run = sanitizeRun(detail.Run)
+	detail.Issue = sanitizeIssue(detail.Issue)
+	detail.Conversation = sanitizeLivePayload(detail.Conversation).([]store.PullRequestConversationEntry)
+	detail.RelatedInbox = sanitizeLivePayload(detail.RelatedInbox).([]store.InboxItem)
+	return detail
+}
+
 func sanitizeChannel(channel store.Channel) store.Channel {
 	channel.Summary = sanitizeDisplayText(channel.Summary, "当前频道摘要正在整理中。")
 	channel.Purpose = sanitizeDisplayText(channel.Purpose, "当前频道说明正在整理中。")
@@ -271,6 +291,15 @@ func sanitizePullRequest(item store.PullRequest) store.PullRequest {
 	item.Branch = sanitizeDisplayText(item.Branch, "待整理分支")
 	item.BaseBranch = sanitizeDisplayText(item.BaseBranch, "当前 base 分支正在整理中。")
 	item.ReviewSummary = sanitizeDisplayText(item.ReviewSummary, "当前 review 摘要正在整理中。")
+	item.Conversation = sanitizeLivePayload(item.Conversation).([]store.PullRequestConversationEntry)
+	return item
+}
+
+func sanitizePullRequestConversationEntry(item store.PullRequestConversationEntry) store.PullRequestConversationEntry {
+	item.Author = sanitizeDisplayText(item.Author, "GitHub")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 PR 对话摘要正在整理中。")
+	item.Body = sanitizeDisplayText(item.Body, "当前 PR 对话内容正在整理中。")
+	item.Path = sanitizeDisplayText(item.Path, "")
 	return item
 }
 

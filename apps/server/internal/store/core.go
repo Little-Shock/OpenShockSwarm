@@ -64,6 +64,42 @@ func (s *Store) RoomDetail(roomID string) (RoomDetail, bool) {
 	return RoomDetail{}, false
 }
 
+func (s *Store) PullRequestDetail(pullRequestID string) (PullRequestDetail, bool) {
+	snapshot := s.Snapshot()
+	for _, item := range snapshot.PullRequests {
+		if item.ID != pullRequestID {
+			continue
+		}
+
+		room, run, issue, ok := findRoomRunIssueSnapshot(snapshot, item.RoomID)
+		if !ok {
+			return PullRequestDetail{}, false
+		}
+
+		relatedInbox := make([]InboxItem, 0, len(snapshot.Inbox))
+		for _, inboxItem := range snapshot.Inbox {
+			if isTrackedPullRequestInboxItem(inboxItem, item) {
+				relatedInbox = append(relatedInbox, inboxItem)
+			}
+		}
+
+		conversation := append([]PullRequestConversationEntry{}, item.Conversation...)
+		if conversation == nil {
+			conversation = []PullRequestConversationEntry{}
+		}
+
+		return PullRequestDetail{
+			PullRequest:  item,
+			Room:         room,
+			Run:          run,
+			Issue:        issue,
+			Conversation: conversation,
+			RelatedInbox: relatedInbox,
+		}, true
+	}
+	return PullRequestDetail{}, false
+}
+
 func (s *Store) hydrateMissingDefaults() {
 	defaults := seedState()
 	if strings.TrimSpace(s.state.Workspace.RepoProvider) == "" {
@@ -152,6 +188,11 @@ func (s *Store) hydrateMissingDefaults() {
 	if len(s.state.PullRequests) == 0 {
 		s.state.PullRequests = defaults.PullRequests
 	}
+	for index := range s.state.PullRequests {
+		if s.state.PullRequests[index].Conversation == nil {
+			s.state.PullRequests[index].Conversation = []PullRequestConversationEntry{}
+		}
+	}
 	if len(s.state.Sessions) == 0 {
 		s.state.Sessions = defaults.Sessions
 	}
@@ -171,6 +212,50 @@ func (s *Store) hydrateMissingDefaults() {
 	s.ensureSessionConsistency()
 	s.ensureAuthConsistency()
 	syncWorkspaceSnapshotDefaults(&s.state.Workspace)
+}
+
+func findRoomRunIssueSnapshot(state State, roomID string) (Room, Run, Issue, bool) {
+	var room Room
+	var run Run
+	var issue Issue
+	var roomFound bool
+	var runFound bool
+	var issueFound bool
+
+	for _, candidate := range state.Rooms {
+		if candidate.ID == roomID {
+			room = candidate
+			roomFound = true
+			break
+		}
+	}
+	if !roomFound {
+		return Room{}, Run{}, Issue{}, false
+	}
+
+	for _, candidate := range state.Runs {
+		if candidate.RoomID == roomID {
+			run = candidate
+			runFound = true
+			break
+		}
+	}
+	if !runFound {
+		return Room{}, Run{}, Issue{}, false
+	}
+
+	for _, candidate := range state.Issues {
+		if candidate.RoomID == roomID {
+			issue = candidate
+			issueFound = true
+			break
+		}
+	}
+	if !issueFound {
+		return Room{}, Run{}, Issue{}, false
+	}
+
+	return room, run, issue, true
 }
 
 func findAgentByID(items []Agent, agentID string) (Agent, bool) {

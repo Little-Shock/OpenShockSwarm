@@ -31,11 +31,52 @@ func (s *Store) ApplyGitHubWebhookEvent(event githubsvc.NormalizedWebhookEvent) 
 	if err != nil {
 		return State{}, pullRequest.ID, err
 	}
+	nextState, err = s.UpsertPullRequestConversationFromWebhook(pullRequest.ID, event)
+	if err != nil {
+		return State{}, pullRequest.ID, err
+	}
 	nextState, err = s.ensurePullRequestInboxSurface(pullRequest.ID)
 	if err != nil {
 		return State{}, pullRequest.ID, err
 	}
 	return nextState, pullRequest.ID, nil
+}
+
+func (s *Store) UpsertPullRequestConversationFromWebhook(pullRequestID string, event githubsvc.NormalizedWebhookEvent) (State, error) {
+	entry, ok := buildPullRequestConversationEntry(event)
+	if !ok {
+		return s.Snapshot(), nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	prIndex := s.findPullRequestLocked(pullRequestID)
+	if prIndex == -1 {
+		return State{}, fmt.Errorf("pull request not found")
+	}
+
+	pr := &s.state.PullRequests[prIndex]
+	if pr.Conversation == nil {
+		pr.Conversation = []PullRequestConversationEntry{}
+	}
+
+	existingIndex := -1
+	for index := range pr.Conversation {
+		if pr.Conversation[index].ID == entry.ID {
+			existingIndex = index
+			break
+		}
+	}
+	if existingIndex != -1 {
+		pr.Conversation = append(pr.Conversation[:existingIndex], pr.Conversation[existingIndex+1:]...)
+	}
+	pr.Conversation = append([]PullRequestConversationEntry{entry}, pr.Conversation...)
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
 }
 
 func findTrackedPullRequestForWebhook(state State, event githubsvc.NormalizedWebhookEvent) (PullRequest, bool) {
@@ -186,6 +227,20 @@ func summarizeWebhookPullRequestEvent(current PullRequest, event githubsvc.Norma
 			return fmt.Sprintf("GitHub 评论已同步：%s", detail)
 		}
 		return "GitHub 评论已同步到当前讨论间。"
+	case "review_comment":
+		if detail := compactWebhookText(event.CommentBody); detail != "" {
+			return fmt.Sprintf("GitHub review comment 已同步：%s", detail)
+		}
+		return "GitHub review comment 已同步到当前讨论间。"
+	case "review_thread":
+		switch strings.TrimSpace(event.ThreadStatus) {
+		case "resolved":
+			return "GitHub 评论线程已标记为 resolved。"
+		case "open":
+			return "GitHub 评论线程已重新打开。"
+		default:
+			return "GitHub 评论线程状态已同步。"
+		}
 	case "check":
 		checkName := defaultString(strings.TrimSpace(event.CheckName), "check")
 		if webhookCheckBlocksPullRequest(event) {
@@ -235,6 +290,75 @@ func compactWebhookText(text string) string {
 		return compact
 	}
 	return string(runes[:96]) + "..."
+}
+
+func buildPullRequestConversationEntry(event githubsvc.NormalizedWebhookEvent) (PullRequestConversationEntry, bool) {
+	key := strings.TrimSpace(event.ConversationKey)
+	if key == "" {
+		return PullRequestConversationEntry{}, false
+	}
+
+	entry := PullRequestConversationEntry{
+		ID:             key,
+		Kind:           strings.TrimSpace(event.Kind),
+		Action:         strings.TrimSpace(event.Action),
+		Author:         defaultString(strings.TrimSpace(event.Sender), "GitHub"),
+		Summary:        summarizePullRequestConversation(event),
+		Body:           strings.TrimSpace(event.CommentBody),
+		ReviewDecision: strings.TrimSpace(event.ReviewDecision),
+		ReviewState:    strings.TrimSpace(event.ReviewState),
+		ThreadStatus:   strings.TrimSpace(event.ThreadStatus),
+		Path:           strings.TrimSpace(event.ConversationPath),
+		Line:           event.ConversationLine,
+		URL:            strings.TrimSpace(event.ConversationURL),
+		UpdatedAt:      defaultString(strings.TrimSpace(event.ConversationAt), "刚刚"),
+	}
+	return entry, true
+}
+
+func summarizePullRequestConversation(event githubsvc.NormalizedWebhookEvent) string {
+	author := defaultString(strings.TrimSpace(event.Sender), "GitHub")
+	location := strings.TrimSpace(event.ConversationPath)
+	if event.ConversationLine > 0 {
+		location = fmt.Sprintf("%s:%d", defaultString(location, "review thread"), event.ConversationLine)
+	}
+
+	switch strings.TrimSpace(event.Kind) {
+	case "review":
+		switch strings.TrimSpace(event.ReviewDecision) {
+		case "APPROVED":
+			return fmt.Sprintf("%s 批准了当前 PR。", author)
+		case "CHANGES_REQUESTED":
+			return fmt.Sprintf("%s 请求当前 PR 继续补充修改。", author)
+		default:
+			return fmt.Sprintf("%s 同步了 review 状态：%s。", author, defaultString(strings.TrimSpace(event.ReviewState), "submitted"))
+		}
+	case "review_comment":
+		if location != "" {
+			return fmt.Sprintf("%s 在 %s 追加了 review comment。", author, location)
+		}
+		return fmt.Sprintf("%s 追加了 review comment。", author)
+	case "review_thread":
+		switch strings.TrimSpace(event.ThreadStatus) {
+		case "resolved":
+			if location != "" {
+				return fmt.Sprintf("%s 将 %s 的评论线程标记为 resolved。", author, location)
+			}
+			return fmt.Sprintf("%s 将评论线程标记为 resolved。", author)
+		case "open":
+			if location != "" {
+				return fmt.Sprintf("%s 重新打开了 %s 的评论线程。", author, location)
+			}
+			return fmt.Sprintf("%s 重新打开了评论线程。", author)
+		default:
+			return fmt.Sprintf("%s 同步了评论线程状态。", author)
+		}
+	default:
+		if detail := compactWebhookText(event.CommentBody); detail != "" {
+			return fmt.Sprintf("%s 在 PR 对话里追加了评论：%s", author, detail)
+		}
+		return fmt.Sprintf("%s 在 PR 对话里追加了评论。", author)
+	}
 }
 
 func (s *Store) ensurePullRequestInboxSurface(pullRequestID string) (State, error) {

@@ -46,6 +46,12 @@ type NormalizedWebhookEvent struct {
 	HeadBranch        string `json:"headBranch,omitempty"`
 	BaseBranch        string `json:"baseBranch,omitempty"`
 	CommitSHA         string `json:"commitSha,omitempty"`
+	ConversationKey   string `json:"conversationKey,omitempty"`
+	ConversationURL   string `json:"conversationUrl,omitempty"`
+	ConversationPath  string `json:"conversationPath,omitempty"`
+	ConversationLine  int    `json:"conversationLine,omitempty"`
+	ConversationAt    string `json:"conversationAt,omitempty"`
+	ThreadStatus      string `json:"threadStatus,omitempty"`
 }
 
 type webhookRepository struct {
@@ -110,6 +116,10 @@ func NormalizeWebhookEvent(deliveryID, eventType string, payload []byte) (Normal
 		return normalizePullRequestEvent(deliveryID, eventType, payload)
 	case "pull_request_review":
 		return normalizePullRequestReviewEvent(deliveryID, eventType, payload)
+	case "pull_request_review_comment":
+		return normalizePullRequestReviewCommentEvent(deliveryID, eventType, payload)
+	case "pull_request_review_thread":
+		return normalizePullRequestReviewThreadEvent(deliveryID, eventType, payload)
 	case "issue_comment":
 		return normalizeIssueCommentEvent(deliveryID, eventType, payload)
 	case "check_run":
@@ -149,8 +159,11 @@ func normalizePullRequestReviewEvent(deliveryID, eventType string, payload []byt
 		Sender      webhookSender      `json:"sender"`
 		PullRequest webhookPullRequest `json:"pull_request"`
 		Review      struct {
-			State string `json:"state"`
-			Body  string `json:"body"`
+			ID          int64  `json:"id"`
+			State       string `json:"state"`
+			Body        string `json:"body"`
+			HTMLURL     string `json:"html_url"`
+			SubmittedAt string `json:"submitted_at"`
 		} `json:"review"`
 	}
 	if err := json.Unmarshal(payload, &body); err != nil {
@@ -162,7 +175,90 @@ func normalizePullRequestReviewEvent(deliveryID, eventType string, payload []byt
 	event.ReviewState = strings.ToLower(strings.TrimSpace(body.Review.State))
 	event.ReviewDecision = normalizeReviewDecision(body.Review.State)
 	event.CommentBody = strings.TrimSpace(body.Review.Body)
+	event.ConversationKey = conversationKey("review", body.Review.ID)
+	event.ConversationURL = strings.TrimSpace(body.Review.HTMLURL)
+	event.ConversationAt = strings.TrimSpace(body.Review.SubmittedAt)
 	if err := validateNormalizedEvent(event, true); err != nil {
+		return NormalizedWebhookEvent{}, err
+	}
+	return event, nil
+}
+
+func normalizePullRequestReviewCommentEvent(deliveryID, eventType string, payload []byte) (NormalizedWebhookEvent, error) {
+	var body struct {
+		Action      string             `json:"action"`
+		Repository  webhookRepository  `json:"repository"`
+		Sender      webhookSender      `json:"sender"`
+		PullRequest webhookPullRequest `json:"pull_request"`
+		Comment     struct {
+			ID           int64         `json:"id"`
+			Body         string        `json:"body"`
+			HTMLURL      string        `json:"html_url"`
+			Path         string        `json:"path"`
+			Line         int           `json:"line"`
+			OriginalLine int           `json:"original_line"`
+			UpdatedAt    string        `json:"updated_at"`
+			User         webhookSender `json:"user"`
+		} `json:"comment"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return NormalizedWebhookEvent{}, fmt.Errorf("decode github webhook payload: %w", err)
+	}
+
+	sender := strings.TrimSpace(body.Comment.User.Login)
+	if sender == "" {
+		sender = strings.TrimSpace(body.Sender.Login)
+	}
+
+	event := newPullRequestBackedEvent(deliveryID, eventType, body.Repository.FullName, body.Action, sender, body.PullRequest)
+	event.Kind = "review_comment"
+	event.CommentBody = strings.TrimSpace(body.Comment.Body)
+	event.ConversationKey = conversationKey("review_comment", body.Comment.ID)
+	event.ConversationURL = strings.TrimSpace(body.Comment.HTMLURL)
+	event.ConversationPath = strings.TrimSpace(body.Comment.Path)
+	event.ConversationLine = defaultWebhookLine(body.Comment.Line, body.Comment.OriginalLine)
+	event.ConversationAt = strings.TrimSpace(body.Comment.UpdatedAt)
+	if err := validateNormalizedEvent(event, false); err != nil {
+		return NormalizedWebhookEvent{}, err
+	}
+	return event, nil
+}
+
+func normalizePullRequestReviewThreadEvent(deliveryID, eventType string, payload []byte) (NormalizedWebhookEvent, error) {
+	var body struct {
+		Action      string             `json:"action"`
+		Repository  webhookRepository  `json:"repository"`
+		Sender      webhookSender      `json:"sender"`
+		PullRequest webhookPullRequest `json:"pull_request"`
+		Thread      struct {
+			ID        int64  `json:"id"`
+			Path      string `json:"path"`
+			Line      int    `json:"line"`
+			StartLine int    `json:"start_line"`
+			Resolved  bool   `json:"resolved"`
+			Comments  []struct {
+				Body      string `json:"body"`
+				HTMLURL   string `json:"html_url"`
+				UpdatedAt string `json:"updated_at"`
+			} `json:"comments"`
+		} `json:"thread"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return NormalizedWebhookEvent{}, fmt.Errorf("decode github webhook payload: %w", err)
+	}
+
+	event := newPullRequestBackedEvent(deliveryID, eventType, body.Repository.FullName, body.Action, body.Sender.Login, body.PullRequest)
+	event.Kind = "review_thread"
+	event.ConversationKey = conversationKey("review_thread", body.Thread.ID)
+	event.ConversationPath = strings.TrimSpace(body.Thread.Path)
+	event.ConversationLine = defaultWebhookLine(body.Thread.Line, body.Thread.StartLine)
+	event.ThreadStatus = normalizeThreadStatus(body.Action, body.Thread.Resolved)
+	if lastComment := lastWebhookThreadComment(body.Thread.Comments); lastComment != nil {
+		event.CommentBody = strings.TrimSpace(lastComment.Body)
+		event.ConversationURL = strings.TrimSpace(lastComment.HTMLURL)
+		event.ConversationAt = strings.TrimSpace(lastComment.UpdatedAt)
+	}
+	if err := validateNormalizedEvent(event, false); err != nil {
 		return NormalizedWebhookEvent{}, err
 	}
 	return event, nil
@@ -181,7 +277,10 @@ func normalizeIssueCommentEvent(deliveryID, eventType string, payload []byte) (N
 			} `json:"pull_request"`
 		} `json:"issue"`
 		Comment struct {
-			Body string `json:"body"`
+			ID        int64  `json:"id"`
+			Body      string `json:"body"`
+			HTMLURL   string `json:"html_url"`
+			UpdatedAt string `json:"updated_at"`
 		} `json:"comment"`
 	}
 	if err := json.Unmarshal(payload, &body); err != nil {
@@ -202,6 +301,9 @@ func normalizeIssueCommentEvent(deliveryID, eventType string, payload []byte) (N
 		PullRequestTitle:  strings.TrimSpace(body.Issue.Title),
 		PullRequestURL:    strings.TrimSpace(body.Issue.PullRequest.HTMLURL),
 		CommentBody:       strings.TrimSpace(body.Comment.Body),
+		ConversationKey:   conversationKey("issue_comment", body.Comment.ID),
+		ConversationURL:   strings.TrimSpace(body.Comment.HTMLURL),
+		ConversationAt:    strings.TrimSpace(body.Comment.UpdatedAt),
 	}
 	if err := validateNormalizedEvent(event, false); err != nil {
 		return NormalizedWebhookEvent{}, err
@@ -347,6 +449,48 @@ func validateNormalizedEvent(event NormalizedWebhookEvent, requireReviewState bo
 		return fmt.Errorf("%s payload missing review state", event.Event)
 	}
 	return nil
+}
+
+func conversationKey(prefix string, id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", strings.TrimSpace(prefix), id)
+}
+
+func defaultWebhookLine(primary, fallback int) int {
+	if primary > 0 {
+		return primary
+	}
+	return fallback
+}
+
+func normalizeThreadStatus(action string, resolved bool) string {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "resolved":
+		return "resolved"
+	case "unresolved", "reopened":
+		return "open"
+	}
+	if resolved {
+		return "resolved"
+	}
+	return "open"
+}
+
+func lastWebhookThreadComment(items []struct {
+	Body      string `json:"body"`
+	HTMLURL   string `json:"html_url"`
+	UpdatedAt string `json:"updated_at"`
+}) *struct {
+	Body      string `json:"body"`
+	HTMLURL   string `json:"html_url"`
+	UpdatedAt string `json:"updated_at"`
+} {
+	if len(items) == 0 {
+		return nil
+	}
+	return &items[len(items)-1]
 }
 
 func normalizePullRequestState(state string, merged bool) string {

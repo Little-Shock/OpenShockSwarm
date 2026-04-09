@@ -268,6 +268,84 @@ func TestGitHubWebhookRouteSyncsMergeEventIntoDoneState(t *testing.T) {
 	}
 }
 
+func TestGitHubWebhookRouteSyncsReviewCommentIntoPullRequestConversation(t *testing.T) {
+	server, tracked, _ := newTrackedGitHubWebhookTestServer(t, "super-secret", 42)
+	defer server.Close()
+
+	payload := []byte(`{"action":"created","repository":{"full_name":"Larkspur-Wang/OpenShock"},"sender":{"login":"review-bot"},"pull_request":{"number":42,"title":"Webhook Event Sync","html_url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"open","merged":false,"head":{"ref":"feat/runtime-shell","sha":"abc123"},"base":{"ref":"main"}},"comment":{"id":9001,"body":"please add PR detail backlinks","html_url":"https://github.com/Larkspur-Wang/OpenShock/pull/42#discussion_r9001","path":"apps/web/src/components/stitch-board-inbox-views.tsx","line":612,"updated_at":"2026-04-09T01:25:00Z","user":{"login":"review-bot"}}}`)
+
+	response := postGitHubWebhookEvent(t, server.URL, "super-secret", "delivery-review-comment", "pull_request_review_comment", payload)
+	if response.State == nil {
+		t.Fatal("response.State = nil, want updated state")
+	}
+
+	pullRequest, ok := findPullRequestByID(*response.State, tracked.PullRequestID)
+	if !ok {
+		t.Fatalf("tracked pull request %q missing from state", tracked.PullRequestID)
+	}
+
+	entry, ok := findPullRequestConversationEntry(pullRequest, "review_comment:9001")
+	if !ok {
+		t.Fatalf("pull request conversation = %#v, want review_comment:9001", pullRequest.Conversation)
+	}
+	if entry.Kind != "review_comment" || entry.Author != "review-bot" {
+		t.Fatalf("conversation entry = %#v, want review_comment by review-bot", entry)
+	}
+	if entry.Path != "apps/web/src/components/stitch-board-inbox-views.tsx" || entry.Line != 612 {
+		t.Fatalf("conversation location = %#v, want stitched inbox path + line", entry)
+	}
+	if !strings.Contains(entry.Summary, "review comment") {
+		t.Fatalf("conversation summary = %q, want review comment wording", entry.Summary)
+	}
+}
+
+func TestGitHubWebhookRouteUpsertsRepeatedReviewCommentReplay(t *testing.T) {
+	server, tracked, stateStore := newTrackedGitHubWebhookTestServer(t, "super-secret", 77)
+	defer server.Close()
+
+	payload := []byte(`{"action":"created","repository":{"full_name":"Larkspur-Wang/OpenShock"},"sender":{"login":"review-bot"},"pull_request":{"number":77,"title":"Webhook Event Sync","html_url":"https://github.com/Larkspur-Wang/OpenShock/pull/77","state":"open","merged":false,"head":{"ref":"feat/runtime-shell","sha":"abc123"},"base":{"ref":"main"}},"comment":{"id":9101,"body":"same review comment replay","html_url":"https://github.com/Larkspur-Wang/OpenShock/pull/77#discussion_r9101","path":"apps/server/internal/api/server.go","line":742,"updated_at":"2026-04-09T01:31:00Z","user":{"login":"review-bot"}}}`)
+
+	postGitHubWebhookEvent(t, server.URL, "super-secret", "delivery-review-comment-r1", "pull_request_review_comment", payload)
+	postGitHubWebhookEvent(t, server.URL, "super-secret", "delivery-review-comment-r2", "pull_request_review_comment", payload)
+
+	snapshot := stateStore.Snapshot()
+	pullRequest, ok := findPullRequestByID(snapshot, tracked.PullRequestID)
+	if !ok {
+		t.Fatalf("tracked pull request %q missing from snapshot", tracked.PullRequestID)
+	}
+	if countPullRequestConversationEntries(pullRequest, "review_comment:9101") != 1 {
+		t.Fatalf("pull request conversation = %#v, want exactly one replayed review comment entry", pullRequest.Conversation)
+	}
+}
+
+func TestGitHubWebhookRouteSyncsReviewThreadResolutionIntoPullRequestConversation(t *testing.T) {
+	server, tracked, _ := newTrackedGitHubWebhookTestServer(t, "super-secret", 66)
+	defer server.Close()
+
+	payload := []byte(`{"action":"resolved","repository":{"full_name":"Larkspur-Wang/OpenShock"},"sender":{"login":"review-bot"},"pull_request":{"number":66,"title":"Webhook Event Sync","html_url":"https://github.com/Larkspur-Wang/OpenShock/pull/66","state":"open","merged":false,"head":{"ref":"feat/runtime-shell","sha":"abc123"},"base":{"ref":"main"}},"thread":{"id":7001,"path":"apps/web/src/components/stitch-chat-room-views.tsx","line":1048,"resolved":true,"comments":[{"body":"looks good now","html_url":"https://github.com/Larkspur-Wang/OpenShock/pull/66#discussion_r7001","updated_at":"2026-04-09T01:42:00Z"}]}}`)
+
+	response := postGitHubWebhookEvent(t, server.URL, "super-secret", "delivery-review-thread", "pull_request_review_thread", payload)
+	if response.State == nil {
+		t.Fatal("response.State = nil, want updated state")
+	}
+
+	pullRequest, ok := findPullRequestByID(*response.State, tracked.PullRequestID)
+	if !ok {
+		t.Fatalf("tracked pull request %q missing from state", tracked.PullRequestID)
+	}
+
+	entry, ok := findPullRequestConversationEntry(pullRequest, "review_thread:7001")
+	if !ok {
+		t.Fatalf("pull request conversation = %#v, want review_thread:7001", pullRequest.Conversation)
+	}
+	if entry.ThreadStatus != "resolved" {
+		t.Fatalf("conversation entry = %#v, want resolved thread status", entry)
+	}
+	if entry.Path != "apps/web/src/components/stitch-chat-room-views.tsx" || entry.Line != 1048 {
+		t.Fatalf("conversation location = %#v, want PR thread location", entry)
+	}
+}
+
 func TestGitHubWebhookRouteIgnoresUntrackedPullRequestEvents(t *testing.T) {
 	server := newGitHubWebhookTestServer(t, "super-secret")
 	defer server.Close()
@@ -516,6 +594,25 @@ func postGitHubWebhookEvent(t *testing.T, baseURL, secret, deliveryID, eventType
 	var response GitHubWebhookResponse
 	decodeJSON(t, resp, &response)
 	return response
+}
+
+func findPullRequestConversationEntry(pullRequest store.PullRequest, conversationID string) (store.PullRequestConversationEntry, bool) {
+	for _, item := range pullRequest.Conversation {
+		if item.ID == conversationID {
+			return item, true
+		}
+	}
+	return store.PullRequestConversationEntry{}, false
+}
+
+func countPullRequestConversationEntries(pullRequest store.PullRequest, conversationID string) int {
+	count := 0
+	for _, item := range pullRequest.Conversation {
+		if item.ID == conversationID {
+			count++
+		}
+	}
+	return count
 }
 
 func githubWebhookSignature(secret string, body []byte) string {

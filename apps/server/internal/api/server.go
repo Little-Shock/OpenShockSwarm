@@ -739,11 +739,16 @@ func (s *Server) handlePullRequests(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request) {
-	pullRequestID := strings.TrimPrefix(r.URL.Path, "/v1/pull-requests/")
-	if pullRequestID == "" {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/pull-requests/")
+	if path == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
 		return
 	}
+	if strings.HasSuffix(path, "/detail") {
+		s.handlePullRequestDetail(w, r, strings.TrimSuffix(path, "/detail"))
+		return
+	}
+	pullRequestID := path
 	if r.Method == http.MethodGet {
 		snapshot := s.store.Snapshot()
 		item, ok := findPullRequest(snapshot, pullRequestID)
@@ -817,6 +822,38 @@ func (s *Server) handlePullRequestRoutes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
+}
+
+func (s *Server) handlePullRequestDetail(w http.ResponseWriter, r *http.Request, pullRequestID string) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	pullRequestID = strings.TrimSuffix(strings.TrimSpace(pullRequestID), "/")
+	if pullRequestID == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+
+	snapshot := s.store.Snapshot()
+	item, ok := findPullRequest(snapshot, pullRequestID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+
+	nextState, err := s.syncStoredPullRequest(item)
+	if err != nil {
+		writePullRequestFailure(w, "sync", item.RoomID, pullRequestID, err, nextState)
+		return
+	}
+
+	detail, ok := s.store.PullRequestDetail(pullRequestID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pull request not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, sanitizeLivePayload(detail))
 }
 
 func (s *Server) syncStoredPullRequests(items []store.PullRequest) (store.State, error) {

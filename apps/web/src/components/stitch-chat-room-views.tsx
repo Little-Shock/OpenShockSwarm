@@ -810,6 +810,15 @@ function RoomContextPanels({
           </p>
         ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
+          {pullRequest ? (
+            <Link
+              href={`/pull-requests/${pullRequest.id}`}
+              data-testid="room-workbench-pr-detail-link"
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              PR Detail
+            </Link>
+          ) : null}
           {pullRequest?.url ? (
             <Link
               href={pullRequest.url}
@@ -1019,6 +1028,15 @@ function RoomPullRequestWorkbenchPanel({
           <p className="mt-3 font-mono text-[11px] text-[var(--shock-pink)]">{prError}</p>
         ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
+          {pullRequest ? (
+            <Link
+              href={`/pull-requests/${pullRequest.id}`}
+              data-testid="room-pr-detail-link"
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+            >
+              PR Detail
+            </Link>
+          ) : null}
           <Link
             href="/inbox"
             className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"

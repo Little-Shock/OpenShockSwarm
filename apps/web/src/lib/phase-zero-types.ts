@@ -468,6 +468,22 @@ export type ApprovalCenterState = {
   recent: ApprovalCenterItem[];
 };
 
+export type PullRequestConversationEntry = {
+  id: string;
+  kind: "review" | "comment" | "review_comment" | "review_thread";
+  action: string;
+  author: string;
+  summary: string;
+  body?: string;
+  reviewDecision?: string;
+  reviewState?: string;
+  threadStatus?: string;
+  path?: string;
+  line?: number;
+  url?: string;
+  updatedAt?: string;
+};
+
 export type PullRequest = {
   id: string;
   number: number;
@@ -484,7 +500,17 @@ export type PullRequest = {
   url?: string;
   reviewDecision?: string;
   reviewSummary: string;
+  conversation?: PullRequestConversationEntry[];
   updatedAt: string;
+};
+
+export type PullRequestDetail = {
+  pullRequest: PullRequest;
+  room: Room;
+  run: Run;
+  issue: Issue;
+  conversation: PullRequestConversationEntry[];
+  relatedInbox: InboxItem[];
 };
 
 export type Session = {

@@ -338,22 +338,39 @@ type InboxItem struct {
 }
 
 type PullRequest struct {
+	ID             string                         `json:"id"`
+	Number         int                            `json:"number"`
+	Label          string                         `json:"label"`
+	Title          string                         `json:"title"`
+	Status         string                         `json:"status"`
+	IssueKey       string                         `json:"issueKey"`
+	RoomID         string                         `json:"roomId"`
+	RunID          string                         `json:"runId"`
+	Branch         string                         `json:"branch"`
+	BaseBranch     string                         `json:"baseBranch"`
+	Author         string                         `json:"author"`
+	Provider       string                         `json:"provider"`
+	URL            string                         `json:"url"`
+	ReviewDecision string                         `json:"reviewDecision"`
+	ReviewSummary  string                         `json:"reviewSummary"`
+	Conversation   []PullRequestConversationEntry `json:"conversation,omitempty"`
+	UpdatedAt      string                         `json:"updatedAt"`
+}
+
+type PullRequestConversationEntry struct {
 	ID             string `json:"id"`
-	Number         int    `json:"number"`
-	Label          string `json:"label"`
-	Title          string `json:"title"`
-	Status         string `json:"status"`
-	IssueKey       string `json:"issueKey"`
-	RoomID         string `json:"roomId"`
-	RunID          string `json:"runId"`
-	Branch         string `json:"branch"`
-	BaseBranch     string `json:"baseBranch"`
+	Kind           string `json:"kind"`
+	Action         string `json:"action"`
 	Author         string `json:"author"`
-	Provider       string `json:"provider"`
-	URL            string `json:"url"`
-	ReviewDecision string `json:"reviewDecision"`
-	ReviewSummary  string `json:"reviewSummary"`
-	UpdatedAt      string `json:"updatedAt"`
+	Summary        string `json:"summary"`
+	Body           string `json:"body,omitempty"`
+	ReviewDecision string `json:"reviewDecision,omitempty"`
+	ReviewState    string `json:"reviewState,omitempty"`
+	ThreadStatus   string `json:"threadStatus,omitempty"`
+	Path           string `json:"path,omitempty"`
+	Line           int    `json:"line,omitempty"`
+	URL            string `json:"url,omitempty"`
+	UpdatedAt      string `json:"updatedAt,omitempty"`
 }
 
 type PullRequestRemoteSnapshot struct {
@@ -544,6 +561,15 @@ type State struct {
 type RoomDetail struct {
 	Room     Room      `json:"room"`
 	Messages []Message `json:"messages"`
+}
+
+type PullRequestDetail struct {
+	PullRequest  PullRequest                    `json:"pullRequest"`
+	Room         Room                           `json:"room"`
+	Run          Run                            `json:"run"`
+	Issue        Issue                          `json:"issue"`
+	Conversation []PullRequestConversationEntry `json:"conversation"`
+	RelatedInbox []InboxItem                    `json:"relatedInbox"`
 }
 
 type CreateIssueInput struct {

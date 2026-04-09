@@ -692,6 +692,15 @@ export function StitchInboxView() {
                               PR
                             </a>
                           ) : null}
+                          {pullRequest ? (
+                            <Link
+                              data-testid={`approval-center-pr-detail-link-${item.id}`}
+                              href={`/pull-requests/${pullRequest.id}`}
+                              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                            >
+                              PR Detail
+                            </Link>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 xl:items-end">

@@ -22,6 +22,7 @@ type Agent = PhaseZeroState["agents"][number];
 type RuntimeRecord = PhaseZeroState["runtimes"][number];
 type InboxItem = PhaseZeroState["inbox"][number];
 type PullRequest = PhaseZeroState["pullRequests"][number];
+type PullRequestConversationEntry = NonNullable<PullRequest["conversation"]>[number];
 type Session = PhaseZeroState["sessions"][number];
 type RuntimeLease = PhaseZeroState["runtimeLeases"][number];
 type MemoryArtifact = PhaseZeroState["memory"][number];
@@ -231,6 +232,17 @@ function sanitizePullRequest(item: PullRequest): PullRequest {
     branch: sanitizeDisplayText(item.branch, "待整理分支"),
     baseBranch: sanitizeDisplayText(item.baseBranch ?? "", "当前 base 分支正在整理中。"),
     reviewSummary: sanitizeDisplayText(item.reviewSummary, "当前 review 摘要正在整理中。"),
+    conversation: item.conversation?.map(sanitizePullRequestConversationEntry),
+  };
+}
+
+function sanitizePullRequestConversationEntry(item: PullRequestConversationEntry): PullRequestConversationEntry {
+  return {
+    ...item,
+    author: sanitizeDisplayText(item.author, "GitHub"),
+    summary: sanitizeDisplayText(item.summary, "当前 PR 对话摘要正在整理中。"),
+    body: sanitizeDisplayText(item.body ?? "", "当前 PR 对话内容正在整理中。"),
+    path: sanitizeDisplayText(item.path ?? "", ""),
   };
 }
 
