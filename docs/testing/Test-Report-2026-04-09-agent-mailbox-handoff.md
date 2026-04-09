@@ -1,7 +1,7 @@
 # 2026-04-09 Agent Mailbox / Handoff Contract Report
 
 - Command: `pnpm test:headed-agent-mailbox-handoff -- --report docs/testing/Test-Report-2026-04-09-agent-mailbox-handoff.md`
-- Artifacts Dir: `/tmp/openshock-tkt35-mailbox-TKHulS`
+- Artifacts Dir: `/tmp/openshock-tkt35-mailbox-5NO4oG`
 
 ## Results
 
@@ -14,10 +14,10 @@
 
 ## Screenshots
 
-- mailbox-requested: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/01-mailbox-requested.png
-- mailbox-blocked-note-required: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/02-mailbox-blocked-note-required.png
-- mailbox-blocked: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/03-mailbox-blocked.png
-- mailbox-acknowledged: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/04-mailbox-acknowledged.png
-- room-context-mailbox-backlink: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/05-room-context-mailbox-backlink.png
-- mailbox-completed: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/06-mailbox-completed.png
-- inbox-mailbox-ledger-focused: /tmp/openshock-tkt35-mailbox-TKHulS/screenshots/07-inbox-mailbox-ledger-focused.png
+- mailbox-requested: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/01-mailbox-requested.png
+- mailbox-blocked-note-required: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/02-mailbox-blocked-note-required.png
+- mailbox-blocked: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/03-mailbox-blocked.png
+- mailbox-acknowledged: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/04-mailbox-acknowledged.png
+- room-context-mailbox-backlink: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/05-room-context-mailbox-backlink.png
+- mailbox-completed: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/06-mailbox-completed.png
+- inbox-mailbox-ledger-focused: /tmp/openshock-tkt35-mailbox-5NO4oG/screenshots/07-inbox-mailbox-ledger-focused.png
