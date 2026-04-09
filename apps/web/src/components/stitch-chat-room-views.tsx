@@ -10,6 +10,7 @@ import { buildRunHistoryEntries } from "@/lib/phase-zero-helpers";
 import { useQuickSearchController } from "@/lib/quick-search";
 import { buildNamedProfileHref, buildProfileHref } from "@/lib/profile-surface";
 import {
+  type AgentHandoff,
   type ApprovalCenterItem,
   type DestructiveGuard,
   type Message,
@@ -533,6 +534,32 @@ function signalLabel(kind: ApprovalCenterItem["kind"]) {
   }
 }
 
+function handoffStatusLabel(status: AgentHandoff["status"]) {
+  switch (status) {
+    case "acknowledged":
+      return "ack";
+    case "blocked":
+      return "blocked";
+    case "completed":
+      return "done";
+    default:
+      return "requested";
+  }
+}
+
+function handoffStatusTone(status: AgentHandoff["status"]) {
+  switch (status) {
+    case "acknowledged":
+      return "bg-[var(--shock-lime)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    case "completed":
+      return "bg-[var(--shock-ink)] text-white";
+    default:
+      return "bg-[var(--shock-yellow)]";
+  }
+}
+
 function RoomRelatedSignalsPanel({
   roomId,
   relatedSignals,
@@ -602,6 +629,66 @@ function RoomRelatedSignalsPanel({
   );
 }
 
+function RoomMailboxPanel({
+  roomId,
+  handoffs,
+}: {
+  roomId: string;
+  handoffs: AgentHandoff[];
+}) {
+  return (
+    <Panel tone="paper">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
+            Mailbox Back-links
+          </p>
+          <p className="mt-2 font-display text-[20px] font-bold leading-6">{handoffs.length} tracked handoffs</p>
+        </div>
+        <Link
+          href={`/mailbox?roomId=${roomId}`}
+          data-testid="room-workbench-open-mailbox"
+          className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+        >
+          打开 Mailbox
+        </Link>
+      </div>
+      <div className="mt-4 space-y-3">
+        {handoffs.length === 0 ? (
+          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+            当前这条 room 还没有 formal handoff；发起 request 后，这里会直接显示 request / ack / blocked / complete 轨迹。
+          </p>
+        ) : (
+          handoffs.slice(0, 3).map((handoff) => (
+            <Link
+              key={handoff.id}
+              href={`/mailbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
+              data-testid={`room-workbench-handoff-${handoff.id}`}
+              className="block rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-display text-[18px] font-bold leading-6">{handoff.title}</p>
+                <span
+                  className={cn(
+                    "rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                    handoffStatusTone(handoff.status)
+                  )}
+                >
+                  {handoffStatusLabel(handoff.status)}
+                </span>
+              </div>
+              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
+                {handoff.fromAgent} {"->"} {handoff.toAgent}
+              </p>
+              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
+            </Link>
+          ))
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function RoomContextPanels({
   room,
   run,
@@ -617,6 +704,7 @@ function RoomContextPanels({
   relatedGuards,
   relatedSignals,
   recentSignals,
+  relatedHandoffs,
   canControlRun,
   runControlStatus,
   runControlBoundary,
@@ -642,6 +730,7 @@ function RoomContextPanels({
   relatedGuards: DestructiveGuard[];
   relatedSignals: ApprovalCenterItem[];
   recentSignals: ApprovalCenterItem[];
+  relatedHandoffs: AgentHandoff[];
   canControlRun: boolean;
   runControlStatus: string;
   runControlBoundary: string;
@@ -921,6 +1010,7 @@ function RoomContextPanels({
       </div>
 
       <RoomRelatedSignalsPanel roomId={room.id} relatedSignals={relatedSignals} recentSignals={recentSignals} />
+      <RoomMailboxPanel roomId={room.id} handoffs={relatedHandoffs} />
     </div>
   );
 }
@@ -2394,6 +2484,10 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
             item.href.includes(room.id) ||
             item.href.includes(run.id)
         );
+  const relatedHandoffs =
+    loading || error || !room
+      ? []
+      : state.mailbox.filter((handoff) => handoff.roomId === room.id);
   const recentSignals =
     loading || error || !room || !run
       ? []
@@ -2529,6 +2623,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
         relatedGuards={relatedGuards}
         relatedSignals={relatedSignals}
         recentSignals={recentSignals}
+        relatedHandoffs={relatedHandoffs}
         canControlRun={canControlRun}
         runControlStatus={runControlStatus}
         runControlBoundary={runControlBoundary}

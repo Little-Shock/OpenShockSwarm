@@ -58,6 +58,8 @@
   - `TKT-37` 的 workspace/member durable config、reload/restart recovery 与 second-device replay evidence
 - [Test Report 2026-04-09 Onboarding Studio / Scenario Templates](./Test-Report-2026-04-09-onboarding-studio.md)
   - `TKT-34` 的 template selection、resumable progress、bootstrap package materialization 与 reload/restart recovery evidence
+- [Test Report 2026-04-09 Agent Mailbox / Handoff Contract](./Test-Report-2026-04-09-agent-mailbox-handoff.md)
+  - `TKT-35` 的 mailbox create/blocked/acknowledged/completed lifecycle、room/inbox back-link 与 owner transfer headed evidence
 - [Test Report 2026-04-08 Agent Profile Editor](./Test-Report-2026-04-08-agent-profile-editor.md)
   - `TKT-32` 的 Agent profile edit、memory binding / recall policy、next-run preview 与 profile audit headed evidence
 - [Test Report 2026-04-09 Machine Profile / Local CLI Model Capability Binding](./Test-Report-2026-04-09-machine-profile-capability-binding.md)

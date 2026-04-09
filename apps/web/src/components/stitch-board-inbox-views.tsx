@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import { buildBoardColumns } from "@/lib/phase-zero-helpers";
 import {
+  type AgentHandoff,
   type ApprovalCenterItem,
   type Issue,
   type InboxDecision,
@@ -15,7 +16,7 @@ import {
 } from "@/lib/phase-zero-types";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useQuickSearchController } from "@/lib/quick-search";
-import { hasSessionPermission, permissionStatus } from "@/lib/session-authz";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -133,6 +134,56 @@ function signalIcon(kind: InboxItem["kind"]) {
       return "🖼";
     default:
       return "●";
+  }
+}
+
+function handoffStatusLabel(status: AgentHandoff["status"]) {
+  switch (status) {
+    case "requested":
+      return "requested";
+    case "acknowledged":
+      return "acknowledged";
+    case "blocked":
+      return "blocked";
+    default:
+      return "completed";
+  }
+}
+
+function handoffStatusTone(status: AgentHandoff["status"]) {
+  switch (status) {
+    case "requested":
+      return "bg-white";
+    case "acknowledged":
+      return "bg-[var(--shock-lime)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    default:
+      return "bg-[var(--shock-yellow)]";
+  }
+}
+
+function handoffActionLabel(action: "acknowledged" | "blocked" | "completed") {
+  switch (action) {
+    case "acknowledged":
+      return "Acknowledge";
+    case "blocked":
+      return "Mark Blocked";
+    default:
+      return "Mark Complete";
+  }
+}
+
+function mailboxMessageKindLabel(kind: AgentHandoff["messages"][number]["kind"]) {
+  switch (kind) {
+    case "request":
+      return "request";
+    case "ack":
+      return "ack";
+    case "blocked":
+      return "blocked";
+    default:
+      return "complete";
   }
 }
 
@@ -428,6 +479,8 @@ export function StitchBoardView() {
 }
 
 export function StitchInboxView() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const {
     state,
     approvalCenter,
@@ -436,14 +489,28 @@ export function StitchInboxView() {
     approvalCenterLoading,
     approvalCenterError,
     applyInboxDecision,
+    createHandoff,
+    updateHandoff,
   } = usePhaseZeroState();
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const openSignals = loading || error ? [] : approvalCenter.signals.filter((item) => item.kind !== "status");
   const recentSignals = loading || error ? [] : approvalCenter.recent;
+  const highlightedHandoffId = searchParams.get("handoffId");
+  const contextRoomId = searchParams.get("roomId");
+  const mailboxHandoffs = loading || error ? [] : state.mailbox;
   const session = state.auth.session;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const [mailboxBusyId, setMailboxBusyId] = useState<string | null>(null);
+  const [mailboxError, setMailboxError] = useState<{ id: string; message: string } | null>(null);
   const [activeFilter, setActiveFilter] = useState<ApprovalCenterFilter>("all");
+  const [composeRoomId, setComposeRoomId] = useState("");
+  const [composeFromAgentId, setComposeFromAgentId] = useState("");
+  const [composeToAgentId, setComposeToAgentId] = useState("");
+  const [composeTitle, setComposeTitle] = useState("把 fresh head reviewer lane 交给下一位 Agent");
+  const [composeSummary, setComposeSummary] = useState("请你接住 current exact-head reviewer lane，并在 mailbox 里显式回写 blocked / complete。");
+  const [creatingHandoff, setCreatingHandoff] = useState(false);
+  const [handoffNotes, setHandoffNotes] = useState<Record<string, string>>({});
   const sidebarChannels = loading || error ? [] : state.channels;
   const sidebarRooms = loading || error ? [] : state.rooms;
   const sidebarMachines = loading || error ? [] : state.machines;
@@ -454,6 +521,60 @@ export function StitchInboxView() {
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
   const disconnected = loading || Boolean(error) || sidebarMachines.every((machine) => machine.state === "offline");
+  const canManageMailbox = hasSessionPermission(session, "run.execute");
+  const mailboxSurfaceActive = pathname === "/mailbox";
+
+  const recommendedMailboxAgents = useCallback((roomId: string) => {
+    const room = state.rooms.find((candidate) => candidate.id === roomId);
+    const ownerAgent = state.agents.find((agent) => agent.name === room?.topic.owner);
+    const fromAgentId = ownerAgent?.id ?? state.agents[0]?.id ?? "";
+    const toAgentId =
+      state.agents.find((agent) => agent.id !== fromAgentId)?.id ??
+      fromAgentId;
+    return { fromAgentId, toAgentId };
+  }, [state.agents, state.rooms]);
+
+  function applyRoomDefaults(roomId: string) {
+    if (!roomId) {
+      return;
+    }
+    const defaults = recommendedMailboxAgents(roomId);
+    setComposeRoomId(roomId);
+    setComposeFromAgentId(defaults.fromAgentId);
+    setComposeToAgentId(defaults.toAgentId);
+  }
+
+  useEffect(() => {
+    if (loading || error || state.rooms.length === 0 || state.agents.length === 0) {
+      return;
+    }
+    if (composeRoomId && state.rooms.some((room) => room.id === composeRoomId)) {
+      return;
+    }
+    const preferredRoomId =
+      contextRoomId && state.rooms.some((room) => room.id === contextRoomId)
+        ? contextRoomId
+        : state.rooms[0]?.id;
+    if (preferredRoomId) {
+      const defaults = recommendedMailboxAgents(preferredRoomId);
+      setComposeRoomId(preferredRoomId);
+      setComposeFromAgentId(defaults.fromAgentId);
+      setComposeToAgentId(defaults.toAgentId);
+    }
+  }, [composeRoomId, contextRoomId, error, loading, recommendedMailboxAgents, state.agents, state.rooms]);
+
+  useEffect(() => {
+    if (!mailboxSurfaceActive || loading || error) {
+      return;
+    }
+    const selector = highlightedHandoffId
+      ? `[data-testid="mailbox-card-${highlightedHandoffId}"]`
+      : '[data-testid="mailbox-open-count"]';
+    const element = document.querySelector(selector);
+    if (element instanceof HTMLElement) {
+      element.scrollIntoView({ block: "start" });
+    }
+  }, [error, highlightedHandoffId, loading, mailboxSurfaceActive, mailboxHandoffs.length]);
 
   function findPullRequestForItem(item: Pick<ApprovalCenterItem, "href" | "roomId" | "runId">) {
     return state.pullRequests.find(
@@ -471,6 +592,18 @@ export function StitchInboxView() {
     );
   }
 
+  function findRoomForHandoff(item: Pick<AgentHandoff, "roomId">) {
+    return state.rooms.find((room) => room.id === item.roomId);
+  }
+
+  function findRunForHandoff(item: Pick<AgentHandoff, "runId">) {
+    return state.runs.find((run) => run.id === item.runId);
+  }
+
+  function findInboxForHandoff(item: Pick<AgentHandoff, "inboxItemId">) {
+    return state.inbox.find((inboxItem) => inboxItem.id === item.inboxItemId);
+  }
+
   const filteredSignals = openSignals.filter((item) => {
     switch (activeFilter) {
       case "approval":
@@ -483,6 +616,14 @@ export function StitchInboxView() {
         return true;
     }
   });
+  const orderedMailboxHandoffs = highlightedHandoffId
+    ? [...mailboxHandoffs].sort((left, right) => {
+        if (left.id === highlightedHandoffId) return -1;
+        if (right.id === highlightedHandoffId) return 1;
+        return right.updatedAt.localeCompare(left.updatedAt);
+      })
+    : mailboxHandoffs;
+  const openMailboxCount = mailboxHandoffs.filter((item) => item.status !== "completed").length;
 
   async function handleInboxDecision(
     item: ApprovalCenterItem,
@@ -500,6 +641,61 @@ export function StitchInboxView() {
       });
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function handleCreateHandoff() {
+    if (!canManageMailbox || creatingHandoff) {
+      return;
+    }
+    setMailboxError(null);
+    setCreatingHandoff(true);
+    try {
+      await createHandoff({
+        roomId: composeRoomId,
+        fromAgentId: composeFromAgentId,
+        toAgentId: composeToAgentId,
+        title: composeTitle.trim(),
+        summary: composeSummary.trim(),
+      });
+      setComposeTitle("把 fresh head reviewer lane 交给下一位 Agent");
+      setComposeSummary("请你接住 current exact-head reviewer lane，并在 mailbox 里显式回写 blocked / complete。");
+    } catch (handoffError) {
+      setMailboxError({
+        id: "compose",
+        message: handoffError instanceof Error ? handoffError.message : "mailbox create failed",
+      });
+    } finally {
+      setCreatingHandoff(false);
+    }
+  }
+
+  async function handleMailboxAction(
+    handoff: AgentHandoff,
+    action: "acknowledged" | "blocked" | "completed"
+  ) {
+    if (mailboxBusyId) {
+      return;
+    }
+    const note = handoffNotes[handoff.id]?.trim() ?? "";
+    setMailboxBusyId(handoff.id);
+    setMailboxError(null);
+    try {
+      await updateHandoff(handoff.id, {
+        action,
+        actingAgentId: handoff.toAgentId,
+        note,
+      });
+      if (note) {
+        setHandoffNotes((current) => ({ ...current, [handoff.id]: "" }));
+      }
+    } catch (handoffError) {
+      setMailboxError({
+        id: handoff.id,
+        message: handoffError instanceof Error ? handoffError.message : "mailbox action failed",
+      });
+    } finally {
+      setMailboxBusyId(null);
     }
   }
 
@@ -529,12 +725,16 @@ export function StitchInboxView() {
         <section className="flex min-h-0 flex-col">
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
-            eyebrow="Human Decision Surface"
-            title="Approval Center"
-            description="这里是需要人类判断的唯一入口。approval、blocked、review 会在这里汇总，并回跳到 room / run / PR。"
-            tabs={["Inbox", "Review", "Recent"]}
-            activeTab="Inbox"
-            searchPlaceholder="Search approval / review / block"
+            eyebrow={mailboxSurfaceActive ? "Agent Mailbox Surface" : "Human Decision Surface"}
+            title={mailboxSurfaceActive ? "Mailbox Ledger" : "Approval Center"}
+            description={
+              mailboxSurfaceActive
+                ? "这里把正式 handoff request / acknowledge / blocked / complete 收成同一条 governance ledger；Room 和 Inbox 继续保留上下文与通知回链。"
+                : "这里是需要人类判断的唯一入口。approval、blocked、review 会在这里汇总，并回跳到 room / run / PR。"
+            }
+            tabs={mailboxSurfaceActive ? ["Mailbox", "Inbox", "Recent"] : ["Inbox", "Review", "Recent"]}
+            activeTab={mailboxSurfaceActive ? "Mailbox" : "Inbox"}
+            searchPlaceholder={mailboxSurfaceActive ? "Search mailbox / handoff / room" : "Search approval / review / block"}
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)] px-4 py-4">
@@ -729,6 +929,338 @@ export function StitchInboxView() {
                     );
                   })
                 )}
+              </div>
+
+              <div className="mt-6 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Mailbox Ledger</p>
+                    <h2 className="mt-2 font-display text-[20px] font-bold">正式交接回链</h2>
+                    <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+                      这块直接消费 `/v1/mailbox`，把 request / acknowledge / blocked / complete 放到同一条可审计 ledger；Room 负责现场上下文，Inbox 负责人类可见通知，这里负责正式 handoff 自身。
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span
+                      data-testid="mailbox-open-count"
+                      className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+                    >
+                      {loading || error ? "…" : `${openMailboxCount} open`}
+                    </span>
+                    <span
+                      className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+                    >
+                      {loading || error ? "…" : `${mailboxHandoffs.length} total`}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+                  <section className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Request Handoff</p>
+                        <h3 className="mt-2 font-display text-[18px] font-bold">创建一条正式交接</h3>
+                      </div>
+                      <span
+                        data-testid="mailbox-compose-authz"
+                        className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+                      >
+                        {loading ? "syncing" : permissionStatus(session, "run.execute")}
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Room</span>
+                        <select
+                          data-testid="mailbox-compose-room"
+                          value={composeRoomId}
+                          disabled={!canManageMailbox}
+                          onChange={(event) => applyRoomDefaults(event.target.value)}
+                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                        >
+                          {sidebarRooms.map((room) => (
+                            <option key={room.id} value={room.id}>
+                              {room.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">From Agent</span>
+                        <select
+                          data-testid="mailbox-compose-from-agent"
+                          value={composeFromAgentId}
+                          disabled={!canManageMailbox}
+                          onChange={(event) => setComposeFromAgentId(event.target.value)}
+                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                        >
+                          {sidebarAgents.map((agent) => (
+                            <option key={agent.id} value={agent.id}>
+                              {agent.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">To Agent</span>
+                        <select
+                          data-testid="mailbox-compose-to-agent"
+                          value={composeToAgentId}
+                          disabled={!canManageMailbox}
+                          onChange={(event) => setComposeToAgentId(event.target.value)}
+                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                        >
+                          {sidebarAgents.map((agent) => (
+                            <option key={agent.id} value={agent.id}>
+                              {agent.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Title</span>
+                        <input
+                          data-testid="mailbox-compose-title"
+                          value={composeTitle}
+                          disabled={!canManageMailbox}
+                          onChange={(event) => setComposeTitle(event.target.value)}
+                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                          placeholder="这次交接要接什么"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Summary</span>
+                        <textarea
+                          data-testid="mailbox-compose-summary"
+                          value={composeSummary}
+                          disabled={!canManageMailbox}
+                          onChange={(event) => setComposeSummary(event.target.value)}
+                          className="mt-2 min-h-[132px] w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                          placeholder="把 exact context 写清楚"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        data-testid="mailbox-compose-submit"
+                        disabled={
+                          creatingHandoff ||
+                          !canManageMailbox ||
+                          !composeRoomId ||
+                          !composeFromAgentId ||
+                          !composeToAgentId ||
+                          composeFromAgentId === composeToAgentId ||
+                          !composeTitle.trim() ||
+                          !composeSummary.trim()
+                        }
+                        onClick={() => void handleCreateHandoff()}
+                        className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+                      >
+                        {creatingHandoff ? "creating..." : "Create Handoff"}
+                      </button>
+                      {!canManageMailbox ? (
+                        <p className="text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+                          {permissionBoundaryCopy(session, "run.execute")}
+                        </p>
+                      ) : null}
+                      {mailboxError?.id === "compose" ? (
+                        <p className="font-mono text-[10px] text-[var(--shock-pink)]">{mailboxError.message}</p>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <section className="space-y-3">
+                    {loading ? (
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">等待 mailbox ledger 真值。</p>
+                    ) : orderedMailboxHandoffs.length === 0 ? (
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 formal handoff；后续 request / ack / blocked / complete 会直接回写到这里。</p>
+                    ) : (
+                      orderedMailboxHandoffs.map((handoff) => {
+                        const room = findRoomForHandoff(handoff);
+                        const run = findRunForHandoff(handoff);
+                        const inboxItem = findInboxForHandoff(handoff);
+                        const note = handoffNotes[handoff.id] ?? "";
+                        const availableActions =
+                          handoff.status === "requested"
+                            ? (["acknowledged", "blocked"] as const)
+                            : handoff.status === "acknowledged"
+                              ? (["blocked", "completed"] as const)
+                              : handoff.status === "blocked"
+                                ? (["acknowledged"] as const)
+                                : ([] as const);
+
+                        return (
+                          <article
+                            key={handoff.id}
+                            data-testid={`mailbox-card-${handoff.id}`}
+                            className={cn(
+                              "grid gap-4 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] p-4 shadow-[var(--shock-shadow-sm)] xl:grid-cols-[minmax(0,1fr)_240px]",
+                              highlightedHandoffId === handoff.id && "border-l-[6px] border-l-[var(--shock-yellow)] bg-white"
+                            )}
+                          >
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  data-testid={`mailbox-status-${handoff.id}`}
+                                  className={cn(
+                                    "rounded-full border border-[var(--shock-ink)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]",
+                                    handoffStatusTone(handoff.status)
+                                  )}
+                                >
+                                  {handoffStatusLabel(handoff.status)}
+                                </span>
+                                <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{handoff.issueKey}</span>
+                                <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{handoff.updatedAt}</span>
+                                {highlightedHandoffId === handoff.id ? (
+                                  <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
+                                    focused
+                                  </span>
+                                ) : null}
+                              </div>
+                              <h3 className="mt-3 font-display text-[20px] font-bold leading-6">{handoff.title}</h3>
+                              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.summary}</p>
+                              <div className="mt-4 flex flex-wrap gap-2 font-mono text-[10px] text-[color:rgba(24,20,14,0.6)]">
+                                <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
+                                  from {handoff.fromAgent}
+                                </span>
+                                <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
+                                  to {handoff.toAgent}
+                                </span>
+                                {room ? (
+                                  <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
+                                    room {room.title}
+                                  </span>
+                                ) : null}
+                                {run ? (
+                                  <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
+                                    run {run.owner}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-4 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
+                              {handoff.lastNote ? (
+                                <p className="mt-2 border-l-4 border-[var(--shock-ink)] pl-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+                                  latest note: {handoff.lastNote}
+                                </p>
+                              ) : null}
+
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <Link
+                                  data-testid={`mailbox-focus-link-${handoff.id}`}
+                                  href={`/inbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
+                                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
+                                >
+                                  Inbox Focus
+                                </Link>
+                                <Link
+                                  data-testid={`mailbox-room-link-${handoff.id}`}
+                                  href={`/rooms/${handoff.roomId}?tab=context`}
+                                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                                >
+                                  Room
+                                </Link>
+                                <Link
+                                  data-testid={`mailbox-run-link-${handoff.id}`}
+                                  href={`/rooms/${handoff.roomId}?tab=run`}
+                                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                                >
+                                  Run
+                                </Link>
+                                <Link
+                                  data-testid={`mailbox-issue-link-${handoff.id}`}
+                                  href={`/issues/${handoff.issueKey}`}
+                                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                                >
+                                  Issue
+                                </Link>
+                              </div>
+
+                              <div className="mt-5 border-2 border-[var(--shock-ink)] bg-white p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Lifecycle Messages</p>
+                                  {inboxItem ? (
+                                    <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">
+                                      inbox: {inboxKindLabel(inboxItem.kind)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-3 space-y-2">
+                                  {handoff.messages.map((message) => (
+                                    <div
+                                      key={message.id}
+                                      data-testid={`mailbox-message-${handoff.id}-${message.id}`}
+                                      className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em]">
+                                          {mailboxMessageKindLabel(message.kind)}
+                                        </span>
+                                        <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{message.authorName}</span>
+                                        <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{message.createdAt}</span>
+                                      </div>
+                                      <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{message.body}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                              <div className="border-2 border-[var(--shock-ink)] bg-white p-3">
+                                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Mailbox Action</p>
+                                <textarea
+                                  data-testid={`mailbox-note-${handoff.id}`}
+                                  value={note}
+                                  disabled={!canManageMailbox || handoff.status === "completed"}
+                                  onChange={(event) =>
+                                    setHandoffNotes((current) => ({
+                                      ...current,
+                                      [handoff.id]: event.target.value,
+                                    }))
+                                  }
+                                  className="mt-3 min-h-[112px] w-full border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+                                  placeholder="blocked 时必须写 note；complete 时可以补收口备注。"
+                                />
+                                <div className="mt-3 flex flex-col gap-2">
+                                  {availableActions.map((action) => (
+                                    <button
+                                      key={action}
+                                      type="button"
+                                      data-testid={`mailbox-action-${action}-${handoff.id}`}
+                                      disabled={
+                                        !canManageMailbox ||
+                                        mailboxBusyId === handoff.id ||
+                                        (action === "blocked" && !note.trim())
+                                      }
+                                      onClick={() => void handleMailboxAction(handoff, action)}
+                                      className={cn(
+                                        "inline-flex min-h-[42px] items-center justify-center border-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60",
+                                        action === "blocked"
+                                          ? "bg-[var(--shock-pink)] text-white"
+                                          : action === "completed"
+                                            ? "bg-[var(--shock-yellow)]"
+                                            : "bg-[var(--shock-lime)]"
+                                      )}
+                                    >
+                                      {mailboxBusyId === handoff.id ? "working..." : handoffActionLabel(action)}
+                                    </button>
+                                  ))}
+                                </div>
+                                {!canManageMailbox ? (
+                                  <p className="mt-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+                                    {permissionBoundaryCopy(session, "run.execute")}
+                                  </p>
+                                ) : null}
+                                {mailboxError?.id === handoff.id ? (
+                                  <p className="mt-3 font-mono text-[10px] text-[var(--shock-pink)]">{mailboxError.message}</p>
+                                ) : null}
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </section>
+                </div>
               </div>
 
               <div className="mt-6 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">

@@ -143,6 +143,22 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeSearchResult(item)
 		}
 		return items
+	case store.AgentHandoff:
+		return sanitizeAgentHandoff(typed)
+	case []store.AgentHandoff:
+		items := make([]store.AgentHandoff, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeAgentHandoff(item)
+		}
+		return items
+	case store.MailboxMessage:
+		return sanitizeMailboxMessage(typed)
+	case []store.MailboxMessage:
+		items := make([]store.MailboxMessage, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeMailboxMessage(item)
+		}
+		return items
 	case store.InboxItem:
 		return sanitizeInboxItem(typed)
 	case []store.InboxItem:
@@ -257,6 +273,7 @@ func sanitizeLiveState(snapshot store.State) store.State {
 	snapshot.Machines = sanitizeLivePayload(snapshot.Machines).([]store.Machine)
 	snapshot.Runtimes = sanitizeLivePayload(snapshot.Runtimes).([]store.RuntimeRecord)
 	snapshot.Inbox = sanitizeLivePayload(snapshot.Inbox).([]store.InboxItem)
+	snapshot.Mailbox = sanitizeLivePayload(snapshot.Mailbox).([]store.AgentHandoff)
 	snapshot.PullRequests = sanitizeLivePayload(snapshot.PullRequests).([]store.PullRequest)
 	snapshot.Sessions = sanitizeLivePayload(snapshot.Sessions).([]store.Session)
 	snapshot.RuntimeLeases = sanitizeLivePayload(snapshot.RuntimeLeases).([]store.RuntimeLease)
@@ -481,6 +498,23 @@ func sanitizeInboxItem(item store.InboxItem) store.InboxItem {
 	item.Room = sanitizeDisplayText(item.Room, "待整理讨论间")
 	item.Summary = sanitizeDisplayText(item.Summary, "这条决策信号的摘要正在整理中。")
 	item.Action = sanitizeDisplayText(item.Action, "查看详情")
+	return item
+}
+
+func sanitizeAgentHandoff(item store.AgentHandoff) store.AgentHandoff {
+	item.Title = sanitizeDisplayText(item.Title, "待整理交接")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 handoff 摘要正在整理中。")
+	item.FromAgent = sanitizeDisplayText(item.FromAgent, "来源 Agent")
+	item.ToAgent = sanitizeDisplayText(item.ToAgent, "目标 Agent")
+	item.LastAction = sanitizeDisplayText(item.LastAction, "等待 handoff 同步。")
+	item.LastNote = sanitizeDisplayText(item.LastNote, "")
+	item.Messages = sanitizeLivePayload(item.Messages).([]store.MailboxMessage)
+	return item
+}
+
+func sanitizeMailboxMessage(item store.MailboxMessage) store.MailboxMessage {
+	item.AuthorName = sanitizeDisplayText(item.AuthorName, "OpenShock Agent")
+	item.Body = sanitizeDisplayText(item.Body, "当前 mailbox 消息正在整理中。")
 	return item
 }
 

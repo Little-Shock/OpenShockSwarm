@@ -486,6 +486,41 @@ export type InboxItem = {
   action: string;
   href: string;
   guardId?: string;
+  handoffId?: string;
+};
+
+export type MailboxMessageKind = "request" | "ack" | "blocked" | "complete";
+
+export type MailboxMessage = {
+  id: string;
+  handoffId: string;
+  kind: MailboxMessageKind;
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+};
+
+export type HandoffStatus = "requested" | "acknowledged" | "blocked" | "completed";
+
+export type AgentHandoff = {
+  id: string;
+  title: string;
+  summary: string;
+  status: HandoffStatus;
+  issueKey: string;
+  roomId: string;
+  runId: string;
+  fromAgentId: string;
+  fromAgent: string;
+  toAgentId: string;
+  toAgent: string;
+  inboxItemId?: string;
+  requestedAt: string;
+  updatedAt: string;
+  lastAction: string;
+  lastNote?: string;
+  messages: MailboxMessage[];
 };
 
 export type InboxDecision =
@@ -715,6 +750,7 @@ export type PhaseZeroState = {
   machines: MachineStatus[];
   runtimes: RuntimeRegistryRecord[];
   inbox: InboxItem[];
+  mailbox: AgentHandoff[];
   pullRequests: PullRequest[];
   sessions: Session[];
   runtimeLeases: RuntimeLeaseRecord[];

@@ -271,6 +271,7 @@ func seedState() State {
 			{ID: "inbox-review-copy", Title: "Inbox 决策中心已经可以评审", Kind: "review", Room: "Inbox 讨论间", Time: "12 分钟前", Summary: "Agent 已经准备好最终卡片文案和路由跳转。", Action: "打开评审", Href: "/rooms/room-inbox/runs/run_inbox_01"},
 			{ID: "inbox-status-shell", Title: "Runtime lane 完成第一轮壳层接线", Kind: "status", Room: "Runtime 讨论间", Time: "18 分钟前", Summary: "机器状态和 Run 元数据已经在主壳里可见。", Action: "打开房间", Href: "/rooms/room-runtime"},
 		},
+		Mailbox: []AgentHandoff{},
 		PullRequests: []PullRequest{
 			{ID: "pr-runtime-18", Number: 18, Label: "PR #18", Title: "runtime: surface heartbeat and lane state in discussion room", Status: "in_review", IssueKey: "OPS-12", RoomID: "room-runtime", RunID: "run_runtime_01", Branch: "feat/runtime-state-shell", Author: "Codex Dockmaster", URL: "https://github.com/Larkspur-Wang/OpenShock/pull/18", ReviewSummary: "等待产品确认 destructive git cleanup 的审批边界。", UpdatedAt: "2 分钟前"},
 			{ID: "pr-inbox-22", Number: 22, Label: "PR #22", Title: "inbox: unify approval, blocked, and review cards", Status: "in_review", IssueKey: "OPS-19", RoomID: "room-inbox", RunID: "run_inbox_01", Branch: "feat/inbox-decision-cards", Author: "Claude Review Runner", URL: "https://github.com/Larkspur-Wang/OpenShock/pull/22", ReviewSummary: "等待人类确认卡片语气和默认动作。", UpdatedAt: "12 分钟前"},

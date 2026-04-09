@@ -386,10 +386,10 @@
 - 已落地:
   - [x] issue -> room -> run、Inbox、stop/resume/follow-thread、人类纠偏基线已站住
   - [x] Skill / Policy / memory governance 已有基础产品面
+  - [x] Agent Mailbox 已补成正式通信面，handoff request / ack / blocked / complete lifecycle 可在 Room / Inbox / Mailbox 同步追踪
 - 当前 GAP:
-  - [ ] Agent Mailbox 还未产品化成正式通信面
   - [ ] PM / Architect / Splitter / Developer / Reviewer / QA 等角色拓扑还未成为可配置 team topology
-  - [ ] Agent handoff / acknowledgement / escalation / SLA 还不可观测
+  - [ ] 更完整的多 Agent handoff routing / escalation SLA / notification policy 还未收口
   - [ ] 多 Agent response aggregation 和 human override 还未形成正式治理面
 - 对应 Test Cases: `TC-039` `TC-041`
 

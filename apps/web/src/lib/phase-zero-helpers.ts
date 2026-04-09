@@ -22,6 +22,8 @@ type RunEvent = Run["timeline"][number];
 type Agent = PhaseZeroState["agents"][number];
 type RuntimeRecord = PhaseZeroState["runtimes"][number];
 type InboxItem = PhaseZeroState["inbox"][number];
+type AgentHandoff = PhaseZeroState["mailbox"][number];
+type MailboxMessage = AgentHandoff["messages"][number];
 type PullRequest = PhaseZeroState["pullRequests"][number];
 type PullRequestConversationEntry = NonNullable<PullRequest["conversation"]>[number];
 type Session = PhaseZeroState["sessions"][number];
@@ -125,6 +127,7 @@ export function sanitizePhaseZeroState(state: PhaseZeroState): PhaseZeroState {
     agents: state.agents.map(sanitizeAgent),
     runtimes: state.runtimes.map(sanitizeRuntimeRecord),
     inbox: state.inbox.map(sanitizeInboxItem),
+    mailbox: (state.mailbox ?? []).map(sanitizeAgentHandoff),
     pullRequests: state.pullRequests.map(sanitizePullRequest),
     sessions: state.sessions.map(sanitizeSession),
     runtimeLeases: state.runtimeLeases.map(sanitizeRuntimeLease),
@@ -319,6 +322,27 @@ function sanitizePullRequest(item: PullRequest): PullRequest {
     baseBranch: sanitizeDisplayText(item.baseBranch ?? "", "当前 base 分支正在整理中。"),
     reviewSummary: sanitizeDisplayText(item.reviewSummary, "当前 review 摘要正在整理中。"),
     conversation: item.conversation?.map(sanitizePullRequestConversationEntry),
+  };
+}
+
+function sanitizeAgentHandoff(item: AgentHandoff): AgentHandoff {
+  return {
+    ...item,
+    title: sanitizeDisplayText(item.title, "待整理交接"),
+    summary: sanitizeDisplayText(item.summary, "当前 handoff 摘要正在整理中。"),
+    fromAgent: sanitizeDisplayText(item.fromAgent, "来源 Agent"),
+    toAgent: sanitizeDisplayText(item.toAgent, "目标 Agent"),
+    lastAction: sanitizeDisplayText(item.lastAction, "等待 handoff 同步。"),
+    lastNote: sanitizeDisplayText(item.lastNote ?? "", ""),
+    messages: item.messages.map(sanitizeMailboxMessage),
+  };
+}
+
+function sanitizeMailboxMessage(item: MailboxMessage): MailboxMessage {
+  return {
+    ...item,
+    authorName: sanitizeDisplayText(item.authorName, "OpenShock Agent"),
+    body: sanitizeDisplayText(item.body, "当前 mailbox 消息正在整理中。"),
   };
 }
 

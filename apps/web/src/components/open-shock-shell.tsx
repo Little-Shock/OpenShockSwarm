@@ -15,7 +15,7 @@ import {
   WorkspaceStatusStrip,
 } from "@/components/stitch-shell-primitives";
 
-type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access" | "profiles";
+type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access" | "profiles" | "mailbox";
 type Tone = "yellow" | "pink" | "lime";
 
 type OpenShockShellProps = {
@@ -43,6 +43,7 @@ function activeFromView(view: ShellView): "channels" | "rooms" | "inbox" | "boar
     view === "agents" ||
     view === "settings" ||
     view === "memory" ||
+    view === "mailbox" ||
     view === "access" ||
     view === "profiles"
   ) {
@@ -72,6 +73,8 @@ function topBarHrefFromView(view: ShellView) {
       return "/setup";
     case "memory":
       return "/memory";
+    case "mailbox":
+      return "/mailbox";
     default:
       return undefined;
   }
@@ -184,6 +187,7 @@ export function OpenShockShell({
     state.agents.length > 0 ||
     state.machines.length > 0 ||
     state.inbox.length > 0 ||
+    state.mailbox.length > 0 ||
     state.pullRequests.length > 0 ||
     state.sessions.length > 0 ||
     state.memory.length > 0 ||
@@ -202,6 +206,7 @@ export function OpenShockShell({
           agents: [],
           machines: [],
           inbox: [],
+          mailbox: [],
           pullRequests: [],
           sessions: [],
           memory: [],

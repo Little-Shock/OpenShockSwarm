@@ -40,6 +40,8 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox review", method: http.MethodPost, path: "/v1/inbox/inbox-review-copy", body: `{"decision":"changes_requested"}`, permission: "inbox.review"},
 		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
+		{name: "mailbox create", method: http.MethodPost, path: "/v1/mailbox", body: `{"roomId":"room-runtime","fromAgentId":"agent-codex-dockmaster","toAgentId":"agent-claude-review-runner","title":"接住 reviewer lane","summary":"请你正式接住 reviewer lane。"}`, permission: "run.execute"},
+		{name: "mailbox advance", method: http.MethodPost, path: "/v1/mailbox/handoff-demo", body: `{"action":"acknowledged","actingAgentId":"agent-claude-review-runner"}`, permission: "run.execute"},
 		{name: "memory policy", method: http.MethodPost, path: "/v1/memory-center/policy", body: `{"mode":"governed-first","includeRoomNotes":true,"includeDecisionLedger":true,"includeAgentMemory":true,"includePromotedArtifacts":true,"maxItems":8}`, permission: "memory.write"},
 		{name: "memory cleanup", method: http.MethodPost, path: "/v1/memory-center/cleanup", body: "", permission: "memory.write"},
 		{name: "memory feedback", method: http.MethodPost, path: "/v1/memory/memory-demo/feedback", body: `{"summary":"Human Correction","note":"纠正旧记忆"}`, permission: "memory.write"},
@@ -221,6 +223,28 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 				}
 			},
 		},
+		{
+			name:   "mailbox create",
+			method: http.MethodPost,
+			path:   "/v1/mailbox",
+			body:   `{"roomId":"room-runtime","fromAgentId":"agent-codex-dockmaster","toAgentId":"agent-claude-review-runner","title":"接住 reviewer lane","summary":"请你正式接住 reviewer lane。"}`,
+			verify: func(t *testing.T, resp *http.Response) {
+				if resp.StatusCode != http.StatusCreated {
+					t.Fatalf("POST /v1/mailbox status = %d, want %d", resp.StatusCode, http.StatusCreated)
+				}
+				var payload struct {
+					Handoff store.AgentHandoff `json:"handoff"`
+					State   store.State        `json:"state"`
+				}
+				decodeJSON(t, resp, &payload)
+				if payload.Handoff.Status != "requested" || payload.Handoff.ToAgentID != "agent-claude-review-runner" {
+					t.Fatalf("mailbox create payload = %#v, want requested handoff to Claude", payload)
+				}
+				if _, ok := findInboxByID(t, payload.State.Inbox, payload.Handoff.InboxItemID); !ok {
+					t.Fatalf("mailbox inbox item missing: %#v", payload.State.Inbox)
+				}
+			},
+		},
 	}
 
 	for _, testCase := range allowed {
@@ -288,6 +312,50 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 	}
 }
 
+func TestMemberRoleCanAdvanceMailboxLifecycle(t *testing.T) {
+	root := t.TempDir()
+	s, _, server, cleanup := newAuthGuardTestServer(t, root)
+	defer cleanup()
+	defer server.Close()
+
+	if _, _, err := s.LoginWithEmail(store.AuthLoginInput{Email: "mina@openshock.dev"}); err != nil {
+		t.Fatalf("LoginWithEmail(member) error = %v", err)
+	}
+
+	nextState, handoff, err := s.CreateHandoff(store.MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "接住 reviewer lane",
+		Summary:     "请你正式接住 reviewer lane。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff() error = %v", err)
+	}
+	if len(nextState.Mailbox) == 0 {
+		t.Fatalf("mailbox = %#v, want seeded handoff before route advance", nextState.Mailbox)
+	}
+
+	resp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/mailbox/"+handoff.ID, `{"action":"acknowledged","actingAgentId":"agent-claude-review-runner"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/mailbox/%s status = %d, want %d", handoff.ID, resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+		State   store.State        `json:"state"`
+	}
+	decodeJSON(t, resp, &payload)
+	if payload.Handoff.Status != "acknowledged" {
+		t.Fatalf("handoff = %#v, want acknowledged", payload.Handoff)
+	}
+	run := findRunByID(payload.State, "run_runtime_01")
+	if run == nil || run.Owner != "Claude Review Runner" {
+		t.Fatalf("run = %#v, want owner switched after member mailbox advance", run)
+	}
+}
+
 func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 	root := t.TempDir()
 	s, _, server, cleanup := newAuthGuardTestServer(t, root)
@@ -313,6 +381,8 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox review", method: http.MethodPost, path: "/v1/inbox/inbox-review-copy", body: `{"decision":"changes_requested"}`, permission: "inbox.review"},
 		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
+		{name: "mailbox create", method: http.MethodPost, path: "/v1/mailbox", body: `{"roomId":"room-runtime","fromAgentId":"agent-codex-dockmaster","toAgentId":"agent-claude-review-runner","title":"接住 reviewer lane","summary":"请你正式接住 reviewer lane。"}`, permission: "run.execute"},
+		{name: "mailbox advance", method: http.MethodPost, path: "/v1/mailbox/handoff-demo", body: `{"action":"acknowledged","actingAgentId":"agent-claude-review-runner"}`, permission: "run.execute"},
 		{name: "memory policy", method: http.MethodPost, path: "/v1/memory-center/policy", body: `{"mode":"governed-first","includeRoomNotes":true,"includeDecisionLedger":true,"includeAgentMemory":true,"includePromotedArtifacts":true,"maxItems":8}`, permission: "memory.write"},
 		{name: "memory cleanup", method: http.MethodPost, path: "/v1/memory-center/cleanup", body: "", permission: "memory.write"},
 		{name: "memory feedback", method: http.MethodPost, path: "/v1/memory/memory-demo/feedback", body: `{"summary":"Human Correction","note":"纠正旧记忆"}`, permission: "memory.write"},

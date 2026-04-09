@@ -25,6 +25,7 @@
     "test:headed-workspace-member-role": "node ./scripts/headed-workspace-member-role.mjs",
     "test:headed-action-authz-matrix": "node ./scripts/headed-action-authz-matrix.mjs",
     "test:headed-approval-center-lifecycle": "node ./scripts/headed-approval-center-lifecycle.mjs",
+    "test:headed-agent-mailbox-handoff": "node ./scripts/headed-agent-mailbox-handoff.mjs",
     "test:headed-memory-governance": "node ./scripts/headed-memory-governance.mjs",
     "test:headed-memory-viewer-correction-forget": "node ./scripts/headed-memory-viewer-correction-forget.mjs",
     "test:headed-notification-preference-delivery": "node ./scripts/headed-notification-preference-delivery.mjs",
