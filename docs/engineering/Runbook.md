@@ -25,6 +25,7 @@
 - `pnpm dev` 只启动 web
 - server 和 daemon 需要分别启动
 - 根 `package.json` 里的 `dev:server` / `dev:daemon` 现在已经是 Bash 入口，并会转到 `scripts/go.sh`
+- 如果你要接管 actual live `127.0.0.1:8080`，不要再只靠“哪个终端还开着”；统一改走 `pnpm ops:live-server:*`
 - round-end release gate 现在统一走根脚本：
   - `pnpm verify:release`
   - `pnpm ops:smoke`
@@ -46,6 +47,7 @@ export OPENSHOCK_DAEMON_ADDR=:8090
 export OPENSHOCK_DAEMON_URL=http://127.0.0.1:8090
 export OPENSHOCK_SERVER_URL=http://127.0.0.1:8080
 export NEXT_PUBLIC_OPENSHOCK_API_BASE=http://127.0.0.1:8080
+export OPENSHOCK_LIVE_OWNER=@Max_开发
 ```
 
 ### PowerShell
@@ -57,6 +59,7 @@ $env:OPENSHOCK_DAEMON_ADDR = ":8090"
 $env:OPENSHOCK_DAEMON_URL = "http://127.0.0.1:8090"
 $env:OPENSHOCK_SERVER_URL = "http://127.0.0.1:8080"
 $env:NEXT_PUBLIC_OPENSHOCK_API_BASE = "http://127.0.0.1:8080"
+$env:OPENSHOCK_LIVE_OWNER = "@Max_开发"
 ```
 
 ### Deploy / GitHub App 相关变量
@@ -125,6 +128,33 @@ go run ./cmd/openshock-server
 
 - `http://127.0.0.1:8080/healthz`
 
+如果你不是只想临时前台起一个 server，而是要**接管 actual live `:8080`**，统一改用：
+
+```bash
+pnpm ops:live-server:start
+pnpm ops:live-server:status
+pnpm ops:live-server:reload
+```
+
+这条 managed path 会把 owner / pid / branch / head / reload command 写到：
+
+- `<OPENSHOCK_WORKSPACE_ROOT>/data/ops/live-server.json`
+- `<OPENSHOCK_WORKSPACE_ROOT>/data/logs/openshock-server.log`
+
+`pnpm ops:live-server:status` 的读法有一条精度：
+
+- 它会先读 actual live `GET /v1/runtime/live-service`
+- 只有 live service 还没吸到这条 contract、或者 route 不可用时，才退回当前 `OPENSHOCK_WORKSPACE_ROOT` 的本地 metadata
+- 所以你在另一份 checkout 里跑 `status`，也应该先看到 actual live owner / branch / head / metadataPath；不要再把“这个 checkout 本地没 metadata”误读成 live 一定是 unmanaged
+
+如果 current `:8080` 已经在跑，但 `pnpm ops:live-server:status` 返回 `unmanaged_live_service`，说明服务活着但**没有可见的 owner/reload metadata**；这时不要盲目重启，先让当前 owner 显式接管这条 managed path。
+
+如果 `status` 告诉你 actual live service 由**另一份 workspaceRoot** 控制：
+
+- 先按返回体里的 `workspaceRoot` / `metadataPath` / `reloadCommand` 读真相
+- 不要在当前 checkout 直接盲跑 `reload`
+- 直接使用返回体里记录的 exact command，或者至少把 `--workspace-root` / `--server-url` 指到那份 owner workspace 再执行
+
 ### Terminal 3: Daemon
 
 ```bash
@@ -183,6 +213,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 - `GET/POST /v1/pull-requests/:id`
 - `GET/POST/DELETE /v1/runtime/pairing`
 - `GET /v1/runtime`
+- `GET /v1/runtime/live-service`
 - `GET/POST /v1/repo/binding`
 - `GET /v1/github/connection`
 - `POST /v1/exec`
@@ -229,6 +260,7 @@ curl http://127.0.0.1:8080/v1/issues
 ```bash
 curl http://127.0.0.1:8080/v1/runtime
 curl http://127.0.0.1:8080/v1/runtime/pairing
+curl http://127.0.0.1:8080/v1/runtime/live-service
 curl http://127.0.0.1:8080/v1/repo/binding
 curl http://127.0.0.1:8080/v1/github/connection
 ```
@@ -238,6 +270,8 @@ curl http://127.0.0.1:8080/v1/github/connection
 - runtime 能返回本地 CLI 探测结果
 - repo binding 能反映当前 `origin`
 - GitHub probe 能告诉你 `gh` 是否安装、是否已认证
+- `live-service` 能告诉你 actual `:8080` 是不是 managed、owner 是谁、该用哪条 reload command
+- `pnpm ops:live-server:status` 应该和上面的 route truth 对齐；如果 route 已经有 truth，但 `status` 没对齐，先按 route 收单值
 
 ### Step 4: 重新配对 runtime
 
