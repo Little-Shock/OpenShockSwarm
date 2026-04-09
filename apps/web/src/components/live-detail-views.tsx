@@ -1539,7 +1539,6 @@ export function LiveRunPageContent({
           onUpdate={updateRunCredentialBindings}
         />
         <RunSandboxSurface run={currentRun} />
-        <RunSandboxSurface run={currentRun} />
         <RunDetailView
           run={currentRun}
           statusTestId="run-detail-status"
