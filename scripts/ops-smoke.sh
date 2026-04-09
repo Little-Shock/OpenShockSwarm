@@ -154,18 +154,25 @@ NODE
 
 assert_usage_observability_truth() {
   local state_body="$1"
+  local state_file
 
-  STATE_BODY="$state_body" node <<'NODE'
+  state_file="$(mktemp)"
+  trap 'rm -f "$state_file"' RETURN
+  printf '%s' "$state_body" >"$state_file"
+
+  STATE_BODY_FILE="$state_file" node <<'NODE'
 const fail = (message) => {
   console.error(message)
   process.exit(1)
 }
 
+const fs = require("node:fs")
+
 let state
 try {
-  state = JSON.parse(process.env.STATE_BODY || "{}")
+  state = JSON.parse(fs.readFileSync(process.env.STATE_BODY_FILE || "", "utf8") || "{}")
 } catch (error) {
-  fail(`STATE_BODY invalid json: ${error.message}`)
+  fail(`STATE_BODY_FILE invalid json: ${error.message}`)
 }
 
 const workspace = state.workspace || {}
@@ -183,6 +190,9 @@ if (!runs[0] || !runs[0].usage || !Number.isFinite(runs[0].usage.totalTokens)) {
   fail("Server state missing run usage truth")
 }
 NODE
+
+  rm -f "$state_file"
+  trap - RETURN
 }
 
 probe_github_connection() {
