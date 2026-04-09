@@ -14,6 +14,7 @@ import (
 func TestLiveRolloutParityEndpointFlagsActualLiveDrift(t *testing.T) {
 	root := initGitBindingRepo(t, "https://github.com/example/phase-zero.git")
 	ignoreLiveRolloutRuntimeArtifacts(t, root)
+	runGitForBindingTest(t, root, "checkout", "-b", "dev")
 	statePath := filepath.Join(root, "data", "state.json")
 
 	s, err := store.New(statePath, root)
@@ -187,6 +188,83 @@ func TestLiveRolloutParityEndpointReturnsAlignedTruth(t *testing.T) {
 	if len(payload.Drifts) != 0 {
 		t.Fatalf("drifts = %#v, want none", payload.Drifts)
 	}
+}
+
+func TestLiveRolloutParityEndpointPrefersCheckoutBranchOverStaleMetricsBranch(t *testing.T) {
+	root := initGitBindingRepo(t, "https://github.com/example/phase-zero.git")
+	ignoreLiveRolloutRuntimeArtifacts(t, root)
+	runGitForBindingTest(t, root, "checkout", "-b", "pr-71-review")
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	if _, err := s.UpdateRepoBinding(store.RepoBindingInput{
+		Repo:       "example/phase-zero",
+		RepoURL:    "https://github.com/example/phase-zero.git",
+		Branch:     "main",
+		Provider:   "github",
+		AuthMode:   "local-git-origin",
+		DetectedAt: "2026-04-09T21:00:00Z",
+		SyncedAt:   "2026-04-09T21:00:00Z",
+	}); err != nil {
+		t.Fatalf("UpdateRepoBinding() error = %v", err)
+	}
+
+	actualLive := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})
+		case "/v1/state":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"workspace": map[string]any{
+					"repo":   "example/phase-zero",
+					"branch": "main",
+					"onboarding": map[string]any{
+						"status": "ready",
+					},
+				},
+				"auth": map[string]any{
+					"session": map[string]any{
+						"preferences": map[string]any{
+							"startRoute": "/access",
+						},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer actualLive.Close()
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		ActualLiveURL: actualLive.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/workspace/live-rollout-parity")
+	if err != nil {
+		t.Fatalf("GET live-rollout-parity error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload liveRolloutParityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+
+	if payload.Current.Branch != "pr-71-review" {
+		t.Fatalf("current branch = %q, want checkout branch pr-71-review", payload.Current.Branch)
+	}
+	assertLiveRolloutDriftKindPresent(t, payload.Drifts, "actual_live_branch_mismatch")
 }
 
 func assertLiveRolloutDriftKindPresent(t *testing.T, drifts []liveRolloutParityDrift, want string) {

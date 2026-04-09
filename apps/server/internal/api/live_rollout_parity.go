@@ -140,7 +140,7 @@ func (s *Server) buildLiveRolloutParity() liveRolloutParityResponse {
 
 	current := liveRolloutCurrentTruth{
 		Repo:                   defaultString(currentMetrics.Repo, defaultString(currentRepo, snapshot.Workspace.Repo)),
-		Branch:                 defaultString(currentMetrics.Branch, currentBranch),
+		Branch:                 defaultString(currentBranch, currentMetrics.Branch),
 		StartRoute:             defaultString(currentFirstScreen.Value, "/chat/all"),
 		HomeRoute:              "/chat/all",
 		FirstScreenStatus:      defaultString(currentFirstScreen.Status, "blocked"),
