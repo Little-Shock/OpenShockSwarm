@@ -68,6 +68,12 @@ func TestWorkspaceConfigAndMemberPreferencesPersistAcrossReload(t *testing.T) {
 	if snapshot.Workspace.Onboarding.Materialization.NotificationPolicy == "" || len(snapshot.Workspace.Onboarding.Materialization.Notes) == 0 {
 		t.Fatalf("reloaded onboarding materialization = %#v, want durable template package", snapshot.Workspace.Onboarding.Materialization)
 	}
+	if snapshot.Workspace.Governance.TemplateID != "research-team" || len(snapshot.Workspace.Governance.TeamTopology) != 4 {
+		t.Fatalf("reloaded governance = %#v, want research-team governance snapshot", snapshot.Workspace.Governance)
+	}
+	if snapshot.Workspace.Governance.Label == "" || snapshot.Workspace.Governance.Summary == "" {
+		t.Fatalf("reloaded governance = %#v, want populated governance label + summary", snapshot.Workspace.Governance)
+	}
 
 	reloadedMember := findWorkspaceMemberByEmail(snapshot.Auth.Members, "larkspur@openshock.dev")
 	if reloadedMember == nil {

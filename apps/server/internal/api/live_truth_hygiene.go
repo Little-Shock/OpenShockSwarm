@@ -47,6 +47,30 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizePullRequestDeliveryEvidence(item)
 		}
 		return items
+	case store.WorkspaceGovernanceLane:
+		return sanitizeWorkspaceGovernanceLane(typed)
+	case []store.WorkspaceGovernanceLane:
+		items := make([]store.WorkspaceGovernanceLane, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeWorkspaceGovernanceLane(item)
+		}
+		return items
+	case store.WorkspaceGovernanceRule:
+		return sanitizeWorkspaceGovernanceRule(typed)
+	case []store.WorkspaceGovernanceRule:
+		items := make([]store.WorkspaceGovernanceRule, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeWorkspaceGovernanceRule(item)
+		}
+		return items
+	case store.WorkspaceGovernanceWalkthrough:
+		return sanitizeWorkspaceGovernanceWalkthrough(typed)
+	case []store.WorkspaceGovernanceWalkthrough:
+		items := make([]store.WorkspaceGovernanceWalkthrough, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeWorkspaceGovernanceWalkthrough(item)
+		}
+		return items
 	case store.Channel:
 		return sanitizeChannel(typed)
 	case []store.Channel:
@@ -303,7 +327,56 @@ func sanitizeWorkspace(workspace store.WorkspaceSnapshot) store.WorkspaceSnapsho
 	workspace.RepoBinding = sanitizeWorkspaceRepoBinding(workspace.RepoBinding)
 	workspace.GitHubInstallation = sanitizeWorkspaceGitHubInstall(workspace.GitHubInstallation)
 	workspace.Onboarding = sanitizeWorkspaceOnboarding(workspace.Onboarding)
+	workspace.Governance = sanitizeWorkspaceGovernance(workspace.Governance)
 	return workspace
+}
+
+func sanitizeWorkspaceGovernance(governance store.WorkspaceGovernanceSnapshot) store.WorkspaceGovernanceSnapshot {
+	governance.Label = sanitizeDisplayText(governance.Label, "当前治理链正在整理中。")
+	governance.Summary = sanitizeDisplayText(governance.Summary, "当前多 Agent 治理摘要正在整理中。")
+	governance.TeamTopology = sanitizeLivePayload(governance.TeamTopology).([]store.WorkspaceGovernanceLane)
+	governance.HandoffRules = sanitizeLivePayload(governance.HandoffRules).([]store.WorkspaceGovernanceRule)
+	governance.ResponseAggregation = sanitizeWorkspaceResponseAggregation(governance.ResponseAggregation)
+	governance.HumanOverride = sanitizeWorkspaceHumanOverride(governance.HumanOverride)
+	governance.Walkthrough = sanitizeLivePayload(governance.Walkthrough).([]store.WorkspaceGovernanceWalkthrough)
+	return governance
+}
+
+func sanitizeWorkspaceGovernanceLane(item store.WorkspaceGovernanceLane) store.WorkspaceGovernanceLane {
+	item.Label = sanitizeDisplayText(item.Label, "未命名治理角色")
+	item.Role = sanitizeDisplayText(item.Role, "当前职责正在整理中。")
+	item.DefaultAgent = sanitizeDisplayText(item.DefaultAgent, "")
+	item.Lane = sanitizeDisplayText(item.Lane, "")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前治理 lane 正在整理中。")
+	return item
+}
+
+func sanitizeWorkspaceGovernanceRule(item store.WorkspaceGovernanceRule) store.WorkspaceGovernanceRule {
+	item.Label = sanitizeDisplayText(item.Label, "未命名治理规则")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前治理规则正在整理中。")
+	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
+}
+
+func sanitizeWorkspaceResponseAggregation(item store.WorkspaceResponseAggregation) store.WorkspaceResponseAggregation {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 response aggregation 正在整理中。")
+	item.Sources = sanitizeTextLines(item.Sources, "live source")
+	item.FinalResponse = sanitizeDisplayText(item.FinalResponse, "等待当前治理链收口。")
+	return item
+}
+
+func sanitizeWorkspaceHumanOverride(item store.WorkspaceHumanOverride) store.WorkspaceHumanOverride {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 human override 状态正在整理中。")
+	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
+}
+
+func sanitizeWorkspaceGovernanceWalkthrough(item store.WorkspaceGovernanceWalkthrough) store.WorkspaceGovernanceWalkthrough {
+	item.Label = sanitizeDisplayText(item.Label, "未命名治理步骤")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前治理步骤正在整理中。")
+	item.Detail = sanitizeDisplayText(item.Detail, "")
+	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
 }
 
 func sanitizeRoomDetail(detail store.RoomDetail) store.RoomDetail {

@@ -532,7 +532,7 @@
 ## TC-041 Multi-Agent Role Topology / Reviewer-Tester Loop
 
 - 业务目标: 确认 `开发团队 / 研究团队` 这类模板不只是静态角色表，而能形成受治理的多 Agent 响应链。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-20` `CHK-21`
 - 前置条件: 存在 team topology、Agent Mailbox、handoff policy 和 response aggregation。
 - 测试步骤:
@@ -540,7 +540,7 @@
   2. 观察 PM / Architect / Developer / Reviewer / QA 或研究团队变体的 handoff 流。
   3. 检查 review / test / blocked escalation 与 human override 是否可见。
 - 预期结果: 多 Agent 分工和最终响应被治理，而不是只有一串不可解释的自动消息。
-- 业务结论: 当前 repo 还没有多 Agent team topology、mailbox 和 reviewer-tester loop，所以这条用例保持 `Blocked`，留给 `TKT-36`。
+- 业务结论: 2026 年 4 月 9 日 `TKT-36` 已新增 `workspace.governance` 派生快照、`/setup` governance preview、`/mailbox` 上的 topology / review-test-blocked-human-override surface，以及 headed `pnpm test:headed-multi-agent-governance -- --report docs/testing/Test-Report-2026-04-09-multi-agent-governance.md`。当前 exact replay 已记录模板起链、formal handoff、blocked escalation、final response aggregation 与显式 human override gate 的同源证据，因此这条用例当前转为 `Pass`。
 
 ## TC-042 Live Truth Hygiene / Placeholder Leak Guard
 

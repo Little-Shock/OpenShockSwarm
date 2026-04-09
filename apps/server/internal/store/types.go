@@ -23,6 +23,7 @@ type WorkspaceSnapshot struct {
 	RepoBinding        WorkspaceRepoBindingSnapshot   `json:"repoBinding"`
 	GitHubInstallation WorkspaceGitHubInstallSnapshot `json:"githubInstallation"`
 	Onboarding         WorkspaceOnboardingSnapshot    `json:"onboarding"`
+	Governance         WorkspaceGovernanceSnapshot    `json:"governance"`
 }
 
 type WorkspaceQuotaSnapshot struct {
@@ -91,6 +92,65 @@ type WorkspaceOnboardingMaterialization struct {
 	Agents             []string `json:"agents,omitempty"`
 	NotificationPolicy string   `json:"notificationPolicy,omitempty"`
 	Notes              []string `json:"notes,omitempty"`
+}
+
+type WorkspaceGovernanceSnapshot struct {
+	TemplateID          string                           `json:"templateId,omitempty"`
+	Label               string                           `json:"label,omitempty"`
+	Summary             string                           `json:"summary,omitempty"`
+	TeamTopology        []WorkspaceGovernanceLane        `json:"teamTopology,omitempty"`
+	HandoffRules        []WorkspaceGovernanceRule        `json:"handoffRules,omitempty"`
+	ResponseAggregation WorkspaceResponseAggregation     `json:"responseAggregation"`
+	HumanOverride       WorkspaceHumanOverride           `json:"humanOverride"`
+	Walkthrough         []WorkspaceGovernanceWalkthrough `json:"walkthrough,omitempty"`
+	Stats               WorkspaceGovernanceStats         `json:"stats"`
+}
+
+type WorkspaceGovernanceLane struct {
+	ID           string `json:"id"`
+	Label        string `json:"label"`
+	Role         string `json:"role"`
+	DefaultAgent string `json:"defaultAgent,omitempty"`
+	Lane         string `json:"lane,omitempty"`
+	Status       string `json:"status"`
+	Summary      string `json:"summary"`
+}
+
+type WorkspaceGovernanceRule struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Href    string `json:"href,omitempty"`
+}
+
+type WorkspaceResponseAggregation struct {
+	Status        string   `json:"status"`
+	Summary       string   `json:"summary"`
+	Sources       []string `json:"sources,omitempty"`
+	FinalResponse string   `json:"finalResponse,omitempty"`
+}
+
+type WorkspaceHumanOverride struct {
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Href    string `json:"href,omitempty"`
+}
+
+type WorkspaceGovernanceWalkthrough struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Detail  string `json:"detail,omitempty"`
+	Href    string `json:"href,omitempty"`
+}
+
+type WorkspaceGovernanceStats struct {
+	OpenHandoffs       int `json:"openHandoffs"`
+	BlockedEscalations int `json:"blockedEscalations"`
+	ReviewGates        int `json:"reviewGates"`
+	HumanOverrideGates int `json:"humanOverrideGates"`
 }
 
 type Channel struct {
@@ -704,14 +764,14 @@ type PullRequestDeliveryGate struct {
 }
 
 type PullRequestDeliveryTemplate struct {
-	TemplateID         string `json:"templateId,omitempty"`
-	Label              string `json:"label"`
-	Status             string `json:"status"`
-	ReadyDeliveries    int    `json:"readyDeliveries"`
-	BlockedDeliveries  int    `json:"blockedDeliveries"`
-	SentReceipts       int    `json:"sentReceipts"`
-	FailedReceipts     int    `json:"failedReceipts"`
-	Href               string `json:"href,omitempty"`
+	TemplateID        string `json:"templateId,omitempty"`
+	Label             string `json:"label"`
+	Status            string `json:"status"`
+	ReadyDeliveries   int    `json:"readyDeliveries"`
+	BlockedDeliveries int    `json:"blockedDeliveries"`
+	SentReceipts      int    `json:"sentReceipts"`
+	FailedReceipts    int    `json:"failedReceipts"`
+	Href              string `json:"href,omitempty"`
 }
 
 type PullRequestDeliveryHandoffNote struct {

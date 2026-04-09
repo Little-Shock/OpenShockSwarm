@@ -487,6 +487,7 @@ func cloneState(state State) State {
 	clone.RuntimeLeases = buildRuntimeLeases(clone)
 	clone.RuntimeScheduler = buildRuntimeScheduler(clone, "").Scheduler
 	clone.QuickSearchEntries = buildMessageSurfaceQuickSearchEntries(clone)
+	hydrateWorkspaceGovernance(&clone.Workspace, &clone)
 	return clone
 }
 

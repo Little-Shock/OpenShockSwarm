@@ -30,6 +30,7 @@ export type WorkspaceSnapshot = {
   repoBinding: WorkspaceRepoBindingSnapshot;
   githubInstallation: WorkspaceGitHubInstallSnapshot;
   onboarding: WorkspaceOnboardingSnapshot;
+  governance: WorkspaceGovernanceSnapshot;
 };
 
 export type WorkspaceQuotaSnapshot = {
@@ -98,6 +99,65 @@ export type WorkspaceOnboardingMaterialization = {
   agents?: string[];
   notificationPolicy?: string;
   notes?: string[];
+};
+
+export type WorkspaceGovernanceSnapshot = {
+  templateId?: string;
+  label?: string;
+  summary?: string;
+  teamTopology: WorkspaceGovernanceLane[];
+  handoffRules: WorkspaceGovernanceRule[];
+  responseAggregation: WorkspaceResponseAggregation;
+  humanOverride: WorkspaceHumanOverride;
+  walkthrough: WorkspaceGovernanceWalkthrough[];
+  stats: WorkspaceGovernanceStats;
+};
+
+export type WorkspaceGovernanceLane = {
+  id: string;
+  label: string;
+  role: string;
+  defaultAgent?: string;
+  lane?: string;
+  status: string;
+  summary: string;
+};
+
+export type WorkspaceGovernanceRule = {
+  id: string;
+  label: string;
+  status: string;
+  summary: string;
+  href?: string;
+};
+
+export type WorkspaceResponseAggregation = {
+  status: string;
+  summary: string;
+  sources?: string[];
+  finalResponse?: string;
+};
+
+export type WorkspaceHumanOverride = {
+  status: string;
+  summary: string;
+  href?: string;
+};
+
+export type WorkspaceGovernanceWalkthrough = {
+  id: string;
+  label: string;
+  status: string;
+  summary: string;
+  detail?: string;
+  href?: string;
+};
+
+export type WorkspaceGovernanceStats = {
+  openHandoffs: number;
+  blockedEscalations: number;
+  reviewGates: number;
+  humanOverrideGates: number;
 };
 
 export type WorkspaceMemberPreferences = {

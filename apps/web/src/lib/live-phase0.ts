@@ -244,6 +244,27 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
       completedSteps: [],
       materialization: {},
     },
+    governance: {
+      teamTopology: [],
+      handoffRules: [],
+      responseAggregation: {
+        status: "",
+        summary: "",
+        sources: [],
+        finalResponse: "",
+      },
+      humanOverride: {
+        status: "",
+        summary: "",
+      },
+      walkthrough: [],
+      stats: {
+        openHandoffs: 0,
+        blockedEscalations: 0,
+        reviewGates: 0,
+        humanOverrideGates: 0,
+      },
+    },
   },
   auth: {
     session: {

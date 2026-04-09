@@ -51,6 +51,66 @@ function formatActionLabel(action: "acknowledged" | "blocked" | "completed") {
   }
 }
 
+function governanceStatusLabel(status: string) {
+  switch (status) {
+    case "active":
+      return "active";
+    case "ready":
+      return "ready";
+    case "required":
+      return "required";
+    case "blocked":
+      return "blocked";
+    case "done":
+      return "done";
+    case "draft":
+      return "draft";
+    case "watch":
+      return "watch";
+    default:
+      return "pending";
+  }
+}
+
+function governanceTone(status: string): "lime" | "yellow" | "pink" | "paper" | "white" {
+  switch (status) {
+    case "done":
+    case "ready":
+      return "lime";
+    case "active":
+    case "required":
+    case "draft":
+    case "watch":
+      return "yellow";
+    case "blocked":
+      return "pink";
+    default:
+      return "paper";
+  }
+}
+
+function GovernanceMetric({
+  label,
+  value,
+  detail,
+  testId,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  testId?: string;
+}) {
+  return (
+    <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">{label}</p>
+      <p data-testid={testId} className="mt-2 font-display text-[26px] font-bold leading-7">
+        {value}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{detail}</p>
+    </div>
+  );
+}
+
 export function LiveMailboxPageContent() {
   const searchParams = useSearchParams();
   const {
@@ -77,6 +137,7 @@ export function LiveMailboxPageContent() {
   const openCount = loading || error ? 0 : state.mailbox.filter((item) => item.status !== "completed").length;
   const blockedCount = loading || error ? 0 : state.mailbox.filter((item) => item.status === "blocked").length;
   const completedCount = loading || error ? 0 : state.mailbox.filter((item) => item.status === "completed").length;
+  const governance = state.workspace.governance;
 
   useEffect(() => {
     if (loading || error || state.rooms.length === 0) {
@@ -194,6 +255,218 @@ export function LiveMailboxPageContent() {
         </Panel>
       ) : (
         <div className="space-y-4">
+          <Panel tone="lime">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                  multi-agent governance
+                </p>
+                <h3 className="mt-2 font-display text-3xl font-bold">
+                  从模板直接起出 reviewer / tester / human override 治理链
+                </h3>
+                <p
+                  data-testid="mailbox-governance-summary"
+                  className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.74)]"
+                >
+                  {governance.summary}
+                </p>
+              </div>
+              <span
+                data-testid="mailbox-governance-template"
+                className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+              >
+                {governance.label}
+              </span>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <GovernanceMetric
+                label="open handoffs"
+                value={`${governance.stats.openHandoffs}`}
+                detail="formal request / ack / block / complete 会围同一份 mailbox ledger 聚合。"
+                testId="mailbox-governance-open-handoffs"
+              />
+              <GovernanceMetric
+                label="blocked escalations"
+                value={`${governance.stats.blockedEscalations}`}
+                detail="blocked signal 不再散落在 prompt 里，会先抬到 Inbox 再决定 unblock。"
+                testId="mailbox-governance-blocked-escalations"
+              />
+              <GovernanceMetric
+                label="review gates"
+                value={`${governance.stats.reviewGates}`}
+                detail="review truth 会同时收 mailbox / PR / inbox，而不是单看某一张卡。"
+                testId="mailbox-governance-review-gates"
+              />
+              <GovernanceMetric
+                label="human override"
+                value={`${governance.stats.humanOverrideGates}`}
+                detail="人工批准和最终 response 收口继续保持显式可见，不被自动链路吞掉。"
+                testId="mailbox-governance-human-override-gates"
+              />
+            </div>
+          </Panel>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_0.85fr]">
+            <Panel tone="white">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                    team topology
+                  </p>
+                  <h3 className="mt-2 font-display text-2xl font-bold">模板拓扑和当前 live lane 现在同源可见</h3>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {governance.teamTopology.length} lanes
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {governance.teamTopology.map((lane) => (
+                  <Panel key={lane.id} tone={governanceTone(lane.status)} className="!p-3.5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
+                          {lane.role}
+                        </p>
+                        <h4
+                          data-testid={`mailbox-governance-lane-${lane.id}`}
+                          className="mt-2 font-display text-[24px] font-bold leading-7"
+                        >
+                          {lane.label}
+                        </h4>
+                      </div>
+                      <span
+                        data-testid={`mailbox-governance-lane-status-${lane.id}`}
+                        className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+                      >
+                        {governanceStatusLabel(lane.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6">{lane.summary}</p>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">default agent</p>
+                        <p className="mt-1.5 text-sm leading-6">{lane.defaultAgent || "按团队自定义"}</p>
+                      </div>
+                      <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">lane</p>
+                        <p className="mt-1.5 text-sm leading-6">{lane.lane || "当前 lane 正在整理中。"}</p>
+                      </div>
+                    </div>
+                  </Panel>
+                ))}
+              </div>
+            </Panel>
+
+            <div className="space-y-4">
+              <Panel tone={governanceTone(governance.humanOverride.status)}>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                  human override
+                </p>
+                <p
+                  data-testid="mailbox-governance-human-override"
+                  className="mt-2 font-display text-2xl font-bold"
+                >
+                  {governanceStatusLabel(governance.humanOverride.status)}
+                </p>
+                <p className="mt-3 text-sm leading-6">{governance.humanOverride.summary}</p>
+                {governance.humanOverride.href ? (
+                  <Link
+                    href={governance.humanOverride.href}
+                    className="mt-4 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                  >
+                    打开 override lane
+                  </Link>
+                ) : null}
+              </Panel>
+
+              <Panel tone={governanceTone(governance.responseAggregation.status)}>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                  response aggregation
+                </p>
+                <p
+                  data-testid="mailbox-governance-response-aggregation"
+                  className="mt-2 font-display text-2xl font-bold"
+                >
+                  {governance.responseAggregation.finalResponse || "等待 closeout"}
+                </p>
+                <p className="mt-3 text-sm leading-6">{governance.responseAggregation.summary}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(governance.responseAggregation.sources ?? []).map((source, index) => (
+                    <span
+                      key={`${source}-${index}`}
+                      className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+                    >
+                      {source}
+                    </span>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel tone="paper">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                  governance rules
+                </p>
+                <div className="mt-3 space-y-2">
+                  {governance.handoffRules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      data-testid={`mailbox-governance-rule-${rule.id}`}
+                      className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <p className="font-display text-lg font-semibold">{rule.label}</p>
+                        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
+                          {governanceStatusLabel(rule.status)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6">{rule.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+          </div>
+
+          <Panel tone="paper">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                  TC-041 walkthrough
+                </p>
+                <h3 className="mt-2 font-display text-2xl font-bold">
+                  {"issue -> handoff -> review -> test -> final response 现在是一条可回放治理链"}
+                </h3>
+              </div>
+              <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                {governance.walkthrough.length} steps
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-5">
+              {governance.walkthrough.map((step) => (
+                <Panel key={step.id} tone={governanceTone(step.status)} className="!p-3.5">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">{step.label}</p>
+                  <p
+                    data-testid={`mailbox-governance-step-${step.id}`}
+                    className="mt-2 font-display text-[22px] font-bold leading-7"
+                  >
+                    {step.summary}
+                  </p>
+                  <p className="mt-2 text-sm leading-6">{step.detail}</p>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
+                      {governanceStatusLabel(step.status)}
+                    </span>
+                    {step.href ? (
+                      <Link href={step.href} className="font-mono text-[10px] uppercase tracking-[0.16em] underline">
+                        open
+                      </Link>
+                    ) : null}
+                  </div>
+                </Panel>
+              ))}
+            </div>
+          </Panel>
+
           <Panel tone="yellow">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div>

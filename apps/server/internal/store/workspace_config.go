@@ -75,13 +75,13 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 			ID:                 "dev-team",
 			Label:              "开发团队",
 			Channels:           []string{"#shiproom", "#review-lane", "#ops-watch"},
-			Roles:              []string{"PM / Architect / Developer / Reviewer / QA"},
-			Agents:             []string{"Spec Captain", "Build Pilot", "Review Runner"},
+			Roles:              []string{"PM", "Architect", "Developer", "Reviewer", "QA"},
+			Agents:             []string{"Spec Captain", "Build Pilot", "Review Runner", "QA Relay"},
 			NotificationPolicy: "blocked / review / release gate 优先推送",
 			Notes: []string{
 				"默认把首次启动收口到 shiproom，再把 review 和 release 风险单独抬到 review-lane / ops-watch。",
-				"Agent bootstrap 先围 spec -> build -> review 三段，不在这张票里提前扩成完整 mailbox / governance ledger。",
-				"memory 与 mailbox 规则继续只写成 onboarding notes，正式治理面留给后续票。",
+				"模板现在会直接给出 PM / Architect / Developer / Reviewer / QA 的治理拓扑，并把 reviewer-tester loop 锚到同一份 workspace truth。",
+				"human override、response aggregation 与 formal mailbox handoff 会一起暴露在治理面里，而不是继续留在 onboarding 注释。",
 			},
 		}
 	case "research-team":
@@ -89,12 +89,12 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 			ID:                 "research-team",
 			Label:              "研究团队",
 			Channels:           []string{"#intake", "#evidence", "#synthesis"},
-			Roles:              []string{"Research Lead / Collector / Synthesizer / Reviewer"},
-			Agents:             []string{"Collector", "Synthesizer", "Reviewer"},
+			Roles:              []string{"Research Lead", "Collector", "Synthesizer", "Reviewer"},
+			Agents:             []string{"Collector", "Synthesizer", "Review Runner"},
 			NotificationPolicy: "evidence ready / synthesis blocked / reviewer feedback 优先推送",
 			Notes: []string{
 				"默认先围 intake -> evidence -> synthesis 三条线组织上下文，不把 board 抬成主导航。",
-				"启动期先强调证据收集与综述回写；更重的 reviewer-tester loop 继续留给治理票。",
+				"模板会把 evidence -> synthesis -> reviewer 的治理链直接铺成可见 topology，blocked escalation 不再只藏在 prompt 里。",
 				"模板会保留 resumable progress，换设备或 reload 后继续回到 setup truth。",
 			},
 		}
@@ -108,7 +108,7 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 			NotificationPolicy: "只推高优先级与显式 review 事件",
 			Notes: []string{
 				"只给最小协作骨架，频道、角色和 agent skeleton 由团队后续自行补齐。",
-				"onboarding progress 继续可恢复，但不会静默替你生成更重的治理拓扑。",
+				"onboarding progress 继续可恢复，但仍会给最小 handoff / review / human-override 骨架，避免协作链完全失语。",
 				"适合先验证 repo / install / runtime pairing，再逐步长出自己的工作流。",
 			},
 		}
@@ -393,7 +393,8 @@ func (s *Store) UpdateWorkspaceConfig(input WorkspaceConfigUpdateInput) (State, 
 	if err := s.persistLocked(); err != nil {
 		return State{}, WorkspaceSnapshot{}, err
 	}
-	return cloneState(s.state), s.state.Workspace, nil
+	nextState := cloneState(s.state)
+	return nextState, nextState.Workspace, nil
 }
 
 func (s *Store) UpdateWorkspaceMemberPreferences(memberID string, input WorkspaceMemberPreferencesInput) (State, WorkspaceMember, error) {

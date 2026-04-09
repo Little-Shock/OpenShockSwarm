@@ -176,6 +176,82 @@ func TestAdvanceHandoffRejectsInvalidActorAndMissingBlockNote(t *testing.T) {
 	}
 }
 
+func TestMailboxLifecycleHydratesWorkspaceGovernance(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	baseline := s.Snapshot()
+	if baseline.Workspace.Governance.TemplateID != "dev-team" || len(baseline.Workspace.Governance.TeamTopology) != 5 {
+		t.Fatalf("baseline governance = %#v, want dev-team topology", baseline.Workspace.Governance)
+	}
+	if baseline.Workspace.Governance.HumanOverride.Status != "required" {
+		t.Fatalf("baseline human override = %#v, want required override gate", baseline.Workspace.Governance.HumanOverride)
+	}
+
+	nextState, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 reviewer loop 正式摆上桌",
+		Summary:     "请你正式接住 reviewer lane，并把 blocked / complete / closeout note 写回治理链。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff() error = %v", err)
+	}
+	if nextState.Workspace.Governance.Stats.OpenHandoffs != 1 {
+		t.Fatalf("governance stats = %#v, want 1 open handoff", nextState.Workspace.Governance.Stats)
+	}
+	handoffStep := findGovernanceStep(nextState.Workspace.Governance.Walkthrough, "handoff")
+	if handoffStep == nil || handoffStep.Status != "active" {
+		t.Fatalf("handoff step = %#v, want active handoff walkthrough", handoffStep)
+	}
+
+	blockedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "blocked",
+		ActingAgentID: "agent-claude-review-runner",
+		Note:          "等 reviewer evidence 先收平。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(blocked) error = %v", err)
+	}
+	if blockedState.Workspace.Governance.Stats.BlockedEscalations == 0 {
+		t.Fatalf("blocked governance stats = %#v, want blocked escalation count", blockedState.Workspace.Governance.Stats)
+	}
+	reviewerLane := findGovernanceLane(blockedState.Workspace.Governance.TeamTopology, "reviewer")
+	if reviewerLane == nil || reviewerLane.Status != "blocked" {
+		t.Fatalf("reviewer lane = %#v, want blocked reviewer lane", reviewerLane)
+	}
+
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(re-acknowledged) error = %v", err)
+	}
+
+	completedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-claude-review-runner",
+		Note:          "review / test evidence 已收平，可以回到最终响应。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed) error = %v", err)
+	}
+	if completedState.Workspace.Governance.ResponseAggregation.Status != "ready" ||
+		!strings.Contains(completedState.Workspace.Governance.ResponseAggregation.FinalResponse, "最终响应") {
+		t.Fatalf("response aggregation = %#v, want ready closeout summary", completedState.Workspace.Governance.ResponseAggregation)
+	}
+	finalStep := findGovernanceStep(completedState.Workspace.Governance.Walkthrough, "final-response")
+	if finalStep == nil || finalStep.Status != "ready" {
+		t.Fatalf("final response step = %#v, want ready final response walkthrough", finalStep)
+	}
+}
+
 func findInboxItemByHandoffID(items []InboxItem, handoffID string) *InboxItem {
 	for index := range items {
 		if items[index].HandoffID == handoffID {
@@ -189,6 +265,24 @@ func findIssueByID(state State, issueID string) *Issue {
 	for index := range state.Issues {
 		if state.Issues[index].ID == issueID {
 			return &state.Issues[index]
+		}
+	}
+	return nil
+}
+
+func findGovernanceLane(items []WorkspaceGovernanceLane, laneID string) *WorkspaceGovernanceLane {
+	for index := range items {
+		if items[index].ID == laneID {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func findGovernanceStep(items []WorkspaceGovernanceWalkthrough, stepID string) *WorkspaceGovernanceWalkthrough {
+	for index := range items {
+		if items[index].ID == stepID {
+			return &items[index]
 		}
 	}
 	return nil
