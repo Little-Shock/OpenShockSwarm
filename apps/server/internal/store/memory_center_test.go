@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle(t *testing.T) {
@@ -133,6 +134,190 @@ func TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	snapshot := s.Snapshot()
+	decisionArtifact := findMemoryArtifactByPath(snapshot, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	roomArtifact := findMemoryArtifactByPath(snapshot, filepath.ToSlash(filepath.Join("notes", "rooms", "room-memory.md")))
+	workspaceArtifact := findMemoryArtifactByPath(snapshot, "MEMORY.md")
+	if decisionArtifact == nil || roomArtifact == nil || workspaceArtifact == nil {
+		t.Fatalf("seeded artifacts missing: decision=%#v room=%#v workspace=%#v", decisionArtifact, roomArtifact, workspaceArtifact)
+	}
+
+	_, duplicateOlder, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindSkill,
+		Title:         "Room Conflict Triage",
+		Rationale:     "older duplicate should be collapsed",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate older) error = %v", err)
+	}
+	_, duplicateNewer, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindSkill,
+		Title:         "Room Conflict Triage",
+		Rationale:     "newest duplicate should survive",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate newer) error = %v", err)
+	}
+	_, supersededPending, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      workspaceArtifact.ID,
+		SourceVersion: workspaceArtifact.Version,
+		Kind:          memoryPromotionKindPolicy,
+		Title:         "Workspace Guardrail Policy",
+		Rationale:     "becomes stale after feedback",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(superseded pending) error = %v", err)
+	}
+	_, forgottenPending, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      roomArtifact.ID,
+		SourceVersion: roomArtifact.Version,
+		Kind:          memoryPromotionKindSkill,
+		Title:         "Temporary Room Scratchpad",
+		Rationale:     "should be removed once source is forgotten",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(forgotten pending) error = %v", err)
+	}
+	_, rejectedExpired, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindPolicy,
+		Title:         "Rejected Legacy Policy",
+		Rationale:     "should expire after TTL",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(rejected expired) error = %v", err)
+	}
+
+	if _, _, _, err := s.SubmitMemoryFeedback(workspaceArtifact.ID, MemoryFeedbackInput{
+		SourceVersion: workspaceArtifact.Version,
+		Summary:       "Workspace cleanup refresh",
+		Note:          "advance workspace truth so the old promotion request becomes stale",
+		CorrectedBy:   "Larkspur",
+	}); err != nil {
+		t.Fatalf("SubmitMemoryFeedback(workspace) error = %v", err)
+	}
+	if _, _, _, err := s.ForgetMemoryArtifact(roomArtifact.ID, MemoryForgetInput{
+		SourceVersion: roomArtifact.Version,
+		Reason:        "room scratchpad is obsolete and should leave the recall pack",
+		ForgottenBy:   "Larkspur",
+	}); err != nil {
+		t.Fatalf("ForgetMemoryArtifact(room) error = %v", err)
+	}
+	if _, _, _, err := s.ReviewMemoryPromotion(rejectedExpired.ID, MemoryPromotionReviewInput{
+		Status:     memoryPromotionStatusRejected,
+		ReviewNote: "outdated policy",
+		ReviewedBy: "Anne",
+	}); err != nil {
+		t.Fatalf("ReviewMemoryPromotion(rejected) error = %v", err)
+	}
+
+	rejectedAt := time.Now().UTC().Add(-(memoryCleanupRejectedTTL + time.Hour)).Format(time.RFC3339)
+	olderDuplicateAt := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339)
+	newerDuplicateAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
+
+	s.mu.Lock()
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		s.mu.Unlock()
+		t.Fatalf("loadMemoryCenterStateLocked() error = %v", err)
+	}
+	for index := range state.Promotions {
+		switch state.Promotions[index].ID {
+		case duplicateOlder.ID:
+			state.Promotions[index].ProposedAt = olderDuplicateAt
+		case duplicateNewer.ID:
+			state.Promotions[index].ProposedAt = newerDuplicateAt
+		case rejectedExpired.ID:
+			state.Promotions[index].ReviewedAt = rejectedAt
+			state.Promotions[index].ProposedAt = rejectedAt
+		}
+	}
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		s.mu.Unlock()
+		t.Fatalf("saveMemoryCenterStateLocked() error = %v", err)
+	}
+	s.mu.Unlock()
+
+	snapshot, cleanupRun, center, err := s.RunMemoryCleanup("Larkspur")
+	if err != nil {
+		t.Fatalf("RunMemoryCleanup() error = %v", err)
+	}
+	if cleanupRun.Status != memoryCleanupStatusCleaned {
+		t.Fatalf("cleanup run status = %q, want %q", cleanupRun.Status, memoryCleanupStatusCleaned)
+	}
+	if cleanupRun.Stats.DedupedPending != 1 ||
+		cleanupRun.Stats.SupersededPending != 1 ||
+		cleanupRun.Stats.ForgottenSourcePending != 1 ||
+		cleanupRun.Stats.ExpiredRejected != 1 {
+		t.Fatalf("cleanup stats = %#v, want dedupe/superseded/forgotten/rejected pruning", cleanupRun.Stats)
+	}
+	if center.PendingCount != 1 || center.Cleanup.LastRunBy != "Larkspur" {
+		t.Fatalf("center after cleanup = %#v, want one pending + cleanup actor", center)
+	}
+	if findPromotionByID(center.Promotions, duplicateOlder.ID) != nil ||
+		findPromotionByID(center.Promotions, supersededPending.ID) != nil ||
+		findPromotionByID(center.Promotions, forgottenPending.ID) != nil ||
+		findPromotionByID(center.Promotions, rejectedExpired.ID) != nil {
+		t.Fatalf("cleanup kept stale promotions: %#v", center.Promotions)
+	}
+	if kept := findPromotionByID(center.Promotions, duplicateNewer.ID); kept == nil || kept.Status != memoryPromotionStatusPending {
+		t.Fatalf("cleanup removed newest duplicate instead of keeping it: %#v", center.Promotions)
+	}
+	if len(center.Cleanup.Ledger) == 0 || center.Cleanup.Ledger[0].Stats.TotalRemoved != 4 {
+		t.Fatalf("cleanup ledger = %#v, want recorded removal run", center.Cleanup)
+	}
+
+	decisionArtifact = findMemoryArtifactByPath(snapshot, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	if decisionArtifact == nil {
+		t.Fatalf("decision artifact missing after cleanup snapshot")
+	}
+	_, policyPromotion, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindPolicy,
+		Title:         "Room Recovery Priority",
+		Rationale:     "cleanup should leave a healthy queue so a fresh promotion can still land",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(policy after cleanup) error = %v", err)
+	}
+	_, policyApproved, finalCenter, err := s.ReviewMemoryPromotion(policyPromotion.ID, MemoryPromotionReviewInput{
+		Status:     memoryPromotionStatusApproved,
+		ReviewNote: "approved after cleanup recovered the queue",
+		ReviewedBy: "Anne",
+	})
+	if err != nil {
+		t.Fatalf("ReviewMemoryPromotion(policy after cleanup) error = %v", err)
+	}
+	if policyApproved.Status != memoryPromotionStatusApproved || policyApproved.TargetMemoryID == "" {
+		t.Fatalf("policyApproved = %#v, want approved policy ledger target", policyApproved)
+	}
+	preview := findMemoryPreviewBySession(finalCenter.Previews, "session-memory")
+	if preview == nil || !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join("notes", "policies.md"))) {
+		t.Fatalf("final preview missing policies ledger after cleanup->promote flow: %#v", preview)
+	}
+}
+
 func findMemoryPreviewBySession(previews []MemoryInjectionPreview, sessionID string) *MemoryInjectionPreview {
 	for index := range previews {
 		if previews[index].SessionID == sessionID {
@@ -149,4 +334,13 @@ func previewContainsPath(items []MemoryInjectionPreviewItem, want string) bool {
 		}
 	}
 	return false
+}
+
+func findPromotionByID(promotions []MemoryPromotion, promotionID string) *MemoryPromotion {
+	for index := range promotions {
+		if promotions[index].ID == promotionID {
+			return &promotions[index]
+		}
+	}
+	return nil
 }

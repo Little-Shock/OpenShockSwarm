@@ -17,6 +17,7 @@ func registerMemoryRoutes(s *Server, mux *http.ServeMux) {
 	mux.HandleFunc("/v1/memory", s.handleMemory)
 	mux.HandleFunc("/v1/memory/", s.handleMemoryRoutes)
 	mux.HandleFunc("/v1/memory-center", s.handleMemoryCenter)
+	mux.HandleFunc("/v1/memory-center/cleanup", s.handleMemoryCenterCleanup)
 	mux.HandleFunc("/v1/memory-center/policy", s.handleMemoryCenterPolicy)
 	mux.HandleFunc("/v1/memory-center/promotions", s.handleMemoryCenterPromotions)
 	mux.HandleFunc("/v1/memory-center/promotions/", s.handleMemoryCenterPromotionRoutes)
@@ -159,6 +160,28 @@ func (s *Server) handleMemoryCenter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.store.MemoryCenter())
+}
+
+func (s *Server) handleMemoryCenterCleanup(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !s.requireSessionPermission(w, "memory.write") {
+		return
+	}
+
+	snapshot := s.store.Snapshot()
+	nextState, cleanup, center, err := s.store.RunMemoryCleanup(currentAuthActor(snapshot.Auth.Session))
+	if err != nil {
+		writeMemoryError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cleanup": cleanup,
+		"center":  center,
+		"state":   nextState,
+	})
 }
 
 func (s *Server) handleMemoryCenterPolicy(w http.ResponseWriter, r *http.Request) {

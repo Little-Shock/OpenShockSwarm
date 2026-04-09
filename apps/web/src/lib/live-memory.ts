@@ -109,10 +109,41 @@ export type MemoryPromotion = {
   reviewNote?: string;
 };
 
+export type MemoryCleanupStats = {
+  dedupedPending: number;
+  supersededPending: number;
+  forgottenSourcePending: number;
+  expiredPending: number;
+  expiredRejected: number;
+  orphanedPromotions: number;
+  totalRemoved: number;
+};
+
+export type MemoryCleanupRun = {
+  id: string;
+  triggeredAt: string;
+  triggeredBy: string;
+  status: "cleaned" | "no_changes";
+  summary: string;
+  recovery: string;
+  stats: MemoryCleanupStats;
+};
+
+export type MemoryCleanupState = {
+  lastRunAt?: string;
+  lastRunBy?: string;
+  lastStatus?: "cleaned" | "no_changes";
+  lastSummary?: string;
+  lastRecovery?: string;
+  lastStats: MemoryCleanupStats;
+  ledger: MemoryCleanupRun[];
+};
+
 export type MemoryCenter = {
   policy: MemoryInjectionPolicy;
   previews: MemoryInjectionPreview[];
   promotions: MemoryPromotion[];
+  cleanup: MemoryCleanupState;
   pendingCount: number;
   approvedCount: number;
   rejectedCount: number;
@@ -161,6 +192,11 @@ type MemoryPromotionResponse = {
   center: MemoryCenter;
 };
 
+type MemoryCleanupResponse = {
+  cleanup: MemoryCleanupRun;
+  center: MemoryCenter;
+};
+
 type MemoryArtifactMutationResponse = {
   detail: MemoryArtifactDetail;
   center: MemoryCenter;
@@ -183,6 +219,18 @@ const EMPTY_MEMORY_CENTER: MemoryCenter = {
   },
   previews: [],
   promotions: [],
+  cleanup: {
+    lastStats: {
+      dedupedPending: 0,
+      supersededPending: 0,
+      forgottenSourcePending: 0,
+      expiredPending: 0,
+      expiredRejected: 0,
+      orphanedPromotions: 0,
+      totalRemoved: 0,
+    },
+    ledger: [],
+  },
   pendingCount: 0,
   approvedCount: 0,
   rejectedCount: 0,
@@ -289,6 +337,14 @@ export function useLiveMemoryCenter() {
     [commitCenter]
   );
 
+  const runCleanup = useCallback(async () => {
+    const payload = await requestJSON<MemoryCleanupResponse>("/v1/memory-center/cleanup", {
+      method: "POST",
+    });
+    commitCenter(payload.center);
+    return payload;
+  }, [commitCenter]);
+
   const submitFeedback = useCallback(
     async (memoryId: string, input: MemoryFeedbackInput) => {
       const payload = await requestJSON<MemoryArtifactMutationResponse>(`/v1/memory/${memoryId}/feedback`, {
@@ -321,6 +377,7 @@ export function useLiveMemoryCenter() {
     updatePolicy,
     createPromotion,
     reviewPromotion,
+    runCleanup,
     submitFeedback,
     forgetMemory,
   };
