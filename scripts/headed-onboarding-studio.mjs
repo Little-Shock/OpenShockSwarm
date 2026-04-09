@@ -254,9 +254,22 @@ try {
   const results = [];
   const page = await browser.newPage({ viewport: { width: 1560, height: 1280 } });
 
-  await page.goto(`${webURL}/setup`, { waitUntil: "domcontentloaded" });
-  await waitFor(async () => (await page.getByTestId("setup-template-select-research-team").count()) > 0, "onboarding studio did not render");
+  await page.goto(`${webURL}/access`, { waitUntil: "domcontentloaded" });
+  await waitForText(page, "access-first-start-next-route", "/setup");
+  await waitForText(page, "access-first-start-step-session-status", "ready");
+  await waitForText(page, "access-first-start-step-identity-status", "ready");
+  await waitForText(page, "access-first-start-step-setup-status", "active");
+  await capture(page, "access-before-setup");
+  results.push("- `/access` 现在会把首次启动下一跳直接压成 `/setup`，身份链接通后不再要求用户自己猜要不要跨页去 setup。");
+
+  await page.getByTestId("access-first-start-next-link").click();
+  await page.waitForURL(new RegExp(`${webURL}/setup`), { timeout: 30_000 });
+  await waitForText(page, "setup-first-start-next-route", "/setup");
+  await waitForText(page, "setup-first-start-step-identity-status", "ready");
   await capture(page, "setup-before-template");
+  results.push("- `/setup` 现在会镜像同一条 first-start journey；当 access recovery 已接通时，这里继续只围 setup 的 next step 推进。");
+
+  await waitFor(async () => (await page.getByTestId("setup-template-select-research-team").count()) > 0, "onboarding studio did not render");
 
   await page.getByTestId("setup-template-select-research-team").click();
   await waitForText(page, "setup-onboarding-success", "研究团队 模板已经写回 workspace truth；reload / restart 后会继续从当前 setup step 恢复。");
@@ -271,6 +284,7 @@ try {
     memoryMode: "user-owned memory mode",
   };
   const workspaceBeforeRefresh = await readWorkspace(serverURL);
+  const resumeRouteBeforeRefresh = workspaceBeforeRefresh.onboarding.resumeUrl?.trim() || "/setup";
   await patchWorkspace(serverURL, {
     ...customWorkspaceConfig,
     onboarding: {
@@ -281,6 +295,10 @@ try {
       resumeUrl: workspaceBeforeRefresh.onboarding.resumeUrl,
     },
   });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForText(page, "setup-onboarding-template-package", "研究团队");
+  await waitForText(page, "setup-first-start-next-route", resumeRouteBeforeRefresh);
 
   await page.getByTestId("setup-onboarding-refresh-progress").click();
   await waitForText(page, "setup-onboarding-success", "onboarding progress 已按当前 live truth 前滚；已有 workspace config 不会被模板默认值静默覆盖。");
@@ -300,6 +318,7 @@ try {
   await waitForText(page, "setup-onboarding-success", "onboarding studio 已收口为 done；workspace 会把 `/rooms` 当成下一跳，而不是继续停在 setup。");
   await waitForText(page, "setup-onboarding-status", "done");
   await waitForText(page, "setup-onboarding-resume-url", "/rooms");
+  await waitForText(page, "setup-first-start-next-route", "/rooms");
   const workspaceAfterFinish = await readWorkspace(serverURL);
   if (
     workspaceAfterFinish.plan !== customWorkspaceConfig.plan ||
@@ -316,8 +335,20 @@ try {
   await waitForText(page, "setup-onboarding-status", "done");
   await waitForText(page, "setup-onboarding-resume-url", "/rooms");
   await waitForText(page, "setup-onboarding-template-package", "研究团队");
+  await waitForText(page, "setup-first-start-next-route", "/rooms");
   await capture(page, "setup-after-reload");
   results.push("- 立即 reload 后，模板选择、done 状态和 `/rooms` resume route 继续从同一份 workspace truth 读取。");
+
+  await page.goto(`${webURL}/access`, { waitUntil: "domcontentloaded" });
+  await waitForText(page, "access-first-start-next-route", "/rooms");
+  await waitForText(page, "access-first-start-step-setup-status", "ready");
+  await capture(page, "access-after-finish");
+  results.push("- 完成首次启动后，`/access` 也会把下一跳切成 `/rooms`，不再要求用户自己判断该回 access 还是 setup。");
+
+  await page.getByTestId("access-first-start-next-link").click();
+  await page.waitForURL(new RegExp(`${webURL}/rooms`), { timeout: 30_000 });
+  await capture(page, "rooms-after-finish");
+  results.push("- 从 `/access` 点继续时现在会直接落到 `/rooms`，first-start journey 已经在前台收成单一路径。");
 
   await stopProcess(serverChild);
   serverChild = startServer(serverPort);
@@ -340,9 +371,9 @@ try {
   results.push("- 第二个浏览器上下文仍读到同一份 onboarding studio truth，说明恢复不依赖单个 tab。");
 
   const reportLines = [
-    "# Test Report 2026-04-09 Onboarding Studio / Scenario Templates",
+    "# Test Report 2026-04-09 First-Start Journey / Access-Setup-Onboarding Unification",
     "",
-    `- Command: \`pnpm test:headed-onboarding-studio -- --report ${path.relative(projectRoot, reportPath)}\``,
+    `- Command: \`pnpm test:headed-first-start-journey -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Generated At: ${timestamp()}`,
     "",
     "## Result",
@@ -355,9 +386,10 @@ try {
     "",
     "## Scope",
     "",
-    "- 在 `/setup` 选择 `研究团队` 模板，并验证 materialized bootstrap package。",
+    "- 从 `/access` 起步，验证 active session 下 first-start next step 会被明确压成 `/setup`，而不是要求用户自己猜路径。",
+    "- 在 `/setup` 选择 `研究团队` 模板，并验证 materialized bootstrap package 与 first-start bridge 读同一份 onboarding truth。",
     "- 依据当前 repo binding / runtime pairing live truth 刷新 onboarding progress，再完成首次启动，同时验证自定义 `plan / browserPush / memoryMode` 不会被模板默认值静默覆盖。",
-    "- 验证 reload、server restart 与 second browser context 之后仍能读回同一份 onboarding truth。",
+    "- 验证完成首次启动后，`/access` 和 `/setup` 都会把下一跳切到 `/rooms`，并在 reload / server restart / second browser context 后保持同一份 truth。",
   ];
 
   await mkdir(path.dirname(reportPath), { recursive: true });
