@@ -1,7 +1,7 @@
 # 2026-04-09 Run History / Resume Context Report
 
 - Command: `pnpm test:headed-run-history-resume-context -- --report docs/testing/Test-Report-2026-04-09-run-history-resume-context.md`
-- Artifacts Dir: `/tmp/openshock-tkt40-run-history-80Fy4v`
+- Artifacts Dir: `/tmp/openshock-tkt40-run-history-eU1ePV`
 
 ## Results
 - `/v1/runs/history` and `/v1/runs/:id/detail` now expose paginated history plus session-backed resume context.
@@ -12,11 +12,11 @@
 - Jumping back into the room run tab returns to the current room continuity instead of pinning the stale historical session.
 
 ## Screenshots
-- runs-initial-page: /tmp/openshock-tkt40-run-history-80Fy4v/screenshots/01-runs-initial-page.png
-- runs-after-load-more: /tmp/openshock-tkt40-run-history-80Fy4v/screenshots/02-runs-after-load-more.png
-- run-detail-current: /tmp/openshock-tkt40-run-history-80Fy4v/screenshots/03-run-detail-current.png
-- run-detail-reopened-history: /tmp/openshock-tkt40-run-history-80Fy4v/screenshots/04-run-detail-reopened-history.png
-- room-run-tab-current-session: /tmp/openshock-tkt40-run-history-80Fy4v/screenshots/05-room-run-tab-current-session.png
+- runs-initial-page: /tmp/openshock-tkt40-run-history-eU1ePV/screenshots/01-runs-initial-page.png
+- runs-after-load-more: /tmp/openshock-tkt40-run-history-eU1ePV/screenshots/02-runs-after-load-more.png
+- run-detail-current: /tmp/openshock-tkt40-run-history-eU1ePV/screenshots/03-run-detail-current.png
+- run-detail-reopened-history: /tmp/openshock-tkt40-run-history-eU1ePV/screenshots/04-run-detail-reopened-history.png
+- room-run-tab-current-session: /tmp/openshock-tkt40-run-history-eU1ePV/screenshots/05-room-run-tab-current-session.png
 
 ## Single Value
 - `/runs` now behaves like a paginated history surface, `Load Older Runs` reveals earlier ledger pages on demand, run detail exposes session-backed resume context plus same-room history, and room run tab correctly re-anchors to the current active session instead of a stale prior continuity.
