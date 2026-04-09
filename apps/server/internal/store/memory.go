@@ -1,8 +1,6 @@
 package store
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -450,8 +448,9 @@ func readMemoryArtifactContent(root, path string) (string, string, int) {
 		return "", "", 0
 	}
 
-	sum := sha256.Sum256(body)
-	return string(body), hex.EncodeToString(sum[:]), len(body)
+	content := sanitizeArtifactSnapshotContent(string(body))
+	digest, size := sanitizedArtifactDigest(content)
+	return content, digest, size
 }
 
 func (s *Store) mutableMemoryArtifactLocked(memoryID string, sourceVersion int) (int, MemoryArtifact, error) {

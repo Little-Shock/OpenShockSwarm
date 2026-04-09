@@ -721,6 +721,58 @@ func TestMemorySubsystemHydratesExternalFileEditsOnRestart(t *testing.T) {
 	}
 }
 
+func TestMemorySubsystemSanitizesCustomerVisibleResidueOnExternalFileReplay(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	baseline := s.Snapshot()
+	workspaceArtifact := findMemoryArtifactByPath(baseline, "MEMORY.md")
+	if workspaceArtifact == nil {
+		t.Fatalf("workspace memory artifact missing")
+	}
+
+	dirtyContent := strings.Join([]string{
+		"# E2E ???? 20260405 讨论间",
+		"",
+		"- prompt: ???:???",
+		"- output: 我在 `E:\\00.Lark_Projects\\00_OpenShock` 项目中，可以帮您查看项目状态。",
+		"- summary: ??????????:Issue?Room?Run?PR?Inbox?Memory?",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte(dirtyContent), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(restart) error = %v", err)
+	}
+
+	detail, ok := reloaded.MemoryDetail(workspaceArtifact.ID)
+	if !ok || len(detail.Versions) == 0 {
+		t.Fatalf("memory detail missing after restart: %#v", detail)
+	}
+
+	last := detail.Versions[len(detail.Versions)-1]
+	if strings.Contains(last.Content, "E2E ???? 20260405") {
+		t.Fatalf("latest version content leaked e2e residue:\n%s", last.Content)
+	}
+	if strings.Contains(last.Content, "???:???") {
+		t.Fatalf("latest version content leaked garbled prompt:\n%s", last.Content)
+	}
+	if strings.Contains(last.Content, "E:\\00.Lark_Projects\\00_OpenShock") {
+		t.Fatalf("latest version content leaked internal path:\n%s", last.Content)
+	}
+	if !strings.Contains(last.Content, "这条历史记录包含测试残留或乱码，已从当前工作区隐藏。") {
+		t.Fatalf("latest version content = %q, want sanitized fallback", last.Content)
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {
