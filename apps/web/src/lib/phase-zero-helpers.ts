@@ -29,6 +29,7 @@ type PullRequestConversationEntry = NonNullable<PullRequest["conversation"]>[num
 type Session = PhaseZeroState["sessions"][number];
 type RuntimeLease = PhaseZeroState["runtimeLeases"][number];
 type MemoryArtifact = PhaseZeroState["memory"][number];
+type CredentialProfile = PhaseZeroState["credentials"][number];
 type PlannerQueueRecord = PlannerQueueItem;
 
 export function buildBoardColumns(issueList: Issue[]) {
@@ -133,6 +134,7 @@ export function sanitizePhaseZeroState(state: PhaseZeroState): PhaseZeroState {
     sessions: state.sessions.map(sanitizeSession),
     runtimeLeases: state.runtimeLeases.map(sanitizeRuntimeLease),
     memory: state.memory.map(sanitizeMemoryArtifact),
+    credentials: (state.credentials ?? []).map(sanitizeCredentialProfile),
   };
 }
 
@@ -291,6 +293,7 @@ function sanitizeRun(run: Run): Run {
     summary: sanitizeDisplayText(run.summary, "当前 Run 正在整理执行摘要。"),
     nextAction: sanitizeDisplayText(run.nextAction, "等待当前执行真相同步。"),
     pullRequest: sanitizeDisplayText(run.pullRequest, "待整理 PR"),
+    credentialProfileIds: sanitizeTextLines(run.credentialProfileIds ?? [], ""),
     stdout: sanitizeTextLines(run.stdout, "这条执行日志包含测试残留或乱码，已在当前工作区隐藏。"),
     stderr: sanitizeTextLines(run.stderr, "这条执行日志包含测试残留或乱码，已在当前工作区隐藏。"),
     toolCalls: run.toolCalls.map(sanitizeToolCall),
@@ -346,6 +349,7 @@ function sanitizeAgent(agent: Agent): Agent {
     ...agent,
     description: sanitizeDisplayText(agent.description, "当前 Agent 摘要正在整理中。"),
     lane: sanitizeDisplayText(agent.lane, "待整理泳道"),
+    credentialProfileIds: sanitizeTextLines(agent.credentialProfileIds ?? [], ""),
   };
 }
 
@@ -465,6 +469,24 @@ function sanitizeMemoryArtifact(item: MemoryArtifact): MemoryArtifact {
     scope: sanitizeDisplayText(item.scope, "memory:current"),
     path: sanitizeDisplayText(item.path, "notes/current-artifact.md"),
     summary: sanitizeDisplayText(item.summary, "当前记忆摘要正在整理中。"),
+  };
+}
+
+function sanitizeCredentialProfile(item: CredentialProfile): CredentialProfile {
+  return {
+    ...item,
+    label: sanitizeDisplayText(item.label, "credential"),
+    summary: sanitizeDisplayText(item.summary, "当前 credential 摘要正在整理中。"),
+    secretKind: sanitizeDisplayText(item.secretKind, "opaque-secret"),
+    secretStatus: sanitizeDisplayText(item.secretStatus, "configured"),
+    updatedBy: sanitizeDisplayText(item.updatedBy, "System"),
+    lastUsedBy: sanitizeDisplayText(item.lastUsedBy ?? "", ""),
+    audit: (item.audit ?? []).map((entry) => ({
+      ...entry,
+      action: sanitizeDisplayText(entry.action, "updated"),
+      summary: sanitizeDisplayText(entry.summary, "当前 credential audit 正在整理中。"),
+      updatedBy: sanitizeDisplayText(entry.updatedBy, "System"),
+    })),
   };
 }
 

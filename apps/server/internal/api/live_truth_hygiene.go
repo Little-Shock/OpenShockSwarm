@@ -257,6 +257,22 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeMemoryArtifactVersion(item)
 		}
 		return items
+	case store.CredentialProfile:
+		return sanitizeCredentialProfile(typed)
+	case []store.CredentialProfile:
+		items := make([]store.CredentialProfile, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeCredentialProfile(item)
+		}
+		return items
+	case store.CredentialProfileAuditEntry:
+		return sanitizeCredentialProfileAuditEntry(typed)
+	case []store.CredentialProfileAuditEntry:
+		items := make([]store.CredentialProfileAuditEntry, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeCredentialProfileAuditEntry(item)
+		}
+		return items
 	case map[string][]store.Message:
 		items := make(map[string][]store.Message, len(typed))
 		for key, value := range typed {
@@ -312,6 +328,7 @@ func sanitizeLiveState(snapshot store.State) store.State {
 	snapshot.Auth = sanitizeLivePayload(snapshot.Auth).(store.AuthSnapshot)
 	snapshot.Memory = sanitizeLivePayload(snapshot.Memory).([]store.MemoryArtifact)
 	snapshot.MemoryVersions = sanitizeLivePayload(snapshot.MemoryVersions).(map[string][]store.MemoryArtifactVersion)
+	snapshot.Credentials = sanitizeLivePayload(snapshot.Credentials).([]store.CredentialProfile)
 	return snapshot
 }
 
@@ -507,6 +524,7 @@ func sanitizeRun(run store.Run) store.Run {
 	run.Summary = sanitizeDisplayText(run.Summary, "当前 Run 正在整理执行摘要。")
 	run.NextAction = sanitizeDisplayText(run.NextAction, "等待当前执行真相同步。")
 	run.PullRequest = sanitizeDisplayText(run.PullRequest, "待整理 PR")
+	run.CredentialProfileIDs = sanitizeTextLines(run.CredentialProfileIDs, "")
 	run.Stdout = sanitizeTextLines(run.Stdout, "这条执行日志包含测试残留或乱码，已在当前工作区隐藏。")
 	run.Stderr = sanitizeTextLines(run.Stderr, "这条执行日志包含测试残留或乱码，已在当前工作区隐藏。")
 	for index := range run.ToolCalls {
@@ -530,6 +548,7 @@ func sanitizeAgent(agent store.Agent) store.Agent {
 	agent.ProviderPreference = sanitizeDisplayText(agent.ProviderPreference, "当前 provider 偏好正在整理中。")
 	agent.ModelPreference = sanitizeDisplayText(agent.ModelPreference, "当前模型偏好正在整理中。")
 	agent.RecallPolicy = sanitizeDisplayText(agent.RecallPolicy, "当前 recall 策略正在整理中。")
+	agent.CredentialProfileIDs = sanitizeTextLines(agent.CredentialProfileIDs, "")
 	for index := range agent.ProfileAudit {
 		agent.ProfileAudit[index] = sanitizeAgentProfileAuditEntry(agent.ProfileAudit[index])
 	}
@@ -747,6 +766,26 @@ func sanitizeRuntimeSchedulerCandidate(item store.RuntimeSchedulerCandidate) sto
 func sanitizeGuardBoundary(item store.GuardBoundary) store.GuardBoundary {
 	item.Label = sanitizeDisplayText(item.Label, "Boundary")
 	item.Value = sanitizeDisplayText(item.Value, "当前 guard boundary 正在整理中。")
+	return item
+}
+
+func sanitizeCredentialProfile(item store.CredentialProfile) store.CredentialProfile {
+	item.Label = sanitizeDisplayText(item.Label, "credential")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 credential 摘要正在整理中。")
+	item.SecretKind = sanitizeDisplayText(item.SecretKind, "opaque-secret")
+	item.SecretStatus = sanitizeDisplayText(item.SecretStatus, "configured")
+	item.UpdatedBy = sanitizeDisplayText(item.UpdatedBy, "System")
+	item.LastUsedBy = sanitizeDisplayText(item.LastUsedBy, "")
+	for index := range item.Audit {
+		item.Audit[index] = sanitizeCredentialProfileAuditEntry(item.Audit[index])
+	}
+	return item
+}
+
+func sanitizeCredentialProfileAuditEntry(item store.CredentialProfileAuditEntry) store.CredentialProfileAuditEntry {
+	item.Action = sanitizeDisplayText(item.Action, "updated")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 credential audit 正在整理中。")
+	item.UpdatedBy = sanitizeDisplayText(item.UpdatedBy, "System")
 	return item
 }
 

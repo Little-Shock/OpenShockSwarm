@@ -75,7 +75,22 @@ type AgentProfileUpdateInput = {
   recallPolicy: string;
   runtimePreference: string;
   memorySpaces: string[];
+  credentialProfileIds: string[];
   sandbox: SandboxPolicy;
+};
+
+type CredentialProfileCreateInput = {
+  label: string;
+  summary: string;
+  secretKind: string;
+  secretValue: string;
+  workspaceDefault: boolean;
+};
+
+type CredentialProfileUpdateInput = CredentialProfileCreateInput;
+
+type RunCredentialBindingInput = {
+  credentialProfileIds: string[];
 };
 
 type WorkspaceConfigUpdateInput = {
@@ -172,6 +187,9 @@ type PhaseZeroContextValue = {
   updateWorkspaceConfig: (input: WorkspaceConfigUpdateInput) => Promise<StateMutationResponse>;
   updateWorkspaceMemberPreferences: (memberId: string, input: WorkspaceMemberPreferencesInput) => Promise<StateMutationResponse>;
   updateAgentProfile: (agentId: string, input: AgentProfileUpdateInput) => Promise<StateMutationResponse>;
+  createCredentialProfile: (input: CredentialProfileCreateInput) => Promise<StateMutationResponse>;
+  updateCredentialProfile: (credentialId: string, input: CredentialProfileUpdateInput) => Promise<StateMutationResponse>;
+  updateRunCredentialBindings: (runId: string, input: RunCredentialBindingInput) => Promise<StateMutationResponse>;
   updateRunSandbox: (runId: string, input: RunSandboxUpdateInput) => Promise<StateMutationResponse>;
   checkRunSandbox: (runId: string, input: RunSandboxCheckInput) => Promise<StateMutationResponse & { decision?: SandboxDecision }>;
   createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
@@ -326,6 +344,7 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
   },
   guards: [],
   memory: [],
+  credentials: [],
 };
 
 const EMPTY_APPROVAL_CENTER_STATE: ApprovalCenterState = {
@@ -673,6 +692,42 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     return payload;
   }
 
+  async function createCredentialProfile(input: CredentialProfileCreateInput) {
+    const payload = await readJSON<StateMutationResponse>("/v1/credentials", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
+  async function updateCredentialProfile(credentialId: string, input: CredentialProfileUpdateInput) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/credentials/${credentialId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
+  async function updateRunCredentialBindings(runId: string, input: RunCredentialBindingInput) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/runs/${runId}/credentials`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
   async function updateRunSandbox(runId: string, input: RunSandboxUpdateInput) {
     const payload = await readJSON<StateMutationResponse>(`/v1/runs/${runId}/sandbox`, {
       method: "PATCH",
@@ -995,6 +1050,9 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     updateWorkspaceConfig,
     updateWorkspaceMemberPreferences,
     updateAgentProfile,
+    createCredentialProfile,
+    updateCredentialProfile,
+    updateRunCredentialBindings,
     updateRunSandbox,
     checkRunSandbox,
     createIssue,

@@ -95,6 +95,30 @@ type WorkspaceOnboardingMaterialization struct {
 	Notes              []string `json:"notes,omitempty"`
 }
 
+type CredentialProfile struct {
+	ID               string                        `json:"id"`
+	Label            string                        `json:"label"`
+	Summary          string                        `json:"summary"`
+	SecretKind       string                        `json:"secretKind"`
+	SecretStatus     string                        `json:"secretStatus"`
+	WorkspaceDefault bool                          `json:"workspaceDefault"`
+	UpdatedAt        string                        `json:"updatedAt"`
+	UpdatedBy        string                        `json:"updatedBy"`
+	LastRotatedAt    string                        `json:"lastRotatedAt,omitempty"`
+	LastUsedAt       string                        `json:"lastUsedAt,omitempty"`
+	LastUsedBy       string                        `json:"lastUsedBy,omitempty"`
+	LastUsedRunID    string                        `json:"lastUsedRunId,omitempty"`
+	Audit            []CredentialProfileAuditEntry `json:"audit,omitempty"`
+}
+
+type CredentialProfileAuditEntry struct {
+	ID        string `json:"id"`
+	Action    string `json:"action"`
+	Summary   string `json:"summary"`
+	UpdatedAt string `json:"updatedAt"`
+	UpdatedBy string `json:"updatedBy"`
+}
+
 type WorkspaceGovernanceSnapshot struct {
 	TemplateID          string                           `json:"templateId,omitempty"`
 	Label               string                           `json:"label,omitempty"`
@@ -304,33 +328,34 @@ type ToolCall struct {
 }
 
 type Run struct {
-	ID               string           `json:"id"`
-	IssueKey         string           `json:"issueKey"`
-	RoomID           string           `json:"roomId"`
-	TopicID          string           `json:"topicId"`
-	Status           string           `json:"status"`
-	FollowThread     bool             `json:"followThread"`
-	ControlNote      string           `json:"controlNote,omitempty"`
-	Runtime          string           `json:"runtime"`
-	Machine          string           `json:"machine"`
-	Provider         string           `json:"provider"`
-	Branch           string           `json:"branch"`
-	Worktree         string           `json:"worktree"`
-	WorktreePath     string           `json:"worktreePath"`
-	Owner            string           `json:"owner"`
-	StartedAt        string           `json:"startedAt"`
-	Duration         string           `json:"duration"`
-	Summary          string           `json:"summary"`
-	ApprovalRequired bool             `json:"approvalRequired"`
-	Sandbox          SandboxPolicy    `json:"sandbox"`
-	SandboxDecision  SandboxDecision  `json:"sandboxDecision"`
-	Stdout           []string         `json:"stdout"`
-	Stderr           []string         `json:"stderr"`
-	ToolCalls        []ToolCall       `json:"toolCalls"`
-	Timeline         []RunEvent       `json:"timeline"`
-	Usage            RunUsageSnapshot `json:"usage"`
-	NextAction       string           `json:"nextAction"`
-	PullRequest      string           `json:"pullRequest"`
+	ID                   string           `json:"id"`
+	IssueKey             string           `json:"issueKey"`
+	RoomID               string           `json:"roomId"`
+	TopicID              string           `json:"topicId"`
+	Status               string           `json:"status"`
+	FollowThread         bool             `json:"followThread"`
+	ControlNote          string           `json:"controlNote,omitempty"`
+	Runtime              string           `json:"runtime"`
+	Machine              string           `json:"machine"`
+	Provider             string           `json:"provider"`
+	Branch               string           `json:"branch"`
+	Worktree             string           `json:"worktree"`
+	WorktreePath         string           `json:"worktreePath"`
+	Owner                string           `json:"owner"`
+	StartedAt            string           `json:"startedAt"`
+	Duration             string           `json:"duration"`
+	Summary              string           `json:"summary"`
+	ApprovalRequired     bool             `json:"approvalRequired"`
+	Sandbox              SandboxPolicy    `json:"sandbox"`
+	SandboxDecision      SandboxDecision  `json:"sandboxDecision"`
+	Stdout               []string         `json:"stdout"`
+	Stderr               []string         `json:"stderr"`
+	ToolCalls            []ToolCall       `json:"toolCalls"`
+	Timeline             []RunEvent       `json:"timeline"`
+	Usage                RunUsageSnapshot `json:"usage"`
+	NextAction           string           `json:"nextAction"`
+	PullRequest          string           `json:"pullRequest"`
+	CredentialProfileIDs []string         `json:"credentialProfileIds,omitempty"`
 }
 
 type RunUsageSnapshot struct {
@@ -361,6 +386,7 @@ type Agent struct {
 	RecallPolicy          string                   `json:"recallPolicy"`
 	RuntimePreference     string                   `json:"runtimePreference"`
 	MemorySpaces          []string                 `json:"memorySpaces"`
+	CredentialProfileIDs  []string                 `json:"credentialProfileIds,omitempty"`
 	Sandbox               SandboxPolicy            `json:"sandbox"`
 	RecentRunIDs          []string                 `json:"recentRunIds"`
 	ProfileAudit          []AgentProfileAuditEntry `json:"profileAudit"`
@@ -734,6 +760,7 @@ type State struct {
 	Auth                  AuthSnapshot                       `json:"auth"`
 	Memory                []MemoryArtifact                   `json:"memory"`
 	MemoryVersions        map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`
+	Credentials           []CredentialProfile                `json:"credentials,omitempty"`
 }
 
 type RoomDetail struct {
@@ -883,11 +910,47 @@ type RepoBindingInput struct {
 	ConnectionMessage string
 }
 
+type CredentialProfileCreateInput struct {
+	Label            string
+	Summary          string
+	SecretKind       string
+	SecretValue      string
+	WorkspaceDefault bool
+	UpdatedBy        string
+}
+
+type CredentialProfileUpdateInput struct {
+	Label            string
+	Summary          string
+	SecretKind       string
+	SecretValue      string
+	WorkspaceDefault bool
+	UpdatedBy        string
+}
+
+type RunCredentialBindingInput struct {
+	CredentialProfileIDs []string
+	UpdatedBy            string
+}
+
+type credentialVault struct {
+	Version int                            `json:"version"`
+	Secrets map[string]credentialVaultItem `json:"secrets"`
+}
+
+type credentialVaultItem struct {
+	Nonce      string `json:"nonce"`
+	Ciphertext string `json:"ciphertext"`
+	UpdatedAt  string `json:"updatedAt"`
+}
+
 type Store struct {
 	mu            sync.RWMutex
 	path          string
 	workspaceRoot string
 	state         State
+	vault         credentialVault
+	vaultKey      []byte
 	subscribers   map[int]chan State
 	nextSubID     int
 }

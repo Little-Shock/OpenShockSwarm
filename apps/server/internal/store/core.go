@@ -175,6 +175,9 @@ func (s *Store) hydrateMissingDefaults() {
 		if len(s.state.Agents[index].MemorySpaces) == 0 {
 			s.state.Agents[index].MemorySpaces = append([]string{}, defaultAgent.MemorySpaces...)
 		}
+		if s.state.Agents[index].CredentialProfileIDs == nil {
+			s.state.Agents[index].CredentialProfileIDs = []string{}
+		}
 		if s.state.Agents[index].ProfileAudit == nil {
 			s.state.Agents[index].ProfileAudit = []AgentProfileAuditEntry{}
 		}
@@ -206,11 +209,19 @@ func (s *Store) hydrateMissingDefaults() {
 	if len(s.state.Sessions) == 0 {
 		s.state.Sessions = defaults.Sessions
 	}
+	for index := range s.state.Runs {
+		if s.state.Runs[index].CredentialProfileIDs == nil {
+			s.state.Runs[index].CredentialProfileIDs = []string{}
+		}
+	}
 	if len(s.state.Memory) == 0 {
 		s.state.Memory = defaults.Memory
 	}
 	if s.state.MemoryVersions == nil {
 		s.state.MemoryVersions = defaults.MemoryVersions
+	}
+	if s.state.Credentials == nil {
+		s.state.Credentials = []CredentialProfile{}
 	}
 	if s.state.ChannelMessages == nil {
 		s.state.ChannelMessages = defaults.ChannelMessages
@@ -304,6 +315,9 @@ func (s *Store) ensureFilesystemArtifacts() error {
 }
 
 func (s *Store) ensureFilesystemArtifactsLocked() error {
+	if err := s.ensureCredentialVaultLocked(); err != nil {
+		return err
+	}
 	artifacts, err := ensureWorkspaceScaffold(s.workspaceRoot, s.state.Agents, s.state.Memory)
 	if err != nil {
 		return err
@@ -331,6 +345,7 @@ func (s *Store) ensureFilesystemArtifactsLocked() error {
 
 	s.state.Memory = artifacts
 	s.ensureMemorySubsystemLocked()
+	s.syncAllCredentialGuardsLocked()
 	return nil
 }
 
@@ -475,6 +490,9 @@ func (s *Store) persistLocked() error {
 		return err
 	}
 	if err := os.WriteFile(s.path, body, 0o644); err != nil {
+		return err
+	}
+	if err := s.persistCredentialVaultLocked(); err != nil {
 		return err
 	}
 	s.publishSnapshotLocked()

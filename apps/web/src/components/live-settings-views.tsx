@@ -18,7 +18,14 @@ import {
 } from "@/lib/live-notifications";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { formatSandboxList, sandboxPolicyDraft, sandboxPolicySummary, sandboxProfileLabel } from "@/lib/sandbox-policy";
-import type { AgentStatus, ApprovalCenterItem, SandboxProfile, WorkspaceMember } from "@/lib/phase-zero-types";
+import type {
+  AgentStatus,
+  ApprovalCenterItem,
+  CredentialProfile,
+  PhaseZeroState,
+  SandboxProfile,
+  WorkspaceMember,
+} from "@/lib/phase-zero-types";
 
 type LiveNotificationsModel = ReturnType<typeof useLiveNotifications>;
 
@@ -292,6 +299,25 @@ function agentLabel(agentID: string | undefined, agents: AgentStatus[]) {
     return "未绑定";
   }
   return agents.find((agent) => agent.id === agentID)?.name ?? agentID;
+}
+
+function hasWorkspaceManagePermission(state: PhaseZeroState) {
+  return state.auth.session.permissions.includes("workspace.manage");
+}
+
+function credentialStatusLabel(status: string | undefined) {
+  switch (status) {
+    case "configured":
+      return "已加密保管";
+    default:
+      return "待写入";
+  }
+}
+
+function credentialUsageSummary(profile: CredentialProfile, state: PhaseZeroState) {
+  const agentCount = state.agents.filter((agent) => (agent.credentialProfileIds ?? []).includes(profile.id)).length;
+  const runCount = state.runs.filter((run) => (run.credentialProfileIds ?? []).includes(profile.id)).length;
+  return `${profile.workspaceDefault ? "workspace default" : "non-default"} · ${agentCount} agent · ${runCount} run`;
 }
 
 function FactTile({
@@ -1086,6 +1112,330 @@ function MemberPreferencePanel() {
   );
 }
 
+function CredentialProfileCard({
+  profile,
+  state,
+  canEdit,
+  onUpdate,
+}: {
+  profile: CredentialProfile;
+  state: PhaseZeroState;
+  canEdit: boolean;
+  onUpdate: (credentialId: string, input: {
+    label: string;
+    summary: string;
+    secretKind: string;
+    secretValue: string;
+    workspaceDefault: boolean;
+  }) => Promise<void>;
+}) {
+  const [label, setLabel] = useState(profile.label);
+  const [summary, setSummary] = useState(profile.summary);
+  const [secretKind, setSecretKind] = useState(profile.secretKind);
+  const [secretValue, setSecretValue] = useState("");
+  const [workspaceDefault, setWorkspaceDefault] = useState(profile.workspaceDefault);
+  const [dirty, setDirty] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dirty) {
+      return;
+    }
+    setLabel(profile.label);
+    setSummary(profile.summary);
+    setSecretKind(profile.secretKind);
+    setSecretValue("");
+    setWorkspaceDefault(profile.workspaceDefault);
+  }, [dirty, profile]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await onUpdate(profile.id, {
+        label,
+        summary,
+        secretKind,
+        secretValue,
+        workspaceDefault,
+      });
+      setDirty(false);
+      setSecretValue("");
+      setSuccess(secretValue.trim() ? "credential metadata 与 rotated secret 已写回。" : "credential metadata 已写回。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "credential profile update failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Panel tone="paper" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">{profile.secretKind}</p>
+          <h3 className="mt-2 font-display text-2xl font-bold">{profile.label}</h3>
+        </div>
+        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          {credentialStatusLabel(profile.secretStatus)}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <FactTile label="Scope" value={profile.workspaceDefault ? "workspace default" : "scoped only"} testID={`settings-credential-workspace-default-${profile.id}`} />
+        <FactTile label="Bindings" value={credentialUsageSummary(profile, state)} testID={`settings-credential-usage-${profile.id}`} />
+        <FactTile label="Rotated" value={valueOrPlaceholder(formatTimestamp(profile.lastRotatedAt), "尚未写入")} />
+        <FactTile label="Last Used" value={valueOrPlaceholder(formatTimestamp(profile.lastUsedAt), "尚未消费")} />
+      </div>
+
+      <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
+        {valueOrPlaceholder(profile.summary, "当前 credential 还没补完整摘要。")} 当前只暴露 metadata；secret plaintext 不会回到 `/v1/state`。
+      </p>
+
+      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">label</span>
+            <input
+              data-testid={`settings-credential-label-${profile.id}`}
+              value={label}
+              onChange={(event) => {
+                setLabel(event.target.value);
+                setDirty(true);
+              }}
+              disabled={!canEdit || pending}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">secret kind</span>
+            <input
+              data-testid={`settings-credential-secret-kind-${profile.id}`}
+              value={secretKind}
+              onChange={(event) => {
+                setSecretKind(event.target.value);
+                setDirty(true);
+              }}
+              disabled={!canEdit || pending}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm md:col-span-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">summary</span>
+            <textarea
+              value={summary}
+              onChange={(event) => {
+                setSummary(event.target.value);
+                setDirty(true);
+              }}
+              disabled={!canEdit || pending}
+              className="min-h-[84px] rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+            />
+          </label>
+          <label className="grid gap-2 text-sm md:col-span-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">rotate secret</span>
+            <textarea
+              data-testid={`settings-credential-rotate-secret-${profile.id}`}
+              value={secretValue}
+              onChange={(event) => {
+                setSecretValue(event.target.value);
+                setDirty(true);
+              }}
+              disabled={!canEdit || pending}
+              placeholder="留空表示只改 metadata；填写则触发 secret rotate。"
+              className="min-h-[84px] rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3 font-mono text-sm"
+            />
+          </label>
+        </div>
+
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={workspaceDefault}
+            onChange={(event) => {
+              setWorkspaceDefault(event.target.checked);
+              setDirty(true);
+            }}
+            disabled={!canEdit || pending}
+          />
+          <span>设为 workspace default，让所有 run 至少继承这条 credential。</span>
+        </label>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            data-testid={`settings-credential-save-${profile.id}`}
+            disabled={!canEdit || pending}
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "写回中..." : "更新 Credential"}
+          </button>
+          {success ? <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{success}</span> : null}
+          {error ? <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.92)]">{error}</span> : null}
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
+function CredentialProfilesPanel() {
+  const { state, createCredentialProfile, updateCredentialProfile } = usePhaseZeroState();
+  const canEdit = hasWorkspaceManagePermission(state);
+  const [label, setLabel] = useState("");
+  const [summary, setSummary] = useState("");
+  const [secretKind, setSecretKind] = useState("api-token");
+  const [secretValue, setSecretValue] = useState("");
+  const [workspaceDefault, setWorkspaceDefault] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await createCredentialProfile({
+        label,
+        summary,
+        secretKind,
+        secretValue,
+        workspaceDefault,
+      });
+      setLabel("");
+      setSummary("");
+      setSecretKind("api-token");
+      setSecretValue("");
+      setWorkspaceDefault(false);
+      setSuccess("新 credential profile 已加密落库，并同步到 workspace / agent / run surfaces。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "credential profile create failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-lime)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/72">credential profile / encrypted vault</p>
+            <h2 className="mt-2 font-display text-3xl font-bold">把 secret 从隐性环境依赖拉回可审计的 workspace truth</h2>
+          </div>
+          <span className="rounded-full border-2 border-white/70 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+            {state.credentials.length} profiles
+          </span>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-white/80">
+          `#153` 当前只把 secret metadata 暴露到 settings / profile / run surfaces；payload 单独进 encrypted vault，不会经由 `/v1/state`、SSR 或 browser report 泄漏。
+        </p>
+      </Panel>
+
+      <Panel tone="yellow">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">new credential profile</p>
+            <h3 className="mt-2 font-display text-3xl font-bold">新增一个可绑定到 workspace / agent / run 的 secret 轮廓</h3>
+          </div>
+          <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+            {canEdit ? "workspace.manage" : "read only"}
+          </span>
+        </div>
+
+        <form onSubmit={handleCreate} className="mt-5 grid gap-3 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="grid gap-2 text-sm">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">label</span>
+              <input
+                data-testid="settings-credential-create-label"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                disabled={!canEdit || pending}
+                className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+              />
+            </label>
+            <label className="grid gap-2 text-sm">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">secret kind</span>
+              <input
+                data-testid="settings-credential-create-secret-kind"
+                value={secretKind}
+                onChange={(event) => setSecretKind(event.target.value)}
+                disabled={!canEdit || pending}
+                className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+              />
+            </label>
+            <label className="grid gap-2 text-sm md:col-span-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">summary</span>
+              <textarea
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+                disabled={!canEdit || pending}
+                className="min-h-[84px] rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+              />
+            </label>
+            <label className="grid gap-2 text-sm md:col-span-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">secret value</span>
+              <textarea
+                data-testid="settings-credential-create-secret"
+                value={secretValue}
+                onChange={(event) => setSecretValue(event.target.value)}
+                disabled={!canEdit || pending}
+                className="min-h-[96px] rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3 font-mono text-sm"
+              />
+            </label>
+          </div>
+
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              data-testid="settings-credential-create-workspace-default"
+              type="checkbox"
+              checked={workspaceDefault}
+              onChange={(event) => setWorkspaceDefault(event.target.checked)}
+              disabled={!canEdit || pending}
+            />
+            <span>创建后立即作为 workspace default 生效。</span>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              data-testid="settings-credential-create-save"
+              type="submit"
+              disabled={!canEdit || pending}
+              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {pending ? "加密写入中..." : "Create Credential"}
+            </button>
+            {success ? <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{success}</span> : null}
+            {error ? <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.92)]">{error}</span> : null}
+          </div>
+        </form>
+      </Panel>
+
+      {state.credentials.length === 0 ? (
+        <EmptyState title="还没有 credential profile" message="先在这里创建第一条 encrypted secret，再去 Agent Profile 和 Run Detail 绑定实际作用域。" />
+      ) : (
+        state.credentials.map((profile) => (
+          <CredentialProfileCard
+            key={profile.id}
+            profile={profile}
+            state={state}
+            canEdit={canEdit}
+            onUpdate={async (credentialId, input) => {
+              await updateCredentialProfile(credentialId, input);
+            }}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
 function LiveSettingsView({ notifications }: { notifications: LiveNotificationsModel }) {
   const { center, loading: notificationLoading, error: notificationError } = notifications;
   const { state, error: stateError } = usePhaseZeroState();
@@ -1260,6 +1610,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
 
       <WorkspaceDurableConfigPanel />
       <WorkspacePlanObservabilityPanel />
+      <CredentialProfilesPanel />
       <MemberPreferencePanel />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">

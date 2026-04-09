@@ -25,6 +25,7 @@ import { buildRunHistoryEntries, sanitizePlannerQueue, sanitizeRunHistoryPage } 
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import type {
   AgentHandoff,
+  CredentialProfile,
   Issue,
   Message,
   PlannerQueueItem,
@@ -101,6 +102,39 @@ function statusBadgeTone(status: Run["status"]) {
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+function findRunAgent(state: ReturnType<typeof usePhaseZeroState>["state"], run: Run) {
+  return state.agents.find((agent) => agent.name === run.owner || agent.id === run.owner || agent.recentRunIds.includes(run.id)) ?? null;
+}
+
+function effectiveCredentialProfiles(state: ReturnType<typeof usePhaseZeroState>["state"], run: Run) {
+  const agent = findRunAgent(state, run);
+  const seen = new Set<string>();
+  const profiles: CredentialProfile[] = [];
+  const allIDs = [
+    ...state.credentials.filter((profile) => profile.workspaceDefault).map((profile) => profile.id),
+    ...(agent?.credentialProfileIds ?? []),
+    ...(run.credentialProfileIds ?? []),
+  ];
+  for (const profileID of allIDs) {
+    if (seen.has(profileID)) {
+      continue;
+    }
+    seen.add(profileID);
+    const profile = state.credentials.find((candidate) => candidate.id === profileID);
+    if (profile) {
+      profiles.push(profile);
+    }
+  }
+  return { agent, profiles };
+}
+
+function formatCredentialTimestamp(value?: string) {
+  if (!value) {
+    return "尚未发生";
+  }
+  return value;
 }
 
 async function readRunHistoryPage(limit: number, cursor?: string) {
@@ -229,6 +263,144 @@ function AgentMailboxPanel({
             </Link>
           ))
         )}
+      </div>
+    </Panel>
+  );
+}
+
+function RunCredentialScopePanel({
+  state,
+  run,
+  canEdit,
+  onUpdate,
+}: {
+  state: ReturnType<typeof usePhaseZeroState>["state"];
+  run: Run;
+  canEdit: boolean;
+  onUpdate: (runId: string, input: { credentialProfileIds: string[] }) => Promise<unknown>;
+}) {
+  const { agent, profiles } = effectiveCredentialProfiles(state, run);
+  const [draft, setDraft] = useState<string[]>(run.credentialProfileIds ?? []);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(run.credentialProfileIds ?? []);
+  }, [run.credentialProfileIds]);
+
+  function toggle(profileID: string) {
+    setDraft((current) => (current.includes(profileID) ? current.filter((item) => item !== profileID) : [...current, profileID]));
+  }
+
+  async function handleSave() {
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await onUpdate(run.id, { credentialProfileIds: draft });
+      setSuccess("run-scope credential binding 已写回。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "run credential binding failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Panel tone="paper" className="shadow-[6px_6px_0_0_var(--shock-lime)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">credential scope</p>
+          <h3 className="mt-2 font-display text-3xl font-bold">把 workspace default、agent binding 和 run override 收在同一份执行真值</h3>
+        </div>
+        <span
+          data-testid="run-credential-effective-count"
+          className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+        >
+          {profiles.length} effective
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Agent</p>
+          <p className="mt-2 font-display text-xl font-semibold">{agent?.name ?? "未命中 agent truth"}</p>
+        </div>
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Workspace Default</p>
+          <p className="mt-2 font-display text-xl font-semibold">{state.credentials.filter((profile) => profile.workspaceDefault).length}</p>
+        </div>
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Agent Bound</p>
+          <p className="mt-2 font-display text-xl font-semibold">{agent?.credentialProfileIds?.length ?? 0}</p>
+        </div>
+        <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Run Bound</p>
+          <p className="mt-2 font-display text-xl font-semibold">{run.credentialProfileIds?.length ?? 0}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Effective Profiles</p>
+        <div data-testid="run-credential-effective-labels" className="mt-3 flex flex-wrap gap-2">
+          {profiles.length === 0 ? (
+            <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前 run 还没有命中任何 credential scope。</span>
+          ) : (
+            profiles.map((profile) => (
+              <span key={profile.id} className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
+                {profile.label}
+              </span>
+            ))
+          )}
+        </div>
+        <p data-testid="run-credential-audit" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+          最近一次 secret consume：
+          {profiles.find((profile) => profile.lastUsedAt)?.lastUsedAt
+            ? `${profiles.find((profile) => profile.lastUsedAt)?.lastUsedBy ?? "System"} @ ${formatCredentialTimestamp(profiles.find((profile) => profile.lastUsedAt)?.lastUsedAt)}`
+            : " 尚未记录"}
+        </p>
+      </div>
+
+      <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Run Override</p>
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+            {canEdit ? "run.execute" : "read only"}
+          </span>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {state.credentials.map((profile) => (
+            <label key={profile.id} className="flex items-start gap-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+              <input
+                data-testid={`run-credential-binding-${profile.id}`}
+                type="checkbox"
+                checked={draft.includes(profile.id)}
+                onChange={() => toggle(profile.id)}
+                disabled={!canEdit || pending}
+              />
+              <span>
+                <span className="block font-semibold">{profile.label}</span>
+                <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+                  {profile.secretKind} · {profile.workspaceDefault ? "workspace default" : "optional override"}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            data-testid="run-credential-save"
+            onClick={() => void handleSave()}
+            disabled={!canEdit || pending}
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "写回中..." : "写回 Run Scope"}
+          </button>
+          {success ? <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{success}</span> : null}
+          {error ? <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.92)]">{error}</span> : null}
+        </div>
       </div>
     </Panel>
   );
@@ -1237,7 +1409,7 @@ export function LiveRunPageContent({
   roomId?: string;
   runId: string;
 }) {
-  const { state, loading, error, controlRun } = usePhaseZeroState();
+  const { state, loading, error, controlRun, updateRunCredentialBindings } = usePhaseZeroState();
 
   if (loading) {
     return (
@@ -1360,6 +1532,13 @@ export function LiveRunPageContent({
           controlBoundary={runControlBoundary}
           onControl={handleRunControl}
         />
+        <RunCredentialScopePanel
+          state={state}
+          run={currentRun}
+          canEdit={canControlRun}
+          onUpdate={updateRunCredentialBindings}
+        />
+        <RunSandboxSurface run={currentRun} />
         <RunSandboxSurface run={currentRun} />
         <RunDetailView
           run={currentRun}

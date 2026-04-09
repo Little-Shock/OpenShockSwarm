@@ -715,6 +715,10 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if strings.HasSuffix(path, "/credentials") {
+		s.handleRunCredentialRoutes(w, r, strings.TrimSuffix(path, "/credentials"))
+		return
+	}
 	if strings.HasSuffix(path, "/sandbox") {
 		runID := strings.TrimSuffix(path, "/sandbox")
 		switch r.Method {
@@ -832,6 +836,51 @@ func (s *Server) handleRunDetail(w http.ResponseWriter, r *http.Request, runID s
 		return
 	}
 	writeJSON(w, http.StatusOK, sanitizeLivePayload(detail))
+}
+
+type RunCredentialBindingRequest struct {
+	CredentialProfileIDs []string `json:"credentialProfileIds"`
+}
+
+func (s *Server) handleRunCredentialRoutes(w http.ResponseWriter, r *http.Request, runID string) {
+	runID = strings.Trim(strings.TrimSpace(runID), "/")
+	if runID == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPatch:
+		if !s.requireSessionPermission(w, "run.execute") {
+			return
+		}
+		var req RunCredentialBindingRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		nextState, run, err := s.store.UpdateRunCredentialBindings(runID, store.RunCredentialBindingInput{
+			CredentialProfileIDs: req.CredentialProfileIDs,
+			UpdatedBy:            currentAuthActor(s.store.Snapshot().Auth.Session),
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrCredentialRunNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			case errors.Is(err, store.ErrCredentialProfileBindingInvalid):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			default:
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"run":   run,
+			"state": nextState,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
@@ -1428,6 +1477,12 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
+	}
+	if strings.TrimSpace(req.RunID) != "" {
+		if err := s.store.RecordCredentialUse(req.RunID, currentAuthActor(s.store.Snapshot().Auth.Session)); err != nil && !errors.Is(err, store.ErrCredentialRunNotFound) {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, payload)
 }

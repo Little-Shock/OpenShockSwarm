@@ -51,7 +51,9 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		{name: "memory forget", method: http.MethodPost, path: "/v1/memory/memory-demo/forget", body: `{"reason":"撤销这条过期记忆"}`, permission: "memory.write"},
 		{name: "memory promotion create", method: http.MethodPost, path: "/v1/memory-center/promotions", body: `{"memoryId":"memory-demo","kind":"skill","title":"demo","rationale":"demo"}`, permission: "memory.write"},
 		{name: "memory promotion review", method: http.MethodPost, path: "/v1/memory-center/promotions/memory-promotion-demo/review", body: `{"status":"approved"}`, permission: "memory.write"},
+		{name: "credential create", method: http.MethodPost, path: "/v1/credentials", body: `{"label":"GitHub App","summary":"repo sync","secretKind":"github-app","secretValue":"super-secret","workspaceDefault":true}`, permission: "workspace.manage"},
 		{name: "agent profile patch", method: http.MethodPatch, path: "/v1/agents/agent-codex-dockmaster", body: `{"role":"Platform Architect","avatar":"control-tower","prompt":"keep live truth first","operatingInstructions":"stay on current head","providerPreference":"Codex CLI","modelPreference":"gpt-5.3-codex","recallPolicy":"agent-first","runtimePreference":"shock-main","memorySpaces":["workspace","user"]}`, permission: "workspace.manage"},
+		{name: "run credential binding", method: http.MethodPatch, path: "/v1/runs/run_runtime_01/credentials", body: `{"credentialProfileIds":[]}`, permission: "run.execute"},
 		{name: "repo binding", method: http.MethodPost, path: "/v1/repo/binding", body: `{"repo":"example/phase-zero","repoUrl":"https://github.com/example/phase-zero.git","branch":"main"}`, permission: "repo.admin"},
 		{name: "github installation callback", method: http.MethodPost, path: "/v1/github/installation-callback", body: `{"installationId":"67890","setupAction":"install"}`, permission: "repo.admin"},
 		{name: "runtime pairing", method: http.MethodPost, path: "/v1/runtime/pairing", body: `{"daemonUrl":"http://127.0.0.1:65531"}`, permission: "runtime.manage"},
@@ -206,6 +208,24 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 			},
 		},
 		{
+			name:   "run credential binding",
+			method: http.MethodPatch,
+			path:   "/v1/runs/run_runtime_01/credentials",
+			body:   `{"credentialProfileIds":[]}`,
+			verify: func(t *testing.T, resp *http.Response) {
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("PATCH /v1/runs/run_runtime_01/credentials status = %d, want %d", resp.StatusCode, http.StatusOK)
+				}
+				var payload struct {
+					Run *store.Run `json:"run"`
+				}
+				decodeJSON(t, resp, &payload)
+				if payload.Run == nil {
+					t.Fatalf("run credential binding payload = %#v, want run", payload)
+				}
+			},
+		},
+		{
 			name:   "run sandbox patch",
 			method: http.MethodPatch,
 			path:   "/v1/runs/run_runtime_01/sandbox",
@@ -330,6 +350,7 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 		{name: "memory forget", method: http.MethodPost, path: "/v1/memory/memory-demo/forget", body: `{"reason":"撤销这条过期记忆"}`, permission: "memory.write"},
 		{name: "memory promotion create", method: http.MethodPost, path: "/v1/memory-center/promotions", body: `{"memoryId":"memory-demo","kind":"skill","title":"demo","rationale":"demo"}`, permission: "memory.write"},
 		{name: "memory promotion review", method: http.MethodPost, path: "/v1/memory-center/promotions/memory-promotion-demo/review", body: `{"status":"approved"}`, permission: "memory.write"},
+		{name: "credential create", method: http.MethodPost, path: "/v1/credentials", body: `{"label":"GitHub App","summary":"repo sync","secretKind":"github-app","secretValue":"super-secret","workspaceDefault":true}`, permission: "workspace.manage"},
 		{name: "agent profile patch", method: http.MethodPatch, path: "/v1/agents/agent-codex-dockmaster", body: `{"role":"Platform Architect","avatar":"control-tower","prompt":"keep live truth first","operatingInstructions":"stay on current head","providerPreference":"Codex CLI","modelPreference":"gpt-5.3-codex","recallPolicy":"agent-first","runtimePreference":"shock-main","memorySpaces":["workspace","user"]}`, permission: "workspace.manage"},
 		{name: "repo binding", method: http.MethodPost, path: "/v1/repo/binding", body: `{"repo":"example/phase-zero","repoUrl":"https://github.com/example/phase-zero.git","branch":"main"}`, permission: "repo.admin"},
 		{name: "github installation callback", method: http.MethodPost, path: "/v1/github/installation-callback", body: `{"installationId":"67890","setupAction":"install"}`, permission: "repo.admin"},
@@ -483,7 +504,9 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 		{name: "memory forget", method: http.MethodPost, path: "/v1/memory/memory-demo/forget", body: `{"reason":"撤销这条过期记忆"}`, permission: "memory.write"},
 		{name: "memory promotion create", method: http.MethodPost, path: "/v1/memory-center/promotions", body: `{"memoryId":"memory-demo","kind":"skill","title":"demo","rationale":"demo"}`, permission: "memory.write"},
 		{name: "memory promotion review", method: http.MethodPost, path: "/v1/memory-center/promotions/memory-promotion-demo/review", body: `{"status":"approved"}`, permission: "memory.write"},
+		{name: "credential create", method: http.MethodPost, path: "/v1/credentials", body: `{"label":"GitHub App","summary":"repo sync","secretKind":"github-app","secretValue":"super-secret","workspaceDefault":true}`, permission: "workspace.manage"},
 		{name: "agent profile patch", method: http.MethodPatch, path: "/v1/agents/agent-codex-dockmaster", body: `{"role":"Platform Architect","avatar":"control-tower","prompt":"keep live truth first","operatingInstructions":"stay on current head","providerPreference":"Codex CLI","modelPreference":"gpt-5.3-codex","recallPolicy":"agent-first","runtimePreference":"shock-main","memorySpaces":["workspace","user"]}`, permission: "workspace.manage"},
+		{name: "run credential binding", method: http.MethodPatch, path: "/v1/runs/run_runtime_01/credentials", body: `{"credentialProfileIds":[]}`, permission: "run.execute"},
 		{name: "repo binding", method: http.MethodPost, path: "/v1/repo/binding", body: `{"repo":"example/phase-zero","repoUrl":"https://github.com/example/phase-zero.git","branch":"main"}`, permission: "repo.admin"},
 		{name: "github installation callback", method: http.MethodPost, path: "/v1/github/installation-callback", body: `{"installationId":"67890","setupAction":"install"}`, permission: "repo.admin"},
 		{name: "runtime pairing", method: http.MethodPost, path: "/v1/runtime/pairing", body: `{"daemonUrl":"http://127.0.0.1:65531"}`, permission: "runtime.manage"},

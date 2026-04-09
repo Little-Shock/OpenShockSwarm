@@ -28,6 +28,7 @@ var (
 	ErrAgentRuntimePreferenceInvalid   = errors.New("agent runtime preference must match a known runtime")
 	ErrAgentProviderPreferenceInvalid  = errors.New("agent provider preference must match runtime provider truth")
 	ErrAgentModelPreferenceInvalid     = errors.New("agent model preference is invalid")
+	ErrAgentCredentialBindingInvalid   = errors.New("agent credential binding is invalid")
 )
 
 type AgentProfileUpdateInput struct {
@@ -40,6 +41,7 @@ type AgentProfileUpdateInput struct {
 	RecallPolicy          string
 	RuntimePreference     string
 	MemorySpaces          []string
+	CredentialProfileIDs  []string
 	Sandbox               *SandboxPolicy
 	UpdatedBy             string
 }
@@ -92,6 +94,10 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	if err != nil {
 		return State{}, Agent{}, err
 	}
+	credentialProfileIDs, err := s.normalizeCredentialProfileIDsLocked(input.CredentialProfileIDs)
+	if err != nil {
+		return State{}, Agent{}, fmt.Errorf("%w: %s", ErrAgentCredentialBindingInvalid, err.Error())
+	}
 	runtimeRecord, runtimePreference, err := resolveRuntimePreference(s.state.Runtimes, input.RuntimePreference)
 	if err != nil {
 		return State{}, Agent{}, err
@@ -116,6 +122,7 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	changes = appendAgentProfileChange(changes, "runtimePreference", agent.RuntimePreference, runtimePreference)
 	changes = appendAgentProfileChange(changes, "recallPolicy", agent.RecallPolicy, recallPolicy)
 	changes = appendAgentProfileChange(changes, "memoryBinding", strings.Join(agent.MemorySpaces, ", "), strings.Join(memorySpaces, ", "))
+	changes = appendAgentProfileChange(changes, "credentialBinding", strings.Join(agent.CredentialProfileIDs, ", "), strings.Join(credentialProfileIDs, ", "))
 	if input.Sandbox != nil {
 		policy, err := normalizeSandboxPolicyInput(*input.Sandbox, agent.Sandbox, input.UpdatedBy)
 		if err != nil {
@@ -135,6 +142,7 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	agent.RecallPolicy = recallPolicy
 	agent.RuntimePreference = runtimePreference
 	agent.MemorySpaces = memorySpaces
+	agent.CredentialProfileIDs = credentialProfileIDs
 
 	if len(changes) > 0 {
 		now := time.Now().UTC().Format(time.RFC3339)
@@ -149,6 +157,7 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 	}
 
 	s.state.Agents[index] = agent
+	s.syncAllCredentialGuardsLocked()
 	if err := s.persistLocked(); err != nil {
 		return State{}, Agent{}, err
 	}
