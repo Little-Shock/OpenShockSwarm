@@ -1,5 +1,9 @@
 # Testing Docs
 
+- [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
+  - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
+- [Test Report 2026-04-09 Windows Chrome Remaining Suite](./Test-Report-2026-04-09-windows-chrome-remaining-suite.md)
+  - 2026-04-09 当天补跑的 setup / onboarding / session / authz / notification / runtime / CJK 字体链路汇总
 - [Test Cases](./Test-Cases.md)
   - 以 `PRD -> Checklist -> Test Case` 链路整理的全量验证项
 - [Test Report 2026-04-06 Main](./Test-Report-2026-04-06-main.md)

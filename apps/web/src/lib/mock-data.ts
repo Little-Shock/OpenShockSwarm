@@ -1682,7 +1682,7 @@ export const setupSteps: SetupStep[] = [
 export const settingsSections: SettingsSection[] = [
   { id: "settings-auth", title: "账号身份", summary: "邮箱是主身份，GitHub 是连接进来的代码身份。", value: "邮箱优先 / GitHub 已连接" },
   { id: "settings-sandbox", title: "本地可信沙盒", summary: "高风险动作要升级审批，普通编码继承本地 CLI 策略。", value: "破坏性 Git / 强删 => approval_required" },
-  { id: "settings-memory", title: "记忆插件模式", summary: "Phase 0 先坚持文件记忆，再接外部 provider。", value: "MEMORY.md / notes/ / decisions/" },
+  { id: "settings-memory", title: "记忆模式", summary: "Phase 0 先坚持文件记忆；外部插件 provider 还没有进入当前主线。", value: "MEMORY.md / notes/ / decisions/" },
   { id: "settings-notify", title: "通知默认值", summary: "Inbox 接收全部事件，浏览器 Push 只保留高信号。", value: "浏览器 Push => 仅紧急" },
 ];
 

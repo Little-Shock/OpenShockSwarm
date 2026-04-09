@@ -7,10 +7,10 @@
 </p>
 
 <p>
-  <a href="https://github.com/Larkspur-Wang/OpenShock"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Larkspur-Wang/OpenShock?style=for-the-badge&logo=github&label=stars&color=00f5a0" /></a>
-  <a href="https://github.com/Larkspur-Wang/OpenShock/forks"><img alt="GitHub forks" src="https://img.shields.io/github/forks/Larkspur-Wang/OpenShock?style=for-the-badge&logo=github&label=forks&color=13c2ff" /></a>
-  <a href="https://github.com/Larkspur-Wang/OpenShock/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/Larkspur-Wang/OpenShock?style=for-the-badge&logo=github&label=issues&color=ff5c8a" /></a>
-  <a href="https://github.com/Larkspur-Wang/OpenShock/commits/main"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Larkspur-Wang/OpenShock?style=for-the-badge&logo=github&label=last%20commit&color=facc15" /></a>
+  <a href="https://github.com/Little-Shock/OpenShock"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Little-Shock/OpenShock?style=for-the-badge&logo=github&label=stars&color=00f5a0" /></a>
+  <a href="https://github.com/Little-Shock/OpenShock/forks"><img alt="GitHub forks" src="https://img.shields.io/github/forks/Little-Shock/OpenShock?style=for-the-badge&logo=github&label=forks&color=13c2ff" /></a>
+  <a href="https://github.com/Little-Shock/OpenShock/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/Little-Shock/OpenShock?style=for-the-badge&logo=github&label=issues&color=ff5c8a" /></a>
+  <a href="https://github.com/Little-Shock/OpenShock/commits/main"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Little-Shock/OpenShock?style=for-the-badge&logo=github&label=last%20commit&color=facc15" /></a>
 </p>
 
 <p>
@@ -39,9 +39,10 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 - web 壳已经把 `Chat / Inbox / Board / Setup / Issues / Runs / Agents / Memory / Access / Settings` 收进同一套 workspace shell
 - `Chat / Work` 切换、同源 `/api/control/*` proxy、message-centric thread rail 和 room/run/inbox 控制面已经站住
+- room-first `Chat / Topic / Run / PR / Context` workbench、DM、followed thread、saved later 和 quick search 都已经接上真实前台表面
 - server 有文件持久化状态、Issue 创建、Room/Run/Session 读取、PR 状态回写、runtime pairing、repo binding、GitHub readiness probe，以及 `gh CLI / GitHub App` 双 auth path 的 PR contract
 - daemon 可以探测本地 `codex` / `claude`，支持同步执行、流式执行，以及 `git worktree` lane 创建
-- 当前 `main` 也已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread 和 multi-runtime scheduler / failover 的第一轮闭环
+- 当前 `main` 已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread、agent mailbox / handoff、profile editor、machine capability binding、workspace durable config，以及 multi-runtime scheduler / failover 的第一轮闭环
 
 ## 当前仓库真值
 
@@ -53,7 +54,11 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - `/inbox`
   - `/issues`、`/issues/[issueKey]`
   - `/rooms/[roomId]`、`/rooms/[roomId]/runs/[runId]`
+  - `/topics/[topicId]`
   - `/agents`、`/agents/[agentId]`
+  - `/profiles/[kind]/[profileId]`
+  - `/pull-requests/[pullRequestId]`
+  - `/mailbox`
   - `/setup`
   - `/memory`
   - `/access`
@@ -97,21 +102,28 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - issue 创建时会生成 room、run、session，并尝试创建对应 worktree lane
   - 工作区会生成 `MEMORY.md`、`notes/`、`decisions/`、`.openshock/agents/...`
   - memory artifact 已有 version / governance / detail contract
+  - workspace durable config 已能把 onboarding / browser push / memory mode / sandbox baseline 写回同一份状态快照
+  - profile / mailbox / runtime / approval 等前台都已经读同一份 live state，而不是各自 shadow state
+
+### 插件状态
+
+- 当前仓库还没有“插件中心 / 插件列表 / 插件注册表”这层产品真值
+- 现在已经落地的是：
+  - runtime provider catalog
+  - agent provider/model/runtime affinity
+  - 文件级记忆模式：`MEMORY.md / notes/ / decisions/`
+- PRD 里提到的 OpenMemory / Mem0 / MemOS / QMD 这类外部插件 provider 仍然是后续能力，不是当前 `main` 已落地功能
+- 如果你在设置页里看到“插件”相关表达，那是旧文案，不代表当前已经有可用插件数据面
 
 ### 还没有做成“完整产品闭环”的部分
 
-- `app.slock.ai` 式真实 quick search / search result、DM、saved / later、profile / presence surface
-- Room workbench tabs、Topic / PR / Context 同房间切换
-- Agent profile editor 已落地，但 machine affinity、本地 CLI / model capability 绑定与 durable config 仍未收平
-- Runtime / Machine profile、本地 CLI / model capability 绑定
-- 场景化 onboarding：开发团队 / 研究团队 / 空白模板
-- Agent Mailbox、多 Agent handoff、角色治理与 response aggregation
-- user / workspace / agent / machine 配置持久化与数据库真相
-- Board 次级化后的轻量 planning card 和 room / issue 回跳
-- GitHub App installation-complete 后的 live callback / repo 持续同步
-- 设备授权 / 完整邮箱验证 / 更完整外部身份绑定
-- destructive action approval、secret boundary、越界写保护
-- 多 Agent 调度 loop 与更重的长期自治 / 长期记忆整理
+- 外部插件注册表与可运营的插件数据面
+- 数据库真相：当前主状态仍然以文件快照为主，不是 DB-backed control plane
+- GitHub App / webhook / remote PR 的生产级稳态，还有更多真实环境异常要收
+- 更完整的 workspace 组织模型、成员治理、邀请与权限运维
+- onboarding 场景包、agent 预置团队模板、机器初始化和 CLI 安装助手仍需继续产品化
+- 更深的多 Agent response aggregation、agent-to-agent 通信、记忆治理和长期自治
+- Board 虽已降级为 planning mirror，但视觉密度和信息层级仍有继续收口空间
 
 换句话说：现在已经是“可运行基线”，但还不是“完整产品闭环”。
 
@@ -123,7 +135,8 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - 未完成功能拆票: [docs/product/Execution-Tickets.md](./docs/product/Execution-Tickets.md)
 - 全量测试用例: [docs/testing/Test-Cases.md](./docs/testing/Test-Cases.md)
 - 测试报告索引: [docs/testing/README.md](./docs/testing/README.md)
-- 最新壳层走查: [docs/testing/Test-Report-2026-04-08-work-shell-smoke.md](./docs/testing/Test-Report-2026-04-08-work-shell-smoke.md)
+- 最新全量有头回归: [docs/testing/Test-Report-2026-04-09-windows-chrome-full-suite.md](./docs/testing/Test-Report-2026-04-09-windows-chrome-full-suite.md)
+- 最新壳层走查: [docs/testing/Test-Report-2026-04-09-windows-chrome-work-shell-smoke.md](./docs/testing/Test-Report-2026-04-09-windows-chrome-work-shell-smoke.md)
 
 ## 仓库结构
 
