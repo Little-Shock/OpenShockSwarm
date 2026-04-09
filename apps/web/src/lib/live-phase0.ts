@@ -117,12 +117,22 @@ type PhaseZeroStreamPresence = {
   unread: number;
 };
 
-type PhaseZeroStreamEvent = {
+type PhaseZeroSnapshotStreamEvent = {
   type: "snapshot";
   sequence: number;
   sentAt: string;
   presence: PhaseZeroStreamPresence;
   state: PhaseZeroState;
+};
+
+type PhaseZeroDeltaStreamEvent = {
+  type: "delta";
+  sequence: number;
+  sentAt: string;
+  presence: PhaseZeroStreamPresence;
+  kinds: string[];
+  events: string[];
+  delta: Partial<PhaseZeroState>;
 };
 
 type PhaseZeroContextValue = {
@@ -303,6 +313,13 @@ async function readJSON<T>(path: string, init?: RequestInit) {
   return payload;
 }
 
+function mergePhaseZeroState(current: PhaseZeroState, delta: Partial<PhaseZeroState>): PhaseZeroState {
+  return sanitizePhaseZeroState({
+    ...current,
+    ...delta,
+  } as PhaseZeroState);
+}
+
 function useProvidePhaseZeroState(): PhaseZeroContextValue {
   const [state, setState] = useState<PhaseZeroState>(EMPTY_PHASE_ZERO_STATE);
   const [approvalCenter, setApprovalCenter] = useState<ApprovalCenterState>(EMPTY_APPROVAL_CENTER_STATE);
@@ -336,6 +353,14 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
   const commitApprovalCenterError = useCallback((nextError: unknown) => {
     setApprovalCenterError(nextError instanceof Error ? nextError.message : "approval center fetch failed");
     setApprovalCenterLoading(false);
+  }, []);
+
+  const commitStateDelta = useCallback((delta: Partial<PhaseZeroState>) => {
+    startTransition(() => {
+      setState((current) => mergePhaseZeroState(current, delta));
+      setError(null);
+      setLoading(false);
+    });
   }, []);
 
   const refresh = useCallback(async () => {
@@ -373,6 +398,11 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     commitState(next);
     void refreshApprovalCenter().catch(() => {});
   }, [commitState, refreshApprovalCenter]);
+
+  const commitStateDeltaAndRefreshApprovalCenter = useCallback((delta: Partial<PhaseZeroState>) => {
+    commitStateDelta(delta);
+    void refreshApprovalCenter().catch(() => {});
+  }, [commitStateDelta, refreshApprovalCenter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -413,8 +443,19 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
         return;
       }
       try {
-        const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroStreamEvent;
+        const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroSnapshotStreamEvent;
         commitStateAndRefreshApprovalCenter(payload.state);
+      } catch {
+        // Ignore malformed stream payloads and wait for the next reconnect/update.
+      }
+    });
+    source.addEventListener("delta", (event) => {
+      if (cancelled) {
+        return;
+      }
+      try {
+        const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroDeltaStreamEvent;
+        commitStateDeltaAndRefreshApprovalCenter(payload.delta);
       } catch {
         // Ignore malformed stream payloads and wait for the next reconnect/update.
       }
@@ -434,7 +475,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       }
       source?.close();
     };
-  }, [commitStateAndRefreshApprovalCenter, refresh]);
+  }, [commitStateAndRefreshApprovalCenter, commitStateDeltaAndRefreshApprovalCenter, refresh]);
 
   useEffect(() => {
     const poll = window.setInterval(() => {
