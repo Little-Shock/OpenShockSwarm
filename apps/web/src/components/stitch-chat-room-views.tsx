@@ -1717,12 +1717,12 @@ function ClaudeCompactComposer({
 
 export function StitchChannelsView({ channelId }: { channelId: string }) {
   const searchParams = useSearchParams();
-  const { state, approvalCenter, loading, error, postChannelMessage } = usePhaseZeroState();
+  const { state, approvalCenter, loading, error, postChannelMessage, postDirectMessage, updateMessageSurfaceCollection } = usePhaseZeroState();
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const activeWorkbenchTab = parseChannelWorkbenchTab(searchParams.get("tab"));
   const queryThreadId = searchParams.get("thread");
   const liveChannel = loading || error ? undefined : state.channels.find((item) => item.id === channelId);
-  const directMessage = DIRECT_MESSAGES.find((item) => item.id === channelId);
+  const directMessage = (loading || error ? DIRECT_MESSAGES : state.directMessages).find((item) => item.id === channelId);
   const channel: MessageChannelSurface | undefined = liveChannel
     ? { ...liveChannel, kind: "channel" }
     : directMessage
@@ -1740,12 +1740,12 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
-  const [localDirectMessageMessages, setLocalDirectMessageMessages] = useState<Record<string, Message[]>>(DIRECT_MESSAGE_MESSAGES);
-  const [followedThreads, setFollowedThreads] = useState<MessageSurfaceEntry[]>(DEFAULT_FOLLOWED_THREADS);
-  const [savedLaterItems, setSavedLaterItems] = useState<MessageSurfaceEntry[]>(DEFAULT_SAVED_LATER_ITEMS);
+  const directMessageMessages = loading || error ? DIRECT_MESSAGE_MESSAGES : state.directMessageMessages;
+  const followedThreads = loading || error ? DEFAULT_FOLLOWED_THREADS : state.followedThreads;
+  const savedLaterItems = loading || error ? DEFAULT_SAVED_LATER_ITEMS : state.savedLaterItems;
   const messages = channel
     ? isDirectMessage
-      ? localDirectMessageMessages[channel.id] ?? []
+      ? directMessageMessages[channel.id] ?? []
       : state.channelMessages[channel.id] ?? []
     : [];
   const channelThreadReplies = channel ? CHANNEL_THREAD_REPLIES[channel.id] ?? {} : {};
@@ -1755,7 +1755,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const inboxCount = loading || error ? 0 : approvalCenter.openCount;
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
-  const directMessagesForSidebar = DIRECT_MESSAGES.map((item) => ({
+  const directMessagesForSidebar = (loading || error ? DIRECT_MESSAGES : state.directMessages).map((item) => ({
     ...item,
     href: buildChannelWorkbenchHref(item.id, "chat"),
   }));
@@ -1806,7 +1806,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const selectedCollectionMessage = selectedCollectionEntry
     ? (selectedCollectionEntry.channelId === channelId
         ? messages
-        : localDirectMessageMessages[selectedCollectionEntry.channelId] ?? state.channelMessages[selectedCollectionEntry.channelId] ?? []
+        : directMessageMessages[selectedCollectionEntry.channelId] ?? state.channelMessages[selectedCollectionEntry.channelId] ?? []
       ).find((message) => message.id === selectedCollectionEntry.messageId)
     : undefined;
   const selectedCollectionReplies = selectedCollectionEntry
@@ -1829,20 +1829,6 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
     selectedThreadMessage &&
       savedLaterItems.some((item) => item.channelId === channelId && item.messageId === selectedThreadMessage.id)
   );
-
-  function buildSurfaceEntry(prefix: "followed" | "saved", message: Message, note: string) {
-    return {
-      id: `${prefix}-${channelId}-${message.id}`,
-      channelId,
-      messageId: message.id,
-      channelLabel: channel?.name ?? channelId,
-      title: `${message.speaker} / ${messageExcerpt(message.message, 34)}`,
-      summary: messageExcerpt(message.message, 110),
-      note,
-      updatedAt: message.time,
-      unread: channelThreadReplies[message.id]?.length ?? 0,
-    } satisfies MessageSurfaceEntry;
-  }
 
   useEffect(() => {
     const nextThreadId =
@@ -1877,32 +1863,34 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
     setReplyTarget(buildReplyTarget(message));
   }
 
-  function handleToggleFollowThread() {
+  async function handleToggleFollowThread() {
     if (!selectedThreadMessage || !channel) return;
-    setFollowedThreads((current) => {
-      const exists = current.some((item) => item.channelId === channelId && item.messageId === selectedThreadMessage.id);
-      if (exists) {
-        return current.filter((item) => !(item.channelId === channelId && item.messageId === selectedThreadMessage.id));
-      }
-      return [
-        buildSurfaceEntry("followed", selectedThreadMessage, "这条 thread 已被 follow，可从 sidebar 或 Followed tab 重新打开。"),
-        ...current,
-      ];
-    });
+    const exists = followedThreads.some((item) => item.channelId === channelId && item.messageId === selectedThreadMessage.id);
+    try {
+      await updateMessageSurfaceCollection({
+        kind: "followed",
+        channelId,
+        messageId: selectedThreadMessage.id,
+        enabled: !exists,
+      });
+    } catch (collectionError) {
+      setSendError(collectionError instanceof Error ? collectionError.message : "follow thread 写回失败");
+    }
   }
 
-  function handleToggleSaveLater() {
+  async function handleToggleSaveLater() {
     if (!selectedThreadMessage || !channel) return;
-    setSavedLaterItems((current) => {
-      const exists = current.some((item) => item.channelId === channelId && item.messageId === selectedThreadMessage.id);
-      if (exists) {
-        return current.filter((item) => !(item.channelId === channelId && item.messageId === selectedThreadMessage.id));
-      }
-      return [
-        buildSurfaceEntry("saved", selectedThreadMessage, "Later 队列保留“晚点回看”的消息，不把它伪装成新的 planning lane。"),
-        ...current,
-      ];
-    });
+    const exists = savedLaterItems.some((item) => item.channelId === channelId && item.messageId === selectedThreadMessage.id);
+    try {
+      await updateMessageSurfaceCollection({
+        kind: "saved",
+        channelId,
+        messageId: selectedThreadMessage.id,
+        enabled: !exists,
+      });
+    } catch (collectionError) {
+      setSendError(collectionError instanceof Error ? collectionError.message : "saved later 写回失败");
+    }
   }
 
   async function handleChannelSend() {
@@ -1914,28 +1902,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
     setSendError(null);
     try {
       if (isDirectMessage) {
-        const now = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
-        const counterpart = channel.counterpart ?? channel.name;
-        const humanMessage: Message = {
-          id: `local-dm-human-${Date.now()}`,
-          speaker: "Larkspur",
-          role: "human",
-          tone: "human",
-          message: sendPrompt,
-          time: now,
-        };
-        const replyMessage: Message = {
-          id: `local-dm-agent-${Date.now()}`,
-          speaker: counterpart,
-          role: "agent",
-          tone: "agent",
-          message: "收到。这条我先留在 DM / followed thread 工作流里，不急着升级成 room。",
-          time: now,
-        };
-        setLocalDirectMessageMessages((current) => ({
-          ...current,
-          [channel.id]: [...(current[channel.id] ?? []), humanMessage, replyMessage],
-        }));
+        await postDirectMessage(channel.id, sendPrompt);
       } else {
         await postChannelMessage(channel.id, sendPrompt);
       }

@@ -32,6 +32,8 @@
   - `TKT-16` `TKT-17` `TKT-20` 当前这轮 shell / thread / board demotion 的 headed walkthrough evidence
 - [Test Report 2026-04-08 Quick Search](./Test-Report-2026-04-08-quick-search.md)
   - `TKT-21` 的 real quick search / search result surface headed exact replay evidence
+- [Test Report 2026-04-09 Quick Search Message Surface Contract](./Test-Report-2026-04-09-quick-search-message-surface-contract.md)
+  - `TKT-27` 的 `dm / followed / saved` server-backed search result、reopen 与 jump-target evidence
 - [Test Report 2026-04-08 Work Shell Smoke](./Test-Report-2026-04-08-work-shell-smoke.md)
   - `chat / setup / issues / memory / inbox / board / room / run` 在统一 workspace shell 下的当前有头走查结果
 - [Test Report 2026-04-08 Frontend Interaction Polish](./Test-Report-2026-04-08-frontend-interaction-polish.md)

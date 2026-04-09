@@ -90,6 +90,18 @@ func (s *Store) hydrateMissingDefaults() {
 	if len(s.state.Machines) == 0 {
 		s.state.Machines = defaults.Machines
 	}
+	if s.state.DirectMessages == nil {
+		s.state.DirectMessages = defaults.DirectMessages
+	}
+	if s.state.DirectMessageMessages == nil {
+		s.state.DirectMessageMessages = defaults.DirectMessageMessages
+	}
+	if s.state.FollowedThreads == nil {
+		s.state.FollowedThreads = defaults.FollowedThreads
+	}
+	if s.state.SavedLaterItems == nil {
+		s.state.SavedLaterItems = defaults.SavedLaterItems
+	}
 	if len(s.state.Agents) == 0 {
 		s.state.Agents = defaults.Agents
 	}
@@ -377,6 +389,7 @@ func cloneState(state State) State {
 	applyRuntimeDerivedTruth(&clone, time.Now())
 	clone.RuntimeLeases = buildRuntimeLeases(clone)
 	clone.RuntimeScheduler = buildRuntimeScheduler(clone, "").Scheduler
+	clone.QuickSearchEntries = buildMessageSurfaceQuickSearchEntries(clone)
 	return clone
 }
 

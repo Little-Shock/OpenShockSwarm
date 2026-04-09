@@ -64,6 +64,17 @@ type Channel struct {
 	Purpose string `json:"purpose"`
 }
 
+type DirectMessage struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Summary     string   `json:"summary"`
+	Purpose     string   `json:"purpose"`
+	Unread      int      `json:"unread"`
+	Presence    string   `json:"presence"`
+	Counterpart string   `json:"counterpart"`
+	MessageIDs  []string `json:"messageIds"`
+}
+
 type Message struct {
 	ID      string `json:"id"`
 	Speaker string `json:"speaker"`
@@ -71,6 +82,29 @@ type Message struct {
 	Tone    string `json:"tone"`
 	Message string `json:"message"`
 	Time    string `json:"time"`
+}
+
+type MessageSurfaceEntry struct {
+	ID           string `json:"id"`
+	ChannelID    string `json:"channelId"`
+	MessageID    string `json:"messageId"`
+	ChannelLabel string `json:"channelLabel"`
+	Title        string `json:"title"`
+	Summary      string `json:"summary"`
+	Note         string `json:"note"`
+	UpdatedAt    string `json:"updatedAt"`
+	Unread       int    `json:"unread"`
+}
+
+type SearchResult struct {
+	ID       string `json:"id"`
+	Kind     string `json:"kind"`
+	Title    string `json:"title"`
+	Summary  string `json:"summary"`
+	Meta     string `json:"meta"`
+	Href     string `json:"href"`
+	Keywords string `json:"keywords"`
+	Order    int    `json:"order"`
 }
 
 type Topic struct {
@@ -471,25 +505,30 @@ type MemoryArtifactDetail struct {
 }
 
 type State struct {
-	Workspace        WorkspaceSnapshot                  `json:"workspace"`
-	Channels         []Channel                          `json:"channels"`
-	ChannelMessages  map[string][]Message               `json:"channelMessages"`
-	Issues           []Issue                            `json:"issues"`
-	Rooms            []Room                             `json:"rooms"`
-	RoomMessages     map[string][]Message               `json:"roomMessages"`
-	Runs             []Run                              `json:"runs"`
-	Agents           []Agent                            `json:"agents"`
-	Machines         []Machine                          `json:"machines"`
-	Runtimes         []RuntimeRecord                    `json:"runtimes"`
-	Inbox            []InboxItem                        `json:"inbox"`
-	PullRequests     []PullRequest                      `json:"pullRequests"`
-	Sessions         []Session                          `json:"sessions"`
-	RuntimeLeases    []RuntimeLease                     `json:"runtimeLeases,omitempty"`
-	RuntimeScheduler RuntimeScheduler                   `json:"runtimeScheduler"`
-	Guards           []DestructiveGuard                 `json:"guards,omitempty"`
-	Auth             AuthSnapshot                       `json:"auth"`
-	Memory           []MemoryArtifact                   `json:"memory"`
-	MemoryVersions   map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`
+	Workspace             WorkspaceSnapshot                  `json:"workspace"`
+	Channels              []Channel                          `json:"channels"`
+	ChannelMessages       map[string][]Message               `json:"channelMessages"`
+	DirectMessages        []DirectMessage                    `json:"directMessages,omitempty"`
+	DirectMessageMessages map[string][]Message               `json:"directMessageMessages,omitempty"`
+	FollowedThreads       []MessageSurfaceEntry              `json:"followedThreads,omitempty"`
+	SavedLaterItems       []MessageSurfaceEntry              `json:"savedLaterItems,omitempty"`
+	QuickSearchEntries    []SearchResult                     `json:"quickSearchEntries,omitempty"`
+	Issues                []Issue                            `json:"issues"`
+	Rooms                 []Room                             `json:"rooms"`
+	RoomMessages          map[string][]Message               `json:"roomMessages"`
+	Runs                  []Run                              `json:"runs"`
+	Agents                []Agent                            `json:"agents"`
+	Machines              []Machine                          `json:"machines"`
+	Runtimes              []RuntimeRecord                    `json:"runtimes"`
+	Inbox                 []InboxItem                        `json:"inbox"`
+	PullRequests          []PullRequest                      `json:"pullRequests"`
+	Sessions              []Session                          `json:"sessions"`
+	RuntimeLeases         []RuntimeLease                     `json:"runtimeLeases,omitempty"`
+	RuntimeScheduler      RuntimeScheduler                   `json:"runtimeScheduler"`
+	Guards                []DestructiveGuard                 `json:"guards,omitempty"`
+	Auth                  AuthSnapshot                       `json:"auth"`
+	Memory                []MemoryArtifact                   `json:"memory"`
+	MemoryVersions        map[string][]MemoryArtifactVersion `json:"memoryVersions,omitempty"`
 }
 
 type RoomDetail struct {

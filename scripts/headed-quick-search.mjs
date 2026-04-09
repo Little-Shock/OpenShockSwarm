@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const evidenceRoot =
   process.env.OPENSHOCK_E2E_ARTIFACTS_DIR?.trim() ||
-  (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt21-quick-search-")));
+  (await mkdtemp(path.join(os.tmpdir(), "openshock-quick-search-")));
 const artifactsDir = path.resolve(evidenceRoot);
 const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
@@ -231,6 +231,14 @@ async function waitForPath(page, pathname) {
   );
 }
 
+async function waitForUrlIncludes(page, fragment) {
+  await page.waitForFunction(
+    (expectedFragment) => window.location.href.includes(expectedFragment),
+    fragment,
+    { timeout: 30_000 }
+  );
+}
+
 async function waitForPageText(page, expectedText) {
   await page.waitForFunction(
     (text) => document.body?.textContent?.includes(text) ?? false,
@@ -309,6 +317,30 @@ try {
   await capture(page, "agent-dockmaster");
 
   await openQuickSearchWithHotkey(page);
+  await page.getByTestId("quick-search-input").fill("Mina");
+  await expectHighlightedResult(page, "quick-search-result-dm-dm-mina");
+  await page.getByTestId("quick-search-result-dm-dm-mina").click();
+  await waitForPath(page, "/chat/dm-mina");
+  await waitForPageText(page, "saved later 不应该像任务板");
+  await capture(page, "dm-mina");
+
+  await openQuickSearchWithHotkey(page);
+  await page.getByTestId("quick-search-input").fill("runtime sync thread");
+  await expectHighlightedResult(page, "quick-search-result-followed-followed-all-runtime");
+  await page.getByTestId("quick-search-result-followed-followed-all-runtime").click();
+  await waitForUrlIncludes(page, "/chat/all?tab=followed&thread=msg-all-2");
+  await waitForVisible(page, "followed-thread-panel-card-followed-all-runtime");
+  await capture(page, "followed-thread-result");
+
+  await openQuickSearchWithHotkey(page);
+  await page.getByTestId("quick-search-input").fill("Longwen default-entry");
+  await expectHighlightedResult(page, "quick-search-result-saved-saved-roadmap-chat-first");
+  await page.getByTestId("quick-search-result-saved-saved-roadmap-chat-first").click();
+  await waitForUrlIncludes(page, "/chat/roadmap?tab=saved&thread=msg-roadmap-1");
+  await waitForVisible(page, "saved-later-panel-card-saved-roadmap-chat-first");
+  await capture(page, "saved-thread-result");
+
+  await openQuickSearchWithHotkey(page);
   await page.getByTestId("quick-search-input").fill("zzzz-not-found");
   await waitForPageText(page, "No matches yet");
   await capture(page, "no-matches");
@@ -316,7 +348,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('[data-testid="quick-search-dialog"]'), undefined, { timeout: 30_000 });
 
   const report = [
-    "# TKT-21 Real Quick Search / Search Result Surface Report",
+    "# 2026-04-09 Quick Search / Message Surface Contract Report",
     "",
     `- Command: \`pnpm test:headed-quick-search -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
@@ -329,15 +361,21 @@ try {
     "- `Ctrl+K` 可在 room / run / agent 等高频页重复打开同一套命令面板；输入 `Runtime 讨论间`、`OPS-19`、`run_runtime_01`、`Codex Dockmaster` 都能命中对应 kind 并完成跳转 -> PASS",
     "- issue 页顶部 `Quick Search` 触发器已接上真实结果面，不再只有 placeholder 文案 -> PASS",
     "",
+    "### DM / Followed Thread / Saved Later Jump",
+    "",
+    "- 输入 `Mina` 会命中 server-backed `dm` 结果并直接进入 `/chat/dm-mina`；DM 不再只靠本地占位列表维持入口 -> PASS",
+    "- 输入 `runtime sync thread` 会命中 `followed` 结果并打开 `/chat/all?tab=followed&thread=msg-all-2`；同一条 thread 能从 search result 直接回到 followed revisit rail -> PASS",
+    "- 输入 `Longwen default-entry` 会命中 `saved` 结果并打开 `/chat/roadmap?tab=saved&thread=msg-roadmap-1`；saved-later 不再只是 sidebar 入口，也能作为 search result 直接 reopen -> PASS",
+    "",
     "### Highlight / Empty State",
     "",
-    "- 搜索命中项会在标题或摘要里显式高亮关键字，验证了 `roadmap`、`OPS-19`、`run_runtime_01`、`Codex Dockmaster` 的 `<mark>` 呈现 -> PASS",
+    "- 搜索命中项会在标题或摘要里显式高亮关键字，验证了 `roadmap`、`OPS-19`、`run_runtime_01`、`Codex Dockmaster`、`Mina`、`runtime sync thread`、`Longwen default-entry` 的 `<mark>` 呈现 -> PASS",
     "- 输入 `zzzz-not-found` 时不会误跳转，而是稳定展示 `No matches yet` 空结果态；`Esc` 可正常关闭面板 -> PASS",
     "",
     "### Scope Boundary",
     "",
-    "- 这轮只收 `CHK-01 / CHK-16 / TC-033` 的 quick-search result surface。",
-    "- DM / followed thread / saved later / profile surface 继续留给 `TKT-22`、`TKT-23`、`TKT-25`，不借写成这张票已完成。",
+    "- 这轮继续保留 `channel / room / issue / run / agent` 的既有 `TKT-21` 覆盖，同时补齐 `TKT-27` 负责的 `dm / followed / saved` search result contract。",
+    "- mailbox / handoff 仍不在这轮范围；这里只收 message-surface reopen / jump target 的 backend contract。",
     "",
     "### Screenshots",
     "",

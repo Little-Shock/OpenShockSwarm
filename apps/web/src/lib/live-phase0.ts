@@ -134,6 +134,13 @@ type PhaseZeroContextValue = {
   updateAgentProfile: (agentId: string, input: AgentProfileUpdateInput) => Promise<StateMutationResponse>;
   createIssue: (input: CreateIssueInput) => Promise<StateMutationResponse>;
   postChannelMessage: (channelId: string, prompt: string) => Promise<StateMutationResponse>;
+  postDirectMessage: (directMessageId: string, prompt: string) => Promise<StateMutationResponse>;
+  updateMessageSurfaceCollection: (input: {
+    kind: "followed" | "saved";
+    channelId: string;
+    messageId: string;
+    enabled: boolean;
+  }) => Promise<StateMutationResponse>;
   postRoomMessage: (roomId: string, prompt: string, provider?: string) => Promise<StateMutationResponse>;
   streamRoomMessage: (
     roomId: string,
@@ -195,6 +202,11 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
   },
   channels: [],
   channelMessages: {},
+  directMessages: [],
+  directMessageMessages: {},
+  followedThreads: [],
+  savedLaterItems: [],
+  quickSearchEntries: [],
   issues: [],
   rooms: [],
   roomMessages: {},
@@ -564,6 +576,35 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     }
   }
 
+  async function postDirectMessage(directMessageId: string, prompt: string) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/direct-messages/${directMessageId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
+  async function updateMessageSurfaceCollection(input: {
+    kind: "followed" | "saved";
+    channelId: string;
+    messageId: string;
+    enabled: boolean;
+  }) {
+    const payload = await readJSON<StateMutationResponse>("/v1/message-surface/collections", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
   async function postRoomMessage(roomId: string, prompt: string, provider = "claude") {
     const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/messages`, {
       method: "POST",
@@ -758,6 +799,8 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     updateAgentProfile,
     createIssue,
     postChannelMessage,
+    postDirectMessage,
+    updateMessageSurfaceCollection,
     postRoomMessage,
     streamRoomMessage,
     createPullRequest,

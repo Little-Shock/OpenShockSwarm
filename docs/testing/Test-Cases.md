@@ -433,10 +433,10 @@
 - 前置条件: 存在 Quick Search 数据源、结果列表与跳转动作。
 - 测试步骤:
   1. 打开 Quick Search。
-  2. 输入 channel、room、issue、run、agent 关键词。
-  3. 选择结果并验证跳转与高亮。
-- 预期结果: 用户不需要人工翻左栏，就能快速切换到目标工作面。
-- 业务结论: 2026 年 4 月 8 日 `TKT-21` 新增 `pnpm test:headed-quick-search`，在 headed Chromium 里完成 `channel -> room -> issue -> run -> agent` 的跨类型搜索回放，并验证三种打开方式（侧栏 trigger、顶部 trigger、`Ctrl+K`）、命中高亮与 `No matches yet` empty state。当前 Quick Search 已不再只是静态入口，而是可独立复核的真实 search result surface。
+  2. 输入 channel、room、issue、run、agent、dm、followed-thread、saved-later 关键词。
+  3. 选择结果并验证跳转、reopen 与高亮。
+- 预期结果: 用户不需要人工翻左栏，就能快速切换到目标工作面，并能从 search result 直接重新打开 followed / saved 的消息回访面。
+- 业务结论: 2026 年 4 月 8 日 `TKT-21` 新增 `pnpm test:headed-quick-search`，先在 headed Chromium 里完成 `channel -> room -> issue -> run -> agent` 的跨类型搜索回放，并验证三种打开方式（侧栏 trigger、顶部 trigger、`Ctrl+K`）、命中高亮与 `No matches yet` empty state。2026 年 4 月 9 日 `TKT-27` 再用同一条脚本把 `dm -> followed -> saved` 三类 message-surface result 补成 server-backed exact replay，报告见 `docs/testing/Test-Report-2026-04-09-quick-search-message-surface-contract.md`。当前 Quick Search 已不再只是静态入口，而是可独立复核的真实 search result surface。
 
 ## TC-034 Frontend Interaction Polish Sweep
 

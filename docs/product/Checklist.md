@@ -305,7 +305,7 @@
   - [x] web 默认改走同源 `/api/control/*` proxy，Windows 有头浏览器下也能拿到 live workspace truth，不再卡在 `syncing`
   - [x] `Chat / Work` 顶部切换现在会按当前 surface 正确激活，Work 页不再像未激活副按钮
   - [x] `setup / issues / memory / inbox / board / room / run` 已完成 2026-04-08 headed work-shell smoke，统一壳层、去白缝和密度收紧都有当天证据
-  - [x] `pnpm test:headed-quick-search` 已把 Quick Search 收成真实 command palette：同一套 search surface 能从 `chat / room / issue / run / agent` 页面命中 `channel / room / issue / run / agent` 五类结果，并验证命中高亮与 empty state
+  - [x] `pnpm test:headed-quick-search` 已把 Quick Search 收成真实 command palette：同一套 search surface 现在既能命中 `channel / room / issue / run / agent`，也能命中 `dm / followed / saved` 三类 message-surface result，并验证跳转、reopen、高亮与 empty state
   - [x] `pnpm test:headed-frontend-interaction-polish` 已锁住 sidebar / topbar hit area、channel / room scrollback、composer 常驻与窄屏无横向溢出
   - [x] sidebar 现在已有 `DM / Followed Threads / Saved Later` 入口，且能在同一套壳层内直达对应消息面
 - 当前 GAP:

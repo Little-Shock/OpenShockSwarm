@@ -9,6 +9,9 @@ const LIVE_TRUTH_INTERNAL_PATH_RESIDUE = /[A-Za-z]:\\|\/tmp\/openshock|\/home\/l
 type WorkspaceSnapshot = PhaseZeroState["workspace"];
 type Channel = PhaseZeroState["channels"][number];
 type Message = PhaseZeroState["channelMessages"][string][number];
+type DirectMessage = PhaseZeroState["directMessages"][number];
+type MessageSurfaceEntry = PhaseZeroState["followedThreads"][number];
+type SearchResult = PhaseZeroState["quickSearchEntries"][number];
 type LiveIssue = PhaseZeroState["issues"][number];
 type Room = PhaseZeroState["rooms"][number];
 type Topic = Room["topic"];
@@ -51,6 +54,11 @@ export function sanitizePhaseZeroState(state: PhaseZeroState): PhaseZeroState {
     workspace: sanitizeWorkspace(state.workspace),
     channels: state.channels.map(sanitizeChannel),
     channelMessages: mapRecord(state.channelMessages, sanitizeMessage),
+    directMessages: state.directMessages.map(sanitizeDirectMessage),
+    directMessageMessages: mapRecord(state.directMessageMessages, sanitizeMessage),
+    followedThreads: state.followedThreads.map(sanitizeMessageSurfaceEntry),
+    savedLaterItems: state.savedLaterItems.map(sanitizeMessageSurfaceEntry),
+    quickSearchEntries: state.quickSearchEntries.map(sanitizeSearchResult),
     issues: state.issues.map(sanitizeIssue),
     rooms: state.rooms.map(sanitizeRoom),
     roomMessages: mapRecord(state.roomMessages, sanitizeMessage),
@@ -102,6 +110,36 @@ function sanitizeMessage(message: Message): Message {
     ...message,
     speaker: sanitizeDisplayText(message.speaker, fallbackSpeaker(message.role)),
     message: sanitizeDisplayText(message.message, "这条历史消息包含测试残留或乱码，已在当前工作区隐藏。"),
+  };
+}
+
+function sanitizeDirectMessage(message: DirectMessage): DirectMessage {
+  return {
+    ...message,
+    name: sanitizeDisplayText(message.name, "待整理私信"),
+    summary: sanitizeDisplayText(message.summary, "当前私信摘要正在整理中。"),
+    purpose: sanitizeDisplayText(message.purpose, "当前私信用途正在整理中。"),
+    counterpart: sanitizeDisplayText(message.counterpart, "当前对端身份正在整理中。"),
+  };
+}
+
+function sanitizeMessageSurfaceEntry(item: MessageSurfaceEntry): MessageSurfaceEntry {
+  return {
+    ...item,
+    channelLabel: sanitizeDisplayText(item.channelLabel, "待整理频道"),
+    title: sanitizeDisplayText(item.title, "待整理消息"),
+    summary: sanitizeDisplayText(item.summary, "当前消息摘要正在整理中。"),
+    note: sanitizeDisplayText(item.note, "当前标注正在整理中。"),
+  };
+}
+
+function sanitizeSearchResult(item: SearchResult): SearchResult {
+  return {
+    ...item,
+    title: sanitizeDisplayText(item.title, "待整理结果"),
+    summary: sanitizeDisplayText(item.summary, "当前搜索摘要正在整理中。"),
+    meta: sanitizeDisplayText(item.meta, "当前搜索元信息正在整理中。"),
+    keywords: sanitizeDisplayText(item.keywords, "search"),
   };
 }
 

@@ -98,6 +98,8 @@ function kindLabel(kind: QuickSearchEntryKind) {
   switch (kind) {
     case "channel":
       return "Channel";
+    case "dm":
+      return "DM";
     case "room":
       return "Room";
     case "issue":
@@ -106,6 +108,10 @@ function kindLabel(kind: QuickSearchEntryKind) {
       return "Run";
     case "agent":
       return "Agent";
+    case "followed":
+      return "Followed";
+    case "saved":
+      return "Saved";
   }
 }
 

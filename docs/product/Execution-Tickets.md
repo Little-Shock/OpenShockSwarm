@@ -162,13 +162,14 @@
 - 优先级: `P1`
 - 目标: 给下一轮消息型前端补最小 server truth，不靠纯本地 mock 撑 DM / followed thread / search。
 - 范围:
-  - DM / thread follow / saved later 的 state contract
-  - search result contract
+  - `directMessages / directMessageMessages / followedThreads / savedLaterItems` 的 state contract
+  - `quickSearchEntries` search result contract
   - unread / reopen / jump target contract
 - 依赖: 无
 - Done When:
   - 前端不需要再拿硬编码占位结构伪装 DM / thread search
-  - 基础 browser flow 能直接打 live API
+  - DM composer、thread follow、saved later 能直接打 live API
+  - Quick Search 能直接消费 server-backed `dm / followed / saved` result truth
   - 合同有对应后端 tests
 - Checklist: `CHK-03` `CHK-16` `CHK-17`
 - Test Cases: `TC-029` `TC-033`

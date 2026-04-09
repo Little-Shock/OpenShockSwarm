@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import type { PhaseZeroState } from "@/lib/phase-zero-types";
+import type { PhaseZeroState, SearchResult as PhaseZeroSearchResult, SearchResultKind } from "@/lib/phase-zero-types";
 
-export type QuickSearchEntryKind = "channel" | "room" | "issue" | "run" | "agent";
+export type QuickSearchEntryKind = SearchResultKind;
 
 export type QuickSearchEntry = {
   id: string;
@@ -16,10 +16,7 @@ export type QuickSearchEntry = {
   href: string;
 };
 
-type SearchEntry = QuickSearchEntry & {
-  keywords: string;
-  order: number;
-};
+type SearchEntry = PhaseZeroSearchResult;
 
 function normalizeSearchText(...parts: Array<string | number | undefined>) {
   return parts
@@ -30,8 +27,24 @@ function normalizeSearchText(...parts: Array<string | number | undefined>) {
 }
 
 function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
+  if (state.quickSearchEntries.length > 0) {
+    return state.quickSearchEntries;
+  }
+
   const roomById = new Map(state.rooms.map((room) => [room.id, room]));
   const issueByKey = new Map(state.issues.map((issue) => [issue.key, issue]));
+
+  function buildChannelWorkbenchHref(channelId: string, tab: "chat" | "followed" | "saved", threadId?: string) {
+    const params = new URLSearchParams();
+    if (tab !== "chat") {
+      params.set("tab", tab);
+    }
+    if (threadId) {
+      params.set("thread", threadId);
+    }
+    const query = params.toString();
+    return query ? `/chat/${channelId}?${query}` : `/chat/${channelId}`;
+  }
 
   return [
     ...state.channels.map((channel) => ({
@@ -44,6 +57,16 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       keywords: normalizeSearchText(channel.id, channel.name, channel.summary, channel.purpose, "channel"),
       order: 0,
     })),
+    ...state.directMessages.map((dm) => ({
+      id: dm.id,
+      kind: "dm" as const,
+      title: dm.name,
+      summary: dm.summary || dm.purpose || "Direct message",
+      meta: `dm · ${dm.presence} · unread ${dm.unread}`,
+      href: buildChannelWorkbenchHref(dm.id, "chat"),
+      keywords: normalizeSearchText(dm.id, dm.name, dm.summary, dm.purpose, dm.counterpart, dm.presence, "dm", "direct message"),
+      order: 1,
+    })),
     ...state.rooms.map((room) => ({
       id: room.id,
       kind: "room" as const,
@@ -52,7 +75,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `room · ${room.issueKey} · ${room.topic.status}`,
       href: `/rooms/${room.id}`,
       keywords: normalizeSearchText(room.id, room.title, room.issueKey, room.summary, room.topic.title, room.topic.summary, room.topic.status, "room"),
-      order: 1,
+      order: 2,
     })),
     ...state.issues.map((issue) => ({
       id: issue.id,
@@ -62,7 +85,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `issue · ${issue.priority} · ${issue.state}`,
       href: `/issues/${issue.key}`,
       keywords: normalizeSearchText(issue.id, issue.key, issue.title, issue.summary, issue.owner, issue.state, issue.priority, "issue"),
-      order: 2,
+      order: 3,
     })),
     ...state.runs.map((run) => {
       const room = roomById.get(run.roomId);
@@ -76,7 +99,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
         meta: `run · ${run.status} · ${run.runtime} · ${run.machine}`,
         href: run.roomId ? `/rooms/${run.roomId}/runs/${run.id}` : `/runs/${run.id}`,
         keywords: normalizeSearchText(run.id, run.issueKey, run.summary, run.owner, run.runtime, run.machine, run.provider, run.status, room?.title, issue?.title, "run"),
-        order: 3,
+        order: 4,
       };
     }),
     ...state.agents.map((agent) => ({
@@ -87,7 +110,27 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `agent · ${agent.state} · ${agent.provider}`,
       href: `/agents/${agent.id}`,
       keywords: normalizeSearchText(agent.id, agent.name, agent.description, agent.state, agent.provider, agent.runtimePreference, agent.lane, ...agent.memorySpaces, "agent"),
-      order: 4,
+      order: 5,
+    })),
+    ...state.followedThreads.map((item) => ({
+      id: item.id,
+      kind: "followed" as const,
+      title: item.title,
+      summary: item.summary,
+      meta: `${item.channelLabel} · followed · unread ${item.unread}`,
+      href: buildChannelWorkbenchHref(item.channelId, "followed", item.messageId),
+      keywords: normalizeSearchText(item.id, item.channelId, item.messageId, item.channelLabel, item.title, item.summary, item.note, "followed", "thread"),
+      order: 6,
+    })),
+    ...state.savedLaterItems.map((item) => ({
+      id: item.id,
+      kind: "saved" as const,
+      title: item.title,
+      summary: item.summary,
+      meta: `${item.channelLabel} · later · unread ${item.unread}`,
+      href: buildChannelWorkbenchHref(item.channelId, "saved", item.messageId),
+      keywords: normalizeSearchText(item.id, item.channelId, item.messageId, item.channelLabel, item.title, item.summary, item.note, "saved", "later"),
+      order: 7,
     })),
   ];
 }

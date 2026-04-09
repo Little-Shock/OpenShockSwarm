@@ -156,6 +156,17 @@ export type Channel = {
   purpose: string;
 };
 
+export type DirectMessage = {
+  id: string;
+  name: string;
+  summary: string;
+  purpose: string;
+  unread: number;
+  presence: PresenceState;
+  counterpart: string;
+  messageIds: string[];
+};
+
 export type Message = {
   id: string;
   speaker: string;
@@ -163,6 +174,31 @@ export type Message = {
   tone: "human" | "agent" | "blocked" | "system";
   message: string;
   time: string;
+};
+
+export type MessageSurfaceEntry = {
+  id: string;
+  channelId: string;
+  messageId: string;
+  channelLabel: string;
+  title: string;
+  summary: string;
+  note: string;
+  updatedAt: string;
+  unread: number;
+};
+
+export type SearchResultKind = "channel" | "dm" | "room" | "issue" | "run" | "agent" | "followed" | "saved";
+
+export type SearchResult = {
+  id: string;
+  kind: SearchResultKind;
+  title: string;
+  summary: string;
+  meta: string;
+  href: string;
+  keywords: string;
+  order: number;
 };
 
 export type Issue = {
@@ -504,6 +540,11 @@ export type PhaseZeroState = {
   auth: AuthSnapshot;
   channels: Channel[];
   channelMessages: Record<string, Message[]>;
+  directMessages: DirectMessage[];
+  directMessageMessages: Record<string, Message[]>;
+  followedThreads: MessageSurfaceEntry[];
+  savedLaterItems: MessageSurfaceEntry[];
+  quickSearchEntries: SearchResult[];
   issues: Issue[];
   rooms: Room[];
   roomMessages: Record<string, Message[]>;
