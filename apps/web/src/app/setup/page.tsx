@@ -1,3 +1,4 @@
+import { BranchHeadTruthConsole } from "@/components/branch-head-truth-console";
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { GitHubConnectionConsole } from "@/components/github-connection-console";
 import { LiveBridgeConsole } from "@/components/live-bridge-console";
@@ -28,6 +29,7 @@ export default function SetupPage() {
           <OnboardingStudioPanel />
           <RepoBindingConsole />
           <GitHubConnectionConsole />
+          <BranchHeadTruthConsole />
           <LiveBridgeConsole />
         </div>
       </OpenShockShell>

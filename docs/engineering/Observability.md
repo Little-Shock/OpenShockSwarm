@@ -30,6 +30,7 @@ pnpm ops:live-server:status
 - server / daemon 都活着
 - control-plane truth 仍可读
 - runtime / repo binding / GitHub connection 没断
+- `GET /v1/workspace/branch-head-truth` 会把 repo binding、GitHub probe、current checkout、live service 和 linked worktrees 收成一份 drift summary
 - `pnpm ops:live-server:status` 会先读 actual live `GET /v1/runtime/live-service`，只有 live route 不可用时才退回请求 workspace 的本地 metadata
 - actual live `:8080` 有没有 managed owner / reload truth，以及 owner workspace 是哪一份 checkout
 
@@ -63,6 +64,7 @@ OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke
 | --- | --- | --- | --- |
 | server liveness | `GET /healthz` | `"service":"openshock-server"` | server 进程是否存活 |
 | live service owner truth | `GET /v1/runtime/live-service` (canonical) + `pnpm ops:live-server:status` (CLI mirror/fallback) | `"managed": true` | actual `:8080` 由谁控制、当前跑哪颗 head、该走哪条 reload path |
+| branch/head/worktree unification | `GET /v1/workspace/branch-head-truth` | `"status":"aligned"` | repo binding、GitHub probe、current checkout、live service、linked worktrees 是否还在同一份 branch/head 真值上 |
 | daemon liveness | `GET /healthz` | `"service":"openshock-daemon"` | daemon 进程是否存活 |
 | control-plane state | `GET /v1/state` | `"workspace"` | workspace / issue / room / run / inbox 是否还能读 |
 | experience metrics snapshot | `GET /v1/experience-metrics` | `"sections"` | product / experience / design metric 是否已从当前 truth 连续派生 |
@@ -83,10 +85,11 @@ OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke
 
 1. `GET /healthz`
 2. `GET /v1/runtime/live-service`
-3. `pnpm ops:live-server:status`
-4. server 进程 stdout/stderr
-5. `OPENSHOCK_SERVER_ADDR`
-6. `OPENSHOCK_STATE_FILE` / `OPENSHOCK_WORKSPACE_ROOT`
+3. `GET /v1/workspace/branch-head-truth`
+4. `pnpm ops:live-server:status`
+5. server 进程 stdout/stderr
+6. `OPENSHOCK_SERVER_ADDR`
+7. `OPENSHOCK_STATE_FILE` / `OPENSHOCK_WORKSPACE_ROOT`
 
 ### 症状 2: daemon 不通
 

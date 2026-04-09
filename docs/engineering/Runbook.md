@@ -216,6 +216,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 - `GET/POST/DELETE /v1/runtime/pairing`
 - `GET /v1/runtime`
 - `GET /v1/runtime/live-service`
+- `GET /v1/workspace/branch-head-truth`
 - `GET/POST /v1/repo/binding`
 - `GET /v1/github/connection`
 - `POST /v1/exec`
@@ -276,6 +277,7 @@ pnpm ops:experience-metrics
 curl http://127.0.0.1:8080/v1/runtime
 curl http://127.0.0.1:8080/v1/runtime/pairing
 curl http://127.0.0.1:8080/v1/runtime/live-service
+curl http://127.0.0.1:8080/v1/workspace/branch-head-truth
 curl http://127.0.0.1:8080/v1/repo/binding
 curl http://127.0.0.1:8080/v1/github/connection
 ```
@@ -286,6 +288,7 @@ curl http://127.0.0.1:8080/v1/github/connection
 - repo binding 能反映当前 `origin`
 - GitHub probe 能告诉你 `gh` 是否安装、是否已认证
 - `live-service` 能告诉你 actual `:8080` 是不是 managed、owner 是谁、该用哪条 reload command
+- `branch-head-truth` 会把 `repo binding / GitHub probe / current checkout / live service / linked worktrees` 明确并排；如果 branch/head 不一致，先按它的 drift summary 收单值
 - `pnpm ops:live-server:status` 应该和上面的 route truth 对齐；如果 route 已经有 truth，但 `status` 没对齐，先按 route 收单值
 
 ### Step 4: 重新配对 runtime
