@@ -18,7 +18,7 @@ const variantClassName: Record<ButtonVariant, string> = {
 };
 
 const sizeClassName: Record<ButtonSize, string> = {
-  sm: "rounded-[8px] px-2 py-[0.26rem] text-[10px] font-medium leading-none",
+  sm: "rounded-[8px] px-2.25 py-[0.34rem] text-[10px] font-medium leading-none",
   md: "action-pill",
 };
 
@@ -32,7 +32,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "border disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center whitespace-nowrap border disabled:cursor-not-allowed disabled:opacity-50",
         variantClassName[variant],
         sizeClassName[size],
         className,

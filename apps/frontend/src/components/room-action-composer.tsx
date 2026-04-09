@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState, useTransition } from "react";
+import { FormEvent, KeyboardEvent, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentOperator } from "@/components/operator-provider";
 import { submitAction } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +12,8 @@ type RoomActionComposerProps = {
 
 export function RoomActionComposer({ roomId }: RoomActionComposerProps) {
   const router = useRouter();
+  const { operatorName } = useCurrentOperator();
+  const formRef = useRef<HTMLFormElement>(null);
   const [body, setBody] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -22,7 +25,7 @@ export function RoomActionComposer({ roomId }: RoomActionComposerProps) {
       try {
         await submitAction({
           actorType: "member",
-          actorId: "Sarah",
+          actorId: operatorName,
           actionType: "RoomMessage.post",
           targetType: "room",
           targetId: roomId,
@@ -30,7 +33,7 @@ export function RoomActionComposer({ roomId }: RoomActionComposerProps) {
           payload: { body, kind: "message" },
         });
         setBody("");
-        setFeedback("Message posted to the room channel.");
+        setFeedback(null);
         router.refresh();
       } catch (error) {
         setFeedback(
@@ -40,21 +43,31 @@ export function RoomActionComposer({ roomId }: RoomActionComposerProps) {
     });
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    formRef.current?.requestSubmit();
+  }
+
   return (
-    <form className="space-y-2" onSubmit={handleSubmit}>
-      <div className="relative">
-        <textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          placeholder="发消息，支持 @agent_xxx ..."
-          className="min-h-[88px] w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2.5 pr-24 text-sm outline-none focus:border-[var(--accent-blue)]"
-        />
+    <form ref={formRef} className="flex items-end gap-3" onSubmit={handleSubmit}>
+      <textarea
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="发消息，支持 @agent_xxx ..."
+        className="min-h-[88px] flex-1 resize-y rounded-[12px] border border-[var(--border)] bg-white px-3.5 py-3 text-[13px] leading-5 text-black/80 outline-none transition placeholder:text-[13px] placeholder:text-black/42 focus:border-[var(--accent-blue)]"
+      />
+      <div className="shrink-0">
         <Button
           type="submit"
           disabled={isPending || body.trim().length === 0}
           variant="primary"
           size="sm"
-          className="absolute bottom-2.5 right-2.5"
+          className="control-pill"
         >
           {isPending ? "Sending..." : "Send"}
         </Button>

@@ -94,6 +94,7 @@ export type AgentTurn = {
   sequence: number;
   triggerMessageId: string;
   intentType: string;
+  wakeupMode?: string;
   eventFrame: EventFrame;
   status: string;
   createdAt: string;
@@ -273,4 +274,17 @@ export type ActionRequest = {
   targetId: string;
   payload: Record<string, unknown>;
   idempotencyKey: string;
+};
+
+export type ActionEntity = {
+  type: string;
+  id: string;
+};
+
+export type ActionResponse = {
+  actionId: string;
+  status: string;
+  resultCode: string;
+  resultMessage: string;
+  affectedEntities: ActionEntity[];
 };

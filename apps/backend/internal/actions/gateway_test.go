@@ -70,6 +70,34 @@ func TestSubmitCreatesIssue(t *testing.T) {
 	}
 }
 
+func TestSubmitCreatesDiscussionRoom(t *testing.T) {
+	s := store.NewMemoryStore()
+	gateway := NewGateway(s)
+
+	resp, err := gateway.Submit(core.ActionRequest{
+		ActorType:      "member",
+		ActorID:        "Sarah",
+		ActionType:     "Room.create",
+		TargetType:     "workspace",
+		TargetID:       "ws_01",
+		IdempotencyKey: "room-create-1",
+		Payload: map[string]any{
+			"kind":    "discussion",
+			"title":   "Architecture",
+			"summary": "Cross-cutting design discussion.",
+		},
+	})
+	if err != nil {
+		t.Fatalf("submit returned error: %v", err)
+	}
+	if resp.ResultCode != "room_created" {
+		t.Fatalf("expected room_created result code, got %q", resp.ResultCode)
+	}
+	if len(resp.AffectedEntities) == 0 || resp.AffectedEntities[0].Type != "room" {
+		t.Fatalf("expected room entity in response, got %#v", resp.AffectedEntities)
+	}
+}
+
 func TestSubmitBindsWorkspaceRepo(t *testing.T) {
 	s := store.NewMemoryStore()
 	gateway := NewGateway(s)

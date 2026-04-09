@@ -16,6 +16,7 @@ type Store interface {
 	SaveActionResult(idempotencyKey string, resp core.ActionResponse)
 	PostRoomMessage(targetID, actorType, actorName, kind, body string) core.ActionResponse
 	CreateIssue(title, summary, priority string) core.ActionResponse
+	CreateDiscussionRoom(title, summary string) core.ActionResponse
 	BindWorkspaceRepoAction(workspaceID, repoPath, label string, makeDefault bool, actorID string) (core.ActionResponse, error)
 	CreateTask(issueID, title, description, assigneeAgentID string) core.ActionResponse
 	AssignTask(taskID, agentID string) (core.ActionResponse, error)
@@ -63,6 +64,21 @@ func (g *Gateway) Submit(req core.ActionRequest) (core.ActionResponse, error) {
 			priority = "medium"
 		}
 		resp = g.store.CreateIssue(title, summary, priority)
+	case "Room.create":
+		title, _ := req.Payload["title"].(string)
+		summary, _ := req.Payload["summary"].(string)
+		kind, _ := req.Payload["kind"].(string)
+		if strings.TrimSpace(title) == "" {
+			return core.ActionResponse{}, fmt.Errorf("%w: title is required", ErrInvalidAction)
+		}
+		normalizedKind := strings.TrimSpace(kind)
+		if normalizedKind == "" {
+			normalizedKind = "discussion"
+		}
+		if normalizedKind != "discussion" {
+			return core.ActionResponse{}, fmt.Errorf("%w: issue rooms must be created via Issue.create", ErrInvalidAction)
+		}
+		resp = g.store.CreateDiscussionRoom(title, summary)
 	case "Workspace.bind_repo":
 		repoPath, _ := req.Payload["repoPath"].(string)
 		label, _ := req.Payload["label"].(string)

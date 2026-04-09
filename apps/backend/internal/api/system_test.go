@@ -222,9 +222,6 @@ func TestFirstRoundWorkflowE2E(t *testing.T) {
 	if hasInboxItemForRun(getInbox(t, client, server.URL).Items, runBID) {
 		t.Fatal("expected approval inbox item to be cleared after human approval")
 	}
-	if len(finalDetail.Messages) < 5 {
-		t.Fatalf("expected room timeline to receive system updates, got %d messages", len(finalDetail.Messages))
-	}
 }
 
 func TestTaskStatusSetActionUpdatesIssueDetail(t *testing.T) {
@@ -251,6 +248,39 @@ func TestTaskStatusSetActionUpdatesIssueDetail(t *testing.T) {
 	detail := getIssue(t, client, server.URL, "issue_101")
 	if !containsTask(detail.Tasks, "task_guard", "blocked") {
 		t.Fatalf("expected task_guard to be blocked, got %#v", detail.Tasks)
+	}
+}
+
+func TestRoomCreateActionCreatesDiscussionRoom(t *testing.T) {
+	server := httptest.NewServer(New(store.NewMemoryStore()).Handler())
+	defer server.Close()
+
+	client := server.Client()
+
+	resp := submitAction(t, client, server.URL, core.ActionRequest{
+		ActorType:      "member",
+		ActorID:        "Sarah",
+		ActionType:     "Room.create",
+		TargetType:     "workspace",
+		TargetID:       "ws_01",
+		IdempotencyKey: "system-room-create",
+		Payload: map[string]any{
+			"kind":    "discussion",
+			"title":   "Architecture",
+			"summary": "Use this room for cross-cutting architecture discussion.",
+		},
+	})
+	if resp.ResultCode != "room_created" {
+		t.Fatalf("expected room_created result code, got %#v", resp)
+	}
+
+	roomID := resp.AffectedEntities[0].ID
+	room := getRoom(t, client, server.URL, roomID)
+	if room.Room.Kind != "discussion" {
+		t.Fatalf("expected discussion room, got %#v", room.Room)
+	}
+	if room.Issue != nil || len(room.Tasks) != 0 || len(room.Runs) != 0 {
+		t.Fatalf("expected chat-only discussion room detail, got %#v", room)
 	}
 }
 
@@ -385,6 +415,29 @@ func getIssue(t *testing.T, client *http.Client, baseURL, issueID string) core.I
 	var detail core.IssueDetailResponse
 	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
 		t.Fatalf("failed to decode issue detail: %v", err)
+	}
+	return detail
+}
+
+func getRoom(t *testing.T, client *http.Client, baseURL, roomID string) core.RoomDetailResponse {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/rooms/"+roomID, nil)
+	if err != nil {
+		t.Fatalf("failed to build room request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("room request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from room detail, got %d", resp.StatusCode)
+	}
+
+	var detail core.RoomDetailResponse
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		t.Fatalf("failed to decode room detail: %v", err)
 	}
 	return detail
 }

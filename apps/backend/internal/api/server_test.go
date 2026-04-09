@@ -78,6 +78,45 @@ func TestActionEndpointCreatesMessage(t *testing.T) {
 	}
 }
 
+func TestActionEndpointCreatesDiscussionRoom(t *testing.T) {
+	api := New(store.NewMemoryStore())
+	body := []byte(`{"actorType":"member","actorId":"Sarah","actionType":"Room.create","targetType":"workspace","targetId":"ws_01","idempotencyKey":"room-create-1","payload":{"kind":"discussion","title":"Architecture","summary":"Cross-cutting design discussion."}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/actions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	api.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		ResultCode       string `json:"resultCode"`
+		AffectedEntities []struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+		} `json:"affectedEntities"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+	if payload.ResultCode != "room_created" {
+		t.Fatalf("expected room_created result code, got %#v", payload.ResultCode)
+	}
+	if len(payload.AffectedEntities) != 1 || payload.AffectedEntities[0].Type != "room" {
+		t.Fatalf("expected created room entity, got %#v", payload.AffectedEntities)
+	}
+
+	detail, err := api.store.RoomDetail(payload.AffectedEntities[0].ID)
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	if detail.Room.Kind != "discussion" || detail.Issue != nil {
+		t.Fatalf("expected discussion room detail, got room=%#v issue=%#v", detail.Room, detail.Issue)
+	}
+}
+
 func TestActionEndpointCreatesAgentTurnFromMention(t *testing.T) {
 	api := New(store.NewMemoryStore())
 	body := []byte(`{"actorType":"member","actorId":"Sarah","actionType":"RoomMessage.post","targetType":"room","targetId":"room_001","idempotencyKey":"message-turn-1","payload":{"body":"@agent_shell please prepare a plan"}}`)
@@ -494,6 +533,7 @@ func TestClaimAgentTurnEndpoint(t *testing.T) {
 			Turn struct {
 				ID         string `json:"id"`
 				AgentID    string `json:"agentId"`
+				WakeupMode string `json:"wakeupMode"`
 				Status     string `json:"status"`
 				EventFrame struct {
 					CurrentTarget   string `json:"currentTarget"`
@@ -517,6 +557,9 @@ func TestClaimAgentTurnEndpoint(t *testing.T) {
 	}
 	if payload.AgentTurn.Turn.EventFrame.RequestedBy != "Sarah" {
 		t.Fatalf("expected event frame requester Sarah, got %#v", payload.AgentTurn.Turn.EventFrame)
+	}
+	if payload.AgentTurn.Turn.WakeupMode != "direct_message" {
+		t.Fatalf("expected direct_message wakeup mode, got %#v", payload.AgentTurn.Turn)
 	}
 }
 
@@ -542,6 +585,7 @@ func TestIssueDetailEndpointIncludesAgentObservability(t *testing.T) {
 			ProviderThreadID string `json:"providerThreadId"`
 		} `json:"agentSessions"`
 		AgentTurns []struct {
+			WakeupMode string `json:"wakeupMode"`
 			EventFrame struct {
 				RelatedIssueID string `json:"relatedIssueId"`
 				ExpectedAction string `json:"expectedAction"`
@@ -559,6 +603,9 @@ func TestIssueDetailEndpointIncludesAgentObservability(t *testing.T) {
 	}
 	if payload.AgentTurns[0].EventFrame.ExpectedAction != "visible_message_response" {
 		t.Fatalf("expected event frame expected action to match turn intent, got %#v", payload.AgentTurns[0].EventFrame)
+	}
+	if payload.AgentTurns[0].WakeupMode != "direct_message" {
+		t.Fatalf("expected direct_message wakeup mode, got %#v", payload.AgentTurns[0])
 	}
 }
 

@@ -528,6 +528,40 @@ func (s *MemoryStore) CreateIssue(title, summary, priority string) core.ActionRe
 	}
 }
 
+func (s *MemoryStore) CreateDiscussionRoom(title, summary string) core.ActionResponse {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.nextRoomID++
+
+	roomID := fmt.Sprintf("room_%03d", s.nextRoomID)
+	room := core.RoomSummary{
+		ID:          roomID,
+		Kind:        "discussion",
+		Title:       title,
+		UnreadCount: 0,
+	}
+
+	s.rooms = append(s.rooms, room)
+	s.messagesByRoom[roomID] = []core.Message{}
+	s.defaultRoomID = roomID
+
+	openingMessage := strings.TrimSpace(summary)
+	if openingMessage == "" {
+		openingMessage = fmt.Sprintf("%s created. Use this room for ongoing discussion.", title)
+	}
+	s.appendSystemMessageLocked(roomID, "summary", openingMessage)
+
+	return core.ActionResponse{
+		Status:        "completed",
+		ResultCode:    "room_created",
+		ResultMessage: "Discussion room created.",
+		AffectedEntities: []core.ActionEntity{
+			{Type: "room", ID: roomID},
+		},
+	}
+}
+
 func (s *MemoryStore) CreateTask(issueID, title, description, assigneeAgentID string) core.ActionResponse {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1003,11 +1037,6 @@ func (s *MemoryStore) IngestMergeEvent(mergeAttemptID, runtimeID, eventType, res
 			s.mergeAttempts[i].Status = "running"
 			s.mergeAttempts[i].RuntimeID = runtimeID
 			s.markRuntimeBusyLocked(runtimeID)
-			s.appendSystemMessageLocked(
-				s.mergeAttempts[i].IssueID,
-				"log",
-				fmt.Sprintf("Merge attempt %s started on %s.", mergeAttemptID, runtimeID),
-			)
 		case "succeeded":
 			s.mergeAttempts[i].Status = "succeeded"
 			s.markRuntimeOnlineLocked(runtimeID)
@@ -1025,11 +1054,6 @@ func (s *MemoryStore) IngestMergeEvent(mergeAttemptID, runtimeID, eventType, res
 					branch.Status = "integrating"
 				}
 			}
-			s.appendSystemMessageLocked(
-				s.mergeAttempts[i].IssueID,
-				"summary",
-				fmt.Sprintf("Merge attempt %s succeeded: %s", mergeAttemptID, s.mergeAttempts[i].ResultSummary),
-			)
 		case "conflicted":
 			s.mergeAttempts[i].Status = "conflicted"
 			s.markRuntimeOnlineLocked(runtimeID)
@@ -1109,13 +1133,6 @@ func (s *MemoryStore) IngestRunEvent(runID, runtimeID, eventType, outputPreview,
 			s.runs[i].Status = "running"
 			s.runs[i].RuntimeID = runtimeID
 			s.markRuntimeBusyLocked(runtimeID)
-			if issueID, ok := s.issueIDForTaskLocked(s.runs[i].TaskID); ok {
-				s.appendSystemMessageLocked(
-					issueID,
-					"log",
-					fmt.Sprintf("Run %s started on %s.", s.runs[i].Title, runtimeID),
-				)
-			}
 		case "output":
 			if s.runs[i].Status == "queued" {
 				s.runs[i].Status = "running"
@@ -1179,13 +1196,6 @@ func (s *MemoryStore) IngestRunEvent(runID, runtimeID, eventType, outputPreview,
 		case "completed":
 			s.runs[i].Status = "completed"
 			s.markRuntimeOnlineLocked(runtimeID)
-			if issueID, ok := s.issueIDForTaskLocked(s.runs[i].TaskID); ok {
-				s.appendSystemMessageLocked(
-					issueID,
-					"summary",
-					fmt.Sprintf("Run %s completed: %s", s.runs[i].Title, outputPreview),
-				)
-			}
 		case "failed":
 			s.runs[i].Status = "failed"
 			s.markRuntimeOnlineLocked(runtimeID)
@@ -1673,6 +1683,7 @@ func (s *MemoryStore) createAgentTurnLocked(sessionIndex int, roomID, agentID, t
 		Sequence:         s.nextAgentTurnSequenceLocked(s.agentSessions[sessionIndex].ID),
 		TriggerMessageID: triggerMessageID,
 		IntentType:       intentType,
+		WakeupMode:       wakeupModeForIntent(intentType),
 		EventFrame:       s.buildEventFrameLocked(roomID, triggerMessageID, intentType),
 		Status:           "queued",
 		CreatedAt:        now,
@@ -1704,6 +1715,19 @@ func (s *MemoryStore) ensureAgentSessionLocked(roomID, agentID string) int {
 	}
 	s.agentSessions = append(s.agentSessions, session)
 	return len(s.agentSessions) - 1
+}
+
+func wakeupModeForIntent(intentType string) string {
+	switch strings.TrimSpace(intentType) {
+	case "clarification_followup":
+		return "clarification_followup"
+	case "handoff_response":
+		return "handoff_response"
+	case "visible_message_response":
+		return "direct_message"
+	default:
+		return "direct_message"
+	}
 }
 
 func (s *MemoryStore) buildEventFrameLocked(roomID, triggerMessageID, intentType string) core.EventFrame {
@@ -2272,14 +2296,34 @@ func normalizedStream(stream string) string {
 }
 
 func buildRunInstruction(task core.Task) string {
+	actorID := strings.TrimSpace(task.AssigneeAgentID)
+	if actorID == "" {
+		actorID = "agent_runtime"
+	}
+
 	parts := []string{
+		fmt.Sprintf("Task ID: %s", task.ID),
 		fmt.Sprintf("Task: %s", task.Title),
 		fmt.Sprintf("Branch: %s", task.BranchName),
+	}
+	if strings.TrimSpace(task.AssigneeAgentID) != "" {
+		parts = append(parts, fmt.Sprintf("Agent ID: %s", task.AssigneeAgentID))
 	}
 	if strings.TrimSpace(task.Description) != "" {
 		parts = append(parts, fmt.Sprintf("Description: %s", task.Description))
 	}
-	parts = append(parts, "Modify the working tree for this task and summarize the result.")
+	parts = append(parts,
+		"This is a single-run execution for the current task branch. Complete the work, verify it, summarize the result, and then stop.",
+		"Modify the working tree for this task and summarize the result.",
+		"The OpenShock CLI is available as `openshock` during execution.",
+		"Once you begin implementation work, update the task to in_progress early instead of waiting until the end.",
+		fmt.Sprintf("If you are actively working on this task, you may update status with: openshock task status set --task %s --status in_progress --actor-id %s", task.ID, actorID),
+		"If you report progress, that does not mean the run is complete. Finish code changes and validation before stopping.",
+		fmt.Sprintf("If you are blocked by a real dependency or missing context, set blocked with: openshock task status set --task %s --status blocked --actor-id %s", task.ID, actorID),
+		"If you are blocked, explain the real blocker in your final summary.",
+		fmt.Sprintf("When the task is ready for integration, mark it ready with: openshock task mark-ready --task %s --actor-id %s", task.ID, actorID),
+		"Your final summary should include both the code changes and the verification you ran.",
+	)
 	return strings.Join(parts, "\n")
 }
 

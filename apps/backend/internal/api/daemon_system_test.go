@@ -94,10 +94,6 @@ func TestDaemonOnceCompletesQueuedRun(t *testing.T) {
 		t.Fatalf("expected daemon to execute on task branch, got %q", currentBranch)
 	}
 
-	if len(detail.Messages) < 5 {
-		t.Fatalf("expected daemon to append system messages, got %d messages", len(detail.Messages))
-	}
-
 	bootstrap := backingStore.Bootstrap()
 	runtimeFound := false
 	for _, runtime := range bootstrap.Runtimes {
@@ -107,6 +103,71 @@ func TestDaemonOnceCompletesQueuedRun(t *testing.T) {
 	}
 	if !runtimeFound {
 		t.Fatalf("expected daemon runtime registration, got %#v", bootstrap.Runtimes)
+	}
+}
+
+func TestDaemonRunCanUpdateTaskStatusViaOpenShockCLI(t *testing.T) {
+	backingStore := store.NewMemoryStore()
+	repoPath := newGitFixtureRepo(t)
+	if err := backingStore.BindWorkspaceRepo("ws_01", repoPath, "daemon-fixture", true); err != nil {
+		t.Fatalf("bind workspace repo returned error: %v", err)
+	}
+	server := httptest.NewServer(New(backingStore).Handler())
+	defer server.Close()
+
+	daemonDir := daemonModuleDir(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fakeCodex := writeFakeCodexBinaryWithScript(t, "fake codex completed task", `
+if ! openshock task mark-ready --task task_review --actor-id agent_guardian >/dev/null; then
+  exit 1
+fi
+`)
+
+	cmd := exec.CommandContext(
+		ctx,
+		"go",
+		"run",
+		"./cmd/daemon",
+		"--once",
+		"--api-base-url",
+		server.URL,
+		"--name",
+		"E2E Task Status Daemon",
+	)
+	cmd.Dir = daemonDir
+	cmd.Env = append(os.Environ(), "OPENSHOCK_CODEX_BIN="+fakeCodex)
+
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("daemon timed out: %s", string(output))
+	}
+	if err != nil {
+		t.Fatalf("daemon command failed: %v\n%s", err, string(output))
+	}
+
+	detail, err := backingStore.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+
+	runCompleted := false
+	taskReady := false
+	for _, run := range detail.Runs {
+		if run.ID == "run_review_01" && run.Status == "completed" {
+			runCompleted = true
+		}
+	}
+	for _, task := range detail.Tasks {
+		if task.ID == "task_review" && task.Status == "ready_for_integration" {
+			taskReady = true
+		}
+	}
+	if !runCompleted {
+		t.Fatalf("expected run_review_01 to complete, got %#v\n\ndaemon output:\n%s", detail.Runs, string(output))
+	}
+	if !taskReady {
+		t.Fatalf("expected task_review to become ready_for_integration via openshock cli, got %#v\n\ndaemon output:\n%s", detail.Tasks, string(output))
 	}
 }
 
@@ -284,6 +345,126 @@ func TestDaemonOnceCanCompleteQueuedAgentTurnWithoutPostingReply(t *testing.T) {
 	}
 }
 
+func TestDaemonAgentTurnReusesPersistentWorkspace(t *testing.T) {
+	backingStore := store.NewMemoryStore()
+	backingStore.PostRoomMessage("room_001", "member", "Sarah", "message", "@agent_shell 先看一下这个问题。")
+	server := httptest.NewServer(New(backingStore).Handler())
+	defer server.Close()
+
+	workspaceRoot := t.TempDir()
+	daemonDir := daemonModuleDir(t)
+	fakeCodex := writeFakeCodexBinaryWithScript(t, "KIND: message\nBODY:\n我先看一下。", `
+printf '%s\n' "memory touched" >> MEMORY.md
+`)
+
+	runOnce := func(name string) []byte {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(
+			ctx,
+			"go",
+			"run",
+			"./cmd/daemon",
+			"--once",
+			"--api-base-url",
+			server.URL,
+			"--name",
+			name,
+			"--agent-workspaces-dir",
+			workspaceRoot,
+		)
+		cmd.Dir = daemonDir
+		cmd.Env = append(os.Environ(), "OPENSHOCK_CODEX_BIN="+fakeCodex)
+
+		output, err := cmd.CombinedOutput()
+		if ctx.Err() == context.DeadlineExceeded {
+			t.Fatalf("daemon timed out: %s", string(output))
+		}
+		if err != nil {
+			t.Fatalf("daemon command failed: %v\n%s", err, string(output))
+		}
+		return output
+	}
+
+	runOnce("E2E Agent Workspace Daemon 1")
+
+	firstDetail, err := backingStore.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail returned error after first run: %v", err)
+	}
+	if len(firstDetail.AgentSessions) != 1 {
+		t.Fatalf("expected one agent session after first run, got %#v", firstDetail.AgentSessions)
+	}
+	workspaceDir := filepath.Join(workspaceRoot, firstDetail.AgentSessions[0].ProviderThreadID)
+	if _, err := os.Stat(filepath.Join(workspaceDir, "MEMORY.md")); err != nil {
+		t.Fatalf("expected MEMORY.md to exist in workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "notes", "work-log.md")); err != nil {
+		t.Fatalf("expected work log to exist in workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "notes", "room-context.md")); err != nil {
+		t.Fatalf("expected room context note to exist in workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "turns", "001-turn_101.md")); err != nil {
+		t.Fatalf("expected first turn snapshot to exist: %v", err)
+	}
+
+	backingStore.PostRoomMessage("room_001", "member", "Sarah", "message", "@agent_shell 再继续往下看。")
+	runOnce("E2E Agent Workspace Daemon 2")
+
+	secondDetail, err := backingStore.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail returned error after second run: %v", err)
+	}
+	if len(secondDetail.AgentSessions) != 1 || secondDetail.AgentSessions[0].ProviderThreadID != firstDetail.AgentSessions[0].ProviderThreadID {
+		t.Fatalf("expected provider thread reuse across turns, got %#v %#v", firstDetail.AgentSessions, secondDetail.AgentSessions)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "turns", "002-turn_102.md")); err != nil {
+		t.Fatalf("expected second turn snapshot to exist: %v", err)
+	}
+
+	memoryBytes, err := os.ReadFile(filepath.Join(workspaceDir, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("failed to read workspace memory: %v", err)
+	}
+	if strings.Count(string(memoryBytes), "memory touched") != 2 {
+		t.Fatalf("expected workspace memory to persist and be updated twice, got %q", string(memoryBytes))
+	}
+
+	currentTurnBytes, err := os.ReadFile(filepath.Join(workspaceDir, "CURRENT_TURN.md"))
+	if err != nil {
+		t.Fatalf("failed to read current turn snapshot: %v", err)
+	}
+	if !strings.Contains(string(currentTurnBytes), "@agent_shell 再继续往下看。") {
+		t.Fatalf("expected current turn snapshot to refresh to latest trigger, got %q", string(currentTurnBytes))
+	}
+
+	workLogBytes, err := os.ReadFile(filepath.Join(workspaceDir, "notes", "work-log.md"))
+	if err != nil {
+		t.Fatalf("failed to read workspace work log: %v", err)
+	}
+	for _, expected := range []string{
+		"turn_started",
+		"turn_completed",
+		"- Turn ID: turn_101",
+		"- Turn ID: turn_102",
+	} {
+		if !strings.Contains(string(workLogBytes), expected) {
+			t.Fatalf("expected work log to contain %q, got %q", expected, string(workLogBytes))
+		}
+	}
+
+	roomContextBytes, err := os.ReadFile(filepath.Join(workspaceDir, "notes", "room-context.md"))
+	if err != nil {
+		t.Fatalf("failed to read room-context note: %v", err)
+	}
+	if !strings.Contains(string(roomContextBytes), "Wakeup mode: direct_message") {
+		t.Fatalf("expected room-context note to describe wakeup mode, got %q", string(roomContextBytes))
+	}
+}
+
 func setupMergeFixtureBranches(t *testing.T, repoPath string) {
 	t.Helper()
 
@@ -344,6 +525,10 @@ func writeFakeCodexBinary(t *testing.T) string {
 }
 
 func writeFakeCodexBinaryWithFinalMessage(t *testing.T, finalMessage string) string {
+	return writeFakeCodexBinaryWithScript(t, finalMessage, "")
+}
+
+func writeFakeCodexBinaryWithScript(t *testing.T, finalMessage, shellSnippet string) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -386,6 +571,8 @@ printf '%s\n' '{"type":"response.output_text.delta","delta":"fake codex streamed
 printf '%s\n' '{"type":"item.started","item":{"id":"cmd_01","type":"command_execution","command":"openshock task create","status":"in_progress"}}'
 printf '%s\n' '{"type":"item.completed","item":{"id":"cmd_01","type":"command_execution","command":"openshock task create","status":"completed","aggregated_output":"task created"}}'
 printf '%s\n' '{"type":"tool_call","toolName":"openshock","arguments":"task create","status":"completed"}'
+cd "$repo_path" || exit 1
+` + shellSnippet + `
 cat <<'EOF' > "$output_file"
 ` + finalMessage + `
 EOF

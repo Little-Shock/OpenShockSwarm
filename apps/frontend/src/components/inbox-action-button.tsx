@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentOperator } from "@/components/operator-provider";
 import { submitAction } from "@/lib/api";
 import type { InboxItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ function labelFor(item: InboxItem) {
 
 export function InboxActionButton({ item }: InboxActionButtonProps) {
   const router = useRouter();
+  const { operatorName } = useCurrentOperator();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -49,7 +51,7 @@ export function InboxActionButton({ item }: InboxActionButtonProps) {
       try {
         await submitAction({
           actorType: "member",
-          actorId: "Sarah",
+          actorId: operatorName,
           actionType,
           targetType,
           targetId,
@@ -68,14 +70,21 @@ export function InboxActionButton({ item }: InboxActionButtonProps) {
 
   return (
     <div className="flex flex-col items-start gap-2 md:items-end">
-      <Button
-        disabled={!actionable || isPending}
-        onClick={handleAction}
-        variant="primary"
-        size="sm"
-      >
-        {labelFor(item)}
-      </Button>
+      {actionable ? (
+        <Button
+          disabled={isPending}
+          onClick={handleAction}
+          variant="primary"
+          size="sm"
+          className="control-pill"
+        >
+          {labelFor(item)}
+        </Button>
+      ) : (
+        <div className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-black/45">
+          Informational
+        </div>
+      )}
       {feedback ? <p className="text-xs text-black/60">{feedback}</p> : null}
     </div>
   );

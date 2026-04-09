@@ -296,6 +296,7 @@ func (a *API) handleClaimAgentTurn(w http.ResponseWriter, r *http.Request) {
 			"agentId":     turn.Turn.AgentID,
 			"runtimeId":   req.RuntimeID,
 			"status":      turn.Turn.Status,
+			"wakeupMode":  turn.Turn.WakeupMode,
 		})
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -349,6 +350,7 @@ func (a *API) handleCompleteAgentTurn(w http.ResponseWriter, r *http.Request, tu
 		"agentId":         turn.AgentID,
 		"runtimeId":       req.RuntimeID,
 		"status":          turn.Status,
+		"wakeupMode":      turn.WakeupMode,
 		"resultMessageId": req.ResultMessageID,
 	})
 

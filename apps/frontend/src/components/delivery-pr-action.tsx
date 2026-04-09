@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentOperator } from "@/components/operator-provider";
 import { submitAction } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +18,7 @@ export function DeliveryPRAction({
   existingDeliveryPRId,
 }: DeliveryPRActionProps) {
   const router = useRouter();
+  const { operatorName } = useCurrentOperator();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -32,7 +34,7 @@ export function DeliveryPRAction({
       try {
         const response = (await submitAction({
           actorType: "member",
-          actorId: "Sarah",
+          actorId: operatorName,
           actionType: "DeliveryPR.create.request",
           targetType: "issue",
           targetId: issueId,
@@ -57,6 +59,7 @@ export function DeliveryPRAction({
         onClick={handleCreate}
         variant="primary"
         size="sm"
+        className="control-pill"
       >
         {existingDeliveryPRId ? "Delivery PR Open" : "Create Delivery PR"}
       </Button>

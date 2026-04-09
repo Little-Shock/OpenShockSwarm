@@ -7,7 +7,6 @@ import type {
   AgentTurn,
   AgentWait,
   HandoffRecord,
-  Runtime,
 } from "@/lib/types";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -16,7 +15,6 @@ import { LocalTime } from "@/components/ui/local-time";
 
 type AgentObservabilityDrawerProps = {
   agents: Agent[];
-  runtimes: Runtime[];
   sessions: AgentSession[];
   turns: AgentTurn[];
   waits: AgentWait[];
@@ -26,20 +24,6 @@ type AgentObservabilityDrawerProps = {
 
 function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ");
-}
-
-function runtimeBadgeTone(status: string): BadgeTone {
-  switch (status) {
-    case "online":
-      return "green";
-    case "busy":
-      return "blue";
-    case "offline":
-    case "failed":
-      return "orange";
-    default:
-      return "neutral";
-  }
 }
 
 function sessionBadgeTone(status: string): BadgeTone {
@@ -66,7 +50,6 @@ function agentName(agentId: string, agents: Agent[]) {
 
 export function AgentObservabilityDrawer({
   agents,
-  runtimes,
   sessions,
   turns,
   waits,
@@ -108,18 +91,15 @@ export function AgentObservabilityDrawer({
       .filter((handoff) => handoff.status !== "accepted")
       .map((handoff) => [handoff.fromSessionId, handoff]),
   );
-  const onlineRuntimes = runtimes.filter((runtime) => runtime.status === "online").length;
-  const busyRuntimes = runtimes.filter((runtime) => runtime.status === "busy").length;
 
   return (
     <>
-      <div className="space-y-2.5">
-        <Card className="rounded-[10px] bg-[var(--surface-muted)] px-2.5 py-2.5 text-[var(--foreground)]">
-          <Eyebrow className="mb-1.5 text-black/50">Active Agents</Eyebrow>
-          {visibleAgents.length === 0 ? (
-            <p className="text-[12px] text-black/55">No room-linked agents yet.</p>
-          ) : (
-            <div className="space-y-1.5">
+      <Card className="rounded-[10px] bg-[var(--surface-muted)] px-2.5 py-2.5 text-[var(--foreground)]">
+        <Eyebrow className="mb-1.5 text-black/50">Active Agents</Eyebrow>
+        {visibleAgents.length === 0 ? (
+          <p className="text-[12px] text-black/55">No room-linked agents yet.</p>
+        ) : (
+          <div className="space-y-1.5">
             {visibleAgents.map((agent) => {
               const agentTurnCount = turns.filter((turn) => turn.agentId === agent.id).length;
               const activeSession = sessions
@@ -136,7 +116,8 @@ export function AgentObservabilityDrawer({
                   <div className="min-w-0">
                     <div className="truncate text-[13px]">{agent.name}</div>
                     <div className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-black/45">
-                      {activeSession ? formatStatusLabel(activeSession.status) : "no session"} · {agentTurnCount} turns
+                      {activeSession ? formatStatusLabel(activeSession.status) : "no session"} ·{" "}
+                      {agentTurnCount} turns
                     </div>
                   </div>
                   <span className="rounded-full bg-[var(--accent-blue-soft)] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--accent-blue)]">
@@ -145,45 +126,9 @@ export function AgentObservabilityDrawer({
                 </button>
               );
             })}
-            </div>
-          )}
-        </Card>
-
-        <Card className="rounded-[10px] bg-[var(--surface-muted)] px-2.5 py-2.5 text-[var(--foreground)]">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <Eyebrow className="text-black/50">Daemon Runtimes</Eyebrow>
-            <Badge tone="dark">{runtimes.length}</Badge>
           </div>
-          <div className="mb-2 grid grid-cols-2 gap-2">
-            <div className="rounded-[8px] bg-white px-2.5 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-black/45">Online</div>
-              <div className="display-font mt-1 text-lg font-black">{onlineRuntimes}</div>
-            </div>
-            <div className="rounded-[8px] bg-white px-2.5 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-black/45">Busy</div>
-              <div className="display-font mt-1 text-lg font-black">{busyRuntimes}</div>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            {runtimes.map((runtime) => (
-              <div
-                key={runtime.id}
-                className="flex items-center justify-between rounded-[8px] bg-white px-2.5 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-[12px] font-medium">{runtime.name}</div>
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-black/45">
-                    {runtime.provider}
-                  </div>
-                </div>
-                <Badge tone={runtimeBadgeTone(runtime.status)}>
-                  {formatStatusLabel(runtime.status)}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
+        )}
+      </Card>
 
       {selectedAgent ? (
         <div className="fixed inset-0 z-50">
@@ -251,7 +196,7 @@ export function AgentObservabilityDrawer({
                   </div>
                   {selectedSessions.length === 0 ? (
                     <p className="text-[12px] leading-5 text-black/60">
-                      当前 room 里还没有这个 agent 的 session。
+                      No sessions for this agent in the current room yet.
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -282,16 +227,21 @@ export function AgentObservabilityDrawer({
                             </div>
                             <div className="mt-2 grid gap-2 text-[12px] text-black/68 md:grid-cols-2">
                               <div>
-                                Current intent: {turn ? formatStatusLabel(turn.intentType) : "no turn yet"}
+                                Current intent:{" "}
+                                {turn ? formatStatusLabel(turn.intentType) : "no turn yet"}
                               </div>
                               <div>
                                 Last update: <LocalTime value={session.updatedAt} withSeconds />
                               </div>
                               <div>
-                                Waiting state: {wait ? `waiting on ${wait.blockingMessageId}` : "not waiting"}
+                                Waiting state:{" "}
+                                {wait ? `waiting on ${wait.blockingMessageId}` : "not waiting"}
                               </div>
                               <div>
-                                Handoff: {handoff ? `queued to ${agentName(handoff.toAgentId, agents)}` : "none"}
+                                Handoff:{" "}
+                                {handoff
+                                  ? `queued to ${agentName(handoff.toAgentId, agents)}`
+                                  : "none"}
                               </div>
                             </div>
                           </div>

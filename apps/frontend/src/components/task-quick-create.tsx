@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentOperator } from "@/components/operator-provider";
 import { submitAction } from "@/lib/api";
 import type { Agent, IssueSummary } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ type TaskQuickCreateProps = {
   agents: Agent[];
   issueOptions?: IssueSummary[];
   defaultIssueId?: string;
+  onCreated?: () => void;
 };
 
 export function TaskQuickCreate({
@@ -18,8 +20,10 @@ export function TaskQuickCreate({
   agents,
   issueOptions = [],
   defaultIssueId,
+  onCreated,
 }: TaskQuickCreateProps) {
   const router = useRouter();
+  const { operatorName } = useCurrentOperator();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeAgentId, setAssigneeAgentId] = useState(agents[0]?.id ?? "");
@@ -37,7 +41,7 @@ export function TaskQuickCreate({
       try {
         await submitAction({
           actorType: "member",
-          actorId: "Sarah",
+          actorId: operatorName,
           actionType: "Task.create",
           targetType: "issue",
           targetId: resolvedIssueId,
@@ -50,8 +54,9 @@ export function TaskQuickCreate({
         });
         setTitle("");
         setDescription("");
-        setFeedback("Task created.");
+        setFeedback(null);
         router.refresh();
+        onCreated?.();
       } catch (error) {
         setFeedback(
           error instanceof Error ? error.message : "Failed to create task.",
@@ -66,7 +71,7 @@ export function TaskQuickCreate({
         <select
           value={selectedIssueId}
           onChange={(event) => setSelectedIssueId(event.target.value)}
-          className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none focus:border-[var(--accent-blue)]"
+          className="form-field"
         >
           {issueOptions.map((issue) => (
             <option key={issue.id} value={issue.id}>
@@ -79,33 +84,43 @@ export function TaskQuickCreate({
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         placeholder="New task title"
-        className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none focus:border-[var(--accent-blue)]"
+        className="form-field"
       />
       <textarea
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         placeholder="Describe the task outcome and constraints."
-        className="min-h-24 w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none focus:border-[var(--accent-blue)]"
+        className="form-field min-h-28 resize-y"
       />
-      <select
-        value={assigneeAgentId}
-        onChange={(event) => setAssigneeAgentId(event.target.value)}
-        className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none focus:border-[var(--accent-blue)]"
-      >
-        {agents.map((agent) => (
-          <option key={agent.id} value={agent.id}>
-            {agent.name} · {agent.role}
-          </option>
-        ))}
-      </select>
+      {agents.length > 0 ? (
+        <select
+          value={assigneeAgentId}
+          onChange={(event) => setAssigneeAgentId(event.target.value)}
+          className="form-field"
+        >
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name} · {agent.role}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <div className="rounded-[14px] border border-dashed border-[var(--border)] bg-[var(--surface-muted)] px-3 py-3 text-[12px] text-black/55">
+          No agents available for assignment yet.
+        </div>
+      )}
       <div className="flex justify-end">
         <Button
           type="submit"
           disabled={
-            isPending || title.trim().length === 0 || resolvedIssueId.length === 0
+            isPending ||
+            title.trim().length === 0 ||
+            resolvedIssueId.length === 0 ||
+            assigneeAgentId.length === 0
           }
           variant="primary"
           size="sm"
+          className="control-pill"
         >
           {isPending ? "Creating..." : "Create Task"}
         </Button>

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"openshock/daemon/internal/client"
 )
@@ -78,6 +79,62 @@ func TestActionSubmitParsesPayloadJSON(t *testing.T) {
 	}
 	if stub.lastReq.Payload["agentId"] != "agent_shell" {
 		t.Fatalf("unexpected payload: %#v", stub.lastReq.Payload)
+	}
+}
+
+func TestTaskStatusSetBuildsActionRequest(t *testing.T) {
+	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_203", Status: "completed"}}
+	app := &App{
+		newClient: func(string) actionSubmitter { return stub },
+		now:       func() time.Time { return time.Unix(0, 123456789) },
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{
+		"task", "status", "set",
+		"--task", "task_101",
+		"--status", "in_progress",
+		"--actor-id", "agent_shell",
+	}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
+	}
+	if stub.lastReq.ActionType != "Task.status.set" || stub.lastReq.TargetID != "task_101" {
+		t.Fatalf("unexpected action request: %#v", stub.lastReq)
+	}
+	if stub.lastReq.Payload["status"] != "in_progress" {
+		t.Fatalf("unexpected payload: %#v", stub.lastReq.Payload)
+	}
+	if stub.lastReq.IdempotencyKey != "task-status-task_101-123456789" {
+		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
+	}
+}
+
+func TestTaskMarkReadyBuildsActionRequest(t *testing.T) {
+	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_204", Status: "completed"}}
+	app := &App{
+		newClient: func(string) actionSubmitter { return stub },
+		now:       func() time.Time { return time.Unix(0, 987654321) },
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{
+		"task", "mark-ready",
+		"--task", "task_101",
+		"--actor-id", "agent_shell",
+	}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
+	}
+	if stub.lastReq.ActionType != "Task.mark_ready_for_integration" || stub.lastReq.TargetID != "task_101" {
+		t.Fatalf("unexpected action request: %#v", stub.lastReq)
+	}
+	if stub.lastReq.IdempotencyKey != "task-mark-ready-task_101-987654321" {
+		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
 	}
 }
 

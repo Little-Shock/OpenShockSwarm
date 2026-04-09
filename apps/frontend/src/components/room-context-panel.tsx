@@ -4,11 +4,12 @@ import { useState } from "react";
 import { AgentObservabilityDrawer } from "@/components/agent-observability-drawer";
 import { DeliveryPRAction } from "@/components/delivery-pr-action";
 import { RoomSystemPanel } from "@/components/room-system-panel";
-import { TaskQuickCreate } from "@/components/task-quick-create";
+import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { InfoHint } from "@/components/ui/info-hint";
 import { WorkspaceRepoBinding } from "@/components/workspace-repo-binding";
 import type {
   Agent,
@@ -19,8 +20,6 @@ import type {
   HandoffRecord,
   IntegrationBranch,
   Issue,
-  MergeAttempt,
-  RoomSummary,
   Run,
   Runtime,
   Task,
@@ -29,7 +28,6 @@ import type {
 
 type RoomContextPanelProps = {
   workspace: Workspace;
-  room: RoomSummary;
   issue?: Issue;
   agents: Agent[];
   runtimes: Runtime[];
@@ -39,7 +37,6 @@ type RoomContextPanelProps = {
   handoffs: HandoffRecord[];
   tasks: Task[];
   runs: Run[];
-  mergeAttempts: MergeAttempt[];
   integrationBranch?: IntegrationBranch;
   deliveryPr: DeliveryPR | null;
   messageCount: number;
@@ -108,7 +105,6 @@ function TaskList({
 
 export function RoomContextPanel({
   workspace,
-  room,
   issue,
   agents,
   runtimes,
@@ -158,9 +154,11 @@ export function RoomContextPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-[var(--border)] bg-white px-3 py-2.5">
-        <Eyebrow className="text-black/50">Context</Eyebrow>
-        <div className="mt-2 flex gap-1.5">
+      <div className="border-b border-[var(--border)] bg-white">
+        <div className="flex h-12 items-center px-3">
+          <Eyebrow className="text-black/50">Context</Eyebrow>
+        </div>
+        <div className="flex h-10 items-center gap-1.5 px-3">
           {tabOrder.map((tab) => {
             const active = activeTab === tab;
             return (
@@ -168,7 +166,7 @@ export function RoomContextPanel({
                 key={tab}
                 type="button"
                 onClick={() => setActiveTab(tab)}
-                className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                className={`control-pill transition ${
                   active
                     ? "bg-[var(--accent-blue-soft)] text-[var(--accent-blue)]"
                     : "bg-[var(--surface-muted)] text-black/55 hover:bg-white"
@@ -238,10 +236,38 @@ export function RoomContextPanel({
           <div className="space-y-2.5">
             <Card className="rounded-[12px] px-3 py-2.5">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <Eyebrow>Create Task</Eyebrow>
+                <Eyebrow>Task Actions</Eyebrow>
                 <Badge tone="blue-soft">{tasks.length} total</Badge>
               </div>
-              <TaskQuickCreate issueId={issue.id} agents={agents} />
+              <div className="space-y-3">
+                <div className="rounded-[16px] border border-[var(--border)] bg-[linear-gradient(180deg,rgba(247,248,250,0.96),rgba(255,255,255,0.98))] px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="action-card-title">Add to current issue</div>
+                        <InfoHint label="在当前 issue 下新建任务，并直接分配给对应 agent。" />
+                      </div>
+                    </div>
+                    <TaskCreateDialog
+                      issueId={issue.id}
+                      agents={agents}
+                      buttonLabel="New Task"
+                      buttonVariant="primary"
+                      buttonSize="sm"
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5">
+                      <div className="action-card-label">Current issue</div>
+                      <div className="action-card-value mt-1">{issue.id.replace("_", "#")}</div>
+                    </div>
+                    <div className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5">
+                      <div className="action-card-label">Agent pool</div>
+                      <div className="action-card-value mt-1">{agents.length} available</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </Card>
 
             <Card className="rounded-[12px] px-3 py-2.5">
@@ -288,7 +314,7 @@ export function RoomContextPanel({
         {activeTab === "system" ? (
           <div className="space-y-2.5">
             <RoomSystemPanel
-              room={room}
+              agents={agents}
               runtimes={runtimes}
               sessions={sessions}
               turns={turns}
@@ -298,7 +324,6 @@ export function RoomContextPanel({
             />
             <AgentObservabilityDrawer
               agents={agents}
-              runtimes={runtimes}
               sessions={sessions}
               turns={turns}
               waits={waits}

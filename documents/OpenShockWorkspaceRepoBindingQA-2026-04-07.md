@@ -49,6 +49,7 @@
 说明：
 
 - 页面入口已经不是 issue 级 repo 绑定入口，而是 workspace 级 default repo 入口。
+- 当前页面不再展示 `Bound Repos` 列表，非 default binding 视为内部实现细节。
 
 ### 3.2 通过页面完成 workspace 绑定
 
@@ -61,9 +62,8 @@
 
 1. 状态从 `required` 变为 `default ready`
 2. `Default Repo` 显示 `/Users/feifantong/code/OpenShockSwarm`
-3. `Bound Repos` 列表出现 `OpenShockSwarm · default`
-4. 页面出现反馈文案 `Workspace repo binding updated.`
-5. `当前 issue 生效仓库` 同步显示 `/Users/feifantong/code/OpenShockSwarm`
+3. 页面出现反馈文案 `Workspace repo binding updated.`
+4. `当前 issue 生效仓库` 同步显示 `/Users/feifantong/code/OpenShockSwarm`
 
 结论：通过
 

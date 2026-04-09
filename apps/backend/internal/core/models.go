@@ -119,6 +119,7 @@ type AgentTurn struct {
 	Sequence         int        `json:"sequence"`
 	TriggerMessageID string     `json:"triggerMessageId"`
 	IntentType       string     `json:"intentType"`
+	WakeupMode       string     `json:"wakeupMode,omitempty"`
 	EventFrame       EventFrame `json:"eventFrame"`
 	Status           string     `json:"status"`
 	CreatedAt        string     `json:"createdAt"`

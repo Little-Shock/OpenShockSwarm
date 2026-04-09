@@ -130,7 +130,7 @@ func (a *App) runRoom(ctx context.Context, args []string, stdout, stderr io.Writ
 
 func (a *App) runTask(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: openshock task <create|assign> ...")
+		fmt.Fprintln(stderr, "usage: openshock task <create|assign|status|mark-ready> ...")
 		return 2
 	}
 
@@ -193,6 +193,68 @@ func (a *App) runTask(ctx context.Context, args []string, stdout, stderr io.Writ
 			*taskID,
 			*idempotencyKey,
 			map[string]any{"agentId": *agentID},
+		)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 2
+		}
+		return a.submit(ctx, *baseURL, req, stdout, stderr)
+	case "status":
+		if len(args) < 2 || args[1] != "set" {
+			fmt.Fprintln(stderr, "usage: openshock task status set ...")
+			return 2
+		}
+
+		fs := flag.NewFlagSet("task status set", flag.ContinueOnError)
+		fs.SetOutput(stderr)
+
+		baseURL := fs.String("api-base-url", defaultAPIBaseURL(), "OpenShock backend base URL")
+		taskID := fs.String("task", "", "Task id")
+		status := fs.String("status", "", "Task status")
+		actorType := fs.String("actor-type", "agent", "Actor type")
+		actorID := fs.String("actor-id", "", "Actor id")
+		idempotencyKey := fs.String("idempotency-key", "", "Idempotency key")
+
+		if err := fs.Parse(args[2:]); err != nil {
+			return 2
+		}
+
+		req, err := buildActionRequest(
+			*actorType,
+			*actorID,
+			"Task.status.set",
+			"task",
+			*taskID,
+			a.defaultIdempotencyKey(*idempotencyKey, "task-status", *taskID),
+			map[string]any{"status": *status},
+		)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 2
+		}
+		return a.submit(ctx, *baseURL, req, stdout, stderr)
+	case "mark-ready":
+		fs := flag.NewFlagSet("task mark-ready", flag.ContinueOnError)
+		fs.SetOutput(stderr)
+
+		baseURL := fs.String("api-base-url", defaultAPIBaseURL(), "OpenShock backend base URL")
+		taskID := fs.String("task", "", "Task id")
+		actorType := fs.String("actor-type", "agent", "Actor type")
+		actorID := fs.String("actor-id", "", "Actor id")
+		idempotencyKey := fs.String("idempotency-key", "", "Idempotency key")
+
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+
+		req, err := buildActionRequest(
+			*actorType,
+			*actorID,
+			"Task.mark_ready_for_integration",
+			"task",
+			*taskID,
+			a.defaultIdempotencyKey(*idempotencyKey, "task-mark-ready", *taskID),
+			map[string]any{},
 		)
 		if err != nil {
 			fmt.Fprintln(stderr, err.Error())
@@ -340,6 +402,24 @@ func parsePayload(payloadJSON string) (map[string]any, error) {
 		return nil, err
 	}
 	return payload, nil
+}
+
+func (a *App) defaultIdempotencyKey(explicit, prefix, targetID string) string {
+	value := strings.TrimSpace(explicit)
+	if value != "" {
+		return value
+	}
+
+	parts := []string{prefix}
+	if trimmedTarget := strings.TrimSpace(targetID); trimmedTarget != "" {
+		parts = append(parts, trimmedTarget)
+	}
+	now := time.Now
+	if a != nil && a.now != nil {
+		now = a.now
+	}
+	parts = append(parts, fmt.Sprintf("%d", now().UnixNano()))
+	return strings.Join(parts, "-")
 }
 
 func defaultAPIBaseURL() string {

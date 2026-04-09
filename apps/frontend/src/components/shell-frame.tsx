@@ -1,20 +1,23 @@
 import Link from "next/link";
-import { IssueCreateDialog } from "@/components/issue-create-dialog";
+import { RoomCreateDialog } from "@/components/room-create-dialog";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import type { Agent, RoomSummary } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 
 type ShellFrameProps = {
+  workspaceId: string;
   workspaceName: string;
   rooms: RoomSummary[];
   agents: Agent[];
+  alignedTopRows?: boolean;
   sidebarPanel?: React.ReactNode;
   footerPanel?: React.ReactNode;
   rightRailWidthClass?: string;
-  activeRoute: "/" | "/board" | "/inbox";
+  activeRoute: "/" | "/board" | "/inbox" | "/profile" | "/settings";
   activeRoomId?: string;
   title: string;
+  headerMeta?: React.ReactNode;
   subtitle?: string;
   children: React.ReactNode;
   rightRail?: React.ReactNode;
@@ -23,18 +26,23 @@ type ShellFrameProps = {
 const navItems = [
   { href: "/board", label: "Task Board" },
   { href: "/inbox", label: "Inbox" },
+  { href: "/profile", label: "Personal Info" },
+  { href: "/settings", label: "System Config" },
 ];
 
 export function ShellFrame({
+  workspaceId,
   workspaceName,
   rooms,
   agents,
+  alignedTopRows,
   sidebarPanel,
   footerPanel,
   rightRailWidthClass,
   activeRoute,
   activeRoomId,
   title,
+  headerMeta,
   subtitle,
   children,
   rightRail,
@@ -68,24 +76,39 @@ export function ShellFrame({
       <div className="card-enter grid h-full grid-cols-1 overflow-hidden bg-[var(--surface)] md:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="min-h-0 overflow-auto border-b border-[var(--border)] bg-[var(--surface)] md:border-r md:border-b-0">
           <div className="flex h-full flex-col">
-            <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-[var(--foreground)]">
-              <div className="display-font text-sm font-semibold uppercase tracking-[0.16em]">
-                OpenShock
+            {alignedTopRows ? (
+              <div className="sticky top-0 z-10 bg-[var(--surface)] text-[var(--foreground)]">
+                <div className="flex h-12 items-center bg-white px-3">
+                  <div className="display-font text-sm font-semibold uppercase tracking-[0.16em]">
+                    OpenShock
+                  </div>
+                </div>
+                <div className="flex h-10 items-center border-b border-[var(--border)] bg-[var(--surface-muted)] px-3">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-black/55">
+                    {workspaceName}
+                  </div>
+                </div>
               </div>
-              <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-black/55">
-                {workspaceName}
+            ) : (
+              <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-[var(--foreground)]">
+                <div className="display-font text-sm font-semibold uppercase tracking-[0.16em]">
+                  OpenShock
+                </div>
+                <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-black/55">
+                  {workspaceName}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="space-y-4 px-2.5 py-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 px-2.5 py-3">
               <WorkspaceSwitcher workspaceName={workspaceName} />
 
-              <section className="border-t border-[var(--border)] pt-4">
+              <section className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] pt-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <Eyebrow className="tracking-[0.18em]">Rooms {rooms.length}</Eyebrow>
-                  <IssueCreateDialog />
+                  <RoomCreateDialog workspaceId={workspaceId} />
                 </div>
-                <div className="max-h-[320px] space-y-2.5 overflow-y-auto pr-1">
+                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
                   <div>
                     <div className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-black/45">
                       Discussion
@@ -158,7 +181,7 @@ export function ShellFrame({
               </section>
 
               {sidebarPanel ?? (
-                <section className="border-t border-[var(--border)] pt-4">
+                <section className="mt-auto border-t border-[var(--border)] pt-4">
                   <Eyebrow className="mb-2 tracking-[0.18em]">Navigate</Eyebrow>
                   <div className="space-y-1.5">
                     {navItems.map((item) => {
@@ -193,20 +216,35 @@ export function ShellFrame({
 
         <div className={`grid min-h-0 grid-cols-1 ${hasRightRail ? resolvedRightRailWidthClass : ""}`}>
           <main className="flex min-h-0 flex-col border-r-0 border-[var(--border)] md:border-r">
-            <header className="border-b border-[var(--border)] bg-white px-4 py-2.5">
-              <div>
-                <div>
+            {alignedTopRows ? (
+              <header className="bg-white">
+                <div className="flex h-12 items-center px-4">
                   <div className="display-font text-lg font-black uppercase tracking-[0.08em]">
                     {title}
                   </div>
-                  {subtitle ? (
-                    <p className="mt-0.5 max-w-2xl text-[13px] text-black/65">
-                      {subtitle}
-                    </p>
-                  ) : null}
                 </div>
-              </div>
-            </header>
+                <div className="flex h-10 items-center border-b border-[var(--border)] px-4">
+                  <div className="min-w-0 w-full text-sm font-semibold text-black/80">
+                    {headerMeta ?? subtitle ?? ""}
+                  </div>
+                </div>
+              </header>
+            ) : (
+              <header className="border-b border-[var(--border)] bg-white px-4 py-2.5">
+                <div>
+                  <div>
+                    <div className="display-font text-lg font-black uppercase tracking-[0.08em]">
+                      {title}
+                    </div>
+                    {subtitle ? (
+                      <p className="mt-0.5 max-w-2xl text-[13px] text-black/65">
+                        {subtitle}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </header>
+            )}
             <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)]">{children}</div>
           </main>
 

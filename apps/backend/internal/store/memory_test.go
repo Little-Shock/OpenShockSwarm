@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"testing"
 
 	"openshock/backend/internal/core"
@@ -40,6 +41,41 @@ func TestCreateIssueCreatesRoomAndIntegrationBranch(t *testing.T) {
 	}
 	if detail.IntegrationBranch.IssueID != createdIssueID {
 		t.Fatalf("expected integration branch to point at new issue, got %q", detail.IntegrationBranch.IssueID)
+	}
+}
+
+func TestCreateDiscussionRoomCreatesChatOnlyRoom(t *testing.T) {
+	s := NewMemoryStore()
+
+	before := s.Bootstrap()
+	resp := s.CreateDiscussionRoom("Architecture", "Track cross-cutting architecture decisions here.")
+	after := s.Bootstrap()
+
+	if resp.ResultCode != "room_created" {
+		t.Fatalf("expected room_created result code, got %q", resp.ResultCode)
+	}
+	if len(after.Rooms) != len(before.Rooms)+1 {
+		t.Fatalf("expected room count to increase, got before=%d after=%d", len(before.Rooms), len(after.Rooms))
+	}
+	if after.DefaultRoomID != resp.AffectedEntities[0].ID {
+		t.Fatalf("expected new discussion room to become default room, got %q", after.DefaultRoomID)
+	}
+	if after.DefaultIssueID != before.DefaultIssueID {
+		t.Fatalf("expected default issue to remain unchanged, got before=%q after=%q", before.DefaultIssueID, after.DefaultIssueID)
+	}
+
+	detail, err := s.RoomDetail(resp.AffectedEntities[0].ID)
+	if err != nil {
+		t.Fatalf("expected room detail to resolve: %v", err)
+	}
+	if detail.Room.Kind != "discussion" {
+		t.Fatalf("expected discussion room kind, got %#v", detail.Room)
+	}
+	if detail.Issue != nil || len(detail.Tasks) != 0 || len(detail.Runs) != 0 {
+		t.Fatalf("expected discussion room to stay chat-only, got %#v", detail)
+	}
+	if len(detail.Messages) != 1 || !strings.Contains(detail.Messages[0].Body, "Track cross-cutting architecture decisions") {
+		t.Fatalf("expected opening summary message, got %#v", detail.Messages)
 	}
 }
 
@@ -140,6 +176,9 @@ func TestRoomInstructionMessageCreatesAgentTurn(t *testing.T) {
 	if detail.AgentTurns[0].AgentID != "agent_shell" || detail.AgentTurns[0].IntentType != "visible_message_response" || detail.AgentTurns[0].Status != "queued" {
 		t.Fatalf("unexpected agent turn payload: %#v", detail.AgentTurns[0])
 	}
+	if detail.AgentTurns[0].WakeupMode != "direct_message" {
+		t.Fatalf("expected direct_message wakeup mode, got %#v", detail.AgentTurns[0])
+	}
 	if detail.AgentTurns[0].EventFrame.SourceMessageID == "" || detail.AgentTurns[0].EventFrame.CurrentTarget == "" {
 		t.Fatalf("expected event frame to be attached to agent turn, got %#v", detail.AgentTurns[0].EventFrame)
 	}
@@ -189,6 +228,9 @@ func TestRoomPlainHumanMessageWithoutMentionCreatesVisibleMessageTurn(t *testing
 	}
 	if detail.AgentTurns[0].AgentID != "agent_guardian" || detail.AgentTurns[0].IntentType != "visible_message_response" || detail.AgentTurns[0].Status != "queued" {
 		t.Fatalf("unexpected visible message turn payload: %#v", detail.AgentTurns[0])
+	}
+	if detail.AgentTurns[0].WakeupMode != "direct_message" {
+		t.Fatalf("expected direct_message wakeup mode, got %#v", detail.AgentTurns[0])
 	}
 	if detail.AgentTurns[0].EventFrame.RequestedBy != "Sarah" {
 		t.Fatalf("expected event frame requester to be Sarah, got %#v", detail.AgentTurns[0].EventFrame)
@@ -350,6 +392,9 @@ func TestAgentClarificationInstructionRequeuesTurn(t *testing.T) {
 	if detail.AgentTurns[1].IntentType != "clarification_followup" || detail.AgentTurns[1].Status != "queued" {
 		t.Fatalf("unexpected followup turn payload: %#v", detail.AgentTurns[1])
 	}
+	if detail.AgentTurns[1].WakeupMode != "clarification_followup" {
+		t.Fatalf("expected clarification_followup wakeup mode, got %#v", detail.AgentTurns[1])
+	}
 	if detail.AgentWaits[0].Status != "resolved" {
 		t.Fatalf("expected wait to resolve after human instruction reply, got %#v", detail.AgentWaits[0])
 	}
@@ -397,6 +442,9 @@ func TestAgentClarificationRequestWaitsAndHumanReplyRequeuesTurn(t *testing.T) {
 	if detail.AgentTurns[1].IntentType != "clarification_followup" || detail.AgentTurns[1].Status != "queued" {
 		t.Fatalf("unexpected followup turn payload: %#v", detail.AgentTurns[1])
 	}
+	if detail.AgentTurns[1].WakeupMode != "clarification_followup" {
+		t.Fatalf("expected clarification_followup wakeup mode, got %#v", detail.AgentTurns[1])
+	}
 	if detail.AgentWaits[0].Status != "resolved" {
 		t.Fatalf("expected wait to resolve after human reply, got %#v", detail.AgentWaits[0])
 	}
@@ -433,6 +481,9 @@ func TestAgentHandoffCreatesTargetAgentTurn(t *testing.T) {
 	}
 	if detail.AgentTurns[1].AgentID != "agent_guardian" || detail.AgentTurns[1].IntentType != "handoff_response" {
 		t.Fatalf("unexpected target turn payload: %#v", detail.AgentTurns[1])
+	}
+	if detail.AgentTurns[1].WakeupMode != "handoff_response" {
+		t.Fatalf("expected handoff_response wakeup mode, got %#v", detail.AgentTurns[1])
 	}
 }
 
@@ -629,6 +680,33 @@ func TestSetTaskStatusUpdatesEditableTaskState(t *testing.T) {
 	}
 }
 
+func TestBuildRunInstructionIncludesTaskStatusCommands(t *testing.T) {
+	instruction := buildRunInstruction(core.Task{
+		ID:              "task_guard",
+		Title:           "Add retention guard around handoff queue",
+		Description:     "Patch the observer queue to drop stale references on handoff.",
+		AssigneeAgentID: "agent_shell",
+		BranchName:      "issue-101/task-guard",
+	})
+
+	for _, expected := range []string{
+		"Task ID: task_guard",
+		"This is a single-run execution for the current task branch.",
+		"The OpenShock CLI is available as `openshock` during execution.",
+		"update the task to in_progress early",
+		"openshock task status set --task task_guard --status in_progress --actor-id agent_shell",
+		"Finish code changes and validation before stopping.",
+		"openshock task status set --task task_guard --status blocked --actor-id agent_shell",
+		"If you are blocked, explain the real blocker in your final summary.",
+		"openshock task mark-ready --task task_guard --actor-id agent_shell",
+		"Your final summary should include both the code changes and the verification you ran.",
+	} {
+		if !strings.Contains(instruction, expected) {
+			t.Fatalf("expected instruction to contain %q, got:\n%s", expected, instruction)
+		}
+	}
+}
+
 func TestRegisterRuntime(t *testing.T) {
 	s := NewMemoryStore()
 
@@ -711,6 +789,50 @@ func TestBlockedRunEventCreatesInboxItemAndMessage(t *testing.T) {
 	}
 	if len(afterIssue.Messages) == len(beforeIssue.Messages) {
 		t.Fatal("expected blocked event to append a room/system message")
+	}
+}
+
+func TestStartedRunEventDoesNotAppendRoomMessage(t *testing.T) {
+	s := NewMemoryStore()
+	bindDefaultWorkspaceRepo(t, s)
+
+	beforeIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+
+	if _, err := s.IngestRunEvent("run_review_01", "rt_local", "started", "daemon started execution", "", "", nil); err != nil {
+		t.Fatalf("ingest returned error: %v", err)
+	}
+
+	afterIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+	if len(afterIssue.Messages) != len(beforeIssue.Messages) {
+		t.Fatalf("expected started run event to stay out of room timeline, before=%d after=%d", len(beforeIssue.Messages), len(afterIssue.Messages))
+	}
+}
+
+func TestCompletedRunEventDoesNotAppendRoomMessage(t *testing.T) {
+	s := NewMemoryStore()
+	bindDefaultWorkspaceRepo(t, s)
+
+	beforeIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+
+	if _, err := s.IngestRunEvent("run_review_01", "rt_local", "completed", "all checks passed", "", "", nil); err != nil {
+		t.Fatalf("ingest returned error: %v", err)
+	}
+
+	afterIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+	if len(afterIssue.Messages) != len(beforeIssue.Messages) {
+		t.Fatalf("expected completed run event to stay out of room timeline, before=%d after=%d", len(beforeIssue.Messages), len(afterIssue.Messages))
 	}
 }
 
@@ -1104,5 +1226,79 @@ func TestMergeEventConflictBlocksTask(t *testing.T) {
 	}
 	if !taskBlocked {
 		t.Fatalf("expected task_guard to be blocked after conflict, got %#v", detail.Tasks)
+	}
+}
+
+func TestStartedMergeEventDoesNotAppendRoomMessage(t *testing.T) {
+	s := NewMemoryStore()
+	bindDefaultWorkspaceRepo(t, s)
+
+	if _, err := s.RequestMerge("task_guard"); err != nil {
+		t.Fatalf("request merge returned error: %v", err)
+	}
+	if _, err := s.ApproveMerge("task_guard", "Sarah"); err != nil {
+		t.Fatalf("approve merge returned error: %v", err)
+	}
+
+	beforeIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+
+	attempt, claimed, err := s.ClaimNextQueuedMerge("rt_local")
+	if err != nil {
+		t.Fatalf("claim merge returned error: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected queued merge attempt to be claimed")
+	}
+
+	if _, err := s.IngestMergeEvent(attempt.ID, "rt_local", "started", "daemon started merge execution"); err != nil {
+		t.Fatalf("ingest merge event returned error: %v", err)
+	}
+
+	afterIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+	if len(afterIssue.Messages) != len(beforeIssue.Messages) {
+		t.Fatalf("expected started merge event to stay out of room timeline, before=%d after=%d", len(beforeIssue.Messages), len(afterIssue.Messages))
+	}
+}
+
+func TestSucceededMergeEventDoesNotAppendRoomMessage(t *testing.T) {
+	s := NewMemoryStore()
+	bindDefaultWorkspaceRepo(t, s)
+
+	if _, err := s.RequestMerge("task_guard"); err != nil {
+		t.Fatalf("request merge returned error: %v", err)
+	}
+	if _, err := s.ApproveMerge("task_guard", "Sarah"); err != nil {
+		t.Fatalf("approve merge returned error: %v", err)
+	}
+
+	beforeIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+
+	attempt, claimed, err := s.ClaimNextQueuedMerge("rt_local")
+	if err != nil {
+		t.Fatalf("claim merge returned error: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected queued merge attempt to be claimed")
+	}
+
+	if _, err := s.IngestMergeEvent(attempt.ID, "rt_local", "succeeded", "merged cleanly"); err != nil {
+		t.Fatalf("ingest merge event returned error: %v", err)
+	}
+
+	afterIssue, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+	if len(afterIssue.Messages) != len(beforeIssue.Messages) {
+		t.Fatalf("expected succeeded merge event to stay out of room timeline, before=%d after=%d", len(beforeIssue.Messages), len(afterIssue.Messages))
 	}
 }

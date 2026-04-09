@@ -37,28 +37,39 @@ function InboxCard({ item }: { item: InboxItem }) {
 export async function InboxPage() {
   const [bootstrap, inbox] = await Promise.all([getBootstrap(), getInbox()]);
   const realtimeScopes = [`workspace:${bootstrap.workspace.id}`, "inbox:default"];
+  const actionableItems = inbox.items.filter(
+    (item) =>
+      Boolean(item.primaryActionType) &&
+      Boolean(item.relatedEntityType) &&
+      Boolean(item.relatedEntityId),
+  );
+  const informationalItems = inbox.items.length - actionableItems.length;
 
   return (
     <ShellFrame
+      workspaceId={bootstrap.workspace.id}
       workspaceName={bootstrap.workspace.name}
       rooms={bootstrap.rooms}
       agents={bootstrap.agents}
       activeRoute="/inbox"
-      title="Human Inbox"
-      subtitle="Only the actions that need a human decision, correction, or final authority should land here."
+      title="Inbox"
+      subtitle="Review the items that need human approval, correction, or final judgment."
       rightRail={
         <div className="space-y-3.5 p-3.5">
           <Card className="rounded-[18px] px-3.5 py-3.5">
-            <Eyebrow>Pending Decisions</Eyebrow>
+            <Eyebrow>Needs Action</Eyebrow>
             <div className="display-font mt-2 text-4xl font-black">
-              {inbox.items.length}
+              {actionableItems.length}
             </div>
           </Card>
           <Card className="rounded-[18px] px-3.5 py-3.5">
-            <Eyebrow>Filter Mode</Eyebrow>
+            <Eyebrow>Informational</Eyebrow>
+            <div className="display-font mt-2 text-2xl font-black">
+              {informationalItems}
+            </div>
             <p className="mt-2 text-[13px] leading-6 text-black/75">
-              Bypassing automated filters. Only showing items that require unique
-              authority, creative input, or high-level conflict resolution.
+              Items without a direct action stay visible here for context, but do not
+              block the human approval queue.
             </p>
           </Card>
         </div>
@@ -66,9 +77,16 @@ export async function InboxPage() {
     >
       <div className="space-y-3 p-4">
         <LiveRefresh scopes={realtimeScopes} />
-        {inbox.items.map((item) => (
-          <InboxCard key={item.id} item={item} />
-        ))}
+        {inbox.items.length > 0 ? (
+          inbox.items.map((item) => <InboxCard key={item.id} item={item} />)
+        ) : (
+          <Card className="rounded-[18px] px-4 py-5">
+            <Eyebrow>Queue Clear</Eyebrow>
+            <p className="mt-2 text-[13px] leading-6 text-black/68">
+              There are no human decisions waiting right now.
+            </p>
+          </Card>
+        )}
       </div>
     </ShellFrame>
   );

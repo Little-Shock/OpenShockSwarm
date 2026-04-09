@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentOperator } from "@/components/operator-provider";
 import { submitAction } from "@/lib/api";
 
 const EDITABLE_TASK_STATUSES = [
@@ -40,6 +41,7 @@ export function TaskStatusControl({
   status,
 }: TaskStatusControlProps) {
   const router = useRouter();
+  const { operatorName } = useCurrentOperator();
   const [draftStatus, setDraftStatus] = useState(status);
   const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function TaskStatusControl({
       try {
         const response = (await submitAction({
           actorType: "member",
-          actorId: "Sarah",
+          actorId: operatorName,
           actionType: "Task.status.set",
           targetType: "task",
           targetId: taskId,

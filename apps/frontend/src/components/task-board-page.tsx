@@ -1,12 +1,13 @@
 import { getBootstrap, getTaskBoard } from "@/lib/api";
+import { TaskCreateDialog } from "@/components/task-create-dialog";
 import type { Task } from "@/lib/types";
 import { LiveRefresh } from "@/components/live-refresh";
 import { ShellFrame } from "@/components/shell-frame";
 import { TaskActionStrip } from "@/components/task-action-strip";
-import { TaskQuickCreate } from "@/components/task-quick-create";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { InfoHint } from "@/components/ui/info-hint";
 
 const STATUS_LABELS: Record<string, string> = {
   todo: "Todo",
@@ -46,24 +47,73 @@ export async function TaskBoardPage() {
   const [bootstrap, board] = await Promise.all([getBootstrap(), getTaskBoard()]);
   const groups = groupedTasks(board.tasks);
   const realtimeScopes = [`workspace:${bootstrap.workspace.id}`, "board:default"];
+  const blockedCount = groups.blocked?.length ?? 0;
+  const readyCount = groups.ready_for_integration?.length ?? 0;
+  const inProgressCount = groups.in_progress?.length ?? 0;
+  const activeIssueCount = new Set(board.tasks.map((task) => task.issueId)).size;
 
   return (
     <ShellFrame
+      workspaceId={bootstrap.workspace.id}
       workspaceName={bootstrap.workspace.name}
       rooms={bootstrap.rooms}
       agents={bootstrap.agents}
       activeRoute="/board"
       title="Task Board"
-      subtitle="Issue-level task breakdown across agents, mapped directly to execution lanes and integration readiness."
+      subtitle="Track task state by execution lane and move work toward integration."
       rightRail={
         <div className="space-y-3.5 p-3.5">
           <Card className="rounded-[20px] px-3.5 py-3.5">
-            <Eyebrow className="mb-2">Quick Create</Eyebrow>
-            <TaskQuickCreate
-              agents={bootstrap.agents}
-              issueOptions={bootstrap.issueSummaries}
-              defaultIssueId={bootstrap.defaultIssueId}
-            />
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <Eyebrow>Task Actions</Eyebrow>
+              <Badge tone="blue-soft">{bootstrap.issueSummaries.length} issues</Badge>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-[16px] border border-[var(--border)] bg-[linear-gradient(180deg,rgba(247,248,250,0.96),rgba(255,255,255,0.98))] px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="action-card-title">Cross-issue create</div>
+                      <InfoHint label="从任务板直接选择 issue，在弹窗里创建并分配新任务。" />
+                    </div>
+                  </div>
+                  <TaskCreateDialog
+                    agents={bootstrap.agents}
+                    issueOptions={bootstrap.issueSummaries}
+                    defaultIssueId={bootstrap.defaultIssueId}
+                    buttonLabel="New Task"
+                    buttonVariant="primary"
+                    buttonSize="sm"
+                  />
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <div className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5">
+                    <div className="action-card-label">In progress</div>
+                    <div className="action-card-value mt-1">
+                      {inProgressCount}
+                    </div>
+                  </div>
+                  <div className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5">
+                    <div className="action-card-label">Ready to merge</div>
+                    <div className="action-card-value mt-1">
+                      {readyCount}
+                    </div>
+                  </div>
+                  <div className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5">
+                    <div className="action-card-label">Blocked</div>
+                    <div className="action-card-value mt-1">
+                      {blockedCount}
+                    </div>
+                  </div>
+                  <div className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5">
+                    <div className="action-card-label">Active issues</div>
+                    <div className="action-card-value mt-1">
+                      {activeIssueCount}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </Card>
         </div>
       }
@@ -84,7 +134,9 @@ export async function TaskBoardPage() {
                   <span className="text-[10px] text-black/45 transition group-open:rotate-90">
                     ▸
                   </span>
-                  <Badge tone={statusTone(column)}>{column.replaceAll("_", " ")}</Badge>
+                  <Badge tone={statusTone(column)}>
+                    {STATUS_LABELS[column] ?? column.replaceAll("_", " ")}
+                  </Badge>
                 </div>
                 <Badge tone="blue-soft">{tasks.length}</Badge>
               </summary>

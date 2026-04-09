@@ -937,6 +937,7 @@ True P0 后续不再把 `repoPath` 视为 `issue` 私有属性，而是提升为
      - workspace 可以保存多个 repo binding
      - 其中必须有且只有一个 `default` repo binding 作为当前执行链路默认仓库
      - 在没有显式 repo 选择能力之前，`issue / task / run / merge / delivery` 全部默认解析到这个 workspace default repo
+   - 当前产品展示只暴露一个 `default repo` 入口，不展示 bound repo 列表；非 default binding 仅作为内部实现预留
 3. 这次不要把 repo 选择重新塞回 issue
    - `issue` 可以显示“当前生效 repo 是什么”
    - 但这只是 derived view，不再是 issue 自己的绑定真相
@@ -1036,6 +1037,7 @@ QA 与迁移边界冻结为：
 
 - 长期真相：workspace 可绑定多个 repo
 - True P0 首版执行路由：只认一个 workspace default repo
+- True P0 首版产品交互：只暴露一个 default repo 入口，不展示 bound repo 列表
 - 不在这轮同时引入 issue / task 级 repo 选择器
 - `Run / MergeAttempt` 保留 `repoPath`，但仅作为执行快照，不再作为绑定真相
 - `Issue.bind_repo` 直接移出正式能力面，不做兼容保留

@@ -47,6 +47,7 @@ func TestBuildAgentTurnInstructionUsesChatFirstPrompt(t *testing.T) {
 			RoomID:     "room_001",
 			AgentID:    "agent_shell",
 			IntentType: "visible_message_response",
+			WakeupMode: "direct_message",
 			EventFrame: client.EventFrame{
 				CurrentTarget:         "room:room_001",
 				ContextSummary:        "Respond in room:room_001 for trigger message msg_001.",
@@ -69,8 +70,19 @@ func TestBuildAgentTurnInstructionUsesChatFirstPrompt(t *testing.T) {
 
 	for _, expected := range []string{
 		"KIND: <message|clarification_request|handoff|summary|no_response>",
+		"Lifecycle:",
+		"This workspace persists across turns",
+		"Workspace contract:",
+		"Read MEMORY.md first",
+		"Read CURRENT_TURN.md for this turn's exact trigger",
+		"notes/room-context.md",
+		"notes/work-log.md",
+		"update MEMORY.md before you stop",
+		"Wakeup mode: direct_message.",
+		"Mode-specific first step:",
 		"First decide whether this message needs your reply.",
 		"natural language",
+		"Reply contract:",
 		"Mention signals in trigger: @agent_shell",
 	} {
 		if !strings.Contains(instruction, expected) {
@@ -79,5 +91,65 @@ func TestBuildAgentTurnInstructionUsesChatFirstPrompt(t *testing.T) {
 	}
 	if strings.Contains(instruction, "plan|") {
 		t.Fatalf("did not expect old plan-based reply format in instruction:\n%s", instruction)
+	}
+}
+
+func TestBuildAgentTurnInstructionClarificationFollowupMode(t *testing.T) {
+	instruction := buildAgentTurnInstruction(client.AgentTurnExecution{
+		Turn: client.AgentTurn{
+			ID:         "turn_002",
+			RoomID:     "room_001",
+			AgentID:    "agent_shell",
+			IntentType: "clarification_followup",
+			WakeupMode: "clarification_followup",
+		},
+		Room: client.RoomSummary{ID: "room_001", Title: "Announcements"},
+		TriggerMessage: client.Message{
+			ID:        "msg_002",
+			ActorType: "member",
+			ActorName: "Sarah",
+			Kind:      "message",
+			Body:      "可以改 billing guard，继续。",
+		},
+	})
+
+	for _, expected := range []string{
+		"Wakeup mode: clarification_followup.",
+		"the human is replying after your earlier blocking clarification request",
+		"Do not repeat the old blocker unless it still remains unresolved.",
+	} {
+		if !strings.Contains(instruction, expected) {
+			t.Fatalf("expected clarification prompt to contain %q, got:\n%s", expected, instruction)
+		}
+	}
+}
+
+func TestBuildAgentTurnInstructionHandoffMode(t *testing.T) {
+	instruction := buildAgentTurnInstruction(client.AgentTurnExecution{
+		Turn: client.AgentTurn{
+			ID:         "turn_003",
+			RoomID:     "room_001",
+			AgentID:    "agent_guardian",
+			IntentType: "handoff_response",
+			WakeupMode: "handoff_response",
+		},
+		Room: client.RoomSummary{ID: "room_001", Title: "Announcements"},
+		TriggerMessage: client.Message{
+			ID:        "msg_003",
+			ActorType: "agent",
+			ActorName: "agent_shell",
+			Kind:      "handoff",
+			Body:      "@agent_guardian 这里需要你接手。",
+		},
+	})
+
+	for _, expected := range []string{
+		"Wakeup mode: handoff_response.",
+		"another agent explicitly asked you to take over or continue the thread",
+		"Start from the assumption that takeover is expected.",
+	} {
+		if !strings.Contains(instruction, expected) {
+			t.Fatalf("expected handoff prompt to contain %q, got:\n%s", expected, instruction)
+		}
 	}
 }

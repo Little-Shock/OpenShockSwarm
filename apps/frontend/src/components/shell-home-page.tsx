@@ -80,20 +80,6 @@ function MessageCard({ message }: { message: Message }) {
   );
 }
 
-function ChannelHeader({
-  channelName,
-}: {
-  channelName: string;
-}) {
-  return (
-    <div className="border-b border-[var(--border)] bg-white px-4 py-2">
-      <div className="mx-auto w-full max-w-3xl">
-        <div className="display-font text-sm font-black">#{channelName}</div>
-      </div>
-    </div>
-  );
-}
-
 export async function ShellHomePage({ roomId }: { roomId?: string } = {}) {
   const bootstrap = await getBootstrap();
   const selectedRoomId = roomId ?? bootstrap.defaultRoomId;
@@ -107,19 +93,40 @@ export async function ShellHomePage({ roomId }: { roomId?: string } = {}) {
 
   return (
     <ShellFrame
+      workspaceId={bootstrap.workspace.id}
       workspaceName={bootstrap.workspace.name}
       rooms={bootstrap.rooms}
       agents={bootstrap.agents}
+      alignedTopRows
       footerPanel={null}
       rightRailWidthClass="md:grid-cols-[minmax(0,1fr)_360px]"
       activeRoute="/"
       activeRoomId={room.room.id}
       title={room.room.title}
-      subtitle={room.issue?.summary}
+      headerMeta={
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <Badge tone={room.room.kind === "issue" ? "purple" : "blue-soft"}>
+            {room.room.kind === "issue" ? "Issue Room" : "Discussion"}
+          </Badge>
+          {room.issue ? (
+            <span className="shrink-0 text-[12px] font-medium text-black/58">
+              {room.issue.id.replace("_", "#")} · {room.issue.status.replaceAll("_", " ")}
+            </span>
+          ) : (
+            <span className="shrink-0 text-[12px] font-medium text-black/52">
+              Shared workspace discussion
+            </span>
+          )}
+          {room.issue?.summary ? (
+            <span className="truncate text-[13px] font-medium text-black/58">
+              {room.issue.summary}
+            </span>
+          ) : null}
+        </div>
+      }
       rightRail={
         <RoomContextPanel
           workspace={workspace}
-          room={room.room}
           issue={room.issue}
           agents={bootstrap.agents}
           runtimes={bootstrap.runtimes}
@@ -129,7 +136,6 @@ export async function ShellHomePage({ roomId }: { roomId?: string } = {}) {
           handoffs={room.handoffRecords}
           tasks={room.tasks}
           runs={room.runs}
-          mergeAttempts={room.mergeAttempts}
           integrationBranch={room.integrationBranch}
           deliveryPr={room.deliveryPr}
           messageCount={room.messages.length}
@@ -138,7 +144,6 @@ export async function ShellHomePage({ roomId }: { roomId?: string } = {}) {
     >
       <div className="flex h-full min-h-0 flex-col">
         <LiveRefresh scopes={realtimeScopes} />
-        <ChannelHeader channelName={room.channel.name} />
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
             {room.messages.map((message) => (

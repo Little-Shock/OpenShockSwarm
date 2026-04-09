@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentOperator } from "@/components/operator-provider";
 import { submitAction } from "@/lib/api";
 import { ActionMenu } from "@/components/ui/action-menu";
 
@@ -17,6 +18,7 @@ export function RunActionStrip({
   title,
 }: RunActionStripProps) {
   const router = useRouter();
+  const { operatorName } = useCurrentOperator();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -25,7 +27,7 @@ export function RunActionStrip({
       try {
         const response = (await submitAction({
           actorType: "member",
-          actorId: "Sarah",
+          actorId: operatorName,
           actionType,
           targetType: "run",
           targetId: runId,

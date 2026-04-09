@@ -128,6 +128,50 @@ func TestOpenShockCLIDrivesRunAndMergeRequest(t *testing.T) {
 	}
 }
 
+func TestOpenShockCLIUpdatesTaskStatus(t *testing.T) {
+	backingStore := store.NewMemoryStore()
+	server := httptest.NewServer(New(backingStore).Handler())
+	defer server.Close()
+
+	cliDir := daemonModuleDir(t)
+
+	statusResp := runOpenShockCLI(t, cliDir,
+		"task", "status", "set",
+		"--api-base-url", server.URL,
+		"--task", "task_review",
+		"--status", "in_progress",
+		"--actor-id", "agent_guardian",
+	)
+	if statusResp.ResultCode != "task_status_updated" {
+		t.Fatalf("expected task_status_updated result code, got %#v", statusResp)
+	}
+
+	readyResp := runOpenShockCLI(t, cliDir,
+		"task", "mark-ready",
+		"--api-base-url", server.URL,
+		"--task", "task_review",
+		"--actor-id", "agent_guardian",
+	)
+	if readyResp.ResultCode != "task_ready_for_integration" {
+		t.Fatalf("expected task_ready_for_integration result code, got %#v", readyResp)
+	}
+
+	detail, err := backingStore.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+
+	found := false
+	for _, task := range detail.Tasks {
+		if task.ID == "task_review" && task.Status == "ready_for_integration" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected task_review to be ready_for_integration, got %#v", detail.Tasks)
+	}
+}
+
 func runOpenShockCLI(t *testing.T, cliDir string, args ...string) cliActionResponse {
 	t.Helper()
 
