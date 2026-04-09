@@ -94,6 +94,10 @@ type WorkspaceMemberPreferencesInput = {
   githubHandle: string;
 };
 
+type UpdateTopicGuidanceInput = {
+  summary: string;
+};
+
 type CreateHandoffInput = {
   roomId: string;
   fromAgentId: string;
@@ -165,6 +169,7 @@ type PhaseZeroContextValue = {
     messageId: string;
     enabled: boolean;
   }) => Promise<StateMutationResponse>;
+  updateTopicGuidance: (topicId: string, input: UpdateTopicGuidanceInput) => Promise<StateMutationResponse>;
   postRoomMessage: (roomId: string, prompt: string, provider?: string) => Promise<StateMutationResponse>;
   streamRoomMessage: (
     roomId: string,
@@ -687,6 +692,18 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     return payload;
   }
 
+  async function updateTopicGuidance(topicId: string, input: UpdateTopicGuidanceInput) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/topics/${topicId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
   async function postRoomMessage(roomId: string, prompt: string, provider = "claude") {
     const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/messages`, {
       method: "POST",
@@ -907,6 +924,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     postChannelMessage,
     postDirectMessage,
     updateMessageSurfaceCollection,
+    updateTopicGuidance,
     postRoomMessage,
     streamRoomMessage,
     createPullRequest,

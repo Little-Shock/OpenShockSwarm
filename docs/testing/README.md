@@ -74,6 +74,8 @@
   - `TKT-42` 的 memory detail audit、human correction/forget 写回与 recall preview removal headed evidence
 - [Test Report 2026-04-09 Run History / Resume Context](./Test-Report-2026-04-09-run-history-resume-context.md)
   - `TKT-40` 的 paginated `/runs` history、prior-run reopen、resume context 与 room-current continuity evidence
+- [Test Report 2026-04-09 Topic Route / Resume Lifecycle](./Test-Report-2026-04-09-topic-route-resume-lifecycle.md)
+  - `TKT-52` 的 standalone `/topics/:topicId`、guidance edit、reload persistence 与 resume deep-link evidence
 
 常用入口：
 
@@ -107,6 +109,8 @@
   - 验证 DM entry、thread follow、saved-later、reopen thread 回访闭环
 - `pnpm test:headed-room-workbench-topic-context`
   - 验证 room-first `Chat / Topic / Run / PR / Context` workbench、follow_thread、PR surface 与 inbox back-link
+- `pnpm test:headed-topic-route-resume-lifecycle`
+  - 验证 `/topics/:topicId` 的 guidance edit、reload persistence、resume control 与 room backlink
 - `pnpm test:headed-profile-surface`
   - 验证 `Agent / Machine / Human` unified profile surface、shell / room drill-in、presence / capability / recent activity
 - `pnpm test:headed-destructive-guard`

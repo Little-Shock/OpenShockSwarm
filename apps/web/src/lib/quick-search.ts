@@ -77,6 +77,26 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       keywords: normalizeSearchText(room.id, room.title, room.issueKey, room.summary, room.topic.title, room.topic.summary, room.topic.status, "room"),
       order: 2,
     })),
+    ...state.rooms.map((room) => ({
+      id: room.topic.id,
+      kind: "topic" as const,
+      title: room.topic.title,
+      summary: room.topic.summary || room.summary || "Topic guidance",
+      meta: `topic · ${room.issueKey} · ${room.topic.status} · ${room.title}`,
+      href: `/topics/${room.topic.id}`,
+      keywords: normalizeSearchText(
+        room.topic.id,
+        room.topic.title,
+        room.topic.summary,
+        room.topic.owner,
+        room.topic.status,
+        room.id,
+        room.title,
+        room.issueKey,
+        "topic"
+      ),
+      order: 3,
+    })),
     ...state.issues.map((issue) => ({
       id: issue.id,
       kind: "issue" as const,
@@ -85,7 +105,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `issue · ${issue.priority} · ${issue.state}`,
       href: `/issues/${issue.key}`,
       keywords: normalizeSearchText(issue.id, issue.key, issue.title, issue.summary, issue.owner, issue.state, issue.priority, "issue"),
-      order: 3,
+      order: 4,
     })),
     ...state.runs.map((run) => {
       const room = roomById.get(run.roomId);
@@ -99,7 +119,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
         meta: `run · ${run.status} · ${run.runtime} · ${run.machine}`,
         href: run.roomId ? `/rooms/${run.roomId}/runs/${run.id}` : `/runs/${run.id}`,
         keywords: normalizeSearchText(run.id, run.issueKey, run.summary, run.owner, run.runtime, run.machine, run.provider, run.status, room?.title, issue?.title, "run"),
-        order: 4,
+        order: 5,
       };
     }),
     ...state.agents.map((agent) => ({
@@ -110,7 +130,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `agent · ${agent.state} · ${agent.provider}`,
       href: `/agents/${agent.id}`,
       keywords: normalizeSearchText(agent.id, agent.name, agent.description, agent.state, agent.provider, agent.runtimePreference, agent.lane, ...agent.memorySpaces, "agent"),
-      order: 5,
+      order: 6,
     })),
     ...state.followedThreads.map((item) => ({
       id: item.id,
@@ -120,7 +140,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `${item.channelLabel} · followed · unread ${item.unread}`,
       href: buildChannelWorkbenchHref(item.channelId, "followed", item.messageId),
       keywords: normalizeSearchText(item.id, item.channelId, item.messageId, item.channelLabel, item.title, item.summary, item.note, "followed", "thread"),
-      order: 6,
+      order: 7,
     })),
     ...state.savedLaterItems.map((item) => ({
       id: item.id,
@@ -130,7 +150,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       meta: `${item.channelLabel} · later · unread ${item.unread}`,
       href: buildChannelWorkbenchHref(item.channelId, "saved", item.messageId),
       keywords: normalizeSearchText(item.id, item.channelId, item.messageId, item.channelLabel, item.title, item.summary, item.note, "saved", "later"),
-      order: 7,
+      order: 8,
     })),
   ];
 }

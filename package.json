@@ -41,6 +41,7 @@
     "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",
     "test:headed-frontend-interaction-polish": "node ./scripts/headed-frontend-interaction-polish.mjs",
     "test:headed-room-workbench-topic-context": "node ./scripts/headed-room-workbench-topic-context.mjs",
+    "test:headed-topic-route-resume-lifecycle": "node ./scripts/headed-topic-route-resume-lifecycle.mjs",
     "test:headed-profile-surface": "node ./scripts/headed-profile-surface.mjs",
     "test:headed-destructive-guard": "node ./scripts/headed-destructive-guard.mjs",
     "test:headed-agent-profile-editor": "node ./scripts/headed-agent-profile-editor.mjs",

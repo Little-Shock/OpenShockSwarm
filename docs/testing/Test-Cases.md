@@ -581,3 +581,17 @@
   4. 展开 mobile recent ledger，确认 recent resolution/status 回写仍可被查看。
 - 预期结果: `/inbox` 在手机上可以被打开、查看并完成轻量 triage；更重的策略编辑继续回 `/settings`，而不是把桌面工作台整块复制到 mobile。
 - 业务结论: 2026 年 4 月 9 日 `TKT-47` 新增 `pnpm test:headed-mobile-notification-triage` 与对应 `docs/testing/Test-Report-2026-04-09-mobile-notification-triage.md`。当前 headed Chromium mobile replay 已验证 `/inbox` 在 390px 视口下无横向溢出、mobile triage 摘要初始值为 `3 / 3 / 1 / 1`，首张 signal card 高度压到 640px 以下，并把 guard / backlinks / recent ledger 收成按需展开，因此这条 mobile light-notification 路径当前可按 `Pass` 收口。
+
+## TC-045 Topic Route / Edit Lifecycle / Resume Deep Link
+
+- 业务目标: 确认 Topic 不再只作为 room workbench 的子 tab 存在，而是可独立直达、可写回 guidance、可直接恢复 continuity 的一等 route。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-06`
+- 前置条件: 存在 `/topics/:topicId`、topic guidance edit surface、room/run backlink 与 same-topic run control。
+- 测试步骤:
+  1. 从 run detail 或 Quick Search 打开某条 Topic。
+  2. 在 Topic route 提交一条 guidance，并确认最近 guidance ledger 直接回写到同一条 room truth。
+  3. 在 Topic route 上暂停当前 run，刷新页面，再从同一路由恢复执行。
+  4. 从 Topic route 回跳到 room topic workbench，确认 route drill-in 与 room-first collaboration 没有断链。
+- 预期结果: Topic 成为可独立直达的一等对象；人类可在同一路由完成 guidance edit、reload persistence 与 resume，不需要再绕回 room tab 才能继续。
+- 业务结论: 2026 年 4 月 9 日 `TKT-52` 新增 `pnpm test:headed-topic-route-resume-lifecycle` 与对应 `docs/testing/Test-Report-2026-04-09-topic-route-resume-lifecycle.md`。当前 headed Chromium exact replay 已验证 `run detail -> /topics/topic-runtime` deep link、topic guidance 写回、topic route 上的 stop/reload/resume continuity，以及回跳 `/rooms/room-runtime?tab=topic` 的 backlink，因此这条 Topic route / edit lifecycle / resume deep-link 路径当前可按 `Pass` 收口。

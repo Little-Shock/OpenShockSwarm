@@ -15,7 +15,7 @@ import {
   WorkspaceStatusStrip,
 } from "@/components/stitch-shell-primitives";
 
-type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access" | "profiles" | "mailbox";
+type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access" | "profiles" | "mailbox" | "topic";
 type Tone = "yellow" | "pink" | "lime";
 
 type OpenShockShellProps = {
@@ -45,7 +45,8 @@ function activeFromView(view: ShellView): "channels" | "rooms" | "inbox" | "boar
     view === "memory" ||
     view === "mailbox" ||
     view === "access" ||
-    view === "profiles"
+    view === "profiles" ||
+    view === "topic"
   ) {
     return null;
   }
@@ -265,7 +266,7 @@ export function OpenShockShell({
             eyebrow={eyebrow}
             title={title}
             description={description}
-            searchPlaceholder="Search channel / room / issue / run / agent"
+            searchPlaceholder="Search channel / room / topic / issue / run / agent"
             currentHref={currentHref}
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />

@@ -398,6 +398,23 @@
 - Checklist: `CHK-11`
 - Test Cases: `TC-044`
 
+## TKT-52 Topic Route / Edit Lifecycle / Resume Deep Link
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把 Topic 从 room workbench 子 tab 补成可独立直达、可注入 guidance、可直接恢复 continuity 的一等 route。
+- 范围:
+  - standalone topic route / quick-search backlinks
+  - topic guidance edit surface
+  - room / run continuity resume deep link
+- 依赖: `TKT-23` `TKT-40`
+- Done When:
+  - Topic 不再只能从 room `?tab=topic` 里打开
+  - 人类能直接在 Topic route 注入 guidance，并沿同一条 room / run truth 继续
+  - 至少有一条 walkthrough 覆盖 `open topic -> edit guidance -> reload -> resume`
+- Checklist: `CHK-06`
+- Test Cases: `TC-031` `TC-045`
+
 ---
 
 ## 四、已完成批次归档

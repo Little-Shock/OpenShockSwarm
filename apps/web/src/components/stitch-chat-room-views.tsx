@@ -1068,12 +1068,21 @@ function RoomTopicWorkbenchPanel({
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Topic Guidance</p>
             <p className="mt-2 font-display text-[20px] font-bold leading-6">最近 room 语境</p>
           </div>
-          <Link
-            href={buildRoomWorkbenchHref(room.id, "chat")}
-            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-          >
-            回到 Chat
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/topics/${room.topic.id}`}
+              data-testid="room-topic-open-route"
+              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              打开 Topic 页
+            </Link>
+            <Link
+              href={buildRoomWorkbenchHref(room.id, "chat")}
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              回到 Chat
+            </Link>
+          </div>
         </div>
         <div className="mt-4 space-y-3">
           {highlights.map((message) => (

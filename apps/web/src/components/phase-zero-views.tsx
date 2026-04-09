@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { ClaudeAgentConsole } from "@/components/claude-agent-console";
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
@@ -177,13 +177,15 @@ export function Panel({
   children,
   tone = "white",
   className,
+  ...props
 }: {
   children: ReactNode;
   tone?: "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
   className?: string;
-}) {
+} & ComponentPropsWithoutRef<"section">) {
   return (
     <section
+      {...props}
       className={cn(
         "border-2 border-[var(--shock-ink)] p-4 shadow-[var(--shock-shadow-sm)]",
         toneClass(tone),

@@ -53,7 +53,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 		issueByKey[issue.Key] = issue
 	}
 
-	results := make([]SearchResult, 0, len(state.Channels)+len(state.DirectMessages)+len(state.Rooms)+len(state.Issues)+len(state.Runs)+len(state.Agents)+len(state.FollowedThreads)+len(state.SavedLaterItems))
+	results := make([]SearchResult, 0, len(state.Channels)+len(state.DirectMessages)+(len(state.Rooms)*2)+len(state.Issues)+len(state.Runs)+len(state.Agents)+len(state.FollowedThreads)+len(state.SavedLaterItems))
 
 	for _, channel := range state.Channels {
 		results = append(results, SearchResult{
@@ -90,6 +90,16 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Keywords: normalizeMessageSearchText(room.ID, room.Title, room.IssueKey, room.Summary, room.Topic.Title, room.Topic.Summary, room.Topic.Status, "room"),
 			Order:    2,
 		})
+		results = append(results, SearchResult{
+			ID:       room.Topic.ID,
+			Kind:     "topic",
+			Title:    room.Topic.Title,
+			Summary:  defaultString(room.Topic.Summary, room.Summary),
+			Meta:     fmt.Sprintf("topic · %s · %s · %s", room.IssueKey, room.Topic.Status, room.Title),
+			Href:     fmt.Sprintf("/topics/%s", room.Topic.ID),
+			Keywords: normalizeMessageSearchText(room.Topic.ID, room.Topic.Title, room.Topic.Summary, room.Topic.Owner, room.Topic.Status, room.ID, room.Title, room.IssueKey, "topic"),
+			Order:    3,
+		})
 	}
 	for _, issue := range state.Issues {
 		results = append(results, SearchResult{
@@ -100,7 +110,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Meta:     fmt.Sprintf("issue · %s · %s", issue.Priority, issue.State),
 			Href:     fmt.Sprintf("/issues/%s", issue.Key),
 			Keywords: normalizeMessageSearchText(issue.ID, issue.Key, issue.Title, issue.Summary, issue.Owner, issue.State, issue.Priority, "issue"),
-			Order:    3,
+			Order:    4,
 		})
 	}
 	for _, run := range state.Runs {
@@ -114,7 +124,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Meta:     fmt.Sprintf("run · %s · %s · %s", run.Status, run.Runtime, run.Machine),
 			Href:     fmt.Sprintf("/rooms/%s/runs/%s", run.RoomID, run.ID),
 			Keywords: normalizeMessageSearchText(run.ID, run.IssueKey, run.Summary, run.Owner, run.Runtime, run.Machine, run.Provider, run.Status, room.Title, issue.Title, "run"),
-			Order:    4,
+			Order:    5,
 		})
 	}
 	for _, agent := range state.Agents {
@@ -126,7 +136,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Meta:     fmt.Sprintf("agent · %s · %s", agent.State, agent.Provider),
 			Href:     fmt.Sprintf("/agents/%s", agent.ID),
 			Keywords: normalizeMessageSearchText(agent.ID, agent.Name, agent.Description, agent.State, agent.Provider, agent.RuntimePreference, agent.Lane, strings.Join(agent.MemorySpaces, " "), "agent"),
-			Order:    5,
+			Order:    6,
 		})
 	}
 	for _, item := range state.FollowedThreads {
@@ -138,7 +148,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Meta:     fmt.Sprintf("%s · followed · unread %d", item.ChannelLabel, item.Unread),
 			Href:     buildChannelWorkbenchHref(item.ChannelID, "followed", item.MessageID),
 			Keywords: normalizeMessageSearchText(item.ID, item.ChannelID, item.MessageID, item.ChannelLabel, item.Title, item.Summary, item.Note, "followed", "thread"),
-			Order:    6,
+			Order:    7,
 		})
 	}
 	for _, item := range state.SavedLaterItems {
@@ -150,7 +160,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Meta:     fmt.Sprintf("%s · later · unread %d", item.ChannelLabel, item.Unread),
 			Href:     buildChannelWorkbenchHref(item.ChannelID, "saved", item.MessageID),
 			Keywords: normalizeMessageSearchText(item.ID, item.ChannelID, item.MessageID, item.ChannelLabel, item.Title, item.Summary, item.Note, "saved", "later"),
-			Order:    7,
+			Order:    8,
 		})
 	}
 

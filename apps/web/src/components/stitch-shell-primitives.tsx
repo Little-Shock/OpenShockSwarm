@@ -102,6 +102,8 @@ function kindLabel(kind: QuickSearchEntryKind) {
       return "DM";
     case "room":
       return "Room";
+    case "topic":
+      return "Topic";
     case "issue":
       return "Issue";
     case "run":
@@ -781,7 +783,7 @@ export function QuickSearchSurface({
                 value={query}
                 onChange={(event) => handleQueryChange(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search channel / room / issue / run / agent"
+                placeholder="Search channel / room / topic / issue / run / agent"
                 className="mt-1 w-full bg-transparent font-display text-[24px] font-bold leading-none outline-none placeholder:text-[color:rgba(24,20,14,0.36)]"
               />
             </div>
@@ -829,7 +831,7 @@ export function QuickSearchSurface({
               <div className="border-2 border-dashed border-[var(--shock-ink)] bg-white px-4 py-5">
                 <p className="font-display text-[18px] font-bold">No matches yet</p>
                 <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-                  试试输入 channel、room、issue、run 或 agent 关键字，直接跳到对应工作面。
+                  试试输入 channel、room、topic、issue、run 或 agent 关键字，直接跳到对应工作面。
                 </p>
               </div>
             )}

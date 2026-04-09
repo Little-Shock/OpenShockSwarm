@@ -99,6 +99,9 @@ func TestSnapshotBuildsQuickSearchEntriesForMessageSurfaces(t *testing.T) {
 	if findSearchResultByKindAndID(snapshot.QuickSearchEntries, "dm", "dm-mina") == nil {
 		t.Fatalf("quick search entries = %#v, want dm-mina entry", snapshot.QuickSearchEntries)
 	}
+	if findSearchResultByKindAndID(snapshot.QuickSearchEntries, "topic", "topic-runtime") == nil {
+		t.Fatalf("quick search entries = %#v, want topic-runtime entry", snapshot.QuickSearchEntries)
+	}
 	if findSearchResultByKindAndID(snapshot.QuickSearchEntries, "followed", "followed-all-runtime") == nil {
 		t.Fatalf("quick search entries = %#v, want followed thread entry", snapshot.QuickSearchEntries)
 	}

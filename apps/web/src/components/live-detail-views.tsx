@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useState, type FormEvent } from "react";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import {
@@ -22,7 +22,7 @@ import { RunControlSurface } from "@/components/run-control-surface";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { buildRunHistoryEntries, sanitizeRunHistoryPage } from "@/lib/phase-zero-helpers";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
-import type { AgentHandoff, Issue, Room, Run, RunHistoryPage, Session } from "@/lib/phase-zero-types";
+import type { AgentHandoff, Issue, Message, Room, Run, RunHistoryPage, Session } from "@/lib/phase-zero-types";
 
 type PanelTone = "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
 const CONTROL_API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
@@ -266,6 +266,12 @@ function RoomSnapshotCard({
         >
           打开讨论间
         </Link>
+        <Link
+          href={`/topics/${room.topic.id}`}
+          className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+        >
+          查看 Topic
+        </Link>
         {run ? (
           <Link
             href={`/runs/${run.id}`}
@@ -347,6 +353,12 @@ function RunSnapshotCard({
           打开 Run
         </Link>
         <Link
+          href={`/topics/${run.topicId}`}
+          className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+        >
+          查看 Topic
+        </Link>
+        <Link
           href={`/rooms/${run.roomId}`}
           className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
@@ -360,6 +372,50 @@ function RunSnapshotCard({
         </Link>
       </div>
     </Panel>
+  );
+}
+
+function messageRoleLabel(role: Message["role"]) {
+  switch (role) {
+    case "human":
+      return "Human";
+    case "agent":
+      return "Agent";
+    default:
+      return "System";
+  }
+}
+
+function messageRoleTone(role: Message["role"]) {
+  switch (role) {
+    case "human":
+      return "bg-[var(--shock-yellow)]";
+    case "agent":
+      return "bg-[var(--shock-cyan)]";
+    default:
+      return "bg-white";
+  }
+}
+
+function TopicGuidanceEntry({ message }: { message: Message }) {
+  return (
+    <article className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={cn(
+            "rounded-full border border-[var(--shock-ink)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em]",
+            messageRoleTone(message.role)
+          )}
+        >
+          {messageRoleLabel(message.role)}
+        </span>
+        <span className="font-display text-sm font-semibold">{message.speaker}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+          {message.time}
+        </span>
+      </div>
+      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[color:rgba(24,20,14,0.82)]">{message.message}</p>
+    </article>
   );
 }
 
@@ -811,6 +867,300 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
   );
 }
 
+export function LiveTopicPageContent({ topicId }: { topicId: string }) {
+  const { state, loading, error, updateTopicGuidance, controlRun } = usePhaseZeroState();
+  const [guidanceDraft, setGuidanceDraft] = useState("请先给我一句结论：这个 Topic 现在最该推进的下一步是什么？");
+  const [guidancePending, setGuidancePending] = useState(false);
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
+  const [guidanceSuccess, setGuidanceSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGuidanceError(null);
+    setGuidanceSuccess(null);
+    setGuidanceDraft("请先给我一句结论：这个 Topic 现在最该推进的下一步是什么？");
+  }, [topicId]);
+
+  if (loading) {
+    return (
+      <OpenShockShell
+        view="topic"
+        eyebrow="Topic 详情"
+        title="正在同步 Topic"
+        description="等待 server 返回当前 topic、room 和 run 关系。"
+        contextTitle="Topic Sync"
+        contextDescription="这页现在只读 live state，不再回退到 room tab 内的临时 topic panel。"
+      >
+        <LiveStateNotice title="同步中" message="正在拉取 Topic、最近 guidance 和当前 run continuity。" />
+      </OpenShockShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <OpenShockShell
+        view="topic"
+        eyebrow="Topic 详情"
+        title="Topic 同步失败"
+        description="当前没拿到 server truth。"
+        contextTitle="Topic Sync"
+        contextDescription="先检查 server 是否在线，再重新打开这页。"
+      >
+        <LiveStateNotice title="同步失败" message={error} />
+      </OpenShockShell>
+    );
+  }
+
+  const room = state.rooms.find((candidate) => candidate.topic.id === topicId);
+  const run = room
+    ? state.runs.find((candidate) => candidate.id === room.runId) ??
+      state.runs.find((candidate) => candidate.topicId === topicId && candidate.roomId === room.id) ??
+      state.runs.find((candidate) => candidate.topicId === topicId)
+    : undefined;
+  const issue = room
+    ? state.issues.find((candidate) => candidate.roomId === room.id || candidate.key === room.issueKey)
+    : undefined;
+  const session = room
+    ? state.sessions.find((candidate) => candidate.activeRunId === run?.id) ??
+      state.sessions.find((candidate) => candidate.topicId === topicId && candidate.roomId === room.id) ??
+      state.sessions.find((candidate) => candidate.roomId === room.id || candidate.topicId === topicId)
+    : undefined;
+  const pullRequest = room ? state.pullRequests.find((candidate) => candidate.roomId === room.id) : undefined;
+  const messages = room ? state.roomMessages[room.id] ?? [] : [];
+  const recentGuidance = messages.slice(-5).reverse();
+  const authSession = state.auth.session;
+  const canGuide = hasSessionPermission(authSession, "room.reply");
+  const guidanceStatus = permissionStatus(authSession, "room.reply");
+  const guidanceBoundary = permissionBoundaryCopy(authSession, "room.reply");
+  const canControlRun = hasSessionPermission(authSession, "run.execute");
+  const runControlStatus = permissionStatus(authSession, "run.execute");
+  const runControlBoundary = permissionBoundaryCopy(authSession, "run.execute");
+  const continuityLabel = session
+    ? `${session.id} / ${session.worktree || session.runtime || "same continuity"}`
+    : "当前还没有暴露 session continuity";
+
+  if (!room) {
+    return (
+      <OpenShockShell
+        view="topic"
+        eyebrow="Topic 详情"
+        title="未找到 Topic"
+        description="这个 Topic 可能还没同步，或者当前 room 已经切换。"
+        contextTitle="Topic Sync"
+        contextDescription="从讨论间或 Quick Search 重新进入通常就能拿到最新状态。"
+      >
+        <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-6 py-6 text-base">
+          当前找不到 `{topicId}` 对应的 Topic。
+        </div>
+      </OpenShockShell>
+    );
+  }
+
+  async function handleGuidanceSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!guidanceDraft.trim() || guidancePending || !canGuide) {
+      return;
+    }
+
+    setGuidancePending(true);
+    setGuidanceError(null);
+    setGuidanceSuccess(null);
+
+    try {
+      await updateTopicGuidance(topicId, { summary: guidanceDraft.trim() });
+      setGuidanceSuccess("guidance 已写回当前 Topic，并继续走同一条 room / run 真相。");
+      setGuidanceDraft("");
+    } catch (submitError) {
+      setGuidanceError(submitError instanceof Error ? submitError.message : "topic guidance failed");
+    } finally {
+      setGuidancePending(false);
+    }
+  }
+
+  async function handleRunControl(action: "stop" | "resume" | "follow_thread", note: string) {
+    if (!run) return;
+    await controlRun(run.id, { action, note });
+  }
+
+  return (
+    <OpenShockShell
+      view="topic"
+      eyebrow="Topic 详情"
+      title={room.topic.title}
+      description="独立 Topic route 现在直接承接 guidance edit、room/run continuity 和 resume deep link，不再只困在 room tab 内。"
+      selectedRoomId={room.id}
+      contextTitle={room.issueKey}
+      contextDescription="Topic 仍然绑定同一条 room / run 真相，但人类现在可以直接从独立 route 注入 guidance，并在同页决定是继续、暂停还是恢复。"
+      contextBody={
+        <DetailRail
+          label="Topic 链接"
+          items={[
+            { label: "讨论间", value: room.title },
+            { label: "Run", value: run?.id ?? room.runId },
+            { label: "PR", value: pullRequest?.title ?? issue?.pullRequest ?? "待产生" },
+            { label: "Continuity", value: continuityLabel },
+          ]}
+        />
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_0.95fr]">
+        <div className="space-y-4">
+          <Panel tone={panelToneForStatus(session?.status ?? run?.status ?? room.topic.status)} className="!p-4" data-testid="topic-route-overview">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.58)]">
+                  {room.issueKey} / Topic
+                </p>
+                <h2 className="mt-2 font-display text-3xl font-bold">{room.topic.title}</h2>
+              </div>
+              <span
+                data-testid="topic-route-status"
+                className={cn(
+                  "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+                  statusBadgeTone(session?.status ?? run?.status ?? room.topic.status)
+                )}
+              >
+                {runStatusLabel(session?.status ?? run?.status ?? room.topic.status)}
+              </span>
+            </div>
+            <p className="mt-4 text-base leading-7">{room.topic.summary}</p>
+            <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              <FactTile label="Room" value={room.title} />
+              <FactTile label="Owner" value={room.topic.owner} />
+              <FactTile label="Active Run" value={run?.id ?? room.runId} />
+              <FactTile label="Issue" value={issue?.title ?? room.issueKey} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href={`/rooms/${room.id}?tab=topic`}
+                data-testid="topic-open-room-workbench"
+                className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+                打开 Room Topic
+              </Link>
+              <Link
+                href={`/rooms/${room.id}`}
+                className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+                回到讨论间
+              </Link>
+              {run ? (
+                <Link
+                  href={`/runs/${run.id}`}
+                  data-testid="topic-open-run-link"
+                  className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+                >
+                  打开当前 Run
+                </Link>
+              ) : null}
+              {issue ? (
+                <Link
+                  href={`/issues/${issue.key}`}
+                  className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+                >
+                  查看 Issue
+                </Link>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel tone="white" className="!p-4" data-testid="topic-guidance-panel">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Guidance Edit Lifecycle</p>
+                <h3 className="mt-2 font-display text-2xl font-bold">直接在 Topic route 里追加指导</h3>
+              </div>
+              <span
+                data-testid="topic-guidance-authz"
+                className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+              >
+                {guidanceStatus}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+              这里不另起一套 topic-only state machine。人类 guidance 仍写回同一条 room message truth，但入口已经从 room tab 抬成独立 Topic 页。
+            </p>
+            <form className="mt-4 space-y-3" onSubmit={(event) => void handleGuidanceSubmit(event)}>
+              <textarea
+                data-testid="topic-guidance-draft"
+                value={guidanceDraft}
+                onChange={(event) => setGuidanceDraft(event.target.value)}
+                disabled={guidancePending || !canGuide}
+                className="min-h-[116px] w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-[#faf6ea] px-4 py-3 text-sm leading-6 outline-none disabled:opacity-60"
+                placeholder="补充当前 Topic 的纠偏说明、下一步约束或 merge / review 判断。"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  data-testid="topic-guidance-submit"
+                  disabled={guidancePending || !canGuide || !guidanceDraft.trim()}
+                  className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-60"
+                >
+                  {guidancePending ? "写回中..." : "写回当前 Topic"}
+                </button>
+                <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+                  {canGuide ? "写回后会沿用当前 room / run continuity，不会把你踢回 room tab。" : guidanceBoundary}
+                </p>
+              </div>
+            </form>
+            {guidanceError ? (
+              <p data-testid="topic-guidance-error" className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 font-mono text-[11px] text-white">
+                {guidanceError}
+              </p>
+            ) : null}
+            {guidanceSuccess ? (
+              <p data-testid="topic-guidance-success" className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px]">
+                {guidanceSuccess}
+              </p>
+            ) : null}
+            <div className="mt-4 space-y-3">
+              {recentGuidance.length > 0 ? (
+                recentGuidance.map((message) => <TopicGuidanceEntry key={message.id} message={message} />)
+              ) : (
+                <div className="rounded-[18px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-4 py-5">
+                  <p className="font-display text-lg font-bold">还没有 guidance ledger</p>
+                  <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+                    等第一条 human / agent guidance 写回后，这里会直接回放同一条 Topic 的最近上下文。
+                  </p>
+                </div>
+              )}
+            </div>
+          </Panel>
+        </div>
+
+        <div className="space-y-4">
+          {run ? (
+            <RunControlSurface
+              scope="topic"
+              run={run}
+              session={session}
+              canControl={canControlRun}
+              controlStatus={runControlStatus}
+              controlBoundary={runControlBoundary}
+              onControl={handleRunControl}
+            />
+          ) : (
+            <LiveStateNotice title="当前 Topic 还没有 active run" message="这条 Topic 已经独立成 route，但当前还没有暴露可继续 resume 的 run。" />
+          )}
+          <Panel tone="paper" className="!p-4" data-testid="topic-resume-context">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Resume Deep Link</p>
+            <h3 className="mt-2 font-display text-2xl font-bold">同页决定是继续、暂停还是回到 room</h3>
+            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+              如果当前 Topic 已暂停，直接在这页 Resume 会复用同一条 session continuity；如果只是想切回协作语境，也可以回到 Room Topic workbench。
+            </p>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              <FactTile label="Continuity" value={continuityLabel} />
+              <FactTile label="PR" value={pullRequest?.status ?? issue?.pullRequest ?? "待产生"} />
+              <FactTile label="Runtime" value={run?.runtime ?? session?.runtime ?? "待同步"} />
+              <FactTile label="Branch" value={run?.branch ?? session?.branch ?? "待同步"} />
+            </div>
+          </Panel>
+          {run ? <RunSnapshotCard run={run} room={room} issue={issue} session={session} /> : null}
+        </div>
+      </div>
+    </OpenShockShell>
+  );
+}
+
 export function LiveRunPageContent({
   roomId,
   runId,
@@ -881,6 +1231,7 @@ export function LiveRunPageContent({
   const currentRun = run;
   const currentSession = session;
   const roomHistory = buildRunHistoryEntries(state, currentRun.roomId);
+  const issue = state.issues.find((candidate) => candidate.roomId === room.id || candidate.key === currentRun.issueKey);
 
   async function handleRunControl(action: "stop" | "resume" | "follow_thread", note: string) {
     await controlRun(currentRun.id, { action, note });
@@ -908,6 +1259,29 @@ export function LiveRunPageContent({
       }
     >
       <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/topics/${currentRun.topicId}`}
+            data-testid="run-detail-open-topic"
+            className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+          >
+            打开 Topic
+          </Link>
+          <Link
+            href={`/rooms/${room.id}?tab=topic`}
+            className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+          >
+            打开 Room Topic
+          </Link>
+          {issue ? (
+            <Link
+              href={`/issues/${issue.key}`}
+              className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+            >
+              查看 Issue
+            </Link>
+          ) : null}
+        </div>
         <RunControlSurface
           scope="run"
           run={currentRun}

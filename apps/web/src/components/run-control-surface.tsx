@@ -30,7 +30,7 @@ function statusLabel(status: Run["status"] | Session["status"]) {
 }
 
 type RunControlSurfaceProps = {
-  scope: "room" | "run";
+  scope: "room" | "run" | "topic";
   run: Run;
   session?: Session;
   canControl: boolean;
@@ -52,7 +52,7 @@ export function RunControlSurface({
   const [busyAction, setBusyAction] = useState<RunControlAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const prefix = scope === "room" ? "room-run" : "run-detail";
+  const prefix = scope === "room" ? "room-run" : scope === "topic" ? "topic-run" : "run-detail";
   const currentStatus = session?.status ?? run.status;
   const followThread = session?.followThread ?? run.followThread ?? false;
   const controlNote = session?.controlNote?.trim() || run.controlNote?.trim() || "";

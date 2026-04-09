@@ -225,7 +225,7 @@ export type MessageSurfaceEntry = {
   unread: number;
 };
 
-export type SearchResultKind = "channel" | "dm" | "room" | "issue" | "run" | "agent" | "followed" | "saved";
+export type SearchResultKind = "channel" | "dm" | "room" | "topic" | "issue" | "run" | "agent" | "followed" | "saved";
 
 export type SearchResult = {
   id: string;

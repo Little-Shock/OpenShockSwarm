@@ -33,6 +33,7 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 	}{
 		{name: "issue create", method: http.MethodPost, path: "/v1/issues", body: `{"title":"Blocked issue"}`, permission: "issue.create"},
 		{name: "room reply", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages", body: `{"prompt":"继续推进"}`, permission: "room.reply"},
+		{name: "topic guidance", method: http.MethodPatch, path: "/v1/topics/topic-runtime", body: `{"summary":"继续沿当前 topic 收单值"}`, permission: "room.reply"},
 		{name: "room reply stream", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages/stream", body: `{"prompt":"继续推进"}`, permission: "room.reply"},
 		{name: "run exec", method: http.MethodPost, path: "/v1/exec", body: `{"prompt":"继续推进"}`, permission: "run.execute"},
 		{name: "run control", method: http.MethodPost, path: "/v1/runs/run_runtime_01/control", body: `{"action":"stop","note":"先暂停"}`, permission: "run.execute"},
@@ -146,6 +147,25 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 				decodeJSON(t, resp, &payload)
 				if !strings.Contains(payload.Output, "synthetic daemon output") {
 					t.Fatalf("room reply output = %q, want daemon output", payload.Output)
+				}
+			},
+		},
+		{
+			name:   "topic guidance",
+			method: http.MethodPatch,
+			path:   "/v1/topics/topic-runtime",
+			body:   `{"summary":"先锁 runtime heartbeat truth，再决定是否继续收 PR surface。"}`,
+			verify: func(t *testing.T, resp *http.Response) {
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("PATCH /v1/topics/topic-runtime status = %d, want %d", resp.StatusCode, http.StatusOK)
+				}
+				var payload struct {
+					Topic store.Topic `json:"topic"`
+					State store.State `json:"state"`
+				}
+				decodeJSON(t, resp, &payload)
+				if payload.Topic.ID != "topic-runtime" || payload.Topic.Summary == "" {
+					t.Fatalf("topic guidance payload = %#v, want updated topic", payload)
 				}
 			},
 		},
@@ -375,6 +395,7 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 	}{
 		{name: "issue create", method: http.MethodPost, path: "/v1/issues", body: `{"title":"Viewer blocked issue"}`, permission: "issue.create"},
 		{name: "room reply", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages", body: `{"prompt":"viewer should not reply"}`, permission: "room.reply"},
+		{name: "topic guidance", method: http.MethodPatch, path: "/v1/topics/topic-runtime", body: `{"summary":"viewer should not guide topic"}`, permission: "room.reply"},
 		{name: "run execute", method: http.MethodPost, path: "/v1/exec", body: `{"prompt":"viewer should not exec"}`, permission: "run.execute"},
 		{name: "run control", method: http.MethodPost, path: "/v1/runs/run_runtime_01/control", body: `{"action":"stop","note":"viewer should not stop"}`, permission: "run.execute"},
 		{name: "pull request review", method: http.MethodPost, path: "/v1/rooms/room-runtime/pull-request", body: `{}`, permission: "pull_request.review"},
