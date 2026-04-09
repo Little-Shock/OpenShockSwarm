@@ -29,6 +29,75 @@ function valueOrPlaceholder(value: string | undefined, fallback: string) {
   return value && value.trim() ? value : fallback;
 }
 
+function formatCount(value?: number) {
+  return typeof value === "number" ? value.toLocaleString("zh-CN") : "未返回";
+}
+
+function quotaStatusLabel(status?: string) {
+  switch (status) {
+    case "near_limit":
+      return "逼近上限";
+    case "watch":
+      return "进入观察";
+    case "healthy":
+      return "健康";
+    default:
+      return "待同步";
+  }
+}
+
+function quotaStatusTone(status?: string): "white" | "yellow" | "lime" | "pink" {
+  switch (status) {
+    case "near_limit":
+      return "pink";
+    case "watch":
+      return "yellow";
+    case "healthy":
+      return "lime";
+    default:
+      return "white";
+  }
+}
+
+function quotaCounterTone(used?: number, limit?: number): "white" | "yellow" | "lime" | "pink" {
+  if (typeof used !== "number" || typeof limit !== "number" || limit <= 0) {
+    return "white";
+  }
+  const ratio = used / limit;
+  if (ratio >= 0.9) {
+    return "pink";
+  }
+  if (ratio >= 0.7) {
+    return "yellow";
+  }
+  return "lime";
+}
+
+function formatQuotaCounter(used?: number, limit?: number, label?: string) {
+  if (typeof used !== "number" || typeof limit !== "number" || limit <= 0) {
+    return "未返回";
+  }
+  return `${used}/${limit}${label ? ` ${label}` : ""}`;
+}
+
+function formatRetentionSummary(quota?: {
+  messageHistoryDays?: number;
+  runLogDays?: number;
+  memoryDraftDays?: number;
+}) {
+  if (!quota) {
+    return "未返回";
+  }
+  return `${quota.messageHistoryDays ?? 0}d 消息 / ${quota.runLogDays ?? 0}d Run / ${quota.memoryDraftDays ?? 0}d 草稿`;
+}
+
+function formatWorkspaceUsageWindow(usage?: { totalTokens?: number; windowLabel?: string }) {
+  if (!usage) {
+    return "未返回";
+  }
+  return `${formatCount(usage.totalTokens)} tokens / ${valueOrPlaceholder(usage.windowLabel, "窗口未返回")}`;
+}
+
 const WORKSPACE_POLICY_OPTIONS: WorkspaceNotificationPolicy[] = ["critical", "all", "mute"];
 const SUBSCRIBER_PREFERENCE_OPTIONS: NotificationPreference[] = ["inherit", "critical", "all", "mute"];
 const ONBOARDING_STATUS_OPTIONS = [
@@ -420,6 +489,7 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
   const { state, loading: stateLoading, error: stateError } = usePhaseZeroState();
   const { center, loading, error } = notifications;
   const member = findSettingsMember(state.auth.session.memberId, state.auth.members);
+  const workspace = state.workspace;
   return (
     <DetailRail
       label="Config Truth"
@@ -441,8 +511,24 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
               : `${agentLabel(member?.preferences.preferredAgentId, state.agents)} / ${valueOrPlaceholder(member?.githubIdentity?.handle, "未绑 GitHub")}`,
         },
         {
-          label: "Browser",
-          value: loading ? "同步中" : error ? "读取失败" : preferenceLabel(center.policy.browserPush),
+          label: "Plan",
+          value: stateLoading
+            ? "同步中"
+            : stateError
+              ? "读取失败"
+              : `${valueOrPlaceholder(workspace.plan, "未声明")} / ${quotaStatusLabel(workspace.quota?.status)} / ${formatQuotaCounter(workspace.quota?.usedAgents, workspace.quota?.maxAgents, "agents")}`,
+        },
+        {
+          label: "Retention",
+          value: stateLoading ? "同步中" : stateError ? "读取失败" : formatRetentionSummary(workspace.quota),
+        },
+        {
+          label: "Usage",
+          value: stateLoading
+            ? "同步中"
+            : stateError
+              ? "读取失败"
+              : `${formatWorkspaceUsageWindow(workspace.usage)} / ${formatCount(workspace.usage?.messageCount)} msgs`,
         },
         {
           label: "Worker",
@@ -456,6 +542,115 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
         },
       ]}
     />
+  );
+}
+
+function WorkspacePlanObservabilityPanel() {
+  const { state } = usePhaseZeroState();
+  const workspace = state.workspace;
+  const quota = workspace.quota;
+  const usage = workspace.usage;
+  const quotaTone = quotaStatusTone(quota?.status);
+  const usageTone = typeof usage?.totalTokens === "number" && usage.totalTokens >= 14000 ? "pink" : "yellow";
+
+  return (
+    <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/72">workspace plan / limits / retention</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">把 workspace 的 seat、保留期和 usage warning 直接摆到 settings</h2>
+        </div>
+        <span
+          data-testid="settings-workspace-quota-status"
+          className={cn(
+            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+            quotaTone === "pink"
+              ? "bg-[var(--shock-pink)] text-white"
+              : quotaTone === "yellow"
+                ? "bg-[var(--shock-yellow)]"
+                : quotaTone === "lime"
+                  ? "bg-[var(--shock-lime)]"
+                  : "bg-white text-[var(--shock-ink)]"
+          )}
+        >
+          {quotaStatusLabel(quota?.status)}
+        </span>
+      </div>
+      <p className="mt-3 max-w-4xl text-sm leading-6 text-white/84">
+        `#156` 这层直接消费 `#149` 已经补好的 workspace quota / usage truth，让 plan、headroom、retention 和 warning 不再只藏在 server 默认值或 setup 边栏里。
+      </p>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <FactTile label="Plan" value={valueOrPlaceholder(workspace.plan, "未声明")} testID="settings-workspace-plan-value" />
+        <FactTile
+          label="Usage Window"
+          value={formatWorkspaceUsageWindow(usage)}
+          testID="settings-workspace-usage-window"
+        />
+        <FactTile label="Retention" value={formatRetentionSummary(quota)} testID="settings-workspace-retention" />
+        <FactTile
+          label="Usage Detail"
+          value={`${formatCount(usage?.runCount)} runs / ${formatCount(usage?.messageCount)} msgs`}
+          testID="settings-workspace-usage-detail"
+        />
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
+        <div className="grid gap-3">
+          <StatusRow
+            label="Machines"
+            value={formatQuotaCounter(quota?.usedMachines, quota?.maxMachines, "machines")}
+            tone={quotaCounterTone(quota?.usedMachines, quota?.maxMachines)}
+            testID="settings-workspace-machines"
+          />
+          <StatusRow
+            label="Agents"
+            value={formatQuotaCounter(quota?.usedAgents, quota?.maxAgents, "agents")}
+            tone={quotaCounterTone(quota?.usedAgents, quota?.maxAgents)}
+            testID="settings-workspace-agents"
+          />
+          <StatusRow
+            label="Channels"
+            value={formatQuotaCounter(quota?.usedChannels, quota?.maxChannels, "channels")}
+            tone={quotaCounterTone(quota?.usedChannels, quota?.maxChannels)}
+            testID="settings-workspace-channels"
+          />
+          <StatusRow
+            label="Rooms"
+            value={formatQuotaCounter(quota?.usedRooms, quota?.maxRooms, "rooms")}
+            tone={quotaCounterTone(quota?.usedRooms, quota?.maxRooms)}
+            testID="settings-workspace-rooms"
+          />
+        </div>
+
+        <div className="grid gap-3">
+          <StatusRow
+            label="Workspace Usage"
+            value={`${formatCount(usage?.totalTokens)} tokens / ${formatCount(usage?.runCount)} runs / ${formatCount(usage?.messageCount)} msgs`}
+            tone={usageTone}
+            testID="settings-workspace-usage-summary"
+          />
+          <StatusRow
+            label="Last Refresh"
+            value={formatTimestamp(usage?.refreshedAt)}
+            tone="white"
+            testID="settings-workspace-usage-refresh"
+          />
+          <StatusRow
+            label="Quota Warning"
+            value={valueOrPlaceholder(quota?.warning, "当前还没有 quota warning。")}
+            tone={quotaTone}
+            testID="settings-workspace-quota-warning"
+          />
+          <StatusRow
+            label="Usage Warning"
+            value={valueOrPlaceholder(usage?.warning, "当前还没有 usage warning。")}
+            tone={usageTone}
+            testID="settings-workspace-usage-warning"
+          />
+        </div>
+      </div>
+    </Panel>
   );
 }
 
@@ -991,6 +1186,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       ) : null}
 
       <WorkspaceDurableConfigPanel />
+      <WorkspacePlanObservabilityPanel />
       <MemberPreferencePanel />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
@@ -1485,10 +1681,10 @@ export function LiveSettingsRoute() {
     <OpenShockShell
       view="settings"
       eyebrow="Phase 6 Durable Config"
-      title="把 workspace / member 配置从临时表单收回 durable governance truth"
-      description="这里把 onboarding、template、repo/install snapshot、preferred agent、github identity 和通知 policy 统一接回 server snapshot；refresh / restart / device switch 后继续读同一份对象。"
-      contextTitle="Durable Truth Online"
-      contextDescription="当前页主线是 `TC-040`：settings 写回的 workspace/member config，setup / access 会按同一份真相恢复。"
+      title="把 workspace plan / limits / retention 与 member config 收回同一份 durable governance truth"
+      description="这里除了继续把 onboarding、template、repo/install snapshot、preferred agent、github identity 和通知 policy 接回 server snapshot，也把 workspace plan、usage、seat headroom 与 retention 直接公开在 settings。"
+      contextTitle="Workspace Governance Truth"
+      contextDescription="当前页除了 `TC-040` 的 settings durable config，也吸收了 `#156`：workspace plan / limits / retention / usage warning 不再只藏在默认值或 setup 边栏里。"
       contextBody={<LiveSettingsContextRail notifications={notifications} />}
     >
       <LiveSettingsView notifications={notifications} />

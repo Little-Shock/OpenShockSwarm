@@ -65,6 +65,21 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 	if workspace.Onboarding.Status != "ready" || workspace.BrowserPush != "全部 live 事件" {
 		t.Fatalf("GET workspace = %#v, want persisted durable config", workspace)
 	}
+	if workspace.Plan == "" {
+		t.Fatalf("GET workspace plan missing: %#v", workspace)
+	}
+	if workspace.Quota.Status == "" || workspace.Quota.Warning == "" {
+		t.Fatalf("GET workspace quota truth = %#v, want status + warning", workspace.Quota)
+	}
+	if workspace.Quota.MessageHistoryDays == 0 || workspace.Quota.RunLogDays == 0 || workspace.Quota.MemoryDraftDays == 0 {
+		t.Fatalf("GET workspace retention truth = %#v, want message/run/memory retention days", workspace.Quota)
+	}
+	if workspace.Usage.WindowLabel == "" || workspace.Usage.Warning == "" || workspace.Usage.RefreshedAt == "" {
+		t.Fatalf("GET workspace usage truth = %#v, want window + warning + refreshedAt", workspace.Usage)
+	}
+	if workspace.Usage.TotalTokens == 0 || workspace.Usage.RunCount == 0 || workspace.Usage.MessageCount == 0 {
+		t.Fatalf("GET workspace usage counters = %#v, want tokens + runs + messages", workspace.Usage)
+	}
 	if len(workspace.Onboarding.Materialization.Channels) != 3 || len(workspace.Onboarding.Materialization.Agents) == 0 {
 		t.Fatalf("GET workspace onboarding materialization = %#v, want persisted template package", workspace.Onboarding.Materialization)
 	}
