@@ -33,6 +33,7 @@
     "test:headed-config-persistence-recovery": "node ./scripts/headed-config-persistence-recovery.mjs",
     "test:headed-onboarding-studio": "node ./scripts/headed-onboarding-studio.mjs",
     "test:headed-stop-resume-follow-thread": "node ./scripts/headed-stop-resume-follow-thread.mjs",
+    "test:headed-run-history-resume-context": "node ./scripts/headed-run-history-resume-context.mjs",
     "test:headed-multi-runtime-scheduler-failover": "node ./scripts/headed-multi-runtime-scheduler-failover.mjs",
     "test:headed-runtime-lease-conflict-recovery": "node ./scripts/headed-runtime-lease-conflict-recovery.mjs",
     "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",

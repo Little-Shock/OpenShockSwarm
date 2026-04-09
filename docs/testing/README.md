@@ -70,6 +70,8 @@
   - `TKT-31` 的 lease conflict recovery、scheduler failover continuity 与 `/setup` `/agents` live decision-reason evidence
 - [Test Report 2026-04-09 Memory Viewer / Correction / Forget Surface](./Test-Report-2026-04-09-memory-viewer-correction-forget.md)
   - `TKT-42` 的 memory detail audit、human correction/forget 写回与 recall preview removal headed evidence
+- [Test Report 2026-04-09 Run History / Resume Context](./Test-Report-2026-04-09-run-history-resume-context.md)
+  - `TKT-40` 的 paginated `/runs` history、prior-run reopen、resume context 与 room-current continuity evidence
 
 常用入口：
 
@@ -97,6 +99,8 @@
   - 验证 memory detail 的 correction / forget mutation、version audit 与 recall preview removal
 - `pnpm test:headed-stop-resume-follow-thread`
   - 验证 stop / resume / follow-thread exact replay
+- `pnpm test:headed-run-history-resume-context`
+  - 验证 `/runs` paginated history、Load Older Runs、prior-run reopen 与 room-current resume context
 - `pnpm test:headed-dm-followed-thread-saved-later`
   - 验证 DM entry、thread follow、saved-later、reopen thread 回访闭环
 - `pnpm test:headed-room-workbench-topic-context`

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
+import { buildRunHistoryEntries } from "@/lib/phase-zero-helpers";
 import { useQuickSearchController } from "@/lib/quick-search";
 import { buildNamedProfileHref, buildProfileHref } from "@/lib/profile-surface";
 import {
@@ -2308,7 +2309,10 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const room = state.rooms.find((item) => item.id === roomId);
   const run = room ? state.runs.find((item) => item.id === room.runId) : undefined;
-  const session = room ? state.sessions.find((item) => item.roomId === room.id) : undefined;
+  const session = room
+    ? state.sessions.find((item) => item.activeRunId === room.runId) ??
+      state.sessions.find((item) => item.roomId === room.id)
+    : undefined;
   const issue = room ? state.issues.find((item) => item.roomId === room.id) : undefined;
   const authSession = state.auth.session;
   const currentRunStatus = session?.status ?? run?.status;
@@ -2404,6 +2408,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     loading || error || !room || !run
       ? []
       : state.guards.filter((guard) => guard.roomId === room.id || guard.runId === run.id);
+  const roomRunHistory = loading || error || !room ? [] : buildRunHistoryEntries(state, room.id);
   const workbenchTabs = ROOM_WORKBENCH_TABS.map((tab) => ({
     label: ROOM_WORKBENCH_TAB_LABEL[tab],
     href: buildRoomWorkbenchHref(roomId, tab),
@@ -2745,6 +2750,8 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       <RunDetailView
                         run={run}
                         statusTestId="room-workbench-run-detail-status"
+                        session={session}
+                        history={roomRunHistory}
                         guards={relatedGuards.filter((guard) => guard.runId === run.id)}
                       />
                     </div>

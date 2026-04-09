@@ -25,7 +25,9 @@ export async function GET(
     const pullRequest =
       state.pullRequests.find((candidate: PullRequest) => candidate.roomId === roomId) ?? null;
     const session =
-      state.sessions.find((candidate: Session) => candidate.roomId === roomId) ?? null;
+      state.sessions.find((candidate: Session) => candidate.activeRunId === room.runId) ??
+      state.sessions.find((candidate: Session) => candidate.roomId === roomId) ??
+      null;
 
     return NextResponse.json({
       room,

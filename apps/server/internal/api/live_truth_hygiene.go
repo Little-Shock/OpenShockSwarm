@@ -21,6 +21,10 @@ func sanitizeLivePayload(payload any) any {
 		return sanitizeLiveState(typed)
 	case store.RoomDetail:
 		return sanitizeRoomDetail(typed)
+	case store.RunDetail:
+		return sanitizeRunDetail(typed)
+	case store.RunHistoryPage:
+		return sanitizeRunHistoryPage(typed)
 	case store.PullRequestDetail:
 		return sanitizePullRequestDetail(typed)
 	case store.Channel:
@@ -65,10 +69,18 @@ func sanitizeLivePayload(payload any) any {
 		return items
 	case store.Run:
 		return sanitizeRun(typed)
+	case store.RunHistoryEntry:
+		return sanitizeRunHistoryEntry(typed)
 	case []store.Run:
 		items := make([]store.Run, len(typed))
 		for index, item := range typed {
 			items[index] = sanitizeRun(item)
+		}
+		return items
+	case []store.RunHistoryEntry:
+		items := make([]store.RunHistoryEntry, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeRunHistoryEntry(item)
 		}
 		return items
 	case store.Agent:
@@ -271,6 +283,28 @@ func sanitizePullRequestDetail(detail store.PullRequestDetail) store.PullRequest
 	detail.Conversation = sanitizeLivePayload(detail.Conversation).([]store.PullRequestConversationEntry)
 	detail.RelatedInbox = sanitizeLivePayload(detail.RelatedInbox).([]store.InboxItem)
 	return detail
+}
+
+func sanitizeRunDetail(detail store.RunDetail) store.RunDetail {
+	detail.Run = sanitizeRun(detail.Run)
+	detail.Room = sanitizeRoom(detail.Room)
+	detail.Issue = sanitizeIssue(detail.Issue)
+	detail.Session = sanitizeSession(detail.Session)
+	detail.History = sanitizeLivePayload(detail.History).([]store.RunHistoryEntry)
+	return detail
+}
+
+func sanitizeRunHistoryPage(page store.RunHistoryPage) store.RunHistoryPage {
+	page.Items = sanitizeLivePayload(page.Items).([]store.RunHistoryEntry)
+	return page
+}
+
+func sanitizeRunHistoryEntry(entry store.RunHistoryEntry) store.RunHistoryEntry {
+	entry.Run = sanitizeRun(entry.Run)
+	entry.Room = sanitizeRoom(entry.Room)
+	entry.Issue = sanitizeIssue(entry.Issue)
+	entry.Session = sanitizeSession(entry.Session)
+	return entry
 }
 
 func sanitizeChannel(channel store.Channel) store.Channel {

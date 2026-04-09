@@ -1,4 +1,4 @@
-import type { Issue, PhaseZeroState } from "@/lib/phase-zero-types";
+import type { Issue, PhaseZeroState, RunDetail, RunHistoryPage } from "@/lib/phase-zero-types";
 
 const LIVE_TRUTH_QUESTION_BURST = /\?{2,}/;
 const LIVE_TRUTH_E2E_RESIDUE = /\bE2E\b.*\b20\d{6,}\b/i;
@@ -16,6 +16,7 @@ type LiveIssue = PhaseZeroState["issues"][number];
 type Room = PhaseZeroState["rooms"][number];
 type Topic = Room["topic"];
 type Run = PhaseZeroState["runs"][number];
+type RunHistoryEntry = RunHistoryPage["items"][number];
 type ToolCall = Run["toolCalls"][number];
 type RunEvent = Run["timeline"][number];
 type Agent = PhaseZeroState["agents"][number];
@@ -47,6 +48,63 @@ export function buildGlobalStats(state: PhaseZeroState) {
     { label: "阻塞", value: String(blockedCount).padStart(2, "0"), tone: "pink" as const },
     { label: "收件箱", value: String(state.inbox.length).padStart(2, "0"), tone: "lime" as const },
   ];
+}
+
+export function buildRunHistoryEntries(state: PhaseZeroState, roomId?: string): RunHistoryEntry[] {
+  const roomsById = new Map(state.rooms.map((room) => [room.id, room]));
+  const issuesByKey = new Map(state.issues.map((issue) => [issue.key, issue]));
+  const sessionsByRunId = new Map(state.sessions.map((session) => [session.activeRunId, session]));
+
+  return [...state.runs]
+    .filter((run) => (!roomId ? true : run.roomId === roomId))
+    .reverse()
+    .flatMap((run) => {
+      const room = roomsById.get(run.roomId);
+      const issue = issuesByKey.get(run.issueKey);
+      if (!room || !issue) {
+        return [];
+      }
+      return [
+        {
+          run: sanitizeRun(run),
+          room: sanitizeRoom(room),
+          issue: sanitizeIssue(issue),
+          session: sanitizeSession(
+            sessionsByRunId.get(run.id) ?? {
+              id: `session-${run.id}`,
+              issueKey: run.issueKey,
+              roomId: run.roomId,
+              topicId: run.topicId,
+              activeRunId: run.id,
+              status: run.status,
+              followThread: run.followThread,
+              controlNote: run.controlNote,
+              runtime: run.runtime,
+              machine: run.machine,
+              provider: run.provider,
+              branch: run.branch,
+              worktree: run.worktree,
+              worktreePath: run.worktreePath ?? "",
+              summary: run.summary || "补建的 Session 上下文。",
+              updatedAt: run.startedAt,
+              memoryPaths: buildDefaultSessionMemoryPaths(run.roomId, run.issueKey),
+            }
+          ),
+          isCurrent: room.runId === run.id,
+        },
+      ];
+    });
+}
+
+function buildDefaultSessionMemoryPaths(roomId: string, issueKey: string) {
+  const paths = ["MEMORY.md", "notes/work-log.md"];
+  if (roomId.trim()) {
+    paths.push(`notes/rooms/${roomId}.md`);
+  }
+  if (issueKey.trim()) {
+    paths.push(`decisions/${issueKey.toLowerCase()}.md`);
+  }
+  return paths;
 }
 
 export function sanitizePhaseZeroState(state: PhaseZeroState): PhaseZeroState {
@@ -182,6 +240,34 @@ function sanitizeRun(run: Run): Run {
     stderr: sanitizeTextLines(run.stderr, "这条执行日志包含测试残留或乱码，已在当前工作区隐藏。"),
     toolCalls: run.toolCalls.map(sanitizeToolCall),
     timeline: run.timeline.map(sanitizeRunEvent),
+  };
+}
+
+function sanitizeRunHistoryEntry(entry: RunHistoryEntry): RunHistoryEntry {
+  return {
+    ...entry,
+    run: sanitizeRun(entry.run),
+    room: sanitizeRoom(entry.room),
+    issue: sanitizeIssue(entry.issue),
+    session: sanitizeSession(entry.session),
+  };
+}
+
+export function sanitizeRunHistoryPage(page: RunHistoryPage): RunHistoryPage {
+  return {
+    ...page,
+    items: page.items.map(sanitizeRunHistoryEntry),
+  };
+}
+
+export function sanitizeRunDetail(detail: RunDetail): RunDetail {
+  return {
+    ...detail,
+    run: sanitizeRun(detail.run),
+    room: sanitizeRoom(detail.room),
+    issue: sanitizeIssue(detail.issue),
+    session: sanitizeSession(detail.session),
+    history: detail.history.map(sanitizeRunHistoryEntry),
   };
 }
 

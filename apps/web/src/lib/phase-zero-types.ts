@@ -355,6 +355,20 @@ export type RunUsageSnapshot = {
   warning?: string;
 };
 
+export type RunHistoryEntry = {
+  run: Run;
+  room: Room;
+  issue: Issue;
+  session: Session;
+  isCurrent: boolean;
+};
+
+export type RunHistoryPage = {
+  items: RunHistoryEntry[];
+  nextCursor?: string;
+  totalCount: number;
+};
+
 export type AgentStatus = {
   id: string;
   name: string;
@@ -563,6 +577,14 @@ export type PullRequestDetail = {
   issue: Issue;
   conversation: PullRequestConversationEntry[];
   relatedInbox: InboxItem[];
+};
+
+export type RunDetail = {
+  run: Run;
+  room: Room;
+  issue: Issue;
+  session: Session;
+  history: RunHistoryEntry[];
 };
 
 export type Session = {

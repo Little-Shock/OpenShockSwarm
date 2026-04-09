@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -624,6 +625,16 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
+	if path == "history" {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+		cursor, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("cursor")))
+		roomID := strings.TrimSpace(r.URL.Query().Get("roomId"))
+		writeJSON(w, http.StatusOK, sanitizeLivePayload(s.store.RunHistory(limit, cursor, roomID)))
+		return
+	}
 	if strings.HasSuffix(path, "/control") {
 		runID := strings.TrimSuffix(path, "/control")
 		if r.Method != http.MethodPost {
@@ -676,6 +687,10 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if strings.HasSuffix(path, "/detail") {
+		s.handleRunDetail(w, r, strings.TrimSuffix(path, "/detail"))
+		return
+	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
@@ -687,6 +702,25 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+}
+
+func (s *Server) handleRunDetail(w http.ResponseWriter, r *http.Request, runID string) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	runID = strings.TrimSuffix(strings.TrimSpace(runID), "/")
+	if runID == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+		return
+	}
+
+	detail, ok := s.store.RunDetail(runID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, sanitizeLivePayload(detail))
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {

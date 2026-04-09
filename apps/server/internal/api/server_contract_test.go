@@ -1270,6 +1270,102 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	}
 }
 
+func TestRunHistoryRouteSupportsIncrementalFetchAndRoomFilter(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	firstResp, err := http.Get(server.URL + "/v1/runs/history?limit=2")
+	if err != nil {
+		t.Fatalf("GET run history error = %v", err)
+	}
+	defer firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET run history status = %d, want %d", firstResp.StatusCode, http.StatusOK)
+	}
+
+	var firstPage store.RunHistoryPage
+	decodeJSON(t, firstResp, &firstPage)
+	if len(firstPage.Items) != 2 || firstPage.TotalCount < 5 || firstPage.NextCursor == "" {
+		t.Fatalf("first history page malformed: %#v", firstPage)
+	}
+	if firstPage.Items[0].Session.ActiveRunID != firstPage.Items[0].Run.ID || len(firstPage.Items[0].Session.MemoryPaths) == 0 {
+		t.Fatalf("first history item missing resume context: %#v", firstPage.Items[0])
+	}
+
+	secondResp, err := http.Get(server.URL + "/v1/runs/history?limit=2&cursor=" + firstPage.NextCursor)
+	if err != nil {
+		t.Fatalf("GET second run history page error = %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET second run history page status = %d, want %d", secondResp.StatusCode, http.StatusOK)
+	}
+
+	var secondPage store.RunHistoryPage
+	decodeJSON(t, secondResp, &secondPage)
+	if len(secondPage.Items) == 0 {
+		t.Fatalf("second history page empty: %#v", secondPage)
+	}
+	if secondPage.Items[0].Run.ID == firstPage.Items[0].Run.ID {
+		t.Fatalf("history cursor did not advance: first=%#v second=%#v", firstPage.Items, secondPage.Items)
+	}
+
+	roomResp, err := http.Get(server.URL + "/v1/runs/history?roomId=room-runtime&limit=5")
+	if err != nil {
+		t.Fatalf("GET room run history error = %v", err)
+	}
+	defer roomResp.Body.Close()
+	if roomResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET room run history status = %d, want %d", roomResp.StatusCode, http.StatusOK)
+	}
+
+	var roomPage store.RunHistoryPage
+	decodeJSON(t, roomResp, &roomPage)
+	if len(roomPage.Items) < 2 {
+		t.Fatalf("room history should include current + prior run: %#v", roomPage)
+	}
+	if roomPage.Items[0].Run.ID != "run_runtime_01" || !roomPage.Items[0].IsCurrent {
+		t.Fatalf("room history current entry = %#v, want current runtime run first", roomPage.Items[0])
+	}
+	if roomPage.Items[1].Run.ID != "run_runtime_00" || roomPage.Items[1].IsCurrent {
+		t.Fatalf("room history prior entry = %#v, want prior runtime run second", roomPage.Items[1])
+	}
+}
+
+func TestRunDetailRouteReturnsResumeContextAndRoomHistory(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/runs/run_runtime_01/detail")
+	if err != nil {
+		t.Fatalf("GET run detail envelope error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET run detail envelope status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var detail store.RunDetail
+	decodeJSON(t, resp, &detail)
+	if detail.Run.ID != "run_runtime_01" || detail.Room.ID != "room-runtime" || detail.Issue.Key != "OPS-12" {
+		t.Fatalf("run detail backlinks malformed: %#v", detail)
+	}
+	if detail.Session.ActiveRunID != detail.Run.ID || detail.Session.Worktree != detail.Run.Worktree || len(detail.Session.MemoryPaths) == 0 {
+		t.Fatalf("run detail resume context malformed: %#v", detail.Session)
+	}
+	if len(detail.History) < 2 {
+		t.Fatalf("run detail history too short: %#v", detail.History)
+	}
+	if detail.History[0].Run.ID != "run_runtime_01" || !detail.History[0].IsCurrent {
+		t.Fatalf("run detail current history entry = %#v, want current run first", detail.History[0])
+	}
+	if detail.History[1].Run.ID != "run_runtime_00" {
+		t.Fatalf("run detail prior history entry = %#v, want prior runtime run", detail.History[1])
+	}
+}
+
 func TestPullRequestRouteEscalatesBlockedOnGitHubSyncFailure(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

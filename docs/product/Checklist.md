@@ -145,10 +145,11 @@
   - [x] `/rooms/:roomId` 已升级成 query-driven room workbench，`Chat / Topic / Run / PR / Context` 可在同一页切换
   - [x] Topic summary、Run control、PR entry 与 inbox / issue / board back-links 已能在 room 内闭环，不再强制跳去独立详情页
   - [x] `pnpm test:headed-room-workbench-topic-context` 已完成 exact replay，验证切 tab、follow_thread、PR surface、reload persistence 与 inbox back-link
+  - [x] `/runs` 已切成 paginated run history surface；run detail 与 room run tab 会共享 session-backed resume context，并保留同 room prior-run reopen/history
 - 当前 GAP:
   - [ ] Topic 目前仍主要挂在 room workbench 内，还没有独立 topic route / edit lifecycle
   - [ ] token-quota 与更细粒度执行可观测性尚未完成
-- 对应 Test Cases: `TC-006` `TC-007` `TC-018` `TC-031`
+- 对应 Test Cases: `TC-006` `TC-007` `TC-018` `TC-031` `TC-043`
 
 ### CHK-07 工作流 D: PR 与 Review 闭环
 

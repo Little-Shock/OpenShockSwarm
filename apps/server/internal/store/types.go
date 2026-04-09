@@ -621,6 +621,28 @@ type RoomDetail struct {
 	Messages []Message `json:"messages"`
 }
 
+type RunHistoryEntry struct {
+	Run       Run     `json:"run"`
+	Room      Room    `json:"room"`
+	Issue     Issue   `json:"issue"`
+	Session   Session `json:"session"`
+	IsCurrent bool    `json:"isCurrent"`
+}
+
+type RunHistoryPage struct {
+	Items     []RunHistoryEntry `json:"items"`
+	NextCursor string           `json:"nextCursor,omitempty"`
+	TotalCount int              `json:"totalCount"`
+}
+
+type RunDetail struct {
+	Run     Run               `json:"run"`
+	Room    Room              `json:"room"`
+	Issue   Issue             `json:"issue"`
+	Session Session           `json:"session"`
+	History []RunHistoryEntry `json:"history"`
+}
+
 type PullRequestDetail struct {
 	PullRequest  PullRequest                    `json:"pullRequest"`
 	Room         Room                           `json:"room"`

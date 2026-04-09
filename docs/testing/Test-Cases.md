@@ -554,3 +554,16 @@
   3. 运行 `pnpm check:live-truth-hygiene` 与 `pnpm verify:release`，确认 release gate 会拦脏 truth 回灌。
 - 预期结果: 用户可见字段全部 fail-closed；release gate 对 placeholder wording、direct mock-data import 和 tracked live-truth residue 给出硬失败。
 - 业务结论: 2026 年 4 月 9 日 `TKT-38` 已把 state / SSE visible truth sanitization、client-side state adapter guard、copy cleanup 与 `check:live-truth-hygiene` release gate 接成同一条验证链。当前 `docs/testing/Test-Report-2026-04-09-live-truth-hygiene.md` 已记录 dirty-state adversarial probe、targeted go tests 和 `verify:release` 结果，因此这条用例转为 `Pass`。
+
+## TC-043 Run History / Incremental Fetch / Resume Context
+
+- 业务目标: 确认 `/runs` 不再一次性倾倒全量 run ledger，且人类可以围绕同一条 room 回看历史 run、打开 prior run，并拿到可恢复的 session context。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-06`
+- 前置条件: 存在 `/v1/runs/history`、`/v1/runs/:id/detail`、`Load Older Runs` UI，以及 run detail / room run tab 的 resume context surface。
+- 测试步骤:
+  1. 打开 `/runs`，确认首屏只显示最新一页 history，并通过 `Load Older Runs` 增量展开更早 run。
+  2. 打开当前 run detail，检查 session id、branch/worktree、memory paths 与同 room prior-run history。
+  3. 从 room history 里 reopen 一条 prior run，再跳回 room run tab，确认 room 重新锚定当前 active continuity，而不是停在旧 session。
+- 预期结果: `/runs` 是 paginated history surface；run detail / room run tab 能稳定暴露 resume context；prior-run reopen 不会把 room continuity 锚错到 stale session。
+- 业务结论: 2026 年 4 月 9 日 `TKT-40` 新增 `/v1/runs/history`、`/v1/runs/:id/detail`、`pnpm test:headed-run-history-resume-context` 与对应 `docs/testing/Test-Report-2026-04-09-run-history-resume-context.md`。当前浏览器 exact replay 已验证 `/runs` 首屏只展示最新 history page，`Load Older Runs` 才会展开 `run_runtime_00`，run detail 会显示 `session-runtime` 的 resume context 与 same-room history，reopen prior run 后 room run tab 也会重新锚定当前 `session-runtime` 而不是旧 continuity，因此这条用例当前转为 `Pass`。

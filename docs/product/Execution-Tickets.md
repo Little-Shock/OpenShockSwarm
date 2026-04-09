@@ -361,6 +361,24 @@
 - Checklist: `CHK-03` `CHK-15`
 - Test Cases: `TC-042`
 
+## TKT-40 Run History / Incremental Fetch / Resume Context
+
+- 状态: `in_review`
+- 优先级: `P1`
+- 目标: 把 `/runs` 收成可渐进展开的历史面，并让 run detail / room run tab 直接暴露当前可恢复的 session continuity。
+- 范围:
+  - `/v1/runs/history` paginated contract
+  - `/v1/runs/:id/detail` resume-context + same-room history contract
+  - `/runs` incremental fetch / `Load Older Runs`
+  - run detail / room run tab 的 session-backed resume context 与 prior-run reopen
+- 依赖: `TKT-23`
+- Done When:
+  - `/runs` 首屏只展示最新一页 history，旧 run 通过显式增量展开
+  - run detail 能稳定显示 branch / worktree / memory paths / control note 这类 resume context
+  - 同一条 room 的前序 run 可被 reopen，且回到 room run tab 时仍锚定当前 active continuity
+- Checklist: `CHK-06`
+- Test Cases: `TC-043`
+
 ---
 
 ## 四、已完成批次归档

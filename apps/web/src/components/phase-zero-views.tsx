@@ -22,7 +22,9 @@ import type {
   Priority,
   Room,
   Run,
+  RunHistoryEntry,
   RunStatus,
+  Session,
   SettingsSection,
   SetupStep,
 } from "@/lib/phase-zero-types";
@@ -406,12 +408,36 @@ export function RoomOverview({ room }: { room: Room }) {
 export function RunDetailView({
   run,
   statusTestId,
+  session,
+  history = [],
   guards = [],
 }: {
   run: Run;
   statusTestId?: string;
+  session?: Session;
+  history?: RunHistoryEntry[];
   guards?: DestructiveGuard[];
 }) {
+  const resumeSession = session ?? {
+    id: `session-${run.id}`,
+    issueKey: run.issueKey,
+    roomId: run.roomId,
+    topicId: run.topicId,
+    activeRunId: run.id,
+    status: run.status,
+    followThread: run.followThread,
+    controlNote: run.controlNote,
+    runtime: run.runtime,
+    machine: run.machine,
+    provider: run.provider,
+    branch: run.branch,
+    worktree: run.worktree,
+    worktreePath: run.worktreePath ?? "",
+    summary: run.summary,
+    updatedAt: run.startedAt,
+    memoryPaths: [],
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -471,6 +497,120 @@ export function RunDetailView({
           </div>
         </Panel>
       ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+        <Panel tone="yellow">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-display text-2xl font-bold">Resume Context</h3>
+            <span
+              data-testid="run-detail-resume-session"
+              className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]"
+            >
+              {resumeSession.id}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <Metric label="Branch" value={resumeSession.branch} />
+            <Metric label="Worktree" value={resumeSession.worktree} />
+            <Metric
+              label="Worktree Path"
+              value={resumeSession.worktreePath || "当前 worktree 路径正在整理中。"}
+            />
+            <Metric label="Memory Paths" value={`${resumeSession.memoryPaths.length} 条`} />
+          </div>
+          <p data-testid="run-detail-resume-summary" className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+            {resumeSession.summary}
+          </p>
+          {resumeSession.controlNote ? (
+            <p
+              data-testid="run-detail-resume-control-note"
+              className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6"
+            >
+              {resumeSession.controlNote}
+            </p>
+          ) : null}
+          {resumeSession.memoryPaths.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {resumeSession.memoryPaths.map((path) => (
+                <span
+                  key={path}
+                  className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]"
+                >
+                  {path}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </Panel>
+
+        <Panel tone="white">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-display text-2xl font-bold">Room Run History</h3>
+              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                先回看同一条 room 的前序 run，再决定是否 reopen / resume 当前 continuity。
+              </p>
+            </div>
+            <span
+              data-testid="run-detail-history-count"
+              className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]"
+            >
+              {history.length} entries
+            </span>
+          </div>
+          <div data-testid="run-detail-history" className="mt-4 space-y-3">
+            {history.length === 0 ? (
+              <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                当前还没有可回看的 room run history。
+              </p>
+            ) : (
+              history.map((entry) => (
+                <article
+                  key={entry.run.id}
+                  data-testid={`run-history-entry-${entry.run.id}`}
+                  className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-display text-lg font-semibold">{entry.run.id}</p>
+                      <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{entry.run.summary}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
+                        entry.isCurrent ? "bg-[var(--shock-yellow)] text-[var(--shock-ink)]" : statusTone(entry.run.status)
+                      )}
+                    >
+                      {entry.isCurrent ? "Current" : runStatusLabel(entry.run.status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <Metric label="Started" value={entry.run.startedAt} />
+                    <Metric label="Session" value={entry.session.id} />
+                    <Metric label="Worktree" value={entry.session.worktree} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href={`/runs/${entry.run.id}`}
+                      data-testid={`run-history-reopen-${entry.run.id}`}
+                      className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+                    >
+                      Reopen Run
+                    </Link>
+                    <Link
+                      href={`/rooms/${entry.room.id}?tab=run`}
+                      data-testid={`run-history-room-tab-${entry.run.id}`}
+                      className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+                    >
+                      Room Run Tab
+                    </Link>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </Panel>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel tone="white">

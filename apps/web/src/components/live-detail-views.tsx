@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { startTransition, useEffect, useState } from "react";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import {
@@ -19,10 +20,12 @@ import {
 } from "@/components/phase-zero-views";
 import { RunControlSurface } from "@/components/run-control-surface";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { buildRunHistoryEntries, sanitizeRunHistoryPage } from "@/lib/phase-zero-helpers";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
-import type { Issue, Room, Run } from "@/lib/phase-zero-types";
+import type { Issue, Room, Run, RunHistoryPage, Session } from "@/lib/phase-zero-types";
 
 type PanelTone = "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
+const CONTROL_API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 
 function priorityLabel(priority: Issue["priority"]) {
   switch (priority) {
@@ -88,6 +91,21 @@ function statusBadgeTone(status: Run["status"]) {
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+async function readRunHistoryPage(limit: number, cursor?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) {
+    params.set("cursor", cursor);
+  }
+  const response = await fetch(`${CONTROL_API_BASE}/v1/runs/history?${params.toString()}`, {
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as RunHistoryPage & { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error || `request failed: ${response.status}`);
+  }
+  return sanitizeRunHistoryPage(payload);
 }
 
 function readRuntimeRegistry(state: unknown): RuntimeRegistryRecord[] {
@@ -189,10 +207,12 @@ function RunSnapshotCard({
   run,
   room,
   issue,
+  session,
 }: {
   run: Run;
   room?: Room;
   issue?: Issue;
+  session?: Session;
 }) {
   return (
     <Panel tone={panelToneForStatus(run.status)} className="!p-3.5">
@@ -224,6 +244,11 @@ function RunSnapshotCard({
         <FactTile label="Worktree" value={run.worktree} />
         <FactTile label="下一步" value={run.nextAction} />
       </div>
+      {session ? (
+        <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+          Resume context: {session.id} / {session.worktree}。{session.summary}
+        </p>
+      ) : null}
       <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
         {run.approvalRequired
           ? "这条 Run 当前需要人工批准后才能继续推进。"
@@ -232,6 +257,7 @@ function RunSnapshotCard({
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={`/runs/${run.id}`}
+          data-testid={`run-history-open-${run.id}`}
           className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
           打开 Run
@@ -497,9 +523,66 @@ export function LiveRunsPageContent() {
   const rooms = loading || error ? [] : state.rooms;
   const issues = loading || error ? [] : state.issues;
   const runs = loading || error ? [] : state.runs;
+  const fallbackHistory = loading || error ? [] : buildRunHistoryEntries(state);
+  const [historyPage, setHistoryPage] = useState<RunHistoryPage>({ items: [], totalCount: 0 });
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const activeRuns = runs.filter((run) => run.status === "running" || run.status === "review").length;
   const blockedRuns = runs.filter((run) => run.status === "blocked" || run.status === "paused").length;
   const approvalRuns = runs.filter((run) => run.approvalRequired).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    void readRunHistoryPage(3)
+      .then((page) => {
+        if (cancelled) {
+          return;
+        }
+        startTransition(() => {
+          setHistoryPage(page);
+          setHistoryLoading(false);
+        });
+      })
+      .catch((fetchError) => {
+        if (cancelled) {
+          return;
+        }
+        setHistoryError(fetchError instanceof Error ? fetchError.message : "run history fetch failed");
+        setHistoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleLoadMore() {
+    if (!historyPage.nextCursor || loadingMore) {
+      return;
+    }
+
+    setLoadingMore(true);
+    try {
+      const nextPage = await readRunHistoryPage(3, historyPage.nextCursor);
+      startTransition(() => {
+        setHistoryPage((current) => ({
+          items: [...current.items, ...nextPage.items],
+          nextCursor: nextPage.nextCursor,
+          totalCount: nextPage.totalCount,
+        }));
+      });
+    } catch (fetchError) {
+      setHistoryError(fetchError instanceof Error ? fetchError.message : "run history fetch failed");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const visibleHistory = historyPage.items.length > 0 ? historyPage.items : historyError ? fallbackHistory : [];
 
   return (
     <OpenShockShell
@@ -525,18 +608,34 @@ export function LiveRunsPageContent() {
         <LiveStateNotice title="正在同步 Run 真值" message="等待 server 返回当前 run / room / issue 绑定关系。" />
       ) : error ? (
         <LiveStateNotice title="Run 同步失败" message={error} />
-      ) : runs.length === 0 ? (
+      ) : historyLoading && historyPage.items.length === 0 && !historyError ? (
+        <LiveStateNotice title="正在分页拉取 Run History" message="先加载最新几条 run，再按需增量展开更早的历史。" />
+      ) : visibleHistory.length === 0 ? (
         <LiveStateNotice title="当前还没有 Run" message="当 server state 里出现第一条 run 后，这里会直接显示 live run surface。" />
       ) : (
         <div className="grid gap-4">
-          {runs.map((run) => (
+          {historyError ? (
+            <LiveStateNotice title="Run history fallback" message={historyError} />
+          ) : null}
+          {visibleHistory.map((entry) => (
             <RunSnapshotCard
-              key={run.id}
-              run={run}
-              room={rooms.find((candidate) => candidate.id === run.roomId)}
-              issue={issues.find((candidate) => candidate.key === run.issueKey)}
+              key={entry.run.id}
+              run={entry.run}
+              room={rooms.find((candidate) => candidate.id === entry.run.roomId) ?? entry.room}
+              issue={issues.find((candidate) => candidate.key === entry.run.issueKey) ?? entry.issue}
+              session={entry.session}
             />
           ))}
+          {historyPage.nextCursor ? (
+            <button
+              type="button"
+              data-testid="run-history-load-more"
+              onClick={() => void handleLoadMore()}
+              className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+            >
+              {loadingMore ? "Loading..." : "Load Older Runs"}
+            </button>
+          ) : null}
         </div>
       )}
     </OpenShockShell>
@@ -693,6 +792,7 @@ export function LiveRunPageContent({
 
   const currentRun = run;
   const currentSession = session;
+  const roomHistory = buildRunHistoryEntries(state, currentRun.roomId);
 
   async function handleRunControl(action: "stop" | "resume" | "follow_thread", note: string) {
     await controlRun(currentRun.id, { action, note });
@@ -732,6 +832,8 @@ export function LiveRunPageContent({
         <RunDetailView
           run={currentRun}
           statusTestId="run-detail-status"
+          session={currentSession}
+          history={roomHistory}
           guards={state.guards.filter((guard) => guard.runId === currentRun.id)}
         />
       </div>
