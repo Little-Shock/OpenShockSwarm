@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -66,9 +67,75 @@ func TestMemoryCenterRoutesExposePolicyPreviewAndPromotionLifecycle(t *testing.T
 
 	var artifacts []store.MemoryArtifact
 	decodeJSON(t, memoryResp, &artifacts)
+	roomArtifact := findMemoryArtifactByPath(artifacts, filepath.ToSlash(filepath.Join("notes", "rooms", "room-memory.md")))
+	if roomArtifact == nil {
+		t.Fatalf("room artifact missing from /v1/memory: %#v", artifacts)
+	}
 	decisionArtifact := findMemoryArtifactByPath(artifacts, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
 	if decisionArtifact == nil {
 		t.Fatalf("decision artifact missing from /v1/memory: %#v", artifacts)
+	}
+
+	feedbackResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory/"+roomArtifact.ID+"/feedback",
+		`{"sourceVersion":`+strconv.Itoa(roomArtifact.Version)+`,"summary":"Human Correction","note":"优先写 room note，再把冲突规则提升到 policy。"}`,
+	)
+	defer feedbackResp.Body.Close()
+	if feedbackResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory/:id/feedback status = %d, want %d", feedbackResp.StatusCode, http.StatusOK)
+	}
+
+	var feedbackPayload struct {
+		Detail store.MemoryArtifactDetail `json:"detail"`
+		Center store.MemoryCenter         `json:"center"`
+		State  store.State                `json:"state"`
+	}
+	decodeJSON(t, feedbackResp, &feedbackPayload)
+	if feedbackPayload.Detail.Artifact.CorrectionCount != 1 || feedbackPayload.Detail.Artifact.LastCorrectionBy == "" {
+		t.Fatalf("feedback detail = %#v, want correction metadata", feedbackPayload.Detail.Artifact)
+	}
+	if feedbackPayload.Detail.Artifact.LatestSource != "memory.feedback" {
+		t.Fatalf("feedback latest source = %q, want memory.feedback", feedbackPayload.Detail.Artifact.LatestSource)
+	}
+	if !strings.Contains(feedbackPayload.Detail.Content, "优先写 room note") {
+		t.Fatalf("feedback detail content missing correction note:\n%s", feedbackPayload.Detail.Content)
+	}
+	if preview := findPreviewBySession(feedbackPayload.Center.Previews, "session-memory"); preview == nil || !previewHasPath(preview.Items, roomArtifact.Path) {
+		t.Fatalf("feedback preview missing corrected room artifact: %#v", preview)
+	}
+
+	forgetResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory/"+roomArtifact.ID+"/forget",
+		`{"sourceVersion":`+strconv.Itoa(feedbackPayload.Detail.Artifact.Version)+`,"reason":"房间临时记忆已失效，避免继续注入错误上下文。"}`,
+	)
+	defer forgetResp.Body.Close()
+	if forgetResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory/:id/forget status = %d, want %d", forgetResp.StatusCode, http.StatusOK)
+	}
+
+	var forgetPayload struct {
+		Detail store.MemoryArtifactDetail `json:"detail"`
+		Center store.MemoryCenter         `json:"center"`
+		State  store.State                `json:"state"`
+	}
+	decodeJSON(t, forgetResp, &forgetPayload)
+	if !forgetPayload.Detail.Artifact.Forgotten || forgetPayload.Detail.Artifact.ForgetReason == "" {
+		t.Fatalf("forget detail = %#v, want forgotten artifact metadata", forgetPayload.Detail.Artifact)
+	}
+	if forgetPayload.Detail.Artifact.LatestSource != "memory.forget" {
+		t.Fatalf("forget latest source = %q, want memory.forget", forgetPayload.Detail.Artifact.LatestSource)
+	}
+	if preview := findPreviewBySession(forgetPayload.Center.Previews, "session-memory"); preview == nil || previewHasPath(preview.Items, roomArtifact.Path) {
+		t.Fatalf("forgotten room artifact still present in preview: %#v", preview)
+	}
+	if !strings.Contains(forgetPayload.Detail.Content, "房间临时记忆已失效") {
+		t.Fatalf("forget detail content missing forget reason:\n%s", forgetPayload.Detail.Content)
 	}
 
 	promotionResp := doJSONRequest(

@@ -604,6 +604,14 @@ export type MemoryArtifact = {
   latestActor?: string;
   digest?: string;
   sizeBytes?: number;
+  correctionCount?: number;
+  lastCorrectionAt?: string;
+  lastCorrectionBy?: string;
+  lastCorrectionNote?: string;
+  forgotten?: boolean;
+  forgottenAt?: string;
+  forgottenBy?: string;
+  forgetReason?: string;
   governance?: MemoryGovernance;
 };
 

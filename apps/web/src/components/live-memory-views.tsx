@@ -175,6 +175,22 @@ function promotionTone(status: MemoryPromotionStatus) {
   }
 }
 
+function memoryArtifactStatusLabel(artifact?: {
+  forgotten?: boolean;
+  correctionCount?: number;
+}) {
+  if (!artifact) {
+    return "未选择";
+  }
+  if (artifact.forgotten) {
+    return "forgotten / excluded from recall";
+  }
+  if ((artifact.correctionCount ?? 0) > 0) {
+    return `active / ${(artifact.correctionCount ?? 0)} corrections`;
+  }
+  return "active / recallable";
+}
+
 function ArtifactFact({
   label,
   value,
@@ -313,7 +329,7 @@ export function LiveMemoryContextRail() {
 
 export function LiveMemoryView() {
   const { state, loading, error, refresh } = usePhaseZeroState();
-  const { center, loading: centerLoading, error: centerError, updatePolicy, createPromotion, reviewPromotion } = useLiveMemoryCenter();
+  const { center, loading: centerLoading, error: centerError, updatePolicy, createPromotion, reviewPromotion, submitFeedback, forgetMemory } = useLiveMemoryCenter();
   const memory = state.memory;
   const session = state.auth.session;
   const canMutate = hasPermission(session, "memory.write");
@@ -344,6 +360,9 @@ export function LiveMemoryView() {
   const [promotionKind, setPromotionKind] = useState<MemoryPromotionKind>("skill");
   const [promotionTitle, setPromotionTitle] = useState("");
   const [promotionRationale, setPromotionRationale] = useState("");
+  const [feedbackSummary, setFeedbackSummary] = useState("Human Correction");
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [forgetReason, setForgetReason] = useState("");
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
@@ -408,6 +427,7 @@ export function LiveMemoryView() {
   const decisionArtifacts = memory.filter((item) => item.kind === "decision").length;
   const governedArtifacts = memory.filter((item) => item.governance?.mode).length;
   const promotedLedgers = memory.filter((item) => item.kind === "skill-ledger" || item.kind === "policy-ledger").length;
+  const artifactSupportsMutation = Boolean(selectedArtifact && selectedArtifact.path !== "repo-binding");
 
   async function runAction(action: string, task: () => Promise<void>) {
     setBusyAction(action);
@@ -456,6 +476,46 @@ export function LiveMemoryView() {
       setPromotionTitle("");
       setPromotionRationale("");
       setMutationSuccess(`${selectedArtifact.path} queued for ${promotionKindLabel(promotionKind)} review`);
+    });
+  }
+
+  async function handleSubmitFeedback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedArtifact) {
+      setMutationError("请先选择要纠正的 memory artifact");
+      return;
+    }
+
+    await runAction("submit-feedback", async () => {
+      const payload = await submitFeedback(selectedArtifact.id, {
+        sourceVersion: latestVersion?.version ?? selectedArtifact.version,
+        summary: feedbackSummary.trim(),
+        note: feedbackNote.trim(),
+      });
+      setDetail(payload.detail);
+      await refresh();
+      setFeedbackSummary("Human Correction");
+      setFeedbackNote("");
+      setMutationSuccess(`${selectedArtifact.path} correction 已写回 governed truth`);
+    });
+  }
+
+  async function handleForget(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedArtifact) {
+      setMutationError("请先选择要撤销的 memory artifact");
+      return;
+    }
+
+    await runAction("forget-artifact", async () => {
+      const payload = await forgetMemory(selectedArtifact.id, {
+        sourceVersion: latestVersion?.version ?? selectedArtifact.version,
+        reason: forgetReason.trim(),
+      });
+      setDetail(payload.detail);
+      await refresh();
+      setForgetReason("");
+      setMutationSuccess(`${selectedArtifact.path} 已从 recall preview 撤销`);
     });
   }
 
@@ -551,8 +611,13 @@ export function LiveMemoryView() {
                         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">{artifact.scope}</p>
                         <p className="mt-1.5 font-display text-[18px] font-bold leading-5">{artifact.path}</p>
                       </div>
-                      <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                        v{artifact.version ?? 0}
+                      <span
+                        className={cn(
+                          "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
+                          artifact.forgotten ? "bg-[var(--shock-pink)] text-white" : "bg-white"
+                        )}
+                      >
+                        {artifact.forgotten ? "forgotten" : `v${artifact.version ?? 0}`}
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-6">{artifact.summary}</p>
@@ -586,8 +651,17 @@ export function LiveMemoryView() {
               </p>
             ) : null}
 
-            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               <ArtifactFact label="Version" value={selectedArtifact ? `v${selectedArtifact.version ?? 0}` : "未选择"} />
+              <ArtifactFact
+                label="Status"
+                value={memoryArtifactStatusLabel(selectedArtifact)}
+                testID="memory-detail-status"
+              />
+              <ArtifactFact
+                label="Scope / Kind"
+                value={selectedArtifact ? `${selectedArtifact.scope} / ${selectedArtifact.kind}` : "未选择"}
+              />
               <ArtifactFact label="Latest Write" value={valueOrFallback(selectedArtifact?.latestWrite, "未记录")} />
               <ArtifactFact
                 label="Source / Actor"
@@ -604,6 +678,15 @@ export function LiveMemoryView() {
                     ? `${valueOrFallback(selectedArtifact.digest?.slice(0, 10), "n/a")} / ${formatBytes(selectedArtifact.sizeBytes)}`
                     : "未选择"
                 }
+              />
+              <ArtifactFact
+                label="Correction Trail"
+                value={
+                  selectedArtifact
+                    ? `${selectedArtifact.correctionCount ?? 0} corrections / ${valueOrFallback(selectedArtifact.lastCorrectionBy, "no human correction yet")}`
+                    : "未选择"
+                }
+                testID="memory-detail-correction-count"
               />
             </div>
 
@@ -630,6 +713,104 @@ export function LiveMemoryView() {
                   {diff.preview.join("\n")}
                 </pre>
               </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[0.95fr_minmax(0,1.05fr)]">
+              <form onSubmit={handleSubmitFeedback} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Correction / Feedback</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">把纠偏写回同一份 governed truth</h3>
+                  </div>
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    {artifactSupportsMutation ? "file-backed" : "read-only"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
+                  correction 会追加一条 human feedback 到同一份 memory artifact，并进入 version audit。不是另长 shadow note。
+                </p>
+                <div className="mt-4 space-y-3">
+                  <input
+                    data-testid="memory-feedback-summary"
+                    type="text"
+                    value={feedbackSummary}
+                    onChange={(event) => setFeedbackSummary(event.target.value)}
+                    disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null}
+                    className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+                    placeholder="Human Correction"
+                    required
+                  />
+                  <textarea
+                    data-testid="memory-feedback-note"
+                    value={feedbackNote}
+                    onChange={(event) => setFeedbackNote(event.target.value)}
+                    disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null}
+                    className="min-h-[140px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
+                    placeholder="写清为什么这条记忆需要被纠正，以及后续 retrieval 应该读哪条 truth。"
+                    required
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    data-testid="memory-feedback-submit"
+                    type="submit"
+                    disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null || !selectedArtifact}
+                    className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+                  >
+                    {busyAction === "submit-feedback" ? "writing..." : "write correction"}
+                  </button>
+                  <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                    {selectedArtifact?.forgotten ? "forgotten artifact 不再接受 correction。" : "下一版会带上 actor / source / version trace。"}
+                  </p>
+                </div>
+              </form>
+
+              <form onSubmit={handleForget} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Forget Surface</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">从 recall preview 撤销过期 artifact</h3>
+                  </div>
+                  <span
+                    className={cn(
+                      "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
+                      selectedArtifact?.forgotten ? "bg-[var(--shock-pink)] text-white" : "bg-[var(--shock-paper)]"
+                    )}
+                  >
+                    {selectedArtifact?.forgotten ? "forgotten" : "active"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
+                  forget 会保留 audit trail，但会把这条 artifact 从 next-run recall pack 中摘掉，避免继续注入过期上下文。
+                </p>
+                {selectedArtifact?.forgotten ? (
+                  <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-3 text-sm leading-6 text-white">
+                    forgotten by {valueOrFallback(selectedArtifact.forgottenBy, "unknown")} @ {formatTimestamp(selectedArtifact.forgottenAt)}。{valueOrFallback(selectedArtifact.forgetReason, "未记录原因")}
+                  </div>
+                ) : null}
+                <textarea
+                  data-testid="memory-forget-reason"
+                  value={forgetReason}
+                  onChange={(event) => setForgetReason(event.target.value)}
+                  disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null}
+                  className="mt-4 min-h-[140px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
+                  placeholder="说明为什么这条 artifact 应该从 recall pack 中撤销。"
+                  required
+                />
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    data-testid="memory-forget-submit"
+                    type="submit"
+                    disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null || !selectedArtifact}
+                    className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white disabled:opacity-60"
+                  >
+                    {busyAction === "forget-artifact" ? "forgetting..." : "forget from recall"}
+                  </button>
+                  <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                    {artifactSupportsMutation ? "会追加 forget audit，并从 preview 中移除。" : "当前 artifact 不是可变 file-backed memory。"}
+                  </p>
+                </div>
+              </form>
             </div>
           </Panel>
 

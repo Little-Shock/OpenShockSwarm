@@ -224,6 +224,30 @@ func upsertMemoryArtifact(items []MemoryArtifact, artifact MemoryArtifact) []Mem
 			if artifact.SizeBytes == 0 {
 				artifact.SizeBytes = items[index].SizeBytes
 			}
+			if artifact.CorrectionCount == 0 {
+				artifact.CorrectionCount = items[index].CorrectionCount
+			}
+			if strings.TrimSpace(artifact.LastCorrectionAt) == "" {
+				artifact.LastCorrectionAt = items[index].LastCorrectionAt
+			}
+			if strings.TrimSpace(artifact.LastCorrectionBy) == "" {
+				artifact.LastCorrectionBy = items[index].LastCorrectionBy
+			}
+			if strings.TrimSpace(artifact.LastCorrectionNote) == "" {
+				artifact.LastCorrectionNote = items[index].LastCorrectionNote
+			}
+			if !artifact.Forgotten {
+				artifact.Forgotten = items[index].Forgotten
+			}
+			if strings.TrimSpace(artifact.ForgottenAt) == "" {
+				artifact.ForgottenAt = items[index].ForgottenAt
+			}
+			if strings.TrimSpace(artifact.ForgottenBy) == "" {
+				artifact.ForgottenBy = items[index].ForgottenBy
+			}
+			if strings.TrimSpace(artifact.ForgetReason) == "" {
+				artifact.ForgetReason = items[index].ForgetReason
+			}
 			if strings.TrimSpace(artifact.Governance.Mode) == "" {
 				artifact.Governance = items[index].Governance
 			}

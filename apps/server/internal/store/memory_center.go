@@ -431,6 +431,9 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 		if artifact == nil {
 			continue
 		}
+		if artifact.Forgotten {
+			continue
+		}
 		version := latestMemoryArtifactVersion(snapshot, artifact.ID)
 		items = append(items, MemoryInjectionPreviewItem{
 			ArtifactID:  artifact.ID,
@@ -465,6 +468,7 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 		"memory.get",
 		"memory.write",
 		"memory.feedback",
+		"memory.forget",
 		"memory.promote",
 	}
 
@@ -745,6 +749,9 @@ func (s *Store) RequestMemoryPromotion(input MemoryPromotionRequestInput) (State
 	artifact := findMemoryArtifactByIDInSnapshot(s.state, input.MemoryID)
 	if artifact == nil {
 		return State{}, MemoryPromotion{}, MemoryCenter{}, ErrMemoryArtifactNotFound
+	}
+	if artifact.Forgotten {
+		return State{}, MemoryPromotion{}, MemoryCenter{}, ErrMemoryArtifactForgotten
 	}
 
 	version := latestMemoryArtifactVersion(s.state, artifact.ID)

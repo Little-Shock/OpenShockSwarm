@@ -30,22 +30,95 @@ func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMemoryRoutes(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
-	}
-
-	memoryID := strings.TrimPrefix(r.URL.Path, "/v1/memory/")
-	if strings.TrimSpace(memoryID) == "" {
+	trimmed := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/memory/"), "/")
+	if strings.TrimSpace(trimmed) == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory artifact not found"})
 		return
 	}
 
-	detail, ok := s.store.MemoryDetail(memoryID)
-	if !ok {
+	parts := strings.Split(trimmed, "/")
+	memoryID := strings.TrimSpace(parts[0])
+	if memoryID == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory artifact not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, detail)
+
+	if len(parts) == 1 {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+
+		detail, ok := s.store.MemoryDetail(memoryID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory artifact not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+		return
+	}
+
+	if len(parts) != 2 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory artifact route not found"})
+		return
+	}
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !s.requireSessionPermission(w, "memory.write") {
+		return
+	}
+
+	switch parts[1] {
+	case "feedback":
+		var req MemoryFeedbackRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+
+		snapshot := s.store.Snapshot()
+		nextState, detail, center, err := s.store.SubmitMemoryFeedback(memoryID, store.MemoryFeedbackInput{
+			SourceVersion: req.SourceVersion,
+			Summary:       req.Summary,
+			Note:          req.Note,
+			CorrectedBy:   currentAuthActor(snapshot.Auth.Session),
+		})
+		if err != nil {
+			writeMemoryError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"detail": detail,
+			"center": center,
+			"state":  nextState,
+		})
+	case "forget":
+		var req MemoryForgetRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+
+		snapshot := s.store.Snapshot()
+		nextState, detail, center, err := s.store.ForgetMemoryArtifact(memoryID, store.MemoryForgetInput{
+			SourceVersion: req.SourceVersion,
+			Reason:        req.Reason,
+			ForgottenBy:   currentAuthActor(snapshot.Auth.Session),
+		})
+		if err != nil {
+			writeMemoryError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"detail": detail,
+			"center": center,
+			"state":  nextState,
+		})
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory artifact route not found"})
+	}
 }
 
 type MemoryPolicyRequest struct {
@@ -68,6 +141,17 @@ type MemoryPromotionRequest struct {
 type MemoryPromotionReviewRequest struct {
 	Status     string `json:"status"`
 	ReviewNote string `json:"reviewNote"`
+}
+
+type MemoryFeedbackRequest struct {
+	SourceVersion int    `json:"sourceVersion"`
+	Summary       string `json:"summary"`
+	Note          string `json:"note"`
+}
+
+type MemoryForgetRequest struct {
+	SourceVersion int    `json:"sourceVersion"`
+	Reason        string `json:"reason"`
 }
 
 func (s *Server) handleMemoryCenter(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +299,13 @@ func writeMemoryError(w http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrMemoryPolicyMaxItemsInvalid),
 		errors.Is(err, store.ErrMemoryPromotionKindInvalid),
 		errors.Is(err, store.ErrMemoryPromotionTitleRequired),
-		errors.Is(err, store.ErrMemoryPromotionReviewInvalid):
+		errors.Is(err, store.ErrMemoryPromotionReviewInvalid),
+		errors.Is(err, store.ErrMemoryFeedbackNoteRequired),
+		errors.Is(err, store.ErrMemoryForgetReasonRequired),
+		errors.Is(err, store.ErrMemoryArtifactImmutable),
+		errors.Is(err, store.ErrMemoryArtifactForgotten),
+		errors.Is(err, store.ErrMemoryArtifactAlreadyForgotten),
+		errors.Is(err, store.ErrMemoryArtifactVersionConflict):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrMemoryArtifactNotFound),
 		errors.Is(err, store.ErrMemoryPromotionNotFound):

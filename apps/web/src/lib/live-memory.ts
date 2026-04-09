@@ -31,6 +31,14 @@ export type MemoryArtifactDetail = {
     latestActor?: string;
     digest?: string;
     sizeBytes?: number;
+    correctionCount?: number;
+    lastCorrectionAt?: string;
+    lastCorrectionBy?: string;
+    lastCorrectionNote?: string;
+    forgotten?: boolean;
+    forgottenAt?: string;
+    forgottenBy?: string;
+    forgetReason?: string;
     governance?: MemoryGovernance;
   };
   content?: string;
@@ -132,6 +140,17 @@ export type MemoryPromotionReviewInput = {
   reviewNote?: string;
 };
 
+export type MemoryFeedbackInput = {
+  sourceVersion?: number;
+  summary: string;
+  note: string;
+};
+
+export type MemoryForgetInput = {
+  sourceVersion?: number;
+  reason: string;
+};
+
 type MemoryPolicyResponse = {
   policy: MemoryInjectionPolicy;
   center: MemoryCenter;
@@ -139,6 +158,11 @@ type MemoryPolicyResponse = {
 
 type MemoryPromotionResponse = {
   promotion: MemoryPromotion;
+  center: MemoryCenter;
+};
+
+type MemoryArtifactMutationResponse = {
+  detail: MemoryArtifactDetail;
   center: MemoryCenter;
 };
 
@@ -265,6 +289,30 @@ export function useLiveMemoryCenter() {
     [commitCenter]
   );
 
+  const submitFeedback = useCallback(
+    async (memoryId: string, input: MemoryFeedbackInput) => {
+      const payload = await requestJSON<MemoryArtifactMutationResponse>(`/v1/memory/${memoryId}/feedback`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      commitCenter(payload.center);
+      return payload;
+    },
+    [commitCenter]
+  );
+
+  const forgetMemory = useCallback(
+    async (memoryId: string, input: MemoryForgetInput) => {
+      const payload = await requestJSON<MemoryArtifactMutationResponse>(`/v1/memory/${memoryId}/forget`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      commitCenter(payload.center);
+      return payload;
+    },
+    [commitCenter]
+  );
+
   return {
     center,
     loading,
@@ -273,5 +321,7 @@ export function useLiveMemoryCenter() {
     updatePolicy,
     createPromotion,
     reviewPromotion,
+    submitFeedback,
+    forgetMemory,
   };
 }

@@ -3,6 +3,8 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,28 @@ import (
 )
 
 const maxMemoryArtifactVersions = 8
+
+var (
+	ErrMemoryFeedbackNoteRequired     = errors.New("memory feedback note is required")
+	ErrMemoryForgetReasonRequired     = errors.New("memory forget reason is required")
+	ErrMemoryArtifactImmutable        = errors.New("memory artifact is not backed by a mutable file")
+	ErrMemoryArtifactAlreadyForgotten = errors.New("memory artifact is already forgotten")
+	ErrMemoryArtifactForgotten        = errors.New("memory artifact is forgotten")
+	ErrMemoryArtifactVersionConflict  = errors.New("memory artifact version is stale")
+)
+
+type MemoryFeedbackInput struct {
+	SourceVersion int
+	Summary       string
+	Note          string
+	CorrectedBy   string
+}
+
+type MemoryForgetInput struct {
+	SourceVersion int
+	Reason        string
+	ForgottenBy   string
+}
 
 func (s *Store) MemoryDetail(memoryID string) (MemoryArtifactDetail, bool) {
 	s.mu.Lock()
@@ -247,6 +271,94 @@ func (s *Store) recordMemoryArtifactWritesLocked(paths []string, latest, source,
 	}
 }
 
+func (s *Store) SubmitMemoryFeedback(memoryID string, input MemoryFeedbackInput) (State, MemoryArtifactDetail, MemoryCenter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	index, artifact, err := s.mutableMemoryArtifactLocked(memoryID, input.SourceVersion)
+	if err != nil {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, err
+	}
+
+	note := strings.TrimSpace(input.Note)
+	if note == "" {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, ErrMemoryFeedbackNoteRequired
+	}
+
+	summary := defaultString(strings.TrimSpace(input.Summary), "Human Correction")
+	actor := defaultString(strings.TrimSpace(input.CorrectedBy), "System")
+	recordedAt := time.Now().UTC().Format(time.RFC3339)
+
+	if err := appendMemoryArtifactMutationEntry(s.workspaceRoot, artifact.Path, "Human Correction", []string{
+		fmt.Sprintf("- time: %s", recordedAt),
+		fmt.Sprintf("- actor: %s", actor),
+		fmt.Sprintf("- source_version: v%d", artifact.Version),
+		fmt.Sprintf("- summary: %s", summary),
+		fmt.Sprintf("- note: %s", note),
+	}); err != nil {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, err
+	}
+
+	s.recordMemoryArtifactWriteLocked(artifact.Path, summary, "memory.feedback", actor)
+	s.state.Memory[index].CorrectionCount++
+	s.state.Memory[index].LastCorrectionAt = recordedAt
+	s.state.Memory[index].LastCorrectionBy = actor
+	s.state.Memory[index].LastCorrectionNote = note
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	detail := s.memoryDetailFromStateLocked(memoryID)
+	center := s.memoryCenterFromStateLocked(snapshot)
+	return snapshot, detail, center, nil
+}
+
+func (s *Store) ForgetMemoryArtifact(memoryID string, input MemoryForgetInput) (State, MemoryArtifactDetail, MemoryCenter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	index, artifact, err := s.mutableMemoryArtifactLocked(memoryID, input.SourceVersion)
+	if err != nil {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, err
+	}
+	if artifact.Forgotten {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, ErrMemoryArtifactAlreadyForgotten
+	}
+
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, ErrMemoryForgetReasonRequired
+	}
+
+	actor := defaultString(strings.TrimSpace(input.ForgottenBy), "System")
+	recordedAt := time.Now().UTC().Format(time.RFC3339)
+	if err := appendMemoryArtifactMutationEntry(s.workspaceRoot, artifact.Path, "Human Forget", []string{
+		fmt.Sprintf("- time: %s", recordedAt),
+		fmt.Sprintf("- actor: %s", actor),
+		fmt.Sprintf("- source_version: v%d", artifact.Version),
+		fmt.Sprintf("- reason: %s", reason),
+	}); err != nil {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, err
+	}
+
+	s.recordMemoryArtifactWriteLocked(artifact.Path, "Human Forget", "memory.forget", actor)
+	s.state.Memory[index].Forgotten = true
+	s.state.Memory[index].ForgottenAt = recordedAt
+	s.state.Memory[index].ForgottenBy = actor
+	s.state.Memory[index].ForgetReason = reason
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, MemoryArtifactDetail{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	detail := s.memoryDetailFromStateLocked(memoryID)
+	center := s.memoryCenterFromStateLocked(snapshot)
+	return snapshot, detail, center, nil
+}
+
 func describeMemoryArtifact(path string) (scope, kind, baseSummary string, governance MemoryGovernance) {
 	path = filepath.ToSlash(strings.TrimSpace(path))
 	scope = "workspace"
@@ -340,4 +452,81 @@ func readMemoryArtifactContent(root, path string) (string, string, int) {
 
 	sum := sha256.Sum256(body)
 	return string(body), hex.EncodeToString(sum[:]), len(body)
+}
+
+func (s *Store) mutableMemoryArtifactLocked(memoryID string, sourceVersion int) (int, MemoryArtifact, error) {
+	index := s.findMemoryArtifactIndexLocked(memoryID)
+	if index == -1 {
+		return -1, MemoryArtifact{}, ErrMemoryArtifactNotFound
+	}
+
+	if s.hydrateMemoryArtifactLocked(&s.state.Memory[index]) {
+		_ = s.persistLocked()
+	}
+
+	artifact := s.state.Memory[index]
+	if !memoryArtifactIsMutable(artifact) {
+		return -1, MemoryArtifact{}, ErrMemoryArtifactImmutable
+	}
+	if artifact.Forgotten {
+		return -1, MemoryArtifact{}, ErrMemoryArtifactForgotten
+	}
+	if sourceVersion > 0 && artifact.Version != sourceVersion {
+		return -1, MemoryArtifact{}, ErrMemoryArtifactVersionConflict
+	}
+	return index, artifact, nil
+}
+
+func (s *Store) findMemoryArtifactIndexLocked(memoryID string) int {
+	memoryID = strings.TrimSpace(memoryID)
+	for index := range s.state.Memory {
+		if s.state.Memory[index].ID == memoryID {
+			return index
+		}
+	}
+	return -1
+}
+
+func (s *Store) memoryDetailFromStateLocked(memoryID string) MemoryArtifactDetail {
+	index := s.findMemoryArtifactIndexLocked(memoryID)
+	if index == -1 {
+		return MemoryArtifactDetail{}
+	}
+	artifact := s.state.Memory[index]
+	versions := append([]MemoryArtifactVersion{}, s.state.MemoryVersions[artifact.ID]...)
+	content := ""
+	if len(versions) > 0 {
+		content = versions[len(versions)-1].Content
+	}
+	return MemoryArtifactDetail{
+		Artifact: artifact,
+		Content:  content,
+		Versions: versions,
+	}
+}
+
+func (s *Store) memoryCenterFromStateLocked(snapshot State) MemoryCenter {
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		state = defaultMemoryCenterState(time.Now().UTC().Format(time.RFC3339))
+	}
+	return buildMemoryCenter(snapshot, state)
+}
+
+func memoryArtifactIsMutable(artifact MemoryArtifact) bool {
+	path := filepath.ToSlash(strings.TrimSpace(artifact.Path))
+	return path != "" && path != "repo-binding"
+}
+
+func appendMemoryArtifactMutationEntry(root, artifactPath, heading string, lines []string) error {
+	if strings.TrimSpace(root) == "" {
+		return nil
+	}
+	artifactPath = filepath.ToSlash(strings.TrimSpace(artifactPath))
+	if artifactPath == "" || artifactPath == "repo-binding" {
+		return ErrMemoryArtifactImmutable
+	}
+
+	entry := "\n## " + strings.TrimSpace(heading) + "\n\n" + strings.Join(lines, "\n") + "\n"
+	return appendMarkdown(filepath.Join(root, filepath.FromSlash(artifactPath)), entry)
 }

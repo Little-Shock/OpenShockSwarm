@@ -26,6 +26,7 @@
     "test:headed-action-authz-matrix": "node ./scripts/headed-action-authz-matrix.mjs",
     "test:headed-approval-center-lifecycle": "node ./scripts/headed-approval-center-lifecycle.mjs",
     "test:headed-memory-governance": "node ./scripts/headed-memory-governance.mjs",
+    "test:headed-memory-viewer-correction-forget": "node ./scripts/headed-memory-viewer-correction-forget.mjs",
     "test:headed-notification-preference-delivery": "node ./scripts/headed-notification-preference-delivery.mjs",
     "test:headed-dm-followed-thread-saved-later": "node ./scripts/headed-dm-followed-thread-saved-later.mjs",
     "test:headed-device-auth-email-recovery": "node ./scripts/headed-device-auth-email-recovery.mjs",

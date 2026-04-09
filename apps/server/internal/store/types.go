@@ -560,19 +560,27 @@ type MemoryArtifactVersion struct {
 }
 
 type MemoryArtifact struct {
-	ID           string           `json:"id"`
-	Scope        string           `json:"scope"`
-	Kind         string           `json:"kind"`
-	Path         string           `json:"path"`
-	Summary      string           `json:"summary"`
-	UpdatedAt    string           `json:"updatedAt"`
-	Version      int              `json:"version"`
-	LatestWrite  string           `json:"latestWrite,omitempty"`
-	LatestSource string           `json:"latestSource,omitempty"`
-	LatestActor  string           `json:"latestActor,omitempty"`
-	Digest       string           `json:"digest,omitempty"`
-	SizeBytes    int              `json:"sizeBytes,omitempty"`
-	Governance   MemoryGovernance `json:"governance"`
+	ID                 string           `json:"id"`
+	Scope              string           `json:"scope"`
+	Kind               string           `json:"kind"`
+	Path               string           `json:"path"`
+	Summary            string           `json:"summary"`
+	UpdatedAt          string           `json:"updatedAt"`
+	Version            int              `json:"version"`
+	LatestWrite        string           `json:"latestWrite,omitempty"`
+	LatestSource       string           `json:"latestSource,omitempty"`
+	LatestActor        string           `json:"latestActor,omitempty"`
+	Digest             string           `json:"digest,omitempty"`
+	SizeBytes          int              `json:"sizeBytes,omitempty"`
+	CorrectionCount    int              `json:"correctionCount,omitempty"`
+	LastCorrectionAt   string           `json:"lastCorrectionAt,omitempty"`
+	LastCorrectionBy   string           `json:"lastCorrectionBy,omitempty"`
+	LastCorrectionNote string           `json:"lastCorrectionNote,omitempty"`
+	Forgotten          bool             `json:"forgotten,omitempty"`
+	ForgottenAt        string           `json:"forgottenAt,omitempty"`
+	ForgottenBy        string           `json:"forgottenBy,omitempty"`
+	ForgetReason       string           `json:"forgetReason,omitempty"`
+	Governance         MemoryGovernance `json:"governance"`
 }
 
 type MemoryArtifactDetail struct {

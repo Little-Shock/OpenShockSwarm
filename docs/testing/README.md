@@ -68,6 +68,8 @@
   - `TKT-26` 的 room / issue -> board planning mirror -> room exact replay，与轻量 card 语言 evidence
 - [Test Report 2026-04-09 Runtime Lease Conflict / Scheduler Hardening](./Test-Report-2026-04-09-runtime-lease-conflict-scheduler-hardening.md)
   - `TKT-31` 的 lease conflict recovery、scheduler failover continuity 与 `/setup` `/agents` live decision-reason evidence
+- [Test Report 2026-04-09 Memory Viewer / Correction / Forget Surface](./Test-Report-2026-04-09-memory-viewer-correction-forget.md)
+  - `TKT-42` 的 memory detail audit、human correction/forget 写回与 recall preview removal headed evidence
 
 常用入口：
 
@@ -91,6 +93,8 @@
   - 验证 browser push / email policy、subscriber、receipt、retry
 - `pnpm test:headed-memory-governance`
   - 验证 memory center 的 injection preview、promotion queue、governed ledger
+- `pnpm test:headed-memory-viewer-correction-forget`
+  - 验证 memory detail 的 correction / forget mutation、version audit 与 recall preview removal
 - `pnpm test:headed-stop-resume-follow-thread`
   - 验证 stop / resume / follow-thread exact replay
 - `pnpm test:headed-dm-followed-thread-saved-later`
