@@ -22,7 +22,7 @@ import { RunControlSurface } from "@/components/run-control-surface";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { buildRunHistoryEntries, sanitizeRunHistoryPage } from "@/lib/phase-zero-helpers";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
-import type { Issue, Room, Run, RunHistoryPage, Session } from "@/lib/phase-zero-types";
+import type { AgentHandoff, Issue, Room, Run, RunHistoryPage, Session } from "@/lib/phase-zero-types";
 
 type PanelTone = "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
 const CONTROL_API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
@@ -125,6 +125,90 @@ function LiveStateNotice({
       <p className="font-display text-[22px] font-bold leading-7">{title}</p>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{message}</p>
     </div>
+  );
+}
+
+function handoffStatusLabel(status: AgentHandoff["status"]) {
+  switch (status) {
+    case "acknowledged":
+      return "ack";
+    case "blocked":
+      return "blocked";
+    case "completed":
+      return "done";
+    default:
+      return "requested";
+  }
+}
+
+function handoffStatusTone(status: AgentHandoff["status"]) {
+  switch (status) {
+    case "acknowledged":
+      return "bg-[var(--shock-lime)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    case "completed":
+      return "bg-[var(--shock-ink)] text-white";
+    default:
+      return "bg-[var(--shock-yellow)]";
+  }
+}
+
+function AgentMailboxPanel({
+  agentId,
+  handoffs,
+}: {
+  agentId: string;
+  handoffs: AgentHandoff[];
+}) {
+  return (
+    <Panel tone="paper">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Mailbox Ledger</p>
+          <h3 className="mt-2 font-display text-2xl font-bold">
+            {handoffs.length} 条 formal handoff
+          </h3>
+        </div>
+        <Link
+          href={`/mailbox?agentId=${agentId}`}
+          className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+        >
+          打开 Mailbox
+        </Link>
+      </div>
+      <div className="mt-4 space-y-3">
+        {handoffs.length === 0 ? (
+          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+            当前这位 Agent 还没有挂住 formal handoff。后续一旦被 request / ack / blocked / complete 命中，这里会直接显示 ledger。
+          </p>
+        ) : (
+          handoffs.slice(0, 3).map((handoff) => (
+            <Link
+              key={handoff.id}
+              href={`/mailbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
+              className="block rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-display text-lg font-semibold">{handoff.title}</p>
+                <span
+                  className={cn(
+                    "rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                    handoffStatusTone(handoff.status)
+                  )}
+                >
+                  {handoffStatusLabel(handoff.status)}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                {handoff.fromAgent} {"->"} {handoff.toAgent}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
+            </Link>
+          ))
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -483,6 +567,9 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
   const relatedPullRequests = state.pullRequests.filter((pullRequest) =>
     runsForAgent.some((run) => run.id === pullRequest.runId)
   );
+  const relatedHandoffs = state.mailbox.filter(
+    (handoff) => handoff.fromAgentId === agent.id || handoff.toAgentId === agent.id
+  );
 
   return (
     <OpenShockShell
@@ -512,6 +599,7 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
           inbox={state.inbox}
           runtimes={readRuntimeRegistry(state)}
         />
+        <AgentMailboxPanel agentId={agent.id} handoffs={relatedHandoffs} />
         <AgentDetailView agent={agent} runsForAgent={runsForAgent} />
       </div>
     </OpenShockShell>

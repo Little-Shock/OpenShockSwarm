@@ -94,6 +94,20 @@ type WorkspaceMemberPreferencesInput = {
   githubHandle: string;
 };
 
+type CreateHandoffInput = {
+  roomId: string;
+  fromAgentId: string;
+  toAgentId: string;
+  title: string;
+  summary: string;
+};
+
+type UpdateHandoffInput = {
+  action: "acknowledged" | "blocked" | "completed";
+  actingAgentId: string;
+  note?: string;
+};
+
 type PhaseZeroStreamPresence = {
   onlineMachines: number;
   busyMachines: number;
@@ -152,6 +166,8 @@ type PhaseZeroContextValue = {
   updatePullRequest: (pullRequestId: string, input: UpdatePullRequestInput) => Promise<StateMutationResponse>;
   controlRun: (runId: string, input: RunControlInput) => Promise<StateMutationResponse>;
   applyInboxDecision: (inboxItemId: string, decision: InboxDecision) => Promise<StateMutationResponse>;
+  createHandoff: (input: CreateHandoffInput) => Promise<StateMutationResponse>;
+  updateHandoff: (handoffId: string, input: UpdateHandoffInput) => Promise<StateMutationResponse>;
 };
 
 const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
@@ -239,6 +255,7 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
   machines: [],
   runtimes: [],
   inbox: [],
+  mailbox: [],
   pullRequests: [],
   sessions: [],
   runtimeLeases: [],
@@ -800,6 +817,30 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     }
   }
 
+  async function createHandoff(input: CreateHandoffInput) {
+    const payload = await readJSON<StateMutationResponse>("/v1/mailbox", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
+  async function updateHandoff(handoffId: string, input: UpdateHandoffInput) {
+    const payload = await readJSON<StateMutationResponse>(`/v1/mailbox/${handoffId}`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
   return {
     state,
     approvalCenter,
@@ -831,6 +872,8 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     updatePullRequest,
     controlRun,
     applyInboxDecision,
+    createHandoff,
+    updateHandoff,
   };
 }
 

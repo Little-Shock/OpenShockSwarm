@@ -506,7 +506,7 @@
 ## TC-039 Agent Mailbox / Handoff Governance Ledger
 
 - 业务目标: 确认 Agent-to-Agent 正式通信和交接可被追踪，而不是藏在隐式提示词里。
-- 当前执行状态: Blocked
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-21`
 - 前置条件: 存在 Agent Mailbox、handoff lifecycle 和 human-visible ledger。
 - 测试步骤:
@@ -514,7 +514,7 @@
   2. 观察 `ack / blocked / complete` 生命周期。
   3. 在 Room / Inbox / Mailbox 中检查上下文回链和人类 override。
 - 预期结果: 正式交接可见、可回放、可审计。
-- 业务结论: 当前 repo 已有 room / inbox / stop-resume 基线，但还没有正式 Agent Mailbox 与 handoff ledger，所以这条用例保持 `Blocked`，留给 `TKT-35`。
+- 业务结论: 2026 年 4 月 9 日 `TKT-35` 已新增 `/v1/mailbox` create/detail/update contract、Mailbox ledger UI，以及 headed `pnpm test:headed-agent-mailbox-handoff`。当前 `docs/testing/Test-Report-2026-04-09-agent-mailbox-handoff.md` 已记录 create -> blocked(note required) -> acknowledged -> completed 的 exact replay，并验证 room backlink、`/inbox?handoffId=...` 聚焦、owner transfer 与 closeout writeback 都读同一份 truth，因此这条用例当前转为 `Pass`；更重的多 Agent team topology / reviewer-tester loop 继续留给 `TC-041 / TKT-36`。
 
 ## TC-040 Config Persistence / Recovery
 

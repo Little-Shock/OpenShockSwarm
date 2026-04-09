@@ -376,15 +376,46 @@ type RuntimeScheduler struct {
 }
 
 type InboxItem struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Kind    string `json:"kind"`
-	Room    string `json:"room"`
-	Time    string `json:"time"`
-	Summary string `json:"summary"`
-	Action  string `json:"action"`
-	Href    string `json:"href"`
-	GuardID string `json:"guardId,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Kind      string `json:"kind"`
+	Room      string `json:"room"`
+	Time      string `json:"time"`
+	Summary   string `json:"summary"`
+	Action    string `json:"action"`
+	Href      string `json:"href"`
+	GuardID   string `json:"guardId,omitempty"`
+	HandoffID string `json:"handoffId,omitempty"`
+}
+
+type MailboxMessage struct {
+	ID         string `json:"id"`
+	HandoffID  string `json:"handoffId"`
+	Kind       string `json:"kind"`
+	AuthorID   string `json:"authorId"`
+	AuthorName string `json:"authorName"`
+	Body       string `json:"body"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+type AgentHandoff struct {
+	ID          string           `json:"id"`
+	Title       string           `json:"title"`
+	Summary     string           `json:"summary"`
+	Status      string           `json:"status"`
+	IssueKey    string           `json:"issueKey"`
+	RoomID      string           `json:"roomId"`
+	RunID       string           `json:"runId"`
+	FromAgentID string           `json:"fromAgentId"`
+	FromAgent   string           `json:"fromAgent"`
+	ToAgentID   string           `json:"toAgentId"`
+	ToAgent     string           `json:"toAgent"`
+	InboxItemID string           `json:"inboxItemId,omitempty"`
+	RequestedAt string           `json:"requestedAt"`
+	UpdatedAt   string           `json:"updatedAt"`
+	LastAction  string           `json:"lastAction"`
+	LastNote    string           `json:"lastNote,omitempty"`
+	Messages    []MailboxMessage `json:"messages"`
 }
 
 type PullRequest struct {
@@ -606,6 +637,7 @@ type State struct {
 	Machines              []Machine                          `json:"machines"`
 	Runtimes              []RuntimeRecord                    `json:"runtimes"`
 	Inbox                 []InboxItem                        `json:"inbox"`
+	Mailbox               []AgentHandoff                     `json:"mailbox"`
 	PullRequests          []PullRequest                      `json:"pullRequests"`
 	Sessions              []Session                          `json:"sessions"`
 	RuntimeLeases         []RuntimeLease                     `json:"runtimeLeases,omitempty"`
@@ -630,9 +662,9 @@ type RunHistoryEntry struct {
 }
 
 type RunHistoryPage struct {
-	Items     []RunHistoryEntry `json:"items"`
-	NextCursor string           `json:"nextCursor,omitempty"`
-	TotalCount int              `json:"totalCount"`
+	Items      []RunHistoryEntry `json:"items"`
+	NextCursor string            `json:"nextCursor,omitempty"`
+	TotalCount int               `json:"totalCount"`
 }
 
 type RunDetail struct {

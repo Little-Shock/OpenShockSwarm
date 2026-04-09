@@ -195,6 +195,14 @@ func (s *Store) hydrateMissingDefaults() {
 			s.state.PullRequests[index].Conversation = []PullRequestConversationEntry{}
 		}
 	}
+	if s.state.Mailbox == nil {
+		s.state.Mailbox = defaults.Mailbox
+	}
+	for index := range s.state.Mailbox {
+		if s.state.Mailbox[index].Messages == nil {
+			s.state.Mailbox[index].Messages = []MailboxMessage{}
+		}
+	}
 	if len(s.state.Sessions) == 0 {
 		s.state.Sessions = defaults.Sessions
 	}
