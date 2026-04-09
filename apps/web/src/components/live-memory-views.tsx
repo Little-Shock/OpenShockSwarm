@@ -6,6 +6,7 @@ import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import {
   type MemoryArtifactDetail,
+  type MemoryCleanupRun,
   type MemoryInjectionPolicy,
   type MemoryInjectionPreview,
   type MemoryPromotion,
@@ -175,6 +176,34 @@ function promotionTone(status: MemoryPromotionStatus) {
   }
 }
 
+function cleanupTone(status?: MemoryCleanupRun["status"]) {
+  return status === "cleaned" ? "yellow" : "white";
+}
+
+function cleanupStatsSummary(stats: MemoryCleanupRun["stats"]) {
+  if (!stats.totalRemoved) {
+    return "queue already aligned";
+  }
+
+  const parts = [];
+  if (stats.dedupedPending) {
+    parts.push(`${stats.dedupedPending} dedupe`);
+  }
+  if (stats.supersededPending) {
+    parts.push(`${stats.supersededPending} superseded`);
+  }
+  if (stats.forgottenSourcePending) {
+    parts.push(`${stats.forgottenSourcePending} forgotten`);
+  }
+  if (stats.expiredPending || stats.expiredRejected) {
+    parts.push(`${stats.expiredPending + stats.expiredRejected} ttl`);
+  }
+  if (stats.orphanedPromotions) {
+    parts.push(`${stats.orphanedPromotions} orphaned`);
+  }
+  return parts.join(" / ");
+}
+
 function memoryArtifactStatusLabel(artifact?: {
   forgotten?: boolean;
   correctionCount?: number;
@@ -329,7 +358,7 @@ export function LiveMemoryContextRail() {
 
 export function LiveMemoryView() {
   const { state, loading, error, refresh } = usePhaseZeroState();
-  const { center, loading: centerLoading, error: centerError, updatePolicy, createPromotion, reviewPromotion, submitFeedback, forgetMemory } = useLiveMemoryCenter();
+  const { center, loading: centerLoading, error: centerError, updatePolicy, createPromotion, reviewPromotion, runCleanup, submitFeedback, forgetMemory } = useLiveMemoryCenter();
   const memory = state.memory;
   const session = state.auth.session;
   const canMutate = hasPermission(session, "memory.write");
@@ -527,6 +556,13 @@ export function LiveMemoryView() {
       });
       await refresh();
       setMutationSuccess(`${promotion.title} marked ${promotionStatusLabel(status)}`);
+    });
+  }
+
+  async function handleRunCleanup() {
+    await runAction("run-cleanup", async () => {
+      const payload = await runCleanup();
+      setMutationSuccess(payload.cleanup.summary);
     });
   }
 
@@ -1059,6 +1095,125 @@ export function LiveMemoryView() {
             </div>
 
             <MutationFeedback error={mutationError} success={mutationSuccess} />
+          </Panel>
+
+          <Panel tone="white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Cleanup Worker</p>
+                <h2 className="mt-2 font-display text-3xl font-bold">TTL / dedupe / recovery ledger</h2>
+              </div>
+              <button
+                type="button"
+                data-testid="memory-cleanup-run"
+                disabled={!canMutate || busyAction !== null}
+                onClick={() => void handleRunCleanup()}
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+              >
+                {busyAction === "run-cleanup" ? "cleaning..." : "run cleanup"}
+              </button>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+              cleanup 会把 stale pending / expired rejected / forgotten-source promotions 从同一条 governance queue 里收掉，并把恢复建议记进 ledger。
+            </p>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <ArtifactFact
+                label="Last Run"
+                value={center.cleanup.lastRunAt ? formatTimestamp(center.cleanup.lastRunAt) : "尚未执行"}
+                testID="memory-cleanup-last-run"
+              />
+              <ArtifactFact
+                label="Last Actor"
+                value={valueOrFallback(center.cleanup.lastRunBy, "System")}
+                testID="memory-cleanup-last-actor"
+              />
+              <ArtifactFact
+                label="Last Status"
+                value={center.cleanup.lastStatus === "cleaned" ? "cleaned" : center.cleanup.lastRunAt ? "no_changes" : "尚未执行"}
+                testID="memory-cleanup-last-status"
+              />
+              <ArtifactFact
+                label="Removed"
+                value={`${center.cleanup.lastStats.totalRemoved} entries`}
+                testID="memory-cleanup-removed-count"
+              />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[0.92fr_minmax(0,1.08fr)]">
+              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+                <StatusRow
+                  label="Cleanup Summary"
+                  value={valueOrFallback(center.cleanup.lastSummary, "还没有 cleanup ledger")}
+                  tone={cleanupTone(center.cleanup.lastStatus)}
+                  testID="memory-cleanup-last-summary"
+                />
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <StatusRow label="Dedupe" value={`${center.cleanup.lastStats.dedupedPending} removed`} tone="white" />
+                  <StatusRow label="Superseded" value={`${center.cleanup.lastStats.supersededPending} removed`} tone="white" />
+                  <StatusRow label="Forgotten Source" value={`${center.cleanup.lastStats.forgottenSourcePending} removed`} tone="white" />
+                  <StatusRow
+                    label="TTL / Orphaned"
+                    value={`${center.cleanup.lastStats.expiredPending + center.cleanup.lastStats.expiredRejected + center.cleanup.lastStats.orphanedPromotions} removed`}
+                    tone="white"
+                  />
+                </div>
+                <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Recovery Note</p>
+                  <p data-testid="memory-cleanup-last-recovery" className="mt-3 text-sm leading-6">
+                    {valueOrFallback(center.cleanup.lastRecovery, "queue already aligned; current promotions can proceed to review.")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Cleanup Ledger</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">recent worker runs</h3>
+                  </div>
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    {center.cleanup.ledger.length} runs
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {center.cleanup.ledger.length === 0 ? (
+                    <EmptyState
+                      title="cleanup 还没跑过"
+                      message="第一次 cleanup 会把 stale promotion queue 收平，并在这里记录 dedupe / TTL / recovery truth。"
+                      testID="memory-cleanup-empty"
+                    />
+                  ) : (
+                    center.cleanup.ledger.map((entry) => (
+                      <div key={entry.id} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+                              {valueOrFallback(entry.triggeredBy, "System")} @ {formatTimestamp(entry.triggeredAt)}
+                            </p>
+                            <h4 className="mt-2 font-display text-2xl font-bold">{entry.summary}</h4>
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+                              cleanupTone(entry.status) === "yellow" ? "bg-[var(--shock-yellow)]" : "bg-white"
+                            )}
+                          >
+                            {entry.status === "cleaned" ? "cleaned" : "no_changes"}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6">{entry.recovery}</p>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <StatusRow label="Removed" value={`${entry.stats.totalRemoved} entries`} tone={cleanupTone(entry.status)} />
+                          <StatusRow label="Breakdown" value={cleanupStatsSummary(entry.stats)} tone="white" />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
           </Panel>
 
           <Panel tone={canMutate ? "paper" : "white"}>

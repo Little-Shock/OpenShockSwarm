@@ -22,8 +22,15 @@ const (
 	memoryPromotionStatusApproved = "approved"
 	memoryPromotionStatusRejected = "rejected"
 
+	memoryCleanupStatusCleaned   = "cleaned"
+	memoryCleanupStatusNoChanges = "no_changes"
+
 	defaultMemoryPolicyMaxItems = 6
 	maxMemoryPolicyMaxItems     = 12
+
+	memoryCleanupPendingTTL       = 72 * time.Hour
+	memoryCleanupRejectedTTL      = 14 * 24 * time.Hour
+	maxMemoryCleanupLedgerEntries = 8
 )
 
 var (
@@ -96,10 +103,41 @@ type MemoryPromotion struct {
 	ReviewNote     string `json:"reviewNote,omitempty"`
 }
 
+type MemoryCleanupStats struct {
+	DedupedPending         int `json:"dedupedPending"`
+	SupersededPending      int `json:"supersededPending"`
+	ForgottenSourcePending int `json:"forgottenSourcePending"`
+	ExpiredPending         int `json:"expiredPending"`
+	ExpiredRejected        int `json:"expiredRejected"`
+	OrphanedPromotions     int `json:"orphanedPromotions"`
+	TotalRemoved           int `json:"totalRemoved"`
+}
+
+type MemoryCleanupRun struct {
+	ID          string             `json:"id"`
+	TriggeredAt string             `json:"triggeredAt"`
+	TriggeredBy string             `json:"triggeredBy"`
+	Status      string             `json:"status"`
+	Summary     string             `json:"summary"`
+	Recovery    string             `json:"recovery"`
+	Stats       MemoryCleanupStats `json:"stats"`
+}
+
+type MemoryCleanupState struct {
+	LastRunAt    string             `json:"lastRunAt,omitempty"`
+	LastRunBy    string             `json:"lastRunBy,omitempty"`
+	LastStatus   string             `json:"lastStatus,omitempty"`
+	LastSummary  string             `json:"lastSummary,omitempty"`
+	LastRecovery string             `json:"lastRecovery,omitempty"`
+	LastStats    MemoryCleanupStats `json:"lastStats"`
+	Ledger       []MemoryCleanupRun `json:"ledger"`
+}
+
 type MemoryCenter struct {
 	Policy        MemoryInjectionPolicy    `json:"policy"`
 	Previews      []MemoryInjectionPreview `json:"previews"`
 	Promotions    []MemoryPromotion        `json:"promotions"`
+	Cleanup       MemoryCleanupState       `json:"cleanup"`
 	PendingCount  int                      `json:"pendingCount"`
 	ApprovedCount int                      `json:"approvedCount"`
 	RejectedCount int                      `json:"rejectedCount"`
@@ -133,6 +171,7 @@ type MemoryPromotionReviewInput struct {
 type memoryCenterStateFile struct {
 	Policy     MemoryInjectionPolicy `json:"policy"`
 	Promotions []MemoryPromotion     `json:"promotions"`
+	Cleanup    MemoryCleanupState    `json:"cleanup"`
 }
 
 func defaultMemoryCenterState(now string) memoryCenterStateFile {
@@ -148,6 +187,9 @@ func defaultMemoryCenterState(now string) memoryCenterStateFile {
 			UpdatedBy:                "System",
 		},
 		Promotions: []MemoryPromotion{},
+		Cleanup: MemoryCleanupState{
+			Ledger: []MemoryCleanupRun{},
+		},
 	}
 }
 
@@ -188,6 +230,15 @@ func normalizeMemoryPromotionReviewStatus(value string) (string, error) {
 		return memoryPromotionStatusRejected, nil
 	default:
 		return "", ErrMemoryPromotionReviewInvalid
+	}
+}
+
+func normalizeMemoryCleanupStatus(value string) string {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case memoryCleanupStatusCleaned:
+		return memoryCleanupStatusCleaned
+	default:
+		return memoryCleanupStatusNoChanges
 	}
 }
 
@@ -301,7 +352,82 @@ func (s *Store) normalizeMemoryCenterStateLocked(state memoryCenterStateFile) me
 	})
 
 	state.Promotions = normalizedPromotions
+	state.Cleanup = normalizeMemoryCleanupState(state.Cleanup, now)
 	return state
+}
+
+func normalizeMemoryCleanupState(state MemoryCleanupState, now string) MemoryCleanupState {
+	state.LastRunAt = strings.TrimSpace(state.LastRunAt)
+	state.LastRunBy = strings.TrimSpace(state.LastRunBy)
+	state.LastStatus = normalizeMemoryCleanupStatus(state.LastStatus)
+	state.LastSummary = strings.TrimSpace(state.LastSummary)
+	state.LastRecovery = strings.TrimSpace(state.LastRecovery)
+	state.LastStats.TotalRemoved = memoryCleanupTotalRemoved(state.LastStats)
+
+	normalizedLedger := make([]MemoryCleanupRun, 0, len(state.Ledger))
+	for _, entry := range state.Ledger {
+		if normalized, ok := normalizeMemoryCleanupRun(entry, now); ok {
+			normalizedLedger = append(normalizedLedger, normalized)
+		}
+	}
+	sort.SliceStable(normalizedLedger, func(i, j int) bool {
+		if normalizedLedger[i].TriggeredAt != normalizedLedger[j].TriggeredAt {
+			return normalizedLedger[i].TriggeredAt > normalizedLedger[j].TriggeredAt
+		}
+		return normalizedLedger[i].ID < normalizedLedger[j].ID
+	})
+	if len(normalizedLedger) > maxMemoryCleanupLedgerEntries {
+		normalizedLedger = normalizedLedger[:maxMemoryCleanupLedgerEntries]
+	}
+	state.Ledger = normalizedLedger
+
+	if state.LastRunAt == "" && len(state.Ledger) > 0 {
+		state.LastRunAt = state.Ledger[0].TriggeredAt
+		state.LastRunBy = state.Ledger[0].TriggeredBy
+		state.LastStatus = state.Ledger[0].Status
+		state.LastSummary = state.Ledger[0].Summary
+		state.LastRecovery = state.Ledger[0].Recovery
+		state.LastStats = state.Ledger[0].Stats
+	}
+	if state.LastStatus == "" {
+		state.LastStatus = memoryCleanupStatusNoChanges
+	}
+	if state.LastSummary == "" && state.LastRunAt != "" {
+		state.LastSummary = "cleanup run recorded"
+	}
+	if state.LastRecovery == "" && state.LastRunAt != "" {
+		state.LastRecovery = "queue already aligned; current promotions can proceed to review."
+	}
+	return state
+}
+
+func normalizeMemoryCleanupRun(entry MemoryCleanupRun, now string) (MemoryCleanupRun, bool) {
+	entry.TriggeredAt = defaultString(strings.TrimSpace(entry.TriggeredAt), now)
+	entry.TriggeredBy = defaultString(strings.TrimSpace(entry.TriggeredBy), "System")
+	entry.Status = normalizeMemoryCleanupStatus(entry.Status)
+	entry.Summary = strings.TrimSpace(entry.Summary)
+	entry.Recovery = strings.TrimSpace(entry.Recovery)
+	entry.Stats.TotalRemoved = memoryCleanupTotalRemoved(entry.Stats)
+	if entry.Summary == "" && entry.Stats.TotalRemoved == 0 {
+		return MemoryCleanupRun{}, false
+	}
+	if entry.Summary == "" {
+		entry.Summary = "cleanup run recorded"
+	}
+	if entry.Recovery == "" {
+		entry.Recovery = "queue already aligned; current promotions can proceed to review."
+	}
+	entry.ID = defaultString(strings.TrimSpace(entry.ID), fmt.Sprintf("memory-cleanup-%s", slugify(entry.TriggeredAt+"-"+entry.Summary)))
+	return entry, true
+}
+
+func memoryCleanupTotalRemoved(stats MemoryCleanupStats) int {
+	return stats.DedupedPending +
+		stats.SupersededPending +
+		stats.ForgottenSourcePending +
+		stats.ExpiredPending +
+		stats.ExpiredRejected +
+		stats.OrphanedPromotions
 }
 
 func memoryPromotionStatusRank(status string) int {
@@ -349,6 +475,7 @@ func buildMemoryCenter(snapshot State, state memoryCenterStateFile) MemoryCenter
 		Policy:     state.Policy,
 		Previews:   buildMemoryInjectionPreviews(snapshot, state.Policy),
 		Promotions: append([]MemoryPromotion{}, state.Promotions...),
+		Cleanup:    state.Cleanup,
 	}
 
 	for _, promotion := range state.Promotions {
@@ -639,6 +766,172 @@ func latestMemoryArtifactVersion(snapshot State, memoryID string) MemoryArtifact
 		return MemoryArtifactVersion{}
 	}
 	return versions[len(versions)-1]
+}
+
+func (s *Store) RunMemoryCleanup(triggeredBy string) (State, MemoryCleanupRun, MemoryCenter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ensureMemorySubsystemLocked()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryCleanupRun{}, MemoryCenter{}, err
+	}
+
+	run := s.runMemoryCleanupLocked(&state, defaultString(strings.TrimSpace(triggeredBy), "System"))
+	state = s.normalizeMemoryCenterStateLocked(state)
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, MemoryCleanupRun{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, run, buildMemoryCenter(snapshot, state), nil
+}
+
+func (s *Store) runMemoryCleanupLocked(state *memoryCenterStateFile, actor string) MemoryCleanupRun {
+	now := time.Now().UTC()
+	artifactVersions := map[string]int{}
+	for _, artifact := range s.state.Memory {
+		artifactVersions[artifact.ID] = artifact.Version
+	}
+
+	kept := make([]MemoryPromotion, 0, len(state.Promotions))
+	seenPending := map[string]bool{}
+	stats := MemoryCleanupStats{}
+
+	for _, promotion := range state.Promotions {
+		artifact := findMemoryArtifactByIDInSnapshot(s.state, promotion.MemoryID)
+		if promotion.Status != memoryPromotionStatusApproved && artifact == nil {
+			stats.OrphanedPromotions++
+			continue
+		}
+
+		switch promotion.Status {
+		case memoryPromotionStatusPending:
+			if artifact != nil && artifact.Forgotten {
+				stats.ForgottenSourcePending++
+				continue
+			}
+			if latestVersion := artifactVersions[promotion.MemoryID]; artifact != nil && latestVersion > promotion.SourceVersion && promotion.SourceVersion > 0 {
+				stats.SupersededPending++
+				continue
+			}
+			if memoryCleanupExpired(promotion.ProposedAt, now, memoryCleanupPendingTTL) {
+				stats.ExpiredPending++
+				continue
+			}
+
+			key := memoryPromotionCleanupKey(promotion)
+			if seenPending[key] {
+				stats.DedupedPending++
+				continue
+			}
+			seenPending[key] = true
+		case memoryPromotionStatusRejected:
+			if artifact != nil && artifact.Forgotten {
+				stats.ForgottenSourcePending++
+				continue
+			}
+			if memoryCleanupExpired(defaultString(strings.TrimSpace(promotion.ReviewedAt), promotion.ProposedAt), now, memoryCleanupRejectedTTL) {
+				stats.ExpiredRejected++
+				continue
+			}
+		}
+
+		kept = append(kept, promotion)
+	}
+
+	state.Promotions = kept
+	stats.TotalRemoved = memoryCleanupTotalRemoved(stats)
+	pendingAfter := countPromotionsByStatus(kept, memoryPromotionStatusPending)
+
+	run := MemoryCleanupRun{
+		ID:          fmt.Sprintf("memory-cleanup-%d", now.UnixNano()),
+		TriggeredAt: now.Format(time.RFC3339),
+		TriggeredBy: actor,
+		Status:      memoryCleanupStatusNoChanges,
+		Summary:     fmt.Sprintf("cleanup noop; %d pending review remain", pendingAfter),
+		Recovery:    "queue already aligned; current promotions can proceed to review.",
+		Stats:       stats,
+	}
+
+	if stats.TotalRemoved > 0 {
+		run.Status = memoryCleanupStatusCleaned
+		run.Summary = fmt.Sprintf("removed %d stale queue entries; %d pending review remain", stats.TotalRemoved, pendingAfter)
+		run.Recovery = buildMemoryCleanupRecovery(stats, pendingAfter)
+	} else if pendingAfter > 0 {
+		run.Recovery = fmt.Sprintf("%d pending promotion requests remain live; review or promote the newest artifact versions directly.", pendingAfter)
+	}
+
+	state.Cleanup.LastRunAt = run.TriggeredAt
+	state.Cleanup.LastRunBy = run.TriggeredBy
+	state.Cleanup.LastStatus = run.Status
+	state.Cleanup.LastSummary = run.Summary
+	state.Cleanup.LastRecovery = run.Recovery
+	state.Cleanup.LastStats = run.Stats
+	state.Cleanup.Ledger = append([]MemoryCleanupRun{run}, state.Cleanup.Ledger...)
+	if len(state.Cleanup.Ledger) > maxMemoryCleanupLedgerEntries {
+		state.Cleanup.Ledger = state.Cleanup.Ledger[:maxMemoryCleanupLedgerEntries]
+	}
+
+	return run
+}
+
+func memoryCleanupExpired(value string, now time.Time, ttl time.Duration) bool {
+	if ttl <= 0 {
+		return false
+	}
+	recordedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return now.Sub(recordedAt) > ttl
+}
+
+func memoryPromotionCleanupKey(promotion MemoryPromotion) string {
+	return strings.Join([]string{
+		strings.TrimSpace(promotion.MemoryID),
+		strings.TrimSpace(promotion.Kind),
+		slugify(strings.ToLower(strings.TrimSpace(promotion.Title))),
+		filepath.ToSlash(strings.TrimSpace(promotion.TargetPath)),
+	}, "|")
+}
+
+func countPromotionsByStatus(promotions []MemoryPromotion, status string) int {
+	count := 0
+	for _, promotion := range promotions {
+		if promotion.Status == status {
+			count++
+		}
+	}
+	return count
+}
+
+func buildMemoryCleanupRecovery(stats MemoryCleanupStats, pendingAfter int) string {
+	parts := []string{}
+	if stats.DedupedPending > 0 {
+		parts = append(parts, fmt.Sprintf("%d duplicate pending request(s) collapsed to the newest exact head", stats.DedupedPending))
+	}
+	if stats.SupersededPending > 0 {
+		parts = append(parts, fmt.Sprintf("%d pending request(s) dropped because the source artifact moved to a newer version", stats.SupersededPending))
+	}
+	if stats.ForgottenSourcePending > 0 {
+		parts = append(parts, fmt.Sprintf("%d request(s) referencing forgotten artifacts were pruned", stats.ForgottenSourcePending))
+	}
+	if stats.ExpiredPending > 0 || stats.ExpiredRejected > 0 {
+		parts = append(parts, fmt.Sprintf("%d expired queue entry(ies) were removed by TTL", stats.ExpiredPending+stats.ExpiredRejected))
+	}
+	if stats.OrphanedPromotions > 0 {
+		parts = append(parts, fmt.Sprintf("%d orphaned queue entry(ies) were removed", stats.OrphanedPromotions))
+	}
+	if pendingAfter > 0 {
+		parts = append(parts, fmt.Sprintf("%d pending review request(s) remain live", pendingAfter))
+	}
+	if len(parts) == 0 {
+		return "queue already aligned; current promotions can proceed to review."
+	}
+	return strings.Join(parts, " / ") + "."
 }
 
 func findMemoryArtifactByPathInSnapshot(snapshot State, path string) *MemoryArtifact {

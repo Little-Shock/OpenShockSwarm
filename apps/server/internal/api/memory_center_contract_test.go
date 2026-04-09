@@ -208,6 +208,151 @@ func TestMemoryCenterRoutesExposePolicyPreviewAndPromotionLifecycle(t *testing.T
 	}
 }
 
+func TestMemoryCenterCleanupRoutePrunesQueueAndKeepsPromotionFlowLive(t *testing.T) {
+	root := t.TempDir()
+	backingStore, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	snapshot := backingStore.Snapshot()
+	decisionArtifact := findMemoryArtifactByPath(snapshot.Memory, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	roomArtifact := findMemoryArtifactByPath(snapshot.Memory, filepath.ToSlash(filepath.Join("notes", "rooms", "room-memory.md")))
+	workspaceArtifact := findMemoryArtifactByPath(snapshot.Memory, "MEMORY.md")
+	if decisionArtifact == nil || roomArtifact == nil || workspaceArtifact == nil {
+		t.Fatalf("seeded artifacts missing: decision=%#v room=%#v workspace=%#v", decisionArtifact, roomArtifact, workspaceArtifact)
+	}
+
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          "skill",
+		Title:         "Room Conflict Triage",
+		Rationale:     "older duplicate",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate older) error = %v", err)
+	}
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          "skill",
+		Title:         "Room Conflict Triage",
+		Rationale:     "newer duplicate",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate newer) error = %v", err)
+	}
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      workspaceArtifact.ID,
+		SourceVersion: workspaceArtifact.Version,
+		Kind:          "policy",
+		Title:         "Workspace Guardrail Policy",
+		Rationale:     "becomes stale after feedback",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(stale pending) error = %v", err)
+	}
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      roomArtifact.ID,
+		SourceVersion: roomArtifact.Version,
+		Kind:          "skill",
+		Title:         "Temporary Room Scratchpad",
+		Rationale:     "removed once source is forgotten",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(forgotten pending) error = %v", err)
+	}
+	if _, _, _, err := backingStore.SubmitMemoryFeedback(workspaceArtifact.ID, store.MemoryFeedbackInput{
+		SourceVersion: workspaceArtifact.Version,
+		Summary:       "Workspace cleanup refresh",
+		Note:          "advance artifact version so the old promotion request becomes stale",
+		CorrectedBy:   "Larkspur",
+	}); err != nil {
+		t.Fatalf("SubmitMemoryFeedback(workspace) error = %v", err)
+	}
+	if _, _, _, err := backingStore.ForgetMemoryArtifact(roomArtifact.ID, store.MemoryForgetInput{
+		SourceVersion: roomArtifact.Version,
+		Reason:        "room scratchpad is obsolete and should leave the recall pack",
+		ForgottenBy:   "Larkspur",
+	}); err != nil {
+		t.Fatalf("ForgetMemoryArtifact(room) error = %v", err)
+	}
+
+	cleanupResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/cleanup", "")
+	defer cleanupResp.Body.Close()
+	if cleanupResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/cleanup status = %d, want %d", cleanupResp.StatusCode, http.StatusOK)
+	}
+
+	var cleanupPayload struct {
+		Cleanup store.MemoryCleanupRun `json:"cleanup"`
+		Center  store.MemoryCenter     `json:"center"`
+		State   store.State            `json:"state"`
+	}
+	decodeJSON(t, cleanupResp, &cleanupPayload)
+	if cleanupPayload.Cleanup.Status != "cleaned" {
+		t.Fatalf("cleanup payload = %#v, want cleaned status", cleanupPayload.Cleanup)
+	}
+	if cleanupPayload.Cleanup.Stats.DedupedPending != 1 ||
+		cleanupPayload.Cleanup.Stats.SupersededPending != 1 ||
+		cleanupPayload.Cleanup.Stats.ForgottenSourcePending != 1 {
+		t.Fatalf("cleanup stats = %#v, want dedupe + superseded + forgotten pruning", cleanupPayload.Cleanup.Stats)
+	}
+	if cleanupPayload.Center.PendingCount != 1 || len(cleanupPayload.Center.Cleanup.Ledger) == 0 {
+		t.Fatalf("cleanup center = %#v, want one live pending request + cleanup ledger", cleanupPayload.Center)
+	}
+
+	decisionArtifact = findMemoryArtifactByPath(cleanupPayload.State.Memory, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	if decisionArtifact == nil {
+		t.Fatalf("decision artifact missing after cleanup state")
+	}
+
+	promotionResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/promotions",
+		`{"memoryId":"`+decisionArtifact.ID+`","sourceVersion":`+strconv.Itoa(decisionArtifact.Version)+`,"kind":"policy","title":"Room Recovery Priority","rationale":"cleanup should leave a healthy queue for fresh promotions"}`,
+	)
+	defer promotionResp.Body.Close()
+	if promotionResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/memory-center/promotions after cleanup status = %d, want %d", promotionResp.StatusCode, http.StatusCreated)
+	}
+
+	var promotionPayload struct {
+		Promotion store.MemoryPromotion `json:"promotion"`
+		Center    store.MemoryCenter    `json:"center"`
+	}
+	decodeJSON(t, promotionResp, &promotionPayload)
+	if promotionPayload.Promotion.Status != "pending_review" {
+		t.Fatalf("promotion after cleanup = %#v, want pending review", promotionPayload.Promotion)
+	}
+
+	reviewResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/promotions/"+promotionPayload.Promotion.ID+"/review",
+		`{"status":"approved","reviewNote":"cleanup preserved the promotion path"}`,
+	)
+	defer reviewResp.Body.Close()
+	if reviewResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/promotions/:id/review after cleanup status = %d, want %d", reviewResp.StatusCode, http.StatusOK)
+	}
+
+	var reviewPayload struct {
+		Promotion store.MemoryPromotion `json:"promotion"`
+		Center    store.MemoryCenter    `json:"center"`
+	}
+	decodeJSON(t, reviewResp, &reviewPayload)
+	if reviewPayload.Promotion.Status != "approved" || reviewPayload.Promotion.TargetMemoryID == "" {
+		t.Fatalf("review after cleanup = %#v, want approved ledger target", reviewPayload.Promotion)
+	}
+	preview := findPreviewBySession(reviewPayload.Center.Previews, "session-memory")
+	if preview == nil || !previewHasPath(preview.Items, filepath.ToSlash(filepath.Join("notes", "policies.md"))) {
+		t.Fatalf("preview after cleanup->promote flow missing policies ledger: %#v", preview)
+	}
+}
+
 func findPreviewBySession(previews []store.MemoryInjectionPreview, sessionID string) *store.MemoryInjectionPreview {
 	for index := range previews {
 		if previews[index].SessionID == sessionID {
