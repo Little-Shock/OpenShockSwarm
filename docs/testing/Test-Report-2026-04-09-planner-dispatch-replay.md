@@ -1,7 +1,7 @@
 # 2026-04-09 Planner Dispatch / First-Instruction Replay Report
 
 - Command: `pnpm test:headed-planner-dispatch-replay -- --report docs/testing/Test-Report-2026-04-09-planner-dispatch-replay.md`
-- Artifacts Dir: `/tmp/openshock-tkt53-planner-dispatch-bc4DXk`
+- Artifacts Dir: `/tmp/openshock-tkt53-planner-dispatch-d8NTw9`
 
 ## Results
 
@@ -12,7 +12,7 @@
 
 ## Screenshots
 
-- room-after-board-create: /tmp/openshock-tkt53-planner-dispatch-bc4DXk/screenshots/01-room-after-board-create.png
-- agents-after-planner-assignment: /tmp/openshock-tkt53-planner-dispatch-bc4DXk/screenshots/02-agents-after-planner-assignment.png
-- agents-after-blocked-escalation: /tmp/openshock-tkt53-planner-dispatch-bc4DXk/screenshots/03-agents-after-blocked-escalation.png
-- agents-after-final-response: /tmp/openshock-tkt53-planner-dispatch-bc4DXk/screenshots/04-agents-after-final-response.png
+- room-after-board-create: /tmp/openshock-tkt53-planner-dispatch-d8NTw9/screenshots/01-room-after-board-create.png
+- agents-after-planner-assignment: /tmp/openshock-tkt53-planner-dispatch-d8NTw9/screenshots/02-agents-after-planner-assignment.png
+- agents-after-blocked-escalation: /tmp/openshock-tkt53-planner-dispatch-d8NTw9/screenshots/03-agents-after-blocked-escalation.png
+- agents-after-final-response: /tmp/openshock-tkt53-planner-dispatch-d8NTw9/screenshots/04-agents-after-final-response.png
