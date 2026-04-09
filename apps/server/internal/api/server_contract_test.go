@@ -1199,7 +1199,7 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 		Author:         "CodexDockmaster",
 		Provider:       "github",
 		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/91",
-		ReviewDecision: "REVIEW_REQUIRED",
+		ReviewDecision: "APPROVED",
 	})
 	if err != nil {
 		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
@@ -1223,6 +1223,21 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpsertPullRequestConversationFromWebhook() error = %v", err)
 	}
+	if _, _, _, _, err := s.UpsertNotificationSubscriber(store.NotificationSubscriberUpsertInput{
+		Channel:    "browser_push",
+		Target:     "https://ops.example.test/review-console",
+		Label:      "Review Console",
+		Preference: "all",
+		Status:     "ready",
+		Source:     "contract-test",
+	}); err != nil {
+		t.Fatalf("UpsertNotificationSubscriber() error = %v", err)
+	}
+	if _, _, run, err := s.DispatchNotificationFanout(); err != nil {
+		t.Fatalf("DispatchNotificationFanout() error = %v", err)
+	} else if run.Delivered == 0 {
+		t.Fatalf("DispatchNotificationFanout() delivered = %d, want > 0", run.Delivered)
+	}
 
 	github := &fakeGitHubClient{
 		synced: map[int]githubsvc.PullRequest{
@@ -1234,7 +1249,7 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 				HeadRefName:    created.Branch,
 				BaseRefName:    "main",
 				Author:         "CodexDockmaster",
-				ReviewDecision: "REVIEW_REQUIRED",
+				ReviewDecision: "APPROVED",
 			},
 		},
 	}
@@ -1267,6 +1282,41 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	}
 	if len(detail.RelatedInbox) == 0 {
 		t.Fatalf("detail related inbox = %#v, want PR-linked inbox card", detail.RelatedInbox)
+	}
+	if detail.Delivery.Status != "ready" || !detail.Delivery.ReleaseReady {
+		t.Fatalf("detail delivery gate status = %#v, want ready + releaseReady", detail.Delivery)
+	}
+	if len(detail.Delivery.Gates) != 4 {
+		t.Fatalf("detail delivery gates = %#v, want 4 gates", detail.Delivery.Gates)
+	}
+	gateByID := map[string]store.PullRequestDeliveryGate{}
+	for _, gate := range detail.Delivery.Gates {
+		gateByID[gate.ID] = gate
+	}
+	if gateByID["review-merge"].Status != "ready" {
+		t.Fatalf("review gate = %#v, want ready", gateByID["review-merge"])
+	}
+	if gateByID["notification-delivery"].Status != "ready" {
+		t.Fatalf("notification gate = %#v, want ready", gateByID["notification-delivery"])
+	}
+	if len(detail.Delivery.Templates) == 0 {
+		t.Fatalf("detail delivery templates = %#v, want review notification template", detail.Delivery.Templates)
+	}
+	template := detail.Delivery.Templates[0]
+	if template.TemplateID != "ops_review" || template.Status != "ready" || template.ReadyDeliveries == 0 || template.SentReceipts == 0 {
+		t.Fatalf("detail delivery template = %#v, want ready ops_review delivery with sent receipt", template)
+	}
+	if detail.Delivery.HandoffNote.Title == "" || len(detail.Delivery.HandoffNote.Lines) < 4 {
+		t.Fatalf("detail handoff note = %#v, want populated operator handoff note", detail.Delivery.HandoffNote)
+	}
+	evidenceByID := map[string]store.PullRequestDeliveryEvidence{}
+	for _, item := range detail.Delivery.Evidence {
+		evidenceByID[item.ID] = item
+	}
+	for _, evidenceID := range []string{"release-contract", "remote-pr", "review-conversation", "notification-templates"} {
+		if _, ok := evidenceByID[evidenceID]; !ok {
+			t.Fatalf("detail delivery evidence missing %q in %#v", evidenceID, detail.Delivery.Evidence)
+		}
 	}
 }
 

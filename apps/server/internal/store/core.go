@@ -66,6 +66,7 @@ func (s *Store) RoomDetail(roomID string) (RoomDetail, bool) {
 
 func (s *Store) PullRequestDetail(pullRequestID string) (PullRequestDetail, bool) {
 	snapshot := s.Snapshot()
+	notificationCenter := s.NotificationCenter()
 	for _, item := range snapshot.PullRequests {
 		if item.ID != pullRequestID {
 			continue
@@ -95,6 +96,7 @@ func (s *Store) PullRequestDetail(pullRequestID string) (PullRequestDetail, bool
 			Issue:        issue,
 			Conversation: conversation,
 			RelatedInbox: relatedInbox,
+			Delivery:     buildPullRequestDeliveryEntry(snapshot, notificationCenter, item, room, run, issue, relatedInbox, conversation),
 		}, true
 	}
 	return PullRequestDetail{}, false
