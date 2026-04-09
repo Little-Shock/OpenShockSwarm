@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.5
+**版本:** 1.6
 **更新日期:** 2026 年 4 月 9 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -378,6 +378,25 @@
   - 同一条 room 的前序 run 可被 reopen，且回到 room run tab 时仍锚定当前 active continuity
 - Checklist: `CHK-06`
 - Test Cases: `TC-043`
+
+## TKT-47 Mobile Web Light Observation / Notification Triage
+
+- 状态: `review`
+- 优先级: `P1`
+- 目标: 把 mobile web 上的 `/inbox` 收成“能打开、能查看、能处理轻量通知”的 exact triage 面，而不是把桌面 workbench 整套硬塞进手机。
+- 范围:
+  - mobile-only triage summary card（open / unread / blocked / recent）
+  - approval center signal card 的 mobile density 收缩
+  - guard / backlinks / recent ledger 的折叠式 reveal
+  - mobile headed verification for `/inbox`
+- 依赖: `TKT-10` `TKT-11`
+- Done When:
+  - 390px 级视口下 `/inbox` 不出现横向溢出
+  - 首屏能直接看到 open triage 摘要与 decision，不需要先横向滚动或穿过整块 guard copy
+  - 更重的 notification policy / subscriber / delivery truth 继续明确回跳到 `/settings`
+  - 有独立 headed mobile walkthrough 证据，而不是拿桌面截图代替
+- Checklist: `CHK-11`
+- Test Cases: `TC-044`
 
 ---
 

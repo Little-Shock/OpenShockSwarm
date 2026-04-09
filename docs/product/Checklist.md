@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.5
+**版本:** 1.6
 **更新日期:** 2026 年 4 月 9 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -223,10 +223,11 @@
   - [x] notifications 基础对象和接口已经出现
   - [x] `/settings` 现在直接消费 `/v1/notifications`，可写 workspace browser/email policy、current browser subscriber、email subscriber，并展示 latest worker receipts
   - [x] browser push / email fanout 已能把 blocked / review / approval 信号主动推出去，失败 / retry 也有 explicit `lastError` / receipt truth
+  - [x] `/inbox` 在 mobile web 下现在收成轻量通知处理面：首屏只保留 open / unread / blocked / recent 摘要、直接 decision 与可折叠 backlinks / guard，重策略继续回 `/settings`
 - 当前 GAP:
   - [ ] 邀请、邮箱验证、密码重置仍未接到同一 notification template / delivery chain
   - [ ] @提及、mailbox 新消息、跨设备恢复触达等更细粒度通知策略仍未补齐
-- 对应 Test Cases: `TC-017`
+- 对应 Test Cases: `TC-017` `TC-044`
 
 ### CHK-12 工作流 I: 执行隔离与权限控制
 
@@ -426,7 +427,7 @@
 - `CHK-04` `CHK-14` `CHK-15` -> `TKT-01` `TKT-02` `TKT-03`
 - `CHK-07` -> `TKT-04` `TKT-05` `TKT-06`
 - `CHK-13` `CHK-12` -> `TKT-07` `TKT-08` `TKT-09`
-- `CHK-08` `CHK-11` -> `TKT-10` `TKT-11`
+- `CHK-08` `CHK-11` -> `TKT-10` `TKT-11` `TKT-47`
 - `CHK-10` -> `TKT-12`
 - `CHK-09` -> `TKT-13`
 - `CHK-14` -> `TKT-14`

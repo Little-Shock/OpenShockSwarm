@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
-**版本:** 1.3
-**更新日期:** 2026 年 4 月 8 日
+**版本:** 1.4
+**更新日期:** 2026 年 4 月 9 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -567,3 +567,17 @@
   3. 从 room history 里 reopen 一条 prior run，再跳回 room run tab，确认 room 重新锚定当前 active continuity，而不是停在旧 session。
 - 预期结果: `/runs` 是 paginated history surface；run detail / room run tab 能稳定暴露 resume context；prior-run reopen 不会把 room continuity 锚错到 stale session。
 - 业务结论: 2026 年 4 月 9 日 `TKT-40` 新增 `/v1/runs/history`、`/v1/runs/:id/detail`、`pnpm test:headed-run-history-resume-context` 与对应 `docs/testing/Test-Report-2026-04-09-run-history-resume-context.md`。当前浏览器 exact replay 已验证 `/runs` 首屏只展示最新 history page，`Load Older Runs` 才会展开 `run_runtime_00`，run detail 会显示 `session-runtime` 的 resume context 与 same-room history，reopen prior run 后 room run tab 也会重新锚定当前 `session-runtime` 而不是旧 continuity，因此这条用例当前转为 `Pass`。
+
+## TC-044 Mobile Web Notification Triage
+
+- 业务目标: 确认 mobile web 不需要独立工作台，也能在 `/inbox` 上完成轻量通知查看与处理，而不会被桌面密度直接压垮。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-11`
+- 前置条件: web、server 可启动，`/inbox` 已直接消费 `/v1/approval-center`。
+- 测试步骤:
+  1. 以 390px mobile viewport 打开 `/inbox`。
+  2. 检查 mobile triage 卡片是否直接给出 `open / unread / blocked / recent` 摘要，并保留回跳 `/settings` 的入口。
+  3. 抽查首张 signal card 的 `Open Context`、decision 与 details disclosure，确认 guard / backlinks 展开后仍无横向溢出。
+  4. 展开 mobile recent ledger，确认 recent resolution/status 回写仍可被查看。
+- 预期结果: `/inbox` 在手机上可以被打开、查看并完成轻量 triage；更重的策略编辑继续回 `/settings`，而不是把桌面工作台整块复制到 mobile。
+- 业务结论: 2026 年 4 月 9 日 `TKT-47` 新增 `pnpm test:headed-mobile-notification-triage` 与对应 `docs/testing/Test-Report-2026-04-09-mobile-notification-triage.md`。当前 headed Chromium mobile replay 已验证 `/inbox` 在 390px 视口下无横向溢出、mobile triage 摘要初始值为 `3 / 3 / 1 / 1`，首张 signal card 高度压到 640px 以下，并把 guard / backlinks / recent ledger 收成按需展开，因此这条 mobile light-notification 路径当前可按 `Pass` 收口。

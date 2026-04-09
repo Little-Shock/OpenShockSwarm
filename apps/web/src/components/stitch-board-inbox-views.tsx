@@ -214,6 +214,26 @@ function SurfaceStateMessage({
   );
 }
 
+function TriageFactTile({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[var(--shock-shadow-sm)]"
+    >
+      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">{label}</p>
+      <p className="mt-1 font-display text-[18px] font-bold leading-none">{value}</p>
+    </div>
+  );
+}
+
 export function StitchBoardView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -791,6 +811,33 @@ export function StitchInboxView() {
               </div>
 
               <div className="mt-4 space-y-3">
+                <div
+                  data-testid="approval-center-mobile-triage"
+                  className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] p-4 shadow-[var(--shock-shadow-sm)] md:hidden"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Mobile Triage</p>
+                      <h2 className="mt-2 font-display text-[22px] font-bold leading-6">轻量通知只先围 `/inbox` 收。</h2>
+                      <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
+                        手机端不复刻整套桌面工作台，只保留 open / unread / blocked 信号与直接 decision；更重的策略设置继续回 `/settings`。
+                      </p>
+                    </div>
+                    <Link
+                      href="/settings"
+                      data-testid="approval-center-mobile-settings-link"
+                      className="inline-flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                    >
+                      Notification Settings
+                    </Link>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <TriageFactTile label="Open" value={centerLoading || error ? "…" : String(approvalCenter.openCount)} testId="approval-center-mobile-open" />
+                    <TriageFactTile label="Unread" value={centerLoading || error ? "…" : String(approvalCenter.unreadCount)} testId="approval-center-mobile-unread" />
+                    <TriageFactTile label="Blocked" value={centerLoading || error ? "…" : String(blockedCount)} testId="approval-center-mobile-blocked" />
+                    <TriageFactTile label="Recent" value={centerLoading || error ? "…" : String(approvalCenter.recentCount)} testId="approval-center-mobile-recent" />
+                  </div>
+                </div>
                 {centerLoading ? (
                   <SurfaceStateMessage title="正在同步审批中心" message="等待 server 返回当前 `/v1/state + /v1/approval-center` 真值。" />
                 ) : error ? (
@@ -813,18 +860,32 @@ export function StitchInboxView() {
                         ? `/rooms/${item.roomId}?tab=${preferredRoomTab}`
                         : item.href;
                     const runHref = item.roomId && item.runId ? `/rooms/${item.roomId}?tab=run` : item.runId ? `/runs/${item.runId}` : null;
+                    const detailLinks = [
+                      { label: "Room", href: roomHref, external: false, testId: `approval-center-room-link-${item.id}` },
+                      runHref ? { label: "Run", href: runHref, external: false, testId: `approval-center-run-link-${item.id}` } : null,
+                      pullRequest?.url
+                        ? { label: "PR", href: pullRequest.url, external: true, testId: `approval-center-pr-link-${item.id}` }
+                        : null,
+                      pullRequest
+                        ? { label: "PR Detail", href: `/pull-requests/${pullRequest.id}`, external: false, testId: `approval-center-pr-detail-link-${item.id}` }
+                        : null,
+                    ].filter(Boolean) as Array<{ label: string; href: string; external: boolean; testId: string }>;
+                    const mobileDetailSummary =
+                      item.blockedDeliveries > 0
+                        ? `${item.deliveryTargets} targets · ${item.blockedDeliveries} blocked`
+                        : `${item.deliveryTargets} targets · ${item.time}`;
 
                     return (
                     <article
                       key={item.id}
                       data-testid={`approval-center-signal-${item.id}`}
                       className={cn(
-                        "grid gap-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)] xl:grid-cols-[48px_minmax(0,1fr)_180px]",
+                        "grid gap-4 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)] md:grid-cols-[40px_minmax(0,1fr)] xl:grid-cols-[48px_minmax(0,1fr)_180px]",
                         index === 0 && "border-l-[6px] border-l-[var(--shock-yellow)]",
                         index === 1 && "border-l-[6px] border-l-[var(--shock-purple)]"
                       )}
                     >
-                      <div className="flex h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-[#f7f7f7] text-base">
+                      <div className="hidden h-10 w-10 items-center justify-center border-2 border-[var(--shock-ink)] bg-[#f7f7f7] text-base md:flex">
                         {signalIcon(item.kind)}
                       </div>
                       <div>
@@ -851,11 +912,12 @@ export function StitchInboxView() {
                           {pullRequest ? (
                             <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)]">{pullRequestStatusLabel(pullRequest.status)}</span>
                           ) : null}
+                          <span className="font-mono text-[9px] text-[color:rgba(24,20,14,0.48)] md:hidden">{mobileDetailSummary}</span>
                         </div>
                         <h3 className="mt-2 font-display text-[18px] font-bold leading-6">{item.title}</h3>
                         <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{item.summary}</p>
                         {guard ? (
-                          <div className="mt-4">
+                          <div className="mt-4 hidden md:block">
                             <DestructiveGuardCard
                               guard={guard}
                               compact
@@ -864,46 +926,102 @@ export function StitchInboxView() {
                             />
                           </div>
                         ) : null}
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <div className="mt-4 hidden flex-wrap gap-2 md:flex">
+                          {detailLinks.map((link) =>
+                            link.external ? (
+                              <a
+                                key={link.testId}
+                                data-testid={link.testId}
+                                href={link.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={cn(
+                                  "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px]",
+                                  link.label === "PR" ? "bg-[var(--shock-yellow)]" : "bg-white"
+                                )}
+                              >
+                                {link.label}
+                              </a>
+                            ) : (
+                              <Link
+                                key={link.testId}
+                                data-testid={link.testId}
+                                href={link.href}
+                                className={cn(
+                                  "border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px]",
+                                  link.label === "Room" ? "bg-[var(--shock-paper)]" : "bg-white"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                            )
+                          )}
+                        </div>
+                        <div className="mt-4 space-y-3 md:hidden">
                           <Link
-                            data-testid={`approval-center-room-link-${item.id}`}
-                            href={roomHref}
-                            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px]"
+                            data-testid={`approval-center-open-context-mobile-${item.id}`}
+                            href={item.href}
+                            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                           >
-                            Room
+                            Open Context
                           </Link>
-                          {runHref ? (
-                            <Link
-                              data-testid={`approval-center-run-link-${item.id}`}
-                              href={runHref}
-                              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
+                          {guard || detailLinks.length > 0 ? (
+                            <details
+                              data-testid={`approval-center-mobile-details-${item.id}`}
+                              className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
                             >
-                              Run
-                            </Link>
-                          ) : null}
-                          {pullRequest?.url ? (
-                            <a
-                              data-testid={`approval-center-pr-link-${item.id}`}
-                              href={pullRequest.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
-                            >
-                              PR
-                            </a>
-                          ) : null}
-                          {pullRequest ? (
-                            <Link
-                              data-testid={`approval-center-pr-detail-link-${item.id}`}
-                              href={`/pull-requests/${pullRequest.id}`}
-                              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
-                            >
-                              PR Detail
-                            </Link>
+                              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.7)]">
+                                <span>details / guard / links</span>
+                                <span aria-hidden="true">+</span>
+                              </summary>
+                              <div className="mt-3 space-y-3">
+                                {guard ? (
+                                  <DestructiveGuardCard
+                                    guard={guard}
+                                    compact
+                                    contextHref={item.runId && item.roomId ? `/rooms/${item.roomId}?tab=run` : roomHref}
+                                    testIdPrefix="approval-center-guard"
+                                  />
+                                ) : null}
+                                {detailLinks.length > 0 ? (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {detailLinks.map((link) =>
+                                      link.external ? (
+                                        <a
+                                          key={`mobile-${link.testId}`}
+                                          data-testid={`mobile-${link.testId}`}
+                                          href={link.href}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className={cn(
+                                            "inline-flex min-h-[44px] items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                                            link.label === "PR" ? "bg-[var(--shock-yellow)]" : "bg-white"
+                                          )}
+                                        >
+                                          {link.label}
+                                        </a>
+                                      ) : (
+                                        <Link
+                                          key={`mobile-${link.testId}`}
+                                          data-testid={`mobile-${link.testId}`}
+                                          href={link.href}
+                                          className={cn(
+                                            "inline-flex min-h-[44px] items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                                            link.label === "Room" ? "bg-[var(--shock-paper)]" : "bg-white"
+                                          )}
+                                        >
+                                          {link.label}
+                                        </Link>
+                                      )
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </details>
                           ) : null}
                         </div>
                       </div>
-                      <div className="flex flex-col gap-2 xl:items-end">
+                      <div className="grid gap-2 sm:grid-cols-2 md:flex md:flex-col xl:items-end">
                         {item.decisionOptions.map((decision) => (
                           <button
                             key={decision}
@@ -911,18 +1029,18 @@ export function StitchInboxView() {
                             disabled={busyId === item.id || !hasSessionPermission(session, permissionForInboxAction(item, decision))}
                             onClick={() => void handleInboxDecision(item, decision)}
                             className={cn(
-                              "inline-flex min-w-[140px] items-center justify-center border-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60",
+                              "inline-flex min-h-[44px] w-full items-center justify-center border-2 border-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60 md:min-w-[140px]",
                               decisionTone(decision)
                             )}
                           >
                             {decisionLabel(decision)}
                           </button>
                         ))}
-                        <Link href={item.href} className="font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2">
+                        <Link href={item.href} className="hidden font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2 md:inline-flex">
                           Open Context
                         </Link>
                         {actionError?.id === item.id ? (
-                          <p className="max-w-[200px] text-right font-mono text-[10px] text-[var(--shock-pink)]">{actionError.message}</p>
+                          <p className="max-w-[200px] text-left font-mono text-[10px] text-[var(--shock-pink)] md:text-right">{actionError.message}</p>
                         ) : null}
                       </div>
                     </article>
@@ -932,6 +1050,53 @@ export function StitchInboxView() {
               </div>
 
               <div className="mt-6 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
+                <details data-testid="approval-center-mobile-recent-ledger" className="md:hidden">
+                  <summary className="block min-h-[44px] cursor-pointer list-none">
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Recent Resolution Ledger</p>
+                        <h2 className="mt-2 font-display text-[20px] font-bold">最近状态回写</h2>
+                      </div>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
+                        {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} items`}
+                      </p>
+                    </div>
+                  </summary>
+                  <div className="mt-5 space-y-3">
+                    {centerLoading ? (
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">等待 approval center recent lifecycle 真值。</p>
+                    ) : recentSignals.length === 0 ? (
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 recent resolution/status 回写。</p>
+                    ) : (
+                      recentSignals.slice(0, 3).map((item) => (
+                        <article
+                          key={`mobile-${item.id}`}
+                          data-testid={`approval-center-mobile-recent-${item.id}`}
+                          className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
+                              status
+                            </span>
+                            <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.room}</span>
+                            <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.time}</span>
+                          </div>
+                          <h3 className="mt-2 font-display text-[18px] font-bold">{item.title}</h3>
+                          <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{item.summary}</p>
+                          <div className="mt-3">
+                            <Link
+                              href={item.href}
+                              className="inline-flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                            >
+                              打开上下文
+                            </Link>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </details>
+                <div className="hidden md:block">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Mailbox Ledger</p>
@@ -1305,6 +1470,7 @@ export function StitchInboxView() {
                       </article>
                     ))
                   )}
+                </div>
                 </div>
               </div>
             </div>
