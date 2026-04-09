@@ -415,7 +415,7 @@
 ## TC-032 Board Secondary Planning Surface
 
 - 业务目标: 确认 Board 仍可用，但已经退到次级 planning surface。
-- 当前执行状态: Not Run
+- 当前执行状态: Pass
 - 对应 Checklist: `CHK-05` `CHK-18`
 - 前置条件: board 已与 room / issue context 建立回跳关系，且主导航优先级已下调。
 - 测试步骤:
@@ -423,7 +423,7 @@
   2. 查看 board lane 并创建或打开一条 issue。
   3. 返回 room，确认 Board 不是默认首页心智中心。
 - 预期结果: Board 服务于规划，不抢占协作壳主路径。
-- 业务结论: 当前 `/board` 已经退到左下角次级入口，但 planning card 语言和 room / issue 回跳还没完全收平；这条用例保留 `Not Run`，留给 `TKT-26`。
+- 业务结论: 2026 年 4 月 9 日 `TKT-26` 已新增 `pnpm test:headed-board-planning-surface -- --report docs/testing/Test-Report-2026-04-09-board-planning-surface.md`，在 headed Chromium 下完成 `room -> board -> issue -> board -> room` exact replay。当前 `/board` 会带上 room / issue context 并显式提供回跳按钮，planning card 语言也已压缩成轻量 mirror，因此这条用例当前转为 `Pass`。
 
 ## TC-033 Quick Search / Search Result Surface
 

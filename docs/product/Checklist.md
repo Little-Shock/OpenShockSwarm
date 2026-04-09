@@ -334,14 +334,13 @@
 
 - PRD 来源: 六.3、八、十
 - 优先级: P2
-- 当前状态: 部分完成
+- 当前状态: 已完成
 - 已落地:
   - [x] `/board` 已接 live issue truth，并可创建 issue 后进入 room
   - [x] board lane 与 issue -> room -> run 主链已联动
   - [x] Board 已从主消息导航挪到左下角次级入口，不再和频道 / room 同层抢主壳心智
-- 当前 GAP:
-  - [ ] Board 虽已降级，但 room / issue / board 的回跳还不够顺手
-  - [ ] Board 还没有形成更轻的 planning card 语言，内部信息仍偏重
+  - [x] room / issue 进入 `/board` 时会带上 source-aware planning mirror context，并显式提供回讨论间 / 看 Issue 回跳
+  - [x] Board card 已压成更轻的 planning 语言，只保留状态、owner、room 摘要与最短动作，不再像独立后台详情页
 - 对应 Test Cases: `TC-032`
 
 ### CHK-19 Agent / Machine Profile 与本地能力配置

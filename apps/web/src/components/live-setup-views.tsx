@@ -461,7 +461,7 @@ export function OnboardingStudioPanel() {
               </p>
             </div>
             <div className="mt-3 space-y-2">
-              {(materialization?.notes ?? currentTemplate.notes).map((note, index) => (
+              {(materialization?.notes ?? currentTemplate.notes).map((note: string, index: number) => (
                 <p key={`${currentTemplate.id}-note-${index}`} className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 text-sm leading-6">
                   {note}
                 </p>

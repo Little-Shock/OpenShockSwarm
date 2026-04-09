@@ -26,6 +26,7 @@ import type {
   SettingsSection,
   SetupStep,
 } from "@/lib/phase-zero-types";
+import { buildPlanningMirrorHref } from "@/lib/planning-mirror";
 import { buildProfileHref } from "@/lib/profile-surface";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -659,6 +660,13 @@ export function IssueDetailView({
   run?: Run;
   roomTitle?: string;
 }) {
+  const planningMirrorHref = buildPlanningMirrorHref({
+    roomId: issue.roomId,
+    issueKey: issue.key,
+    returnTo: `/issues/${issue.key}`,
+    returnLabel: issue.key,
+  });
+
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
@@ -687,6 +695,13 @@ export function IssueDetailView({
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
               打开 Run 详情
+              </Link>
+              <Link
+                href={planningMirrorHref}
+                data-testid="issue-open-planning-mirror"
+                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+                Planning mirror
               </Link>
             </div>
         </Panel>

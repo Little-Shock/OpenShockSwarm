@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import { buildBoardColumns } from "@/lib/phase-zero-helpers";
 import {
   type ApprovalCenterItem,
+  type Issue,
   type InboxDecision,
   type InboxItem,
 } from "@/lib/phase-zero-types";
@@ -30,6 +31,25 @@ function inboxKindLabel(kind: InboxItem["kind"]) {
       return "评审";
     default:
       return "状态";
+  }
+}
+
+function boardStateLabel(state: Issue["state"]) {
+  switch (state) {
+    case "blocked":
+      return "blocked";
+    case "queued":
+      return "todo";
+    case "running":
+      return "in progress";
+    case "paused":
+      return "paused";
+    case "review":
+      return "in review";
+    case "done":
+      return "done";
+    default:
+      return "status";
   }
 }
 
@@ -145,6 +165,7 @@ function SurfaceStateMessage({
 
 export function StitchBoardView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state, approvalCenter, loading, error, createIssue } = usePhaseZeroState();
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const [creating, setCreating] = useState(false);
@@ -167,6 +188,43 @@ export function StitchBoardView() {
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
   const disconnected = loading || Boolean(error) || liveMachines.every((machine) => machine.state === "offline");
+  const roomMap = new Map((loading || error ? [] : state.rooms).map((room) => [room.id, room]));
+  const issueMap = new Map((loading || error ? [] : state.issues).map((issue) => [issue.key, issue]));
+  const sourceRoomId = searchParams.get("roomId");
+  const sourceIssueKey = searchParams.get("issueKey");
+  const sourceRoom = sourceRoomId ? roomMap.get(sourceRoomId) : undefined;
+  const sourceIssue = sourceIssueKey ? issueMap.get(sourceIssueKey) : undefined;
+  const returnTo = searchParams.get("returnTo");
+  const returnLabel = searchParams.get("returnLabel");
+  const safeReturnTo = returnTo?.startsWith("/") ? returnTo : null;
+  const planningContextVisible = Boolean(sourceRoom || sourceIssue || safeReturnTo);
+
+  const contextActions = [
+    sourceRoom
+      ? {
+          label: "回讨论间",
+          href: safeReturnTo && safeReturnTo.startsWith(`/rooms/${sourceRoom.id}`) ? safeReturnTo : `/rooms/${sourceRoom.id}?tab=context`,
+          testID: "board-context-room-link",
+          tone: "bg-[var(--shock-yellow)]",
+        }
+      : null,
+    sourceIssue
+      ? {
+          label: "看 Issue",
+          href: `/issues/${sourceIssue.key}`,
+          testID: "board-context-issue-link",
+          tone: "bg-white",
+        }
+      : null,
+    safeReturnTo && !sourceRoom
+      ? {
+          label: returnLabel ? `回 ${returnLabel}` : "回来源",
+          href: safeReturnTo,
+          testID: "board-context-return-link",
+          tone: "bg-white",
+        }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; href: string; testID: string; tone: string }>;
 
   async function handleCreateIssue() {
     if (!title.trim() || creating || !canCreateIssue) return;
@@ -210,14 +268,47 @@ export function StitchBoardView() {
         <section className="flex min-h-0 flex-col">
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
-            eyebrow="Planning Surface"
-            title="Board"
-            description="Board 是 issue room 的 planning mirror，不是主协作入口。真正的推进仍然发生在聊天、讨论间和 inbox。"
-            tabs={["Rooms First", "Board", "Machines"]}
-            activeTab="Board"
+            eyebrow="Secondary Planning"
+            title="Planning Mirror"
+            description="这里保留 lane 排序和轻量计划，但真正的 owner、run、PR 与 blocker 仍然以 room / inbox 为主。"
+            tabs={["Rooms First", "Planning Mirror", "Machines"]}
+            activeTab="Planning Mirror"
             searchPlaceholder="Search issue / room / run"
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
+          {planningContextVisible ? (
+            <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
+                    planning mirror context
+                  </p>
+                  <p className="mt-1 text-sm leading-6">
+                    {sourceRoom
+                      ? `当前从讨论间 ${sourceRoom.title} 打开规划面，先在这里整理 lane，再回 room 收口执行。`
+                      : sourceIssue
+                        ? `当前从 ${sourceIssue.key} 打开规划面。Issue 仍是耐久对象，但协作上下文优先留在 room。`
+                        : "当前规划面带着来源上下文打开，处理完请直接回原工作面。 "}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {contextActions.map((action) => (
+                    <Link
+                      key={action.testID}
+                      href={action.href}
+                      data-testid={action.testID}
+                      className={cn(
+                        "rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                        action.tone
+                      )}
+                    >
+                      {action.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2">
             <div className="grid items-center gap-3 xl:grid-cols-[220px_160px_1fr_auto_auto]">
               <p className="font-mono text-[10px] tracking-[0.16em]">{liveMachines.length} machines visible</p>
@@ -255,25 +346,55 @@ export function StitchBoardView() {
                       </div>
                       <div className="space-y-3">
                         {column.cards.map((card) => (
-                          <Link
+                          <article
                             key={card.id}
-                            href={`/issues/${card.key}`}
                             className={cn(
-                              "block border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[var(--shock-shadow-sm)]",
+                              "border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[var(--shock-shadow-sm)]",
                               card.state === "running" && "bg-[var(--shock-yellow)]",
                               card.state === "paused" && "bg-[var(--shock-paper)]"
                             )}
+                            data-testid={`board-card-${card.key}`}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="rounded-[2px] bg-[var(--shock-yellow)] px-1 py-0.5 font-mono text-[9px]">{card.key}</span>
-                              <span className="font-mono text-[10px]">···</span>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-[2px] bg-[var(--shock-yellow)] px-1 py-0.5 font-mono text-[9px]">{card.key}</span>
+                                <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]">
+                                  {boardStateLabel(card.state)}
+                                </span>
+                              </div>
+                              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.52)]">
+                                planning
+                              </span>
                             </div>
                             <h4 className="mt-3 text-sm font-semibold leading-6">{card.title}</h4>
-                            <div className="mt-4 space-y-1 font-mono text-[9px] text-[color:rgba(24,20,14,0.58)]">
-                              <p>Agent: {card.owner}</p>
-                              <p>Room: {card.roomId}</p>
+                            <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
+                              {card.summary}
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.62)]">
+                              <span className="rounded-full border border-[var(--shock-ink)] bg-[#f7f7f7] px-2 py-1">
+                                owner {card.owner}
+                              </span>
+                              <span className="rounded-full border border-[var(--shock-ink)] bg-[#f7f7f7] px-2 py-1">
+                                room {roomMap.get(card.roomId)?.title ?? card.roomId}
+                              </span>
                             </div>
-                          </Link>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Link
+                                href={`/rooms/${card.roomId}?tab=context`}
+                                data-testid={`board-card-room-${card.key}`}
+                                className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                              >
+                                回讨论间
+                              </Link>
+                              <Link
+                                href={`/issues/${card.key}`}
+                                data-testid={`board-card-issue-${card.key}`}
+                                className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                              >
+                                打开 Issue
+                              </Link>
+                            </div>
+                          </article>
                         ))}
                       </div>
                     </section>

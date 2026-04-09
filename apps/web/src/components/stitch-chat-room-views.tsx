@@ -19,6 +19,7 @@ import {
   type Session,
 } from "@/lib/phase-zero-types";
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
+import { buildPlanningMirrorHref } from "@/lib/planning-mirror";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import { Panel, RunDetailView } from "@/components/phase-zero-views";
 import { RunControlSurface } from "@/components/run-control-surface";
@@ -2315,6 +2316,14 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
   const activeWorkbenchTab = parseRoomWorkbenchTab(searchParams.get("tab"));
+  const planningMirrorHref = room
+    ? buildPlanningMirrorHref({
+        roomId: room.id,
+        issueKey: room.issueKey,
+        returnTo: buildRoomWorkbenchHref(room.id, activeWorkbenchTab),
+        returnLabel: room.title,
+      })
+    : "/board";
   const selectedThreadMessage =
     messages.find((message) => message.id === selectedThreadId) ?? messages.find((message) => message.id === initialThreadMessageId(messages, roomThreadReplies));
   const selectedThreadReplies = selectedThreadMessage ? roomThreadReplies[selectedThreadMessage.id] ?? [] : [];
@@ -2552,10 +2561,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       Issue
                     </Link>
                     <Link
-                      href="/board"
+                      href={planningMirrorHref}
+                      data-testid="room-open-planning-mirror"
                       className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
-                      Board
+                      Planning mirror
                     </Link>
                   </div>
                 </div>

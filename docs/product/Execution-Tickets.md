@@ -141,7 +141,7 @@
 
 ## TKT-26 Board Light Planning Cleanup
 
-- 状态: `todo`
+- 状态: `in_review`
 - 优先级: `P2`
 - 目标: 保留 Board 的次级位置，但把 planning card 和回跳关系做轻。
 - 范围:

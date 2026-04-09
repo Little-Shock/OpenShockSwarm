@@ -60,7 +60,17 @@ export type WorkspaceOnboardingSnapshot = {
   currentStep?: string;
   completedSteps?: string[];
   resumeUrl?: string;
+  materialization?: WorkspaceOnboardingMaterialization;
   updatedAt?: string;
+};
+
+export type WorkspaceOnboardingMaterialization = {
+  label?: string;
+  channels?: string[];
+  roles?: string[];
+  agents?: string[];
+  notificationPolicy?: string;
+  notes?: string[];
 };
 
 export type WorkspaceMemberPreferences = {

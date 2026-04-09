@@ -64,6 +64,8 @@
   - `TKT-33` 的 machine shell / daemon / provider-model catalog 与 Agent provider+model+runtime affinity headed evidence
 - [Test Report 2026-04-09 Live Truth Hygiene](./Test-Report-2026-04-09-live-truth-hygiene.md)
   - `TKT-38` 的 state / SSE visible truth negative scan、copy cleanup 与 release-gate hygiene evidence
+- [Test Report 2026-04-09 Board Planning Surface](./Test-Report-2026-04-09-board-planning-surface.md)
+  - `TKT-26` 的 room / issue -> board planning mirror -> room exact replay，与轻量 card 语言 evidence
 
 常用入口：
 
@@ -115,6 +117,8 @@
   - 验证 sidebar / topbar 命中区、channel / room scrollback、composer 常驻与窄屏无横向溢出
 - `pnpm test:headed-work-shell-smoke`
   - 验证统一 workspace shell 下的 `chat / setup / issues / memory / inbox / board / room / run` 页面走查
+- `pnpm test:headed-board-planning-surface`
+  - 验证 `room -> board -> issue -> board -> room` 的 planning mirror 回跳与轻量 card 语言
 
 说明：
 
