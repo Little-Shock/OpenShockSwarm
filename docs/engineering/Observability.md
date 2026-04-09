@@ -22,6 +22,7 @@ pnpm verify:release
 
 ```bash
 pnpm ops:smoke
+pnpm ops:live-server:status
 ```
 
 用来确认：
@@ -29,6 +30,7 @@ pnpm ops:smoke
 - server / daemon 都活着
 - control-plane truth 仍可读
 - runtime / repo binding / GitHub connection 没断
+- actual live `:8080` 有没有 managed owner / reload truth
 
 ### Strict GitHub-ready probe
 
@@ -47,6 +49,7 @@ OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke
 | Surface | 入口 | Healthy marker | 用来判断什么 |
 | --- | --- | --- | --- |
 | server liveness | `GET /healthz` | `"service":"openshock-server"` | server 进程是否存活 |
+| live service owner truth | `GET /v1/runtime/live-service` or `pnpm ops:live-server:status` | `"managed": true` | actual `:8080` 由谁控制、该走哪条 reload path |
 | daemon liveness | `GET /healthz` | `"service":"openshock-daemon"` | daemon 进程是否存活 |
 | control-plane state | `GET /v1/state` | `"workspace"` | workspace / issue / room / run / inbox 是否还能读 |
 | runtime registry | `GET /v1/runtime/registry` | `"runtimes"` | heartbeat / lease truth 是否继续写回 |
@@ -65,9 +68,11 @@ OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke
 先看：
 
 1. `GET /healthz`
-2. server 进程 stdout/stderr
-3. `OPENSHOCK_SERVER_ADDR`
-4. `OPENSHOCK_STATE_FILE` / `OPENSHOCK_WORKSPACE_ROOT`
+2. `pnpm ops:live-server:status`
+3. `GET /v1/runtime/live-service`
+4. server 进程 stdout/stderr
+5. `OPENSHOCK_SERVER_ADDR`
+6. `OPENSHOCK_STATE_FILE` / `OPENSHOCK_WORKSPACE_ROOT`
 
 ### 症状 2: daemon 不通
 
@@ -155,6 +160,7 @@ cd apps/daemon
 5. 如果是 runtime / GitHub 面：
    - `GET /v1/runtime/registry`
    - `GET /v1/runtime/pairing`
+   - `GET /v1/runtime/live-service`
    - `GET /v1/runtime`
    - `GET /v1/github/connection`
 
