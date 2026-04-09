@@ -27,6 +27,26 @@ func sanitizeLivePayload(payload any) any {
 		return sanitizeRunHistoryPage(typed)
 	case store.PullRequestDetail:
 		return sanitizePullRequestDetail(typed)
+	case store.PullRequestDeliveryEntry:
+		return sanitizePullRequestDeliveryEntry(typed)
+	case []store.PullRequestDeliveryGate:
+		items := make([]store.PullRequestDeliveryGate, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizePullRequestDeliveryGate(item)
+		}
+		return items
+	case []store.PullRequestDeliveryTemplate:
+		items := make([]store.PullRequestDeliveryTemplate, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizePullRequestDeliveryTemplate(item)
+		}
+		return items
+	case []store.PullRequestDeliveryEvidence:
+		items := make([]store.PullRequestDeliveryEvidence, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizePullRequestDeliveryEvidence(item)
+		}
+		return items
 	case store.Channel:
 		return sanitizeChannel(typed)
 	case []store.Channel:
@@ -282,7 +302,45 @@ func sanitizePullRequestDetail(detail store.PullRequestDetail) store.PullRequest
 	detail.Issue = sanitizeIssue(detail.Issue)
 	detail.Conversation = sanitizeLivePayload(detail.Conversation).([]store.PullRequestConversationEntry)
 	detail.RelatedInbox = sanitizeLivePayload(detail.RelatedInbox).([]store.InboxItem)
+	detail.Delivery = sanitizeLivePayload(detail.Delivery).(store.PullRequestDeliveryEntry)
 	return detail
+}
+
+func sanitizePullRequestDeliveryEntry(item store.PullRequestDeliveryEntry) store.PullRequestDeliveryEntry {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 delivery contract 摘要正在整理中。")
+	item.Gates = sanitizeLivePayload(item.Gates).([]store.PullRequestDeliveryGate)
+	item.Templates = sanitizeLivePayload(item.Templates).([]store.PullRequestDeliveryTemplate)
+	item.HandoffNote = sanitizePullRequestDeliveryHandoffNote(item.HandoffNote)
+	item.Evidence = sanitizeLivePayload(item.Evidence).([]store.PullRequestDeliveryEvidence)
+	return item
+}
+
+func sanitizePullRequestDeliveryGate(item store.PullRequestDeliveryGate) store.PullRequestDeliveryGate {
+	item.Label = sanitizeDisplayText(item.Label, "当前 gate 正在整理中。")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 gate 摘要正在整理中。")
+	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
+}
+
+func sanitizePullRequestDeliveryTemplate(item store.PullRequestDeliveryTemplate) store.PullRequestDeliveryTemplate {
+	item.Label = sanitizeDisplayText(item.Label, "未命名模板")
+	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
+}
+
+func sanitizePullRequestDeliveryHandoffNote(item store.PullRequestDeliveryHandoffNote) store.PullRequestDeliveryHandoffNote {
+	item.Title = sanitizeDisplayText(item.Title, "当前 handoff note 标题正在整理中。")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 handoff note 摘要正在整理中。")
+	item.Lines = sanitizeTextLines(item.Lines, "当前 handoff note 正在整理中。")
+	return item
+}
+
+func sanitizePullRequestDeliveryEvidence(item store.PullRequestDeliveryEvidence) store.PullRequestDeliveryEvidence {
+	item.Label = sanitizeDisplayText(item.Label, "当前证据项正在整理中。")
+	item.Value = sanitizeDisplayText(item.Value, "当前证据值正在整理中。")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前证据摘要正在整理中。")
+	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
 }
 
 func sanitizeRunDetail(detail store.RunDetail) store.RunDetail {

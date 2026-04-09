@@ -577,6 +577,50 @@ export type PullRequestDetail = {
   issue: Issue;
   conversation: PullRequestConversationEntry[];
   relatedInbox: InboxItem[];
+  delivery: PullRequestDeliveryEntry;
+};
+
+export type PullRequestDeliveryEntry = {
+  status: "ready" | "warning" | "blocked";
+  releaseReady: boolean;
+  summary: string;
+  gates: PullRequestDeliveryGate[];
+  templates: PullRequestDeliveryTemplate[];
+  handoffNote: PullRequestDeliveryHandoffNote;
+  evidence: PullRequestDeliveryEvidence[];
+};
+
+export type PullRequestDeliveryGate = {
+  id: string;
+  label: string;
+  status: "ready" | "warning" | "blocked";
+  summary: string;
+  href?: string;
+};
+
+export type PullRequestDeliveryTemplate = {
+  templateId?: string;
+  label: string;
+  status: "ready" | "warning" | "blocked";
+  readyDeliveries: number;
+  blockedDeliveries: number;
+  sentReceipts: number;
+  failedReceipts: number;
+  href?: string;
+};
+
+export type PullRequestDeliveryHandoffNote = {
+  title: string;
+  summary: string;
+  lines: string[];
+};
+
+export type PullRequestDeliveryEvidence = {
+  id: string;
+  label: string;
+  value: string;
+  summary: string;
+  href?: string;
 };
 
 export type RunDetail = {

@@ -650,6 +650,50 @@ type PullRequestDetail struct {
 	Issue        Issue                          `json:"issue"`
 	Conversation []PullRequestConversationEntry `json:"conversation"`
 	RelatedInbox []InboxItem                    `json:"relatedInbox"`
+	Delivery     PullRequestDeliveryEntry       `json:"delivery"`
+}
+
+type PullRequestDeliveryEntry struct {
+	Status       string                         `json:"status"`
+	ReleaseReady bool                           `json:"releaseReady"`
+	Summary      string                         `json:"summary"`
+	Gates        []PullRequestDeliveryGate      `json:"gates"`
+	Templates    []PullRequestDeliveryTemplate  `json:"templates"`
+	HandoffNote  PullRequestDeliveryHandoffNote `json:"handoffNote"`
+	Evidence     []PullRequestDeliveryEvidence  `json:"evidence"`
+}
+
+type PullRequestDeliveryGate struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Href    string `json:"href,omitempty"`
+}
+
+type PullRequestDeliveryTemplate struct {
+	TemplateID         string `json:"templateId,omitempty"`
+	Label              string `json:"label"`
+	Status             string `json:"status"`
+	ReadyDeliveries    int    `json:"readyDeliveries"`
+	BlockedDeliveries  int    `json:"blockedDeliveries"`
+	SentReceipts       int    `json:"sentReceipts"`
+	FailedReceipts     int    `json:"failedReceipts"`
+	Href               string `json:"href,omitempty"`
+}
+
+type PullRequestDeliveryHandoffNote struct {
+	Title   string   `json:"title"`
+	Summary string   `json:"summary"`
+	Lines   []string `json:"lines"`
+}
+
+type PullRequestDeliveryEvidence struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	Summary string `json:"summary"`
+	Href    string `json:"href,omitempty"`
 }
 
 type CreateIssueInput struct {
