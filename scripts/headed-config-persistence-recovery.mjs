@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -226,10 +227,7 @@ try {
   await waitForHealth(serverURL);
   const webURL = await startWeb(webPort, serverURL);
 
-  browser = await chromium.launch({
-    executablePath: resolveChromiumExecutable(),
-    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-  });
+  browser = await launchChromiumSession(chromium);
 
   const results = [];
   const templateId = "research-team";

@@ -11,6 +11,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -384,10 +385,7 @@ async function main() {
       `expected runtimeScheduler.assignedRuntime=shock-spare, received ${JSON.stringify(state.runtimeScheduler)}`
     );
 
-    browser = await chromium.launch({
-      executablePath: resolveChromiumExecutable(),
-      headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-    });
+    browser = await launchChromiumSession(chromium);
     const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
 
     await page.goto(`${webURL}/runs/${sidecarIssue.runId}`, { waitUntil: "load" });

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { buildGlobalStats } from "@/lib/phase-zero-helpers";
 import { usePhaseZeroState } from "@/lib/live-phase0";
@@ -176,14 +175,9 @@ export function OpenShockShell({
   contextBody,
   children,
 }: OpenShockShellProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const activeTab = activeFromView(view);
   const shellMode = shellModeFromView(view);
   const currentHref = topBarHrefFromView(view);
-  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
-  const [quickSearchQuery, setQuickSearchQuery] = useState("");
-  const [quickSearchOriginPath, setQuickSearchOriginPath] = useState(() => pathname ?? "");
   const { state, loading, error } = usePhaseZeroState();
   const hasWorkspaceTruth = Boolean(state.workspace.name || state.workspace.repo || state.workspace.branch);
   const hasCollectionTruth =

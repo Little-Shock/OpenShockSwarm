@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -256,10 +257,7 @@ try {
   assert(detail.history[1]?.run?.id === "run_runtime_00", "run detail should include prior runtime run");
   results.push("- `/v1/runs/history` and `/v1/runs/:id/detail` now expose paginated history plus session-backed resume context.");
 
-  browser = await chromium.launch({
-    executablePath: resolveChromiumExecutable(),
-    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-  });
+  browser = await launchChromiumSession(chromium);
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 

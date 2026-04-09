@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -231,6 +232,15 @@ async function waitForText(page, testID, expected) {
   );
 }
 
+async function waitForAnyText(page, testIDs, expected) {
+  await page.waitForFunction(
+    ({ currentTestIDs, currentExpected }) =>
+      currentTestIDs.some((testID) => document.querySelector(`[data-testid="${testID}"]`)?.textContent?.trim() === currentExpected),
+    { currentTestIDs: testIDs, currentExpected: expected },
+    { timeout: 30_000 }
+  );
+}
+
 async function expectButtonState(page, testID, expectedDisabled) {
   await page.waitForFunction(
     ({ currentTestID, currentExpected }) => {
@@ -242,6 +252,18 @@ async function expectButtonState(page, testID, expectedDisabled) {
   );
 }
 
+async function expectAnyButtonState(page, testIDs, expectedDisabled) {
+  await page.waitForFunction(
+    ({ currentTestIDs, currentExpected }) =>
+      currentTestIDs.some((testID) => {
+        const element = document.querySelector(`[data-testid="${testID}"]`);
+        return element instanceof HTMLButtonElement && element.disabled === currentExpected;
+      }),
+    { currentTestIDs: testIDs, currentExpected: expectedDisabled },
+    { timeout: 30_000 }
+  );
+}
+
 async function expectButtonLabel(page, testID, expectedLabel) {
   await page.waitForFunction(
     ({ currentTestID, currentExpected }) => {
@@ -249,6 +271,15 @@ async function expectButtonLabel(page, testID, expectedLabel) {
       return element?.textContent?.trim() === currentExpected;
     },
     { currentTestID: testID, currentExpected: expectedLabel },
+    { timeout: 30_000 }
+  );
+}
+
+async function expectAnyButtonLabel(page, testIDs, expectedLabel) {
+  await page.waitForFunction(
+    ({ currentTestIDs, currentExpected }) =>
+      currentTestIDs.some((testID) => document.querySelector(`[data-testid="${testID}"]`)?.textContent?.trim() === currentExpected),
+    { currentTestIDs: testIDs, currentExpected: expectedLabel },
     { timeout: 30_000 }
   );
 }
@@ -277,9 +308,10 @@ async function verifyOwnerSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "allowed");
   await expectButtonState(page, "room-send-message", false);
-  await waitForText(page, "room-pull-request-authz", "allowed");
-  await expectButtonLabel(page, "room-pull-request-action", "合并 PR");
-  await expectButtonState(page, "room-pull-request-action", false);
+  await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
+  await waitForAnyText(page, ["room-workbench-pr-status"], "allowed");
+  await expectAnyButtonLabel(page, ["room-workbench-pr-primary-action"], "合并 PR");
+  await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], false);
   await capture(page, screenshotsDir, "owner-room");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
@@ -307,9 +339,10 @@ async function verifyMemberSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "allowed");
   await expectButtonState(page, "room-send-message", false);
-  await waitForText(page, "room-pull-request-authz", "review_only");
-  await expectButtonLabel(page, "room-pull-request-action", "同步 PR");
-  await expectButtonState(page, "room-pull-request-action", false);
+  await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
+  await waitForAnyText(page, ["room-workbench-pr-status"], "review_only");
+  await expectAnyButtonLabel(page, ["room-workbench-pr-primary-action"], "同步 PR");
+  await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], false);
   await capture(page, screenshotsDir, "member-room");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
@@ -336,8 +369,9 @@ async function verifyViewerSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "blocked");
   await expectButtonState(page, "room-send-message", true);
-  await waitForText(page, "room-pull-request-authz", "blocked");
-  await expectButtonState(page, "room-pull-request-action", true);
+  await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
+  await waitForAnyText(page, ["room-workbench-pr-status"], "blocked");
+  await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], true);
   await capture(page, screenshotsDir, "viewer-room");
 
   await page.goto(`${webURL}/inbox`, { waitUntil: "load" });
@@ -364,8 +398,9 @@ async function verifySignedOutSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "signed_out");
   await expectButtonState(page, "room-send-message", true);
-  await waitForText(page, "room-pull-request-authz", "signed_out");
-  await expectButtonState(page, "room-pull-request-action", true);
+  await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
+  await waitForAnyText(page, ["room-workbench-pr-status"], "signed_out");
+  await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], true);
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
   await waitForText(page, "setup-repo-binding-authz", "signed_out");
@@ -426,11 +461,7 @@ try {
   const services = await startServices(runDir);
   const chromiumExecutable = resolveChromiumExecutable();
 
-  browser = await chromium.launch({
-    executablePath: chromiumExecutable,
-    headless: false,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  browser = await launchChromiumSession(chromium);
   context = await browser.newContext({ viewport: { width: 1440, height: 1200 } });
   page = await context.newPage();
 

@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -304,11 +305,7 @@ try {
   const blockedNote = "等 reviewer evidence 先收平。";
   const completeNote = "review / test evidence 已收平，可以回到最终响应。";
 
-  browser = await chromium.launch({
-    executablePath: chromiumExecutable,
-    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  browser = await launchChromiumSession(chromium);
   context = await browser.newContext({ viewport: { width: 1480, height: 1320 } });
   page = await context.newPage();
 

@@ -1723,8 +1723,30 @@ export function getRunsForAgent(agentId: string) {
   return runs.filter((run) => agent?.recentRunIds.includes(run.id));
 }
 
+function buildBoardColumns(issueList: Issue[]) {
+  return [
+    { title: "Backlog", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
+    { title: "Todo", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
+    { title: "In Progress", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
+    { title: "Paused", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "paused") },
+    { title: "In Review", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
+    { title: "Done", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
+  ];
+}
+
 export function getBoardColumns() {
   return buildBoardColumns(issues);
+}
+
+function buildGlobalStats(state: PhaseZeroState) {
+  const activeRuns = state.runs.filter((run) => run.status === "running" || run.status === "review").length;
+  const blockedCount = state.runs.filter((run) => run.status === "blocked" || run.status === "paused").length;
+
+  return [
+    { label: "活跃 Run", value: String(activeRuns).padStart(2, "0"), tone: "yellow" as const },
+    { label: "阻塞", value: String(blockedCount).padStart(2, "0"), tone: "pink" as const },
+    { label: "收件箱", value: String(state.inbox.length).padStart(2, "0"), tone: "lime" as const },
+  ];
 }
 
 export function getGlobalStats() {

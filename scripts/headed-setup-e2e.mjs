@@ -10,13 +10,28 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+
+function parseArgs(args) {
+  const result = { reportPath: "" };
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--report") {
+      result.reportPath = args[index + 1] ?? "";
+      index += 1;
+    }
+  }
+  return result;
+}
+
+const parsedArgs = parseArgs(process.argv.slice(2));
 const evidenceRoot =
   process.env.OPENSHOCK_E2E_ARTIFACTS_DIR?.trim() ||
   (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt03-headed-setup-")));
 const artifactsDir = path.resolve(evidenceRoot);
+const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
 const workspaceDir = path.join(artifactsDir, "workspace");
@@ -321,11 +336,7 @@ async function main() {
     return Array.isArray(state.runtimes) && state.runtimes.length > 0;
   }, "runtime heartbeats never appeared in /v1/state");
 
-  browser = await chromium.launch({
-    executablePath: chromiumExecutable,
-    headless: false,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  browser = await launchChromiumSession(chromium);
   context = await browser.newContext({
     viewport: { width: 1440, height: 1200 },
   });
@@ -437,17 +448,18 @@ async function main() {
   await capture(page, "setup-runtime-and-bridge");
 
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await page.getByTestId("board-create-issue-title").fill(issueTitle);
-  await page.getByTestId("board-create-issue-summary").fill(issueSummary);
+  await page.locator('[data-testid="board-create-issue-title"]:not([disabled])').fill(issueTitle);
+  await page.locator('[data-testid="board-create-issue-summary"]:not([disabled])').fill(issueSummary);
   await page.getByTestId("board-create-issue-submit").click();
   await page.waitForURL(/\/rooms\//, { timeout: 30_000 });
   const roomURL = page.url();
-  await page.getByTestId("room-pull-request-action").waitFor({ state: "visible" });
-  const pullRequestActionButton = page.getByTestId("room-pull-request-action");
+  await page.goto(`${roomURL}?tab=pr`, { waitUntil: "load" });
+  await page.getByTestId("room-workbench-pr-primary-action").waitFor({ state: "visible" });
+  const pullRequestActionButton = page.getByTestId("room-workbench-pr-primary-action");
   const pullRequestAction = (await pullRequestActionButton.textContent())?.trim() ?? "";
   const pullRequestActionEnabled = await pullRequestActionButton.isEnabled();
-  const pullRequestLabel = (await page.getByTestId("room-pull-request-label").textContent())?.trim() ?? "";
-  const pullRequestStatus = (await page.getByTestId("room-pull-request-status").textContent())?.trim() ?? "";
+  const pullRequestLabel = (await page.getByTestId("room-workbench-pr-panel").locator("h3").textContent())?.trim() ?? "";
+  const pullRequestStatus = (await page.getByTestId("room-workbench-pr-status").textContent())?.trim() ?? "";
   await capture(page, "room-pr-entry-ready");
 
   const currentState = await fetchJSON(`${serverURL}/v1/state`);
@@ -460,7 +472,7 @@ async function main() {
   assert(run, "expected created run to appear in /v1/state");
   assert(pullRequestActionEnabled, "expected room pull request action to be enabled");
   assert(
-    pullRequestAction === "发起 PR" && pullRequestLabel === "未创建" && pullRequestStatus === "未创建",
+    pullRequestAction === "发起 PR" && pullRequestLabel === "未创建 PR" && pullRequestStatus === "allowed",
     `expected room pull request entry to stay ready for continuation, got action=${pullRequestAction} label=${pullRequestLabel} status=${pullRequestStatus}`
   );
 
@@ -558,7 +570,11 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
     logs: Object.fromEntries(processes.map((entry) => [entry.name, entry.logPath])),
   };
 
+  await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(path.join(artifactsDir, "report.md"), report);
+  if (path.resolve(reportPath) !== path.join(artifactsDir, "report.md")) {
+    await writeFile(reportPath, report);
+  }
   await writeFile(path.join(artifactsDir, "metadata.json"), JSON.stringify(metadata, null, 2));
 
   console.log(report);
@@ -581,7 +597,11 @@ try {
     "## Logs",
     ...processes.map((entry) => `- ${entry.name}: ${entry.logPath}`),
   ].join("\n");
+  await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(path.join(artifactsDir, "report.md"), summary);
+  if (path.resolve(reportPath) !== path.join(artifactsDir, "report.md")) {
+    await writeFile(reportPath, `${summary}\n`);
+  }
   console.error(summary);
   process.exitCode = 1;
 } finally {

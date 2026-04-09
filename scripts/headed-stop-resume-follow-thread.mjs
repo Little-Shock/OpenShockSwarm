@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -285,28 +286,29 @@ let browser;
 
 try {
   const { webURL, serverURL } = await startServices(runDir);
-  browser = await chromium.launch({
-    executablePath: resolveChromiumExecutable(),
-    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-  });
+  browser = await launchChromiumSession(chromium);
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
+  await page.getByTestId("room-workbench-tab-chat").waitFor({ state: "visible", timeout: 30_000 });
+  await waitForText(page, "room-reply-authz", "allowed");
+  await expectButtonState(page, "room-send-message", false);
+  await page.getByTestId("room-workbench-tab-run").click();
+  await page.getByTestId("room-workbench-run-panel").waitFor({ state: "visible", timeout: 30_000 });
   await waitForText(page, "room-run-control-authz", "allowed");
   await waitForText(page, "room-run-status", "执行中");
   await waitForText(page, "room-run-control-status", "执行中");
   await waitForText(page, "room-run-follow-thread-status", "未锁定线程");
-  await waitForText(page, "room-reply-authz", "allowed");
-  await expectButtonState(page, "room-send-message", false);
   await capture(page, screenshotsDir, "room-running");
 
   await page.getByTestId("room-run-control-note").fill(stopNote);
   await page.getByTestId("room-run-control-stop").click();
   await waitForText(page, "room-run-status", "已暂停");
   await waitForText(page, "room-run-control-status", "已暂停");
-  await waitForText(page, "room-reply-authz", "paused");
   await waitForContains(page, "room-run-control-note-preview", stopNote);
+  await page.getByTestId("room-workbench-tab-chat").click();
+  await waitForText(page, "room-reply-authz", "paused");
   await expectButtonState(page, "room-send-message", true);
   await capture(page, screenshotsDir, "room-paused");
 
@@ -353,6 +355,10 @@ try {
   assert(followState.session.controlNote.includes(followNote), "follow-thread note did not persist on session");
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
+  await page.getByTestId("room-workbench-tab-chat").waitFor({ state: "visible", timeout: 30_000 });
+  await waitForText(page, "room-reply-authz", "paused");
+  await page.getByTestId("room-workbench-tab-run").click();
+  await page.getByTestId("room-workbench-run-panel").waitFor({ state: "visible", timeout: 30_000 });
   await waitForText(page, "room-run-status", "已暂停");
   await waitForText(page, "room-run-follow-thread-status", "跟随当前线程");
   await waitForContains(page, "room-run-control-note-preview", followNote);
@@ -361,8 +367,9 @@ try {
   await waitForText(page, "room-run-status", "执行中");
   await waitForText(page, "room-run-control-status", "执行中");
   await waitForText(page, "room-run-follow-thread-status", "跟随当前线程");
-  await waitForText(page, "room-reply-authz", "allowed");
   await waitForContains(page, "room-run-control-note-preview", resumeNote);
+  await page.getByTestId("room-workbench-tab-chat").click();
+  await waitForText(page, "room-reply-authz", "allowed");
   await expectButtonState(page, "room-send-message", false);
   await capture(page, screenshotsDir, "room-resumed");
 

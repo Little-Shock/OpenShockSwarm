@@ -219,7 +219,6 @@ function SidebarSection({
     <section className="mt-3">
       <button
         type="button"
-        aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         className="mb-1 flex min-h-[44px] w-full items-center justify-between gap-2 rounded-[14px] border-2 border-transparent px-2.5 py-1.5 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-[var(--shock-ink)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]"

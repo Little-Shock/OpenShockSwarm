@@ -90,6 +90,52 @@ function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+function normalizeBranchHeadTruthSnapshot(
+  payload: Partial<BranchHeadTruthSnapshot> & { error?: string }
+): BranchHeadTruthSnapshot {
+  return {
+    status: payload.status ?? "",
+    summary: payload.summary ?? "",
+    repoBinding: payload.repoBinding ?? {
+      repo: "",
+      repoUrl: "",
+      branch: "",
+      provider: "",
+      bindingStatus: "",
+      authMode: "",
+    },
+    githubConnection: payload.githubConnection ?? {
+      repo: "",
+      repoUrl: "",
+      branch: "",
+      provider: "",
+      ready: false,
+      authMode: "",
+      message: "",
+    },
+    githubProbeError: payload.githubProbeError,
+    checkout: payload.checkout ?? {
+      workspaceRoot: "",
+      worktreePath: "",
+      branch: "",
+      head: "",
+      dirty: false,
+      dirtyEntries: 0,
+      status: "",
+    },
+    refs: Array.isArray(payload.refs) ? payload.refs : [],
+    worktrees: Array.isArray(payload.worktrees) ? payload.worktrees : [],
+    liveService: payload.liveService ?? {
+      managed: false,
+      status: "",
+      metadataPath: "",
+      message: "",
+    },
+    drifts: Array.isArray(payload.drifts) ? payload.drifts : [],
+    linkedWorktreeCount: payload.linkedWorktreeCount ?? 0,
+  };
+}
+
 function valueOrFallback(value: string | undefined, fallback: string) {
   return value && value.trim() ? value : fallback;
 }
@@ -148,7 +194,7 @@ export function BranchHeadTruthConsole() {
       if (!response.ok) {
         throw new Error(payload.error || `branch-head-truth failed: ${response.status}`);
       }
-      setSnapshot(payload);
+      setSnapshot(normalizeBranchHeadTruthSnapshot(payload));
       setError(null);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "branch-head-truth failed");

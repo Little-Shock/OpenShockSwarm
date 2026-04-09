@@ -12,6 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -650,11 +651,7 @@ async function runCallbackPhase(chromiumExecutable) {
   assert(initialConnection.webhookUrl === `${ingressURL}/v1/github/webhook`, `initial webhook URL mismatch: ${initialConnection.webhookUrl}`);
   assert(initialConnection.ready === false, "initial connection should stay local-only until callback lands");
 
-  browser = await chromium.launch({
-    executablePath: chromiumExecutable,
-    headless: !process.env.DISPLAY,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  browser = await launchChromiumSession(chromium);
   context = await browser.newContext({
     viewport: { width: 1440, height: 1200 },
   });

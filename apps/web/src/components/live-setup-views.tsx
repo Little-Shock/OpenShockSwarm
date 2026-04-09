@@ -364,7 +364,7 @@ function buildOnboardingStudioProgress(workspace: ReturnType<typeof usePhaseZero
     status,
     currentStep: nextStep,
     completedSteps,
-    resumeUrl: finished ? "/rooms" : `/setup?template=${templateId}`,
+    resumeUrl: finished ? "/chat/all" : `/setup?template=${templateId}`,
     canFinish:
       completed.has("template-selected") &&
       completed.has("repo-bound") &&

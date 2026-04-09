@@ -167,48 +167,106 @@ function sanitizeWorkspace(workspace: WorkspaceSnapshot): WorkspaceSnapshot {
   };
 }
 
-function sanitizeWorkspaceGovernance(governance: WorkspaceSnapshot["governance"]): WorkspaceSnapshot["governance"] {
-  return {
-    ...governance,
-    label: sanitizeDisplayText(governance.label ?? "", "当前治理链正在整理中。"),
-    summary: sanitizeDisplayText(governance.summary ?? "", "当前多 Agent 治理摘要正在整理中。"),
-    teamTopology: (governance?.teamTopology ?? []).map((lane) => ({
-      ...lane,
-      label: sanitizeDisplayText(lane.label, "未命名治理角色"),
-      role: sanitizeDisplayText(lane.role, "当前职责正在整理中。"),
-      defaultAgent: sanitizeDisplayText(lane.defaultAgent ?? "", ""),
-      lane: sanitizeDisplayText(lane.lane ?? "", ""),
-      summary: sanitizeDisplayText(lane.summary, "当前治理 lane 正在整理中。"),
-    })),
-    handoffRules: (governance?.handoffRules ?? []).map((rule) => ({
-      ...rule,
-      label: sanitizeDisplayText(rule.label, "未命名治理规则"),
-      summary: sanitizeDisplayText(rule.summary, "当前治理规则正在整理中。"),
-      href: sanitizeDisplayText(rule.href ?? "", ""),
-    })),
+function sanitizeWorkspaceGovernance(
+  governance?: WorkspaceSnapshot["governance"]
+): WorkspaceSnapshot["governance"] {
+  const safeGovernance = governance ?? {
+    templateId: "",
+    label: "",
+    summary: "",
+    teamTopology: [],
+    handoffRules: [],
     responseAggregation: {
-      ...governance?.responseAggregation,
-      summary: sanitizeDisplayText(governance?.responseAggregation?.summary, "当前 response aggregation 正在整理中。"),
-      finalResponse: sanitizeDisplayText(governance?.responseAggregation?.finalResponse ?? "", "等待当前治理链收口。"),
-      sources: (governance?.responseAggregation?.sources ?? []).map((source) => sanitizeDisplayText(source, "live source")),
+      status: "",
+      summary: "",
+      sources: [],
+      finalResponse: "",
     },
     humanOverride: {
-      ...governance?.humanOverride,
-      summary: sanitizeDisplayText(governance?.humanOverride?.summary, "当前 human override 状态正在整理中。"),
-      href: sanitizeDisplayText(governance?.humanOverride?.href ?? "", ""),
+      status: "",
+      summary: "",
+      href: "",
     },
-    walkthrough: (governance?.walkthrough ?? []).map((step) => ({
-      ...step,
-      label: sanitizeDisplayText(step.label, "未命名治理步骤"),
-      summary: sanitizeDisplayText(step.summary, "当前治理步骤正在整理中。"),
-      detail: sanitizeDisplayText(step.detail ?? "", ""),
-      href: sanitizeDisplayText(step.href ?? "", ""),
-    })),
+    walkthrough: [],
     stats: {
-      openHandoffs: governance?.stats?.openHandoffs ?? 0,
-      blockedEscalations: governance?.stats?.blockedEscalations ?? 0,
-      reviewGates: governance?.stats?.reviewGates ?? 0,
-      humanOverrideGates: governance?.stats?.humanOverrideGates ?? 0,
+      openHandoffs: 0,
+      blockedEscalations: 0,
+      reviewGates: 0,
+      humanOverrideGates: 0,
+    },
+  };
+
+  return {
+    ...safeGovernance,
+    label: sanitizeDisplayText(safeGovernance.label ?? "", "当前治理链正在整理中。"),
+    summary: sanitizeDisplayText(safeGovernance.summary ?? "", "当前多 Agent 治理摘要正在整理中。"),
+    teamTopology: (safeGovernance.teamTopology ?? []).map((lane) => {
+      const safeLane = lane ?? {
+        id: "",
+        label: "",
+        role: "",
+        defaultAgent: "",
+        lane: "",
+        status: "",
+        summary: "",
+      };
+      return {
+        ...safeLane,
+        label: sanitizeDisplayText(safeLane.label, "未命名治理角色"),
+        role: sanitizeDisplayText(safeLane.role, "当前职责正在整理中。"),
+        defaultAgent: sanitizeDisplayText(safeLane.defaultAgent ?? "", ""),
+        lane: sanitizeDisplayText(safeLane.lane ?? "", ""),
+        summary: sanitizeDisplayText(safeLane.summary, "当前治理 lane 正在整理中。"),
+      };
+    }),
+    handoffRules: (safeGovernance.handoffRules ?? []).map((rule) => {
+      const safeRule = rule ?? {
+        id: "",
+        label: "",
+        status: "",
+        summary: "",
+        href: "",
+      };
+      return {
+        ...safeRule,
+        label: sanitizeDisplayText(safeRule.label, "未命名治理规则"),
+        summary: sanitizeDisplayText(safeRule.summary, "当前治理规则正在整理中。"),
+        href: sanitizeDisplayText(safeRule.href ?? "", ""),
+      };
+    }),
+    responseAggregation: {
+      ...safeGovernance.responseAggregation,
+      summary: sanitizeDisplayText(safeGovernance.responseAggregation?.summary, "当前 response aggregation 正在整理中。"),
+      finalResponse: sanitizeDisplayText(safeGovernance.responseAggregation?.finalResponse ?? "", "等待当前治理链收口。"),
+      sources: (safeGovernance.responseAggregation?.sources ?? []).map((source) => sanitizeDisplayText(source, "live source")),
+    },
+    humanOverride: {
+      ...safeGovernance.humanOverride,
+      summary: sanitizeDisplayText(safeGovernance.humanOverride?.summary, "当前 human override 状态正在整理中。"),
+      href: sanitizeDisplayText(safeGovernance.humanOverride?.href ?? "", ""),
+    },
+    walkthrough: (safeGovernance.walkthrough ?? []).map((step) => {
+      const safeStep = step ?? {
+        id: "",
+        label: "",
+        status: "",
+        summary: "",
+        detail: "",
+        href: "",
+      };
+      return {
+        ...safeStep,
+        label: sanitizeDisplayText(safeStep.label, "未命名治理步骤"),
+        summary: sanitizeDisplayText(safeStep.summary, "当前治理步骤正在整理中。"),
+        detail: sanitizeDisplayText(safeStep.detail ?? "", ""),
+        href: sanitizeDisplayText(safeStep.href ?? "", ""),
+      };
+    }),
+    stats: {
+      openHandoffs: safeGovernance.stats?.openHandoffs ?? 0,
+      blockedEscalations: safeGovernance.stats?.blockedEscalations ?? 0,
+      reviewGates: safeGovernance.stats?.reviewGates ?? 0,
+      humanOverrideGates: safeGovernance.stats?.humanOverrideGates ?? 0,
     },
   };
 }

@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -316,11 +317,7 @@ try {
   const runID = "run_runtime_01";
   const results = [];
 
-  browser = await chromium.launch({
-    executablePath: chromiumExecutable,
-    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  browser = await launchChromiumSession(chromium);
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 

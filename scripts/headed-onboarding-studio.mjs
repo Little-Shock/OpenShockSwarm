@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
+import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -246,10 +247,7 @@ try {
   await waitForHealth(serverURL);
   const webURL = await startWeb(webPort, serverURL);
 
-  browser = await chromium.launch({
-    executablePath: resolveChromiumExecutable(),
-    headless: process.env.OPENSHOCK_E2E_HEADLESS === "1",
-  });
+  browser = await launchChromiumSession(chromium);
 
   const results = [];
   const page = await browser.newPage({ viewport: { width: 1560, height: 1280 } });
@@ -315,10 +313,10 @@ try {
   results.push("- repo binding / runtime pairing 的 live truth 会把 onboarding progress 前滚到可 finish 状态，而不会把已有 `plan / browserPush / memoryMode` 静默覆盖回模板默认值。");
 
   await page.getByTestId("setup-onboarding-finish").click();
-  await waitForText(page, "setup-onboarding-success", "onboarding studio 已收口为 done；workspace 会把 `/rooms` 当成下一跳，而不是继续停在 setup。");
+  await waitForText(page, "setup-onboarding-success", "onboarding studio 已收口为 done；workspace 会把 `/chat/all` 当成下一跳，而不是继续停在 setup。");
   await waitForText(page, "setup-onboarding-status", "done");
-  await waitForText(page, "setup-onboarding-resume-url", "/rooms");
-  await waitForText(page, "setup-first-start-next-route", "/rooms");
+  await waitForText(page, "setup-onboarding-resume-url", "/chat/all");
+  await waitForText(page, "setup-first-start-next-route", "/chat/all");
   const workspaceAfterFinish = await readWorkspace(serverURL);
   if (
     workspaceAfterFinish.plan !== customWorkspaceConfig.plan ||
@@ -333,22 +331,22 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForText(page, "setup-onboarding-template", "research-team");
   await waitForText(page, "setup-onboarding-status", "done");
-  await waitForText(page, "setup-onboarding-resume-url", "/rooms");
+  await waitForText(page, "setup-onboarding-resume-url", "/chat/all");
   await waitForText(page, "setup-onboarding-template-package", "研究团队");
-  await waitForText(page, "setup-first-start-next-route", "/rooms");
+  await waitForText(page, "setup-first-start-next-route", "/chat/all");
   await capture(page, "setup-after-reload");
-  results.push("- 立即 reload 后，模板选择、done 状态和 `/rooms` resume route 继续从同一份 workspace truth 读取。");
+  results.push("- 立即 reload 后，模板选择、done 状态和 `/chat/all` resume route 继续从同一份 workspace truth 读取。");
 
   await page.goto(`${webURL}/access`, { waitUntil: "domcontentloaded" });
-  await waitForText(page, "access-first-start-next-route", "/rooms");
+  await waitForText(page, "access-first-start-next-route", "/chat/all");
   await waitForText(page, "access-first-start-step-setup-status", "ready");
   await capture(page, "access-after-finish");
-  results.push("- 完成首次启动后，`/access` 也会把下一跳切成 `/rooms`，不再要求用户自己判断该回 access 还是 setup。");
+  results.push("- 完成首次启动后，`/access` 也会把下一跳切成 `/chat/all`，不再要求用户自己判断该回 access 还是 setup。");
 
   await page.getByTestId("access-first-start-next-link").click();
-  await page.waitForURL(new RegExp(`${webURL}/rooms`), { timeout: 30_000 });
+  await page.waitForURL(new RegExp(`${webURL}/chat/all`), { timeout: 30_000 });
   await capture(page, "rooms-after-finish");
-  results.push("- 从 `/access` 点继续时现在会直接落到 `/rooms`，first-start journey 已经在前台收成单一路径。");
+  results.push("- 从 `/access` 点继续时现在会直接落到 `/chat/all`，first-start journey 已经在前台收成单一路径。");
 
   await stopProcess(serverChild);
   serverChild = startServer(serverPort);
@@ -365,7 +363,7 @@ try {
   await secondPage.goto(`${webURL}/setup`, { waitUntil: "domcontentloaded" });
   await waitForText(secondPage, "setup-onboarding-template-package", "研究团队");
   await waitForText(secondPage, "setup-onboarding-status", "done");
-  await waitForText(secondPage, "setup-onboarding-resume-url", "/rooms");
+  await waitForText(secondPage, "setup-onboarding-resume-url", "/chat/all");
   await capture(secondPage, "setup-second-context");
   await secondContext.close();
   results.push("- 第二个浏览器上下文仍读到同一份 onboarding studio truth，说明恢复不依赖单个 tab。");
@@ -389,7 +387,7 @@ try {
     "- 从 `/access` 起步，验证 active session 下 first-start next step 会被明确压成 `/setup`，而不是要求用户自己猜路径。",
     "- 在 `/setup` 选择 `研究团队` 模板，并验证 materialized bootstrap package 与 first-start bridge 读同一份 onboarding truth。",
     "- 依据当前 repo binding / runtime pairing live truth 刷新 onboarding progress，再完成首次启动，同时验证自定义 `plan / browserPush / memoryMode` 不会被模板默认值静默覆盖。",
-    "- 验证完成首次启动后，`/access` 和 `/setup` 都会把下一跳切到 `/rooms`，并在 reload / server restart / second browser context 后保持同一份 truth。",
+    "- 验证完成首次启动后，`/access` 和 `/setup` 都会把下一跳切到 `/chat/all`，并在 reload / server restart / second browser context 后保持同一份 truth。",
   ];
 
   await mkdir(path.dirname(reportPath), { recursive: true });
