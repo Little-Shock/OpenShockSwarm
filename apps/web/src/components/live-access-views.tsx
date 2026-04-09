@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import type { AuthDevice, AuthSession, WorkspaceMember, WorkspaceRole } from "@/lib/phase-zero-types";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
+import { buildFirstStartJourney, type FirstStartJourneyStepStatus } from "@/lib/first-start-journey";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 
 const MEMBER_STATUS_OPTIONS = [
@@ -182,6 +183,17 @@ function MutationFeedback({
       ) : null}
     </>
   );
+}
+
+function journeyTone(status: FirstStartJourneyStepStatus) {
+  switch (status) {
+    case "ready":
+      return "lime";
+    case "active":
+      return "yellow";
+    default:
+      return "paper";
+  }
 }
 
 function PermissionProbe({
@@ -1132,6 +1144,82 @@ function DurableMemberPreferencePanel() {
   );
 }
 
+function FirstStartJourneyPanel() {
+  const { state } = usePhaseZeroState();
+  const journey = buildFirstStartJourney(state.workspace, state.auth.session);
+  const onboardingLabel = valueOrPlaceholder(state.workspace.onboarding.status, "not_started");
+
+  return (
+    <Panel tone={journey.onboardingDone ? "lime" : journey.accessReady ? "yellow" : "paper"}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">first-start journey</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">首次启动不再要求你自己猜是回 `/access` 还是继续 `/setup`</h2>
+        </div>
+        <span
+          data-testid="access-first-start-next-route"
+          className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+        >
+          {journey.nextHref}
+        </span>
+      </div>
+      <p
+        data-testid="access-first-start-summary"
+        className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.78)]"
+      >
+        {journey.nextSummary}
+      </p>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <Metric label="next action" value={journey.nextLabel} />
+        <p className="sr-only" data-testid="access-first-start-next-label">{journey.nextLabel}</p>
+        <Metric label="launch route" value={journey.launchHref} />
+        <p className="sr-only" data-testid="access-first-start-launch-route">{journey.launchHref}</p>
+        <Metric label="onboarding" value={onboardingLabel} />
+        <p className="sr-only" data-testid="access-first-start-onboarding-status">{onboardingLabel}</p>
+      </div>
+      <div className="mt-5 grid gap-3 xl:grid-cols-3">
+        {journey.steps.map((step) => (
+          <Panel
+            key={step.id}
+            tone={journeyTone(step.status)}
+            className="!p-3.5"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-display text-2xl font-bold">{step.label}</p>
+                <p
+                  data-testid={`access-first-start-step-${step.id}-summary`}
+                  className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]"
+                >
+                  {step.summary}
+                </p>
+              </div>
+              <span
+                data-testid={`access-first-start-step-${step.id}-status`}
+                className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em]"
+              >
+                {step.status}
+              </span>
+            </div>
+          </Panel>
+        ))}
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <Link
+          data-testid="access-first-start-next-link"
+          href={journey.nextHref}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] shadow-[4px_4px_0_0_var(--shock-ink)] transition-transform hover:-translate-y-0.5"
+        >
+          {journey.nextLabel}
+        </Link>
+        <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+          当身份链已接通时，这里直接把下一跳压成单值；完成 onboarding 后会把 launch route 切回主工作面。
+        </p>
+      </div>
+    </Panel>
+  );
+}
+
 export function LiveAccessContextRail() {
   const { state, loading, error } = usePhaseZeroState();
 
@@ -1151,6 +1239,7 @@ export function LiveAccessContextRail() {
 
   const session = state.auth.session;
   const ownerCount = state.auth.members.filter((member) => member.role === "owner").length;
+  const journey = buildFirstStartJourney(state.workspace, session);
 
   return (
     <DetailRail
@@ -1160,7 +1249,8 @@ export function LiveAccessContextRail() {
         { label: "Recovery", value: recoveryStatusLabel(session.recoveryStatus) },
         { label: "Device", value: deviceAuthLabel(session.deviceAuthStatus) },
         { label: "Members", value: `${state.auth.members.length} roster / ${ownerCount} owner` },
-        { label: "Route", value: valueOrPlaceholder(session.preferences?.startRoute, "未声明") },
+        { label: "Onboarding", value: `${valueOrPlaceholder(state.workspace.onboarding.templateId, "未选模板")} / ${valueOrPlaceholder(state.workspace.onboarding.status, "未声明")}` },
+        { label: "Next", value: `${journey.nextLabel} / ${journey.nextHref}` },
         { label: "Permissions", value: `${session.permissions.length} live permissions` },
       ]}
     />
@@ -1196,8 +1286,9 @@ export function LiveAccessOverview() {
   return (
     <div className="space-y-4">
       <SessionActionPanel session={session} members={members} />
-      <DurableMemberPreferencePanel />
       <IdentityRecoveryPanel session={session} members={members} devices={devices} />
+      <FirstStartJourneyPanel />
+      <DurableMemberPreferencePanel />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_0.95fr]">
         <Panel tone="paper" className="shadow-[8px_8px_0_0_var(--shock-yellow)]">

@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { DetailRail, Panel } from "@/components/phase-zero-views";
+import { buildFirstStartJourney, type FirstStartJourneyStepStatus } from "@/lib/first-start-journey";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useLiveRuntimeTruth } from "@/lib/live-runtime";
 
@@ -25,6 +27,17 @@ function formatHeartbeatCadence(interval?: number, timeout?: number) {
 
 function statusTone(active: boolean) {
   return active ? "lime" : "paper";
+}
+
+function journeyTone(status: FirstStartJourneyStepStatus) {
+  switch (status) {
+    case "ready":
+      return "lime";
+    case "active":
+      return "yellow";
+    default:
+      return "paper";
+  }
 }
 
 function runtimeStatusLabel(state: string) {
@@ -366,6 +379,75 @@ function stepTone(completed: boolean, active: boolean) {
     return "yellow";
   }
   return "paper";
+}
+
+export function SetupFirstStartJourneyPanel() {
+  const { state } = usePhaseZeroState();
+  const journey = buildFirstStartJourney(state.workspace, state.auth.session);
+  const onboardingLabel = valueOrPlaceholder(state.workspace.onboarding.status, "not_started");
+
+  return (
+    <Panel tone={journey.onboardingDone ? "lime" : journey.accessReady ? "yellow" : "paper"}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">first-start bridge</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">Setup 现在直接镜像同一条首次启动路径，不再默认你已经收平了 `/access`</h2>
+        </div>
+        <span
+          data-testid="setup-first-start-next-route"
+          className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
+        >
+          {journey.nextHref}
+        </span>
+      </div>
+      <p
+        data-testid="setup-first-start-summary"
+        className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.78)]"
+      >
+        {journey.nextSummary}
+      </p>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <WorkspaceMetric label="next action" value={journey.nextLabel} testID="setup-first-start-next-label" />
+        <WorkspaceMetric label="launch route" value={journey.launchHref} testID="setup-first-start-launch-route" />
+        <WorkspaceMetric label="onboarding" value={onboardingLabel} testID="setup-first-start-onboarding-status" />
+      </div>
+      <div className="mt-5 grid gap-3 xl:grid-cols-3">
+        {journey.steps.map((step) => (
+          <Panel key={step.id} tone={journeyTone(step.status)} className="!p-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-display text-2xl font-bold">{step.label}</p>
+                <p
+                  data-testid={`setup-first-start-step-${step.id}-summary`}
+                  className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]"
+                >
+                  {step.summary}
+                </p>
+              </div>
+              <span
+                data-testid={`setup-first-start-step-${step.id}-status`}
+                className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em]"
+              >
+                {step.status}
+              </span>
+            </div>
+          </Panel>
+        ))}
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <Link
+          data-testid="setup-first-start-next-link"
+          href={journey.nextHref}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] shadow-[4px_4px_0_0_var(--shock-ink)] transition-transform hover:-translate-y-0.5"
+        >
+          {journey.nextLabel}
+        </Link>
+        <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+          access recovery 和 onboarding progress 现在读的是同一份 next-step truth；如果身份链没接通，这里会直接把你送回 `/access`，而不是让 setup 自己假装已经 ready。
+        </p>
+      </div>
+    </Panel>
+  );
 }
 
 export function OnboardingStudioPanel() {
