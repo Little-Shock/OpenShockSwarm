@@ -240,6 +240,11 @@ function AgentMailboxPanel({
             </Link>
           ))
         )}
+      </div>
+    </Panel>
+  );
+}
+
 function RunCredentialScopePanel({
   state,
   run,
