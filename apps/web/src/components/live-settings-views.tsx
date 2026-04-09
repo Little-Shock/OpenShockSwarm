@@ -114,7 +114,7 @@ const ONBOARDING_STATUS_OPTIONS = [
   { value: "ready", label: "待收口" },
   { value: "done", label: "已完成" },
 ] as const;
-const START_ROUTE_OPTIONS = ["/access", "/setup", "/board", "/rooms", "/settings"] as const;
+const START_ROUTE_OPTIONS = ["/chat/all", "/rooms", "/inbox", "/mailbox", "/setup", "/board", "/settings", "/access"] as const;
 
 function inboxKindLabel(kind: ApprovalCenterItem["kind"]) {
   switch (kind) {
@@ -962,7 +962,7 @@ function MemberPreferencePanel() {
   const { state, updateWorkspaceMemberPreferences } = usePhaseZeroState();
   const member = findSettingsMember(state.auth.session.memberId, state.auth.members);
   const [preferredAgentId, setPreferredAgentId] = useState("");
-  const [startRoute, setStartRoute] = useState("/access");
+  const [startRoute, setStartRoute] = useState("/chat/all");
   const [githubHandle, setGitHubHandle] = useState("");
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
@@ -974,7 +974,7 @@ function MemberPreferencePanel() {
       return;
     }
     setPreferredAgentId(member.preferences.preferredAgentId ?? "");
-    setStartRoute(member.preferences.startRoute ?? "/access");
+    setStartRoute(member.preferences.startRoute ?? "/chat/all");
     setGitHubHandle(member.githubIdentity?.handle ?? "");
   }, [dirty, member]);
 

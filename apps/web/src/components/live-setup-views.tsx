@@ -490,14 +490,14 @@ export function OnboardingStudioPanel() {
       if (finished && sessionMember) {
         await updateWorkspaceMemberPreferences(sessionMember.id, {
           preferredAgentId: sessionMember.preferences.preferredAgentId ?? "",
-          startRoute: "/rooms",
+          startRoute: "/chat/all",
           githubHandle: sessionMember.githubIdentity?.handle ?? "",
         });
       }
 
       setSuccess(
         finished
-          ? "onboarding studio 已收口为 done；workspace 会把 `/rooms` 当成下一跳，而不是继续停在 setup。"
+          ? "onboarding studio 已收口为 done；workspace 会把 `/chat/all` 当成下一跳，而不是继续停在 setup。"
           : syncTemplateDefaults
             ? `${definition.label} 模板已经写回 workspace truth；reload / restart 后会继续从当前 setup step 恢复。`
             : "onboarding progress 已按当前 live truth 前滚；已有 workspace config 不会被模板默认值静默覆盖。"

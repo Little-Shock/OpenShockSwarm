@@ -60,8 +60,8 @@ func TestExperienceMetricsRouteReturnsSectionedSnapshot(t *testing.T) {
 		t.Fatalf("design section missing: %#v", snapshot.Sections)
 	}
 	collaborationShell, ok := findExperienceMetric(design, "collaboration-shell-first")
-	if !ok || collaborationShell.Status != "blocked" {
-		t.Fatalf("collaboration-shell-first metric = %#v, want blocked because default start route is /access", collaborationShell)
+	if !ok || collaborationShell.Status != "ready" || collaborationShell.Value != "/chat/all" {
+		t.Fatalf("collaboration-shell-first metric = %#v, want ready because default start route is /chat/all", collaborationShell)
 	}
 }
 

@@ -47,6 +47,7 @@ export OPENSHOCK_SERVER_ADDR=:8080
 export OPENSHOCK_DAEMON_ADDR=:8090
 export OPENSHOCK_DAEMON_URL=http://127.0.0.1:8090
 export OPENSHOCK_SERVER_URL=http://127.0.0.1:8080
+export OPENSHOCK_ACTUAL_LIVE_URL=http://127.0.0.1:8080
 export NEXT_PUBLIC_OPENSHOCK_API_BASE=http://127.0.0.1:8080
 export OPENSHOCK_LIVE_OWNER=@Max_开发
 ```
@@ -59,6 +60,7 @@ $env:OPENSHOCK_SERVER_ADDR = ":8080"
 $env:OPENSHOCK_DAEMON_ADDR = ":8090"
 $env:OPENSHOCK_DAEMON_URL = "http://127.0.0.1:8090"
 $env:OPENSHOCK_SERVER_URL = "http://127.0.0.1:8080"
+$env:OPENSHOCK_ACTUAL_LIVE_URL = "http://127.0.0.1:8080"
 $env:NEXT_PUBLIC_OPENSHOCK_API_BASE = "http://127.0.0.1:8080"
 $env:OPENSHOCK_LIVE_OWNER = "@Max_开发"
 ```
@@ -81,6 +83,8 @@ $env:OPENSHOCK_LIVE_OWNER = "@Max_开发"
   - `OPENSHOCK_DAEMON_HEARTBEAT_TIMEOUT`
 - Smoke / release gate:
   - `OPENSHOCK_SERVER_URL`
+  - `OPENSHOCK_ACTUAL_LIVE_URL`
+    - 如果你在隔离 dev server 上看 actual live parity，这格继续指向真正给客户试的 `:8080`
   - `OPENSHOCK_DAEMON_URL`
   - `OPENSHOCK_REQUIRE_GITHUB_READY=1` 会把 GitHub readiness 也收进 smoke gate
 
@@ -217,6 +221,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 - `GET /v1/runtime`
 - `GET /v1/runtime/live-service`
 - `GET /v1/workspace/branch-head-truth`
+- `GET /v1/workspace/live-rollout-parity`
 - `GET/POST /v1/repo/binding`
 - `GET /v1/github/connection`
 - `POST /v1/exec`
@@ -278,6 +283,7 @@ curl http://127.0.0.1:8080/v1/runtime
 curl http://127.0.0.1:8080/v1/runtime/pairing
 curl http://127.0.0.1:8080/v1/runtime/live-service
 curl http://127.0.0.1:8080/v1/workspace/branch-head-truth
+curl http://127.0.0.1:8080/v1/workspace/live-rollout-parity
 curl http://127.0.0.1:8080/v1/repo/binding
 curl http://127.0.0.1:8080/v1/github/connection
 ```
@@ -289,6 +295,7 @@ curl http://127.0.0.1:8080/v1/github/connection
 - GitHub probe 能告诉你 `gh` 是否安装、是否已认证
 - `live-service` 能告诉你 actual `:8080` 是不是 managed、owner 是谁、该用哪条 reload command
 - `branch-head-truth` 会把 `repo binding / GitHub probe / current checkout / live service / linked worktrees` 明确并排；如果 branch/head 不一致，先按它的 drift summary 收单值
+- `live-rollout-parity` 会直接告诉你 actual `:8080` 有没有吸到 `/v1/runtime/live-service`、`/v1/experience-metrics`，以及 first-screen / branch 是否还和 current workspace 打架
 - `pnpm ops:live-server:status` 应该和上面的 route truth 对齐；如果 route 已经有 truth，但 `status` 没对齐，先按 route 收单值
 
 ### Step 4: 重新配对 runtime

@@ -62,7 +62,7 @@ function launchHref(session: AuthSession) {
   if (preferred && preferred !== "/access" && preferred !== "/setup") {
     return preferred;
   }
-  return "/rooms";
+  return "/chat/all";
 }
 
 function accessSummary(session: AuthSession) {

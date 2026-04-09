@@ -18,6 +18,7 @@ import (
 type Config struct {
 	DaemonURL           string
 	ControlURL          string
+	ActualLiveURL       string
 	WorkspaceRoot       string
 	GitHub              githubsvc.Client
 	GitHubWebhookSecret string
@@ -29,6 +30,7 @@ type Server struct {
 	defaultDaemonURL    string
 	daemonURL           string
 	controlURL          string
+	actualLiveURL       string
 	daemonMu            sync.RWMutex
 	workspaceRoot       string
 	github              githubsvc.Client
@@ -169,6 +171,7 @@ func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 		defaultDaemonURL:    strings.TrimRight(cfg.DaemonURL, "/"),
 		daemonURL:           daemonURL,
 		controlURL:          strings.TrimRight(strings.TrimSpace(cfg.ControlURL), "/"),
+		actualLiveURL:       strings.TrimRight(strings.TrimSpace(cfg.ActualLiveURL), "/"),
 		workspaceRoot:       cfg.WorkspaceRoot,
 		github:              githubService,
 		githubWebhookSecret: strings.TrimSpace(cfg.GitHubWebhookSecret),
@@ -1750,6 +1753,13 @@ func (s *Server) daemonURLValue() string {
 	s.daemonMu.RLock()
 	defer s.daemonMu.RUnlock()
 	return strings.TrimRight(s.daemonURL, "/")
+}
+
+func (s *Server) actualLiveURLValue() string {
+	if value := strings.TrimRight(strings.TrimSpace(s.actualLiveURL), "/"); value != "" {
+		return value
+	}
+	return "http://127.0.0.1:8080"
 }
 
 func (s *Server) setDaemonURL(url string) {

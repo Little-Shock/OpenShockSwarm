@@ -2,6 +2,7 @@ import { BranchHeadTruthConsole } from "@/components/branch-head-truth-console";
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { GitHubConnectionConsole } from "@/components/github-connection-console";
 import { LiveBridgeConsole } from "@/components/live-bridge-console";
+import { LiveRolloutParityConsole } from "@/components/live-rollout-parity-console";
 import {
   LiveSetupContextRail,
   LiveSetupOverview,
@@ -30,6 +31,7 @@ export default function SetupPage() {
           <RepoBindingConsole />
           <GitHubConnectionConsole />
           <BranchHeadTruthConsole />
+          <LiveRolloutParityConsole />
           <LiveBridgeConsole />
         </div>
       </OpenShockShell>

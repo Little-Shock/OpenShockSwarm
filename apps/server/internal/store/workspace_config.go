@@ -156,7 +156,7 @@ func defaultWorkspaceGitHubInstallation(workspace WorkspaceSnapshot, now string)
 
 func defaultWorkspaceMemberPreferences() WorkspaceMemberPreferences {
 	return WorkspaceMemberPreferences{
-		StartRoute: "/access",
+		StartRoute: "/chat/all",
 	}
 }
 
