@@ -38,7 +38,7 @@ run_repo_gate() {
   printf '%s\n' "$heartbeat_output"
 
   echo "==> runbook entry points"
-  rg -n 'verify:release|ops:smoke|OPENSHOCK_SERVER_URL|OPENSHOCK_REQUIRE_GITHUB_READY' \
+  rg -n 'verify:release|ops:smoke|ops:experience-metrics|OPENSHOCK_SERVER_URL|OPENSHOCK_REQUIRE_GITHUB_READY' \
     "$ROOT_DIR/package.json" \
     "$ROOT_DIR/docs/engineering/Runbook.md"
 }

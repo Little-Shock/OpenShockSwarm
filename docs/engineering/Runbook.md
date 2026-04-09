@@ -29,6 +29,7 @@
 - round-end release gate 现在统一走根脚本：
   - `pnpm verify:release`
   - `pnpm ops:smoke`
+  - `pnpm ops:experience-metrics`
   - `pnpm verify:release:full`
 - 跨平台最稳的方式是直接跑 Go 入口
 - server 默认状态文件是：
@@ -195,6 +196,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 
 - `GET /healthz`
 - `GET /v1/state`
+- `GET /v1/experience-metrics`
 - `GET /v1/workspace`
 - `GET /v1/channels`
 - `GET/POST /v1/issues`
@@ -254,6 +256,19 @@ curl http://127.0.0.1:8080/v1/issues
 
 - 能读到 seed state
 - workspace 中带 repo、runtime pairing、memory mode 等字段
+
+### Step 2.5: 看当前产品 / 体验 / 设计指标快照
+
+```bash
+curl http://127.0.0.1:8080/v1/experience-metrics
+pnpm ops:experience-metrics
+```
+
+期望：
+
+- 能读到 `product / experience / design` 三个 section
+- 每个 metric 都有 `status / value / target / summary`
+- round-end / nightly 不必再只靠零散测试报告拼 customer evidence
 
 ### Step 3: 看 runtime 与 GitHub readiness
 
@@ -353,6 +368,7 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
   - 统一跑 `pnpm verify`
   - 再额外验证 daemon heartbeat snapshot 和 runbook 入口
 - `pnpm ops:smoke`
+  - `pnpm ops:experience-metrics`
   - 对已经启动的 server / daemon 打 live HTTP smoke
   - 默认检查：
     - `GET /healthz`
@@ -369,6 +385,10 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
     - server `GET /v1/runtime` 返回的 `daemonUrl`
     - daemon `GET /v1/runtime` 的 advertise URL
   - 任一 URL 不一致时，smoke 直接失败并指出 mismatch surface
+  - `pnpm ops:experience-metrics`
+    - 对已经启动的 server 拉一份 derived metrics snapshot
+    - 统一回答 onboarding completion、handoff ack、memory provenance、design visibility 是否前滚
+    - historical rate 还缺 durable event rollup 的项会显式标成 `partial`
 - `pnpm verify:release:full`
   - 先跑 repo gate，再跑 live stack smoke
 

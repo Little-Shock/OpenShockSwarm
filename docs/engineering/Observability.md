@@ -33,6 +33,18 @@ pnpm ops:live-server:status
 - `pnpm ops:live-server:status` 会先读 actual live `GET /v1/runtime/live-service`，只有 live route 不可用时才退回请求 workspace 的本地 metadata
 - actual live `:8080` 有没有 managed owner / reload truth，以及 owner workspace 是哪一份 checkout
 
+### Continuous product / experience snapshot
+
+```bash
+pnpm ops:experience-metrics
+```
+
+用来确认：
+
+- `product / experience / design` 三组 metric 已从当前 truth 持续派生
+- round-end / nightly probe 不必再只靠零散 headed report
+- delivery entry / runbook / customer evidence 可以复用同一份 snapshot
+
 ### Strict GitHub-ready probe
 
 ```bash
@@ -53,6 +65,7 @@ OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke
 | live service owner truth | `GET /v1/runtime/live-service` (canonical) + `pnpm ops:live-server:status` (CLI mirror/fallback) | `"managed": true` | actual `:8080` 由谁控制、当前跑哪颗 head、该走哪条 reload path |
 | daemon liveness | `GET /healthz` | `"service":"openshock-daemon"` | daemon 进程是否存活 |
 | control-plane state | `GET /v1/state` | `"workspace"` | workspace / issue / room / run / inbox 是否还能读 |
+| experience metrics snapshot | `GET /v1/experience-metrics` | `"sections"` | product / experience / design metric 是否已从当前 truth 连续派生 |
 | runtime registry | `GET /v1/runtime/registry` | `"runtimes"` | heartbeat / lease truth 是否继续写回 |
 | runtime pairing | `GET /v1/runtime/pairing` + `GET /v1/runtime` + daemon `GET /v1/runtime` | `"daemonUrl"` | server pairing URL、runtime registry 与 live daemon truth 是否一致 |
 | repo binding | `GET /v1/repo/binding` | `"bindingStatus"` | repo / branch / auth mode / install truth |
@@ -148,6 +161,18 @@ cd apps/daemon
 - 先看 provider / heartbeat payload
 - 想区分是 daemon 自身问题，还是 server pairing 问题
 
+### continuous metrics probe
+
+```bash
+pnpm ops:experience-metrics
+```
+
+适合：
+
+- round-end / nightly 连续观测
+- 想快速回答 onboarding / handoff / memory provenance / design visibility 有没有前滚
+- 需要一份可直接贴进 reviewer packet / runbook / customer evidence 的统一摘要
+
 ---
 
 ## 5. 当前 incident package 最少收什么
@@ -172,4 +197,5 @@ cd apps/daemon
 - 这份文档只负责 observability / health-check / diagnostics package
 - 发布 gate 和 rollback contract 继续由 `Release-Gate.md` 收
 - 不引入新的 realtime observability 面
+- `/v1/experience-metrics` 只是一份 derived snapshot，不是新的 realtime stream
 - 不回头重开 `#53-#63`

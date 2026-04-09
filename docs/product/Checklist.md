@@ -285,13 +285,14 @@
 - 当前状态: 部分完成
 - 已落地:
   - [x] `pnpm verify:release` 与 `pnpm ops:smoke` 提供基础回归门
+  - [x] `GET /v1/experience-metrics` + `pnpm ops:experience-metrics` 已把 `product / experience / design` 收成一份可复用的持续快照
   - [x] 浏览器走查、API 检查、SSE 验证已经有一轮实际结果
   - [x] 2026 年 4 月 7 日针对 GitHub App effective auth path 和 memory contract 的 go tests / release verify 已通过
   - [x] `ops:smoke` 已会比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 URL 真值
   - [x] `pnpm test:headed-setup` 已能输出 headed Chromium 截图、trace、日志和 markdown 报告
   - [x] `pnpm check:live-truth-hygiene` 已进入 `verify:web`，会拦 direct mock-data import、placeholder 文案和 tracked live-truth residue
 - 当前 GAP:
-  - [ ] 产品指标、体验指标、设计指标尚未形成持续观测
+  - [ ] 历史型 rate 指标仍有一部分只到 `partial`，后续还要补 durable event rollup / time-series truth
 - 对应 Test Cases: `TC-011` `TC-021` `TC-026` `TC-042`
 
 ### CHK-16 app.slock.ai 壳层对齐与导航秩序
