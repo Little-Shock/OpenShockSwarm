@@ -31,6 +31,14 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeChannel(item)
 		}
 		return items
+	case store.DirectMessage:
+		return sanitizeDirectMessage(typed)
+	case []store.DirectMessage:
+		items := make([]store.DirectMessage, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeDirectMessage(item)
+		}
+		return items
 	case store.Message:
 		return sanitizeMessage(typed)
 	case []store.Message:
@@ -71,12 +79,36 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeAgent(item)
 		}
 		return items
+	case store.Machine:
+		return sanitizeMachine(typed)
+	case []store.Machine:
+		items := make([]store.Machine, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeMachine(item)
+		}
+		return items
 	case store.RuntimeRecord:
 		return sanitizeRuntimeRecord(typed)
 	case []store.RuntimeRecord:
 		items := make([]store.RuntimeRecord, len(typed))
 		for index, item := range typed {
 			items[index] = sanitizeRuntimeRecord(item)
+		}
+		return items
+	case store.MessageSurfaceEntry:
+		return sanitizeMessageSurfaceEntry(typed)
+	case []store.MessageSurfaceEntry:
+		items := make([]store.MessageSurfaceEntry, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeMessageSurfaceEntry(item)
+		}
+		return items
+	case store.SearchResult:
+		return sanitizeSearchResult(typed)
+	case []store.SearchResult:
+		items := make([]store.SearchResult, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeSearchResult(item)
 		}
 		return items
 	case store.InboxItem:
@@ -95,6 +127,8 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeRuntimeLease(item)
 		}
 		return items
+	case store.RuntimeScheduler:
+		return sanitizeRuntimeScheduler(typed)
 	case store.PullRequest:
 		return sanitizePullRequest(typed)
 	case store.PullRequestConversationEntry:
@@ -111,6 +145,14 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizePullRequestConversationEntry(item)
 		}
 		return items
+	case store.DestructiveGuard:
+		return sanitizeGuard(typed)
+	case []store.DestructiveGuard:
+		items := make([]store.DestructiveGuard, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeGuard(item)
+		}
+		return items
 	case store.Session:
 		return sanitizeSession(typed)
 	case []store.Session:
@@ -119,6 +161,8 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeSession(item)
 		}
 		return items
+	case store.AuthSnapshot:
+		return sanitizeAuthSnapshot(typed)
 	case store.MemoryArtifact:
 		return sanitizeMemoryArtifact(typed)
 	case []store.MemoryArtifact:
@@ -168,16 +212,25 @@ func sanitizeLiveState(snapshot store.State) store.State {
 	snapshot.Workspace = sanitizeWorkspace(snapshot.Workspace)
 	snapshot.Channels = sanitizeLivePayload(snapshot.Channels).([]store.Channel)
 	snapshot.ChannelMessages = sanitizeLivePayload(snapshot.ChannelMessages).(map[string][]store.Message)
+	snapshot.DirectMessages = sanitizeLivePayload(snapshot.DirectMessages).([]store.DirectMessage)
+	snapshot.DirectMessageMessages = sanitizeLivePayload(snapshot.DirectMessageMessages).(map[string][]store.Message)
+	snapshot.FollowedThreads = sanitizeLivePayload(snapshot.FollowedThreads).([]store.MessageSurfaceEntry)
+	snapshot.SavedLaterItems = sanitizeLivePayload(snapshot.SavedLaterItems).([]store.MessageSurfaceEntry)
+	snapshot.QuickSearchEntries = sanitizeLivePayload(snapshot.QuickSearchEntries).([]store.SearchResult)
 	snapshot.Issues = sanitizeLivePayload(snapshot.Issues).([]store.Issue)
 	snapshot.Rooms = sanitizeLivePayload(snapshot.Rooms).([]store.Room)
 	snapshot.RoomMessages = sanitizeLivePayload(snapshot.RoomMessages).(map[string][]store.Message)
 	snapshot.Runs = sanitizeLivePayload(snapshot.Runs).([]store.Run)
 	snapshot.Agents = sanitizeLivePayload(snapshot.Agents).([]store.Agent)
+	snapshot.Machines = sanitizeLivePayload(snapshot.Machines).([]store.Machine)
 	snapshot.Runtimes = sanitizeLivePayload(snapshot.Runtimes).([]store.RuntimeRecord)
 	snapshot.Inbox = sanitizeLivePayload(snapshot.Inbox).([]store.InboxItem)
 	snapshot.PullRequests = sanitizeLivePayload(snapshot.PullRequests).([]store.PullRequest)
 	snapshot.Sessions = sanitizeLivePayload(snapshot.Sessions).([]store.Session)
 	snapshot.RuntimeLeases = sanitizeLivePayload(snapshot.RuntimeLeases).([]store.RuntimeLease)
+	snapshot.RuntimeScheduler = sanitizeLivePayload(snapshot.RuntimeScheduler).(store.RuntimeScheduler)
+	snapshot.Guards = sanitizeLivePayload(snapshot.Guards).([]store.DestructiveGuard)
+	snapshot.Auth = sanitizeLivePayload(snapshot.Auth).(store.AuthSnapshot)
 	snapshot.Memory = sanitizeLivePayload(snapshot.Memory).([]store.MemoryArtifact)
 	snapshot.MemoryVersions = sanitizeLivePayload(snapshot.MemoryVersions).(map[string][]store.MemoryArtifactVersion)
 	return snapshot
@@ -198,6 +251,9 @@ func sanitizeWorkspace(workspace store.WorkspaceSnapshot) store.WorkspaceSnapsho
 	workspace.DeviceAuth = sanitizeDisplayText(workspace.DeviceAuth, "当前设备认证状态正在整理中。")
 	workspace.BrowserPush = sanitizeDisplayText(workspace.BrowserPush, "当前浏览器推送策略正在整理中。")
 	workspace.MemoryMode = sanitizeDisplayText(workspace.MemoryMode, "当前记忆模式正在整理中。")
+	workspace.RepoBinding = sanitizeWorkspaceRepoBinding(workspace.RepoBinding)
+	workspace.GitHubInstallation = sanitizeWorkspaceGitHubInstall(workspace.GitHubInstallation)
+	workspace.Onboarding = sanitizeWorkspaceOnboarding(workspace.Onboarding)
 	return workspace
 }
 
@@ -221,6 +277,14 @@ func sanitizeChannel(channel store.Channel) store.Channel {
 	channel.Summary = sanitizeDisplayText(channel.Summary, "当前频道摘要正在整理中。")
 	channel.Purpose = sanitizeDisplayText(channel.Purpose, "当前频道说明正在整理中。")
 	return channel
+}
+
+func sanitizeDirectMessage(item store.DirectMessage) store.DirectMessage {
+	item.Name = sanitizeDisplayText(item.Name, "@OpenShock Agent")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前私聊摘要正在整理中。")
+	item.Purpose = sanitizeDisplayText(item.Purpose, "当前私聊说明正在整理中。")
+	item.Counterpart = sanitizeDisplayText(item.Counterpart, "OpenShock Agent")
+	return item
 }
 
 func sanitizeMessage(message store.Message) store.Message {
@@ -269,13 +333,55 @@ func sanitizeRun(run store.Run) store.Run {
 
 func sanitizeAgent(agent store.Agent) store.Agent {
 	agent.Description = sanitizeDisplayText(agent.Description, "当前 Agent 摘要正在整理中。")
+	agent.Mood = sanitizeDisplayText(agent.Mood, "当前 Agent 状态正在整理中。")
 	agent.Lane = sanitizeDisplayText(agent.Lane, "待整理泳道")
+	agent.Role = sanitizeDisplayText(agent.Role, "Agent")
+	agent.Avatar = sanitizeDisplayText(agent.Avatar, "agent")
+	agent.Prompt = sanitizeDisplayText(agent.Prompt, "当前 Agent 提示词正在整理中。")
+	agent.OperatingInstructions = sanitizeDisplayText(agent.OperatingInstructions, "当前 Agent 操作约束正在整理中。")
+	agent.ProviderPreference = sanitizeDisplayText(agent.ProviderPreference, "当前 provider 偏好正在整理中。")
+	agent.ModelPreference = sanitizeDisplayText(agent.ModelPreference, "当前模型偏好正在整理中。")
+	agent.RecallPolicy = sanitizeDisplayText(agent.RecallPolicy, "当前 recall 策略正在整理中。")
+	for index := range agent.ProfileAudit {
+		agent.ProfileAudit[index] = sanitizeAgentProfileAuditEntry(agent.ProfileAudit[index])
+	}
 	return agent
 }
 
+func sanitizeMachine(item store.Machine) store.Machine {
+	item.Name = sanitizeDisplayText(item.Name, "待整理机器")
+	item.CLI = sanitizeDisplayText(item.CLI, "当前 CLI 能力正在整理中。")
+	item.Shell = sanitizeDisplayText(item.Shell, "当前 shell 真值正在整理中。")
+	item.OS = sanitizeDisplayText(item.OS, "当前系统信息正在整理中。")
+	return item
+}
+
 func sanitizeRuntimeRecord(record store.RuntimeRecord) store.RuntimeRecord {
+	record.Machine = sanitizeDisplayText(record.Machine, "待整理 runtime")
+	record.DaemonURL = sanitizeDisplayText(record.DaemonURL, "")
+	record.Shell = sanitizeDisplayText(record.Shell, "当前 shell 真值正在整理中。")
+	for index := range record.Providers {
+		record.Providers[index] = sanitizeRuntimeProvider(record.Providers[index])
+	}
 	record.WorkspaceRoot = sanitizeDisplayText(record.WorkspaceRoot, "当前 runtime 工作区路径已隐藏。")
 	return record
+}
+
+func sanitizeMessageSurfaceEntry(item store.MessageSurfaceEntry) store.MessageSurfaceEntry {
+	item.ChannelLabel = sanitizeDisplayText(item.ChannelLabel, "当前消息面标签正在整理中。")
+	item.Title = sanitizeDisplayText(item.Title, "待整理消息线索")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前消息线索摘要正在整理中。")
+	item.Note = sanitizeDisplayText(item.Note, "当前消息线索备注正在整理中。")
+	return item
+}
+
+func sanitizeSearchResult(item store.SearchResult) store.SearchResult {
+	item.Title = sanitizeDisplayText(item.Title, "待整理结果")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前搜索结果摘要正在整理中。")
+	item.Meta = sanitizeDisplayText(item.Meta, "当前搜索结果上下文正在整理中。")
+	item.Href = sanitizeDisplayText(item.Href, "/")
+	item.Keywords = sanitizeDisplayText(item.Keywords, "")
+	return item
 }
 
 func sanitizeInboxItem(item store.InboxItem) store.InboxItem {
@@ -312,6 +418,18 @@ func sanitizeRuntimeLease(item store.RuntimeLease) store.RuntimeLease {
 	return item
 }
 
+func sanitizeRuntimeScheduler(item store.RuntimeScheduler) store.RuntimeScheduler {
+	item.PreferredRuntime = sanitizeDisplayText(item.PreferredRuntime, "当前首选 runtime 正在整理中。")
+	item.AssignedRuntime = sanitizeDisplayText(item.AssignedRuntime, "当前分配 runtime 正在整理中。")
+	item.AssignedMachine = sanitizeDisplayText(item.AssignedMachine, "当前分配机器正在整理中。")
+	item.FailoverFrom = sanitizeDisplayText(item.FailoverFrom, "")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 runtime 调度摘要正在整理中。")
+	for index := range item.Candidates {
+		item.Candidates[index] = sanitizeRuntimeSchedulerCandidate(item.Candidates[index])
+	}
+	return item
+}
+
 func sanitizeSession(session store.Session) store.Session {
 	session.ControlNote = sanitizeDisplayText(session.ControlNote, "当前控制说明正在整理中。")
 	session.Branch = sanitizeDisplayText(session.Branch, "待整理分支")
@@ -320,6 +438,175 @@ func sanitizeSession(session store.Session) store.Session {
 	session.Summary = sanitizeDisplayText(session.Summary, "当前会话摘要正在整理中。")
 	session.MemoryPaths = sanitizeTextLines(session.MemoryPaths, "当前 session 记忆路径正在整理中。")
 	return session
+}
+
+func sanitizeGuard(item store.DestructiveGuard) store.DestructiveGuard {
+	item.Title = sanitizeDisplayText(item.Title, "待整理 Guard")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 guard 摘要正在整理中。")
+	item.Risk = sanitizeDisplayText(item.Risk, "当前风险标签正在整理中。")
+	item.Scope = sanitizeDisplayText(item.Scope, "当前影响范围正在整理中。")
+	for index := range item.Boundaries {
+		item.Boundaries[index] = sanitizeGuardBoundary(item.Boundaries[index])
+	}
+	return item
+}
+
+func sanitizeAuthSnapshot(snapshot store.AuthSnapshot) store.AuthSnapshot {
+	snapshot.Session = sanitizeAuthSession(snapshot.Session)
+	for index := range snapshot.Roles {
+		snapshot.Roles[index] = sanitizeWorkspaceRole(snapshot.Roles[index])
+	}
+	for index := range snapshot.Members {
+		snapshot.Members[index] = sanitizeWorkspaceMember(snapshot.Members[index])
+	}
+	for index := range snapshot.Devices {
+		snapshot.Devices[index] = sanitizeAuthDevice(snapshot.Devices[index])
+	}
+	return snapshot
+}
+
+func sanitizeWorkspaceRepoBinding(item store.WorkspaceRepoBindingSnapshot) store.WorkspaceRepoBindingSnapshot {
+	item.Repo = sanitizeDisplayText(item.Repo, "当前仓库绑定真值正在整理中。")
+	item.RepoURL = sanitizeDisplayText(item.RepoURL, "")
+	item.Branch = sanitizeDisplayText(item.Branch, "待整理分支")
+	item.Provider = sanitizeDisplayText(item.Provider, "待整理仓库提供方")
+	item.BindingStatus = sanitizeDisplayText(item.BindingStatus, "当前绑定状态正在整理中。")
+	item.AuthMode = sanitizeDisplayText(item.AuthMode, "当前认证模式正在整理中。")
+	return item
+}
+
+func sanitizeWorkspaceGitHubInstall(item store.WorkspaceGitHubInstallSnapshot) store.WorkspaceGitHubInstallSnapshot {
+	item.Provider = sanitizeDisplayText(item.Provider, "github")
+	item.PreferredAuthMode = sanitizeDisplayText(item.PreferredAuthMode, "")
+	item.InstallationID = sanitizeDisplayText(item.InstallationID, "")
+	item.InstallationURL = sanitizeDisplayText(item.InstallationURL, "")
+	item.Missing = sanitizeTextLines(item.Missing, "当前 GitHub 安装缺口正在整理中。")
+	item.ConnectionMessage = sanitizeDisplayText(item.ConnectionMessage, "当前 GitHub 连接说明正在整理中。")
+	return item
+}
+
+func sanitizeWorkspaceOnboarding(item store.WorkspaceOnboardingSnapshot) store.WorkspaceOnboardingSnapshot {
+	item.Status = sanitizeDisplayText(item.Status, "当前 onboarding 状态正在整理中。")
+	item.TemplateID = sanitizeDisplayText(item.TemplateID, "")
+	item.CurrentStep = sanitizeDisplayText(item.CurrentStep, "")
+	item.CompletedSteps = sanitizeTextLines(item.CompletedSteps, "")
+	item.ResumeURL = sanitizeDisplayText(item.ResumeURL, "")
+	item.Materialization = sanitizeWorkspaceOnboardingMaterialization(item.Materialization)
+	return item
+}
+
+func sanitizeWorkspaceOnboardingMaterialization(item store.WorkspaceOnboardingMaterialization) store.WorkspaceOnboardingMaterialization {
+	item.Label = sanitizeDisplayText(item.Label, "")
+	item.Channels = sanitizeTextLines(item.Channels, "")
+	item.Roles = sanitizeTextLines(item.Roles, "")
+	item.Agents = sanitizeTextLines(item.Agents, "")
+	item.NotificationPolicy = sanitizeDisplayText(item.NotificationPolicy, "")
+	item.Notes = sanitizeTextLines(item.Notes, "当前 onboarding 说明正在整理中。")
+	return item
+}
+
+func sanitizeAgentProfileAuditEntry(item store.AgentProfileAuditEntry) store.AgentProfileAuditEntry {
+	item.UpdatedBy = sanitizeDisplayText(item.UpdatedBy, "OpenShock Agent")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 Agent profile 变更摘要正在整理中。")
+	for index := range item.Changes {
+		item.Changes[index] = sanitizeAgentProfileAuditChange(item.Changes[index])
+	}
+	return item
+}
+
+func sanitizeAgentProfileAuditChange(item store.AgentProfileAuditChange) store.AgentProfileAuditChange {
+	item.Field = sanitizeDisplayText(item.Field, "field")
+	item.Previous = sanitizeDisplayText(item.Previous, "当前旧值正在整理中。")
+	item.Current = sanitizeDisplayText(item.Current, "当前新值正在整理中。")
+	return item
+}
+
+func sanitizeRuntimeProvider(item store.RuntimeProvider) store.RuntimeProvider {
+	item.Label = sanitizeDisplayText(item.Label, "当前 provider 标签正在整理中。")
+	item.Mode = sanitizeDisplayText(item.Mode, "当前 provider 模式正在整理中。")
+	item.Capabilities = sanitizeTextLines(item.Capabilities, "当前 capability 正在整理中。")
+	item.Models = sanitizeTextLines(item.Models, "当前模型目录正在整理中。")
+	item.Transport = sanitizeDisplayText(item.Transport, "当前 transport 正在整理中。")
+	return item
+}
+
+func sanitizeRuntimeSchedulerCandidate(item store.RuntimeSchedulerCandidate) store.RuntimeSchedulerCandidate {
+	item.Runtime = sanitizeDisplayText(item.Runtime, "待整理 runtime")
+	item.Machine = sanitizeDisplayText(item.Machine, "待整理机器")
+	item.Reason = sanitizeDisplayText(item.Reason, "当前调度原因正在整理中。")
+	return item
+}
+
+func sanitizeGuardBoundary(item store.GuardBoundary) store.GuardBoundary {
+	item.Label = sanitizeDisplayText(item.Label, "Boundary")
+	item.Value = sanitizeDisplayText(item.Value, "当前 guard boundary 正在整理中。")
+	return item
+}
+
+func sanitizeAuthSession(item store.AuthSession) store.AuthSession {
+	item.Email = sanitizeDisplayText(item.Email, "")
+	item.Name = sanitizeDisplayText(item.Name, "Workspace Member")
+	item.Role = sanitizeDisplayText(item.Role, "")
+	item.AuthMethod = sanitizeDisplayText(item.AuthMethod, "")
+	item.DeviceID = sanitizeDisplayText(item.DeviceID, "")
+	item.DeviceLabel = sanitizeDisplayText(item.DeviceLabel, "当前设备标签正在整理中。")
+	item.DeviceAuthStatus = sanitizeDisplayText(item.DeviceAuthStatus, "")
+	item.EmailVerificationStatus = sanitizeDisplayText(item.EmailVerificationStatus, "")
+	item.PasswordResetStatus = sanitizeDisplayText(item.PasswordResetStatus, "")
+	item.RecoveryStatus = sanitizeDisplayText(item.RecoveryStatus, "")
+	item.GitHubIdentity = sanitizeAuthExternalIdentity(item.GitHubIdentity)
+	item.Preferences = sanitizeWorkspaceMemberPreferences(item.Preferences)
+	for index := range item.LinkedIdentities {
+		item.LinkedIdentities[index] = sanitizeAuthExternalIdentity(item.LinkedIdentities[index])
+	}
+	item.Permissions = sanitizeTextLines(item.Permissions, "")
+	return item
+}
+
+func sanitizeWorkspaceRole(item store.WorkspaceRole) store.WorkspaceRole {
+	item.Label = sanitizeDisplayText(item.Label, "当前角色标签正在整理中。")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前角色说明正在整理中。")
+	item.Permissions = sanitizeTextLines(item.Permissions, "")
+	return item
+}
+
+func sanitizeWorkspaceMember(item store.WorkspaceMember) store.WorkspaceMember {
+	item.Email = sanitizeDisplayText(item.Email, "")
+	item.Name = sanitizeDisplayText(item.Name, "Workspace Member")
+	item.Role = sanitizeDisplayText(item.Role, "")
+	item.Source = sanitizeDisplayText(item.Source, "")
+	item.RecoveryEmail = sanitizeDisplayText(item.RecoveryEmail, "")
+	item.EmailVerificationStatus = sanitizeDisplayText(item.EmailVerificationStatus, "")
+	item.PasswordResetStatus = sanitizeDisplayText(item.PasswordResetStatus, "")
+	item.RecoveryStatus = sanitizeDisplayText(item.RecoveryStatus, "")
+	item.GitHubIdentity = sanitizeAuthExternalIdentity(item.GitHubIdentity)
+	item.Preferences = sanitizeWorkspaceMemberPreferences(item.Preferences)
+	for index := range item.LinkedIdentities {
+		item.LinkedIdentities[index] = sanitizeAuthExternalIdentity(item.LinkedIdentities[index])
+	}
+	item.TrustedDeviceIDs = sanitizeTextLines(item.TrustedDeviceIDs, "")
+	item.Permissions = sanitizeTextLines(item.Permissions, "")
+	return item
+}
+
+func sanitizeWorkspaceMemberPreferences(item store.WorkspaceMemberPreferences) store.WorkspaceMemberPreferences {
+	item.PreferredAgentID = sanitizeDisplayText(item.PreferredAgentID, "")
+	item.StartRoute = sanitizeDisplayText(item.StartRoute, "")
+	return item
+}
+
+func sanitizeAuthExternalIdentity(item store.AuthExternalIdentity) store.AuthExternalIdentity {
+	item.Provider = sanitizeDisplayText(item.Provider, "")
+	item.Handle = sanitizeDisplayText(item.Handle, "当前外部身份 handle 正在整理中。")
+	item.Status = sanitizeDisplayText(item.Status, "")
+	return item
+}
+
+func sanitizeAuthDevice(item store.AuthDevice) store.AuthDevice {
+	item.MemberID = sanitizeDisplayText(item.MemberID, "")
+	item.Label = sanitizeDisplayText(item.Label, "当前设备标签正在整理中。")
+	item.Status = sanitizeDisplayText(item.Status, "")
+	return item
 }
 
 func sanitizeMemoryArtifact(item store.MemoryArtifact) store.MemoryArtifact {
