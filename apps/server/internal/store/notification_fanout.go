@@ -16,16 +16,21 @@ const (
 )
 
 type NotificationFanoutReceipt struct {
-	ID           string `json:"id"`
-	DeliveryID   string `json:"deliveryId"`
-	InboxItemID  string `json:"inboxItemId"`
-	SubscriberID string `json:"subscriberId"`
-	Channel      string `json:"channel"`
-	Status       string `json:"status"`
-	AttemptedAt  string `json:"attemptedAt"`
-	DeliveredAt  string `json:"deliveredAt,omitempty"`
-	PayloadPath  string `json:"payloadPath,omitempty"`
-	Error        string `json:"error,omitempty"`
+	ID            string `json:"id"`
+	DeliveryID    string `json:"deliveryId"`
+	InboxItemID   string `json:"inboxItemId"`
+	SignalKind    string `json:"signalKind,omitempty"`
+	TemplateID    string `json:"templateId,omitempty"`
+	TemplateLabel string `json:"templateLabel,omitempty"`
+	SubscriberID  string `json:"subscriberId"`
+	Channel       string `json:"channel"`
+	Status        string `json:"status"`
+	Title         string `json:"title,omitempty"`
+	Href          string `json:"href,omitempty"`
+	AttemptedAt   string `json:"attemptedAt"`
+	DeliveredAt   string `json:"deliveredAt,omitempty"`
+	PayloadPath   string `json:"payloadPath,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 type NotificationFanoutRun struct {
@@ -42,16 +47,19 @@ type notificationFanoutStateFile struct {
 }
 
 type notificationFanoutPayload struct {
-	DeliveryID   string `json:"deliveryId"`
-	InboxItemID  string `json:"inboxItemId"`
-	SubscriberID string `json:"subscriberId"`
-	Channel      string `json:"channel"`
-	Target       string `json:"target"`
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	Href         string `json:"href"`
-	Priority     string `json:"priority"`
-	AttemptedAt  string `json:"attemptedAt"`
+	DeliveryID    string `json:"deliveryId"`
+	InboxItemID   string `json:"inboxItemId"`
+	SignalKind    string `json:"signalKind,omitempty"`
+	TemplateID    string `json:"templateId,omitempty"`
+	TemplateLabel string `json:"templateLabel,omitempty"`
+	SubscriberID  string `json:"subscriberId"`
+	Channel       string `json:"channel"`
+	Target        string `json:"target"`
+	Title         string `json:"title"`
+	Body          string `json:"body"`
+	Href          string `json:"href"`
+	Priority      string `json:"priority"`
+	AttemptedAt   string `json:"attemptedAt"`
 }
 
 func (s *Store) notificationFanoutStatePathLocked() string {
@@ -135,12 +143,17 @@ func (s *Store) DispatchNotificationFanout() (State, NotificationCenter, Notific
 
 		run.Attempted++
 		receipt := NotificationFanoutReceipt{
-			ID:           fmt.Sprintf("fanout-%s", delivery.ID),
-			DeliveryID:   delivery.ID,
-			InboxItemID:  delivery.InboxItemID,
-			SubscriberID: delivery.SubscriberID,
-			Channel:      delivery.Channel,
-			AttemptedAt:  now,
+			ID:            fmt.Sprintf("fanout-%s", delivery.ID),
+			DeliveryID:    delivery.ID,
+			InboxItemID:   delivery.InboxItemID,
+			SignalKind:    delivery.SignalKind,
+			TemplateID:    delivery.TemplateID,
+			TemplateLabel: delivery.TemplateLabel,
+			SubscriberID:  delivery.SubscriberID,
+			Channel:       delivery.Channel,
+			Title:         delivery.Title,
+			Href:          delivery.Href,
+			AttemptedAt:   now,
 		}
 
 		index := -1
@@ -227,16 +240,19 @@ func (s *Store) writeNotificationFanoutPayloadLocked(subscriber NotificationSubs
 	}
 
 	payload := notificationFanoutPayload{
-		DeliveryID:   delivery.ID,
-		InboxItemID:  delivery.InboxItemID,
-		SubscriberID: delivery.SubscriberID,
-		Channel:      delivery.Channel,
-		Target:       subscriber.Target,
-		Title:        delivery.Title,
-		Body:         delivery.Body,
-		Href:         delivery.Href,
-		Priority:     delivery.Priority,
-		AttemptedAt:  attemptedAt,
+		DeliveryID:    delivery.ID,
+		InboxItemID:   delivery.InboxItemID,
+		SignalKind:    delivery.SignalKind,
+		TemplateID:    delivery.TemplateID,
+		TemplateLabel: delivery.TemplateLabel,
+		SubscriberID:  delivery.SubscriberID,
+		Channel:       delivery.Channel,
+		Target:        subscriber.Target,
+		Title:         delivery.Title,
+		Body:          delivery.Body,
+		Href:          delivery.Href,
+		Priority:      delivery.Priority,
+		AttemptedAt:   attemptedAt,
 	}
 	body, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

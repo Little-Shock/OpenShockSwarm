@@ -450,6 +450,8 @@ export type ApprovalCenterItem = {
   action: string;
   href: string;
   time: string;
+  templateId?: string;
+  templateLabel?: string;
   unread: boolean;
   decisionOptions: InboxDecision[];
   deliveryStatus: ApprovalCenterDeliveryStatus;

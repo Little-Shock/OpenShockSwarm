@@ -17,7 +17,7 @@ import {
   useLiveNotifications,
 } from "@/lib/live-notifications";
 import { usePhaseZeroState } from "@/lib/live-phase0";
-import type { AgentStatus, InboxItem, WorkspaceMember } from "@/lib/phase-zero-types";
+import type { AgentStatus, ApprovalCenterItem, WorkspaceMember } from "@/lib/phase-zero-types";
 
 type LiveNotificationsModel = ReturnType<typeof useLiveNotifications>;
 
@@ -39,7 +39,7 @@ const ONBOARDING_STATUS_OPTIONS = [
 ] as const;
 const START_ROUTE_OPTIONS = ["/access", "/setup", "/board", "/rooms", "/settings"] as const;
 
-function inboxKindLabel(kind: InboxItem["kind"]) {
+function inboxKindLabel(kind: ApprovalCenterItem["kind"]) {
   switch (kind) {
     case "approval":
       return "需要批准";
@@ -52,7 +52,7 @@ function inboxKindLabel(kind: InboxItem["kind"]) {
   }
 }
 
-function inboxKindTone(kind: InboxItem["kind"]) {
+function inboxKindTone(kind: ApprovalCenterItem["kind"]) {
   switch (kind) {
     case "approval":
       return "bg-[var(--shock-yellow)]";
@@ -329,6 +329,91 @@ function findPrimaryEmailSubscriber(center: NotificationCenter, preferredEmail: 
     }
   }
   return center.subscribers.find((subscriber) => subscriber.channel === "email") ?? null;
+}
+
+function isIdentityTemplate(templateID?: string) {
+  return Boolean(templateID && templateID.startsWith("auth_"));
+}
+
+function notificationTemplateLabel(templateID: string | undefined, fallback?: string) {
+  if (fallback) {
+    return fallback;
+  }
+  switch (templateID) {
+    case "auth_invite":
+      return "Invite";
+    case "auth_verify_email":
+      return "Verify Email";
+    case "auth_password_reset":
+      return "Password Reset";
+    case "auth_blocked_recovery":
+      return "Blocked Recovery Escalation";
+    default:
+      return valueOrPlaceholder(templateID, "未命名模板");
+  }
+}
+
+function buildIdentityTemplateSummaries(
+  signals: ApprovalCenterItem[],
+  deliveries: NotificationDelivery[],
+  receipts: NotificationFanoutReceipt[]
+) {
+  const templates = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      signalCount: number;
+      readyCount: number;
+      blockedCount: number;
+      lastAttempt: string;
+      lastStatus: string;
+    }
+  >();
+
+  const ensureTemplate = (templateID?: string, templateLabel?: string) => {
+    const id = valueOrPlaceholder(templateID, "untyped");
+    const existing = templates.get(id);
+    if (existing) {
+      return existing;
+    }
+    const next = {
+      id,
+      label: notificationTemplateLabel(templateID, templateLabel),
+      signalCount: 0,
+      readyCount: 0,
+      blockedCount: 0,
+      lastAttempt: "",
+      lastStatus: "尚未执行",
+    };
+    templates.set(id, next);
+    return next;
+  };
+
+  for (const signal of signals) {
+    const template = ensureTemplate(signal.templateId, signal.templateLabel);
+    template.signalCount += 1;
+  }
+
+  for (const delivery of deliveries) {
+    const template = ensureTemplate(delivery.templateId, delivery.templateLabel);
+    if (delivery.status === "ready") {
+      template.readyCount += 1;
+    }
+    if (delivery.status === "blocked") {
+      template.blockedCount += 1;
+    }
+  }
+
+  for (const receipt of receipts) {
+    const template = ensureTemplate(receipt.templateId, receipt.templateLabel);
+    if (receipt.attemptedAt > template.lastAttempt) {
+      template.lastAttempt = receipt.attemptedAt;
+      template.lastStatus = deliveryStatusLabel(receipt.status);
+    }
+  }
+
+  return Array.from(templates.values());
 }
 
 function LiveSettingsContextRail({ notifications }: { notifications: LiveNotificationsModel }) {
@@ -756,10 +841,21 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const inboxItems = state.inbox;
   const browserSubscriber = useMemo(() => findCurrentBrowserSubscriber(center, subscriberTarget), [center, subscriberTarget]);
   const fallbackEmail = state.auth.session.email || state.auth.members.find((member) => member.role === "owner")?.email || "ops@openshock.dev";
   const emailSubscriber = useMemo(() => findPrimaryEmailSubscriber(center, fallbackEmail), [center, fallbackEmail]);
+  const routedSignals = useMemo(
+    () => [...center.approvalCenter.signals, ...center.approvalCenter.recent],
+    [center.approvalCenter.recent, center.approvalCenter.signals]
+  );
+  const identitySignals = useMemo(
+    () => routedSignals.filter((signal) => isIdentityTemplate(signal.templateId)),
+    [routedSignals]
+  );
+  const identityDeliveries = useMemo(
+    () => center.deliveries.filter((delivery) => isIdentityTemplate(delivery.templateId)),
+    [center.deliveries]
+  );
 
   useEffect(() => {
     if (!policyDirty) {
@@ -785,10 +881,21 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
   const suppressedDeliveries = center.deliveries.filter((delivery) => delivery.status === "suppressed").length;
   const browserDeliveryCount = center.deliveries.filter((delivery) => delivery.channel === "browser_push" && delivery.status === "ready").length;
   const emailDeliveryCount = center.deliveries.filter((delivery) => delivery.channel === "email" && delivery.status === "ready").length;
-  const workerReceipts = center.worker.receipts ?? [];
+  const workerReceipts = useMemo(() => center.worker.receipts ?? [], [center.worker.receipts]);
+  const identityReceipts = useMemo(
+    () => workerReceipts.filter((receipt) => isIdentityTemplate(receipt.templateId)),
+    [workerReceipts]
+  );
+  const identityTemplateSummaries = useMemo(
+    () => buildIdentityTemplateSummaries(identitySignals, identityDeliveries, identityReceipts),
+    [identityDeliveries, identityReceipts, identitySignals]
+  );
   const browserSubscriberState = browserSubscriber?.status ?? currentBrowserSubscriberStatus(surface);
   const workerSummary = center.worker.ranAt
     ? `${center.worker.delivered}/${center.worker.attempted} sent · ${center.worker.failed} failed`
+    : "尚未执行";
+  const identityWorkerSummary = identityReceipts.length
+    ? `${identityReceipts.filter((receipt) => receipt.status === "sent").length}/${identityReceipts.length} sent`
     : "尚未执行";
 
   async function runAction(action: string, runner: () => Promise<void>) {
@@ -916,6 +1023,63 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
           </div>
         </Panel>
       </div>
+
+      <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Identity Template Chain</p>
+            <h2 className="mt-3 font-display text-3xl font-bold">invite / verify / reset / blocked recovery 现在走同一套通知模板</h2>
+          </div>
+          <Link
+            href="/access"
+            className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--shock-ink)]"
+          >
+            打开 Access
+          </Link>
+        </div>
+        <p className="mt-3 max-w-4xl text-sm leading-6 text-white/84">
+          身份恢复链不再停在 auth mutation 自己的局部成功。当前 `/v1/notifications` 会把 invite、邮箱验证、密码重置和跨设备 blocked
+          escalation 一起折进同一条 template / delivery truth，并把最新 fanout 回写到这里。
+        </p>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <FactTile label="Templates" value={String(identityTemplateSummaries.length)} testID="notification-identity-template-count" />
+          <FactTile label="Signals" value={String(identitySignals.length)} testID="notification-identity-signal-count" />
+          <FactTile label="Ready Deliveries" value={String(identityDeliveries.filter((delivery) => delivery.status === "ready").length)} testID="notification-identity-ready-count" />
+          <FactTile label="Latest Fanout" value={identityWorkerSummary} testID="notification-identity-worker-summary" />
+        </div>
+        <div className="mt-5 space-y-3">
+          {identityTemplateSummaries.length === 0 ? (
+            <EmptyState
+              title="当前没有 identity template signal"
+              message="先在 /access 触发 invite、邮箱验证、密码重置或跨设备恢复阻塞，再回这里看统一 delivery truth。"
+            />
+          ) : (
+            identityTemplateSummaries.map((template) => (
+              <article
+                key={template.id}
+                data-testid={`notification-identity-template-${template.id}`}
+                className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4 text-[var(--shock-ink)] shadow-[4px_4px_0_0_var(--shock-ink)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    {template.label}
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">{template.id}</span>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <StatusRow label="Signals" value={String(template.signalCount)} tone="white" />
+                  <StatusRow label="Ready" value={String(template.readyCount)} tone={template.readyCount > 0 ? "lime" : "white"} />
+                  <StatusRow label="Blocked" value={String(template.blockedCount)} tone={template.blockedCount > 0 ? "pink" : "white"} />
+                  <StatusRow label="Last Worker Result" value={template.lastStatus} tone={template.lastStatus === "已送达" ? "lime" : template.lastStatus === "发送失败" ? "pink" : "yellow"} />
+                </div>
+                <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                  latest worker attempt: {formatTimestamp(template.lastAttempt)}
+                </p>
+              </article>
+            ))
+          )}
+        </div>
+      </Panel>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_1fr]">
         <Panel tone="paper">
@@ -1218,8 +1382,9 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <StatusRow label="Subscriber" value={subscriber?.label || receipt.subscriberId} tone="white" />
                       <StatusRow label="Target" value={subscriber?.target || "n/a"} tone="white" />
-                      <StatusRow label="Signal" value={delivery?.signalKind || receipt.inboxItemId} tone="yellow" />
-                      <StatusRow label="Href" value={delivery?.href || "n/a"} tone="white" />
+                      <StatusRow label="Template" value={delivery?.templateLabel || receipt.templateLabel || "未命名模板"} tone="yellow" />
+                      <StatusRow label="Signal" value={delivery?.signalKind || receipt.signalKind || receipt.inboxItemId} tone="yellow" />
+                      <StatusRow label="Href" value={delivery?.href || receipt.href || "n/a"} tone="white" />
                     </div>
                     {receipt.payloadPath ? (
                       <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">payload: {receipt.payloadPath}</p>
@@ -1240,14 +1405,22 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Source Signals</p>
-              <h3 className="mt-3 font-display text-3xl font-bold">当前会被路由的 inbox 信号</h3>
+              <h3 className="mt-3 font-display text-3xl font-bold">当前会被路由的 signal truth</h3>
             </div>
-            <Link
-              href="/inbox"
-              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
-            >
-              打开 Inbox
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/inbox"
+                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+                打开 Inbox
+              </Link>
+              <Link
+                href="/access"
+                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
+              >
+                打开 Access
+              </Link>
+            </div>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <FactTile label="Approvals" value={String(center.approvalCenter.approvalCount)} />
@@ -1255,10 +1428,10 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
             <FactTile label="Blocks" value={String(center.approvalCenter.blockedCount)} />
           </div>
           <div className="mt-5 space-y-3">
-            {inboxItems.length === 0 ? (
-              <EmptyState title="当前没有待路由信号" message="这表示没有新的 approval / review / blocked 事件需要触达。" />
+            {routedSignals.length === 0 ? (
+              <EmptyState title="当前没有待路由信号" message="这表示没有新的 approval / review / identity recovery signal 需要触达。" />
             ) : (
-              inboxItems.map((item) => (
+              routedSignals.map((item) => (
                 <article
                   key={item.id}
                   className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
@@ -1273,6 +1446,11 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
                     >
                       {inboxKindLabel(item.kind)}
                     </span>
+                    {item.templateLabel ? (
+                      <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                        {item.templateLabel}
+                      </span>
+                    ) : null}
                     <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">{item.room}</span>
                     <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">{item.time}</span>
                   </div>
@@ -1292,7 +1470,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
             {actionMessage}
           </p>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            这轮边界只收 `TC-017` 的 notification preference / subscriber / fanout delivery；invite / verify / reset password 继续留在后续身份链路范围。
+            当前这层已经把 invite / verify / reset / blocked recovery absorb 到同一条 notification template chain；前台现在直接复用这份 delivery truth。
           </p>
         </Panel>
       ) : null}

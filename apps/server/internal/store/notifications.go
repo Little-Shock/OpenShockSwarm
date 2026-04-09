@@ -65,18 +65,20 @@ type NotificationSubscriber struct {
 }
 
 type NotificationDelivery struct {
-	ID           string `json:"id"`
-	InboxItemID  string `json:"inboxItemId"`
-	SignalKind   string `json:"signalKind"`
-	Priority     string `json:"priority"`
-	Channel      string `json:"channel"`
-	SubscriberID string `json:"subscriberId"`
-	Status       string `json:"status"`
-	Reason       string `json:"reason"`
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	Href         string `json:"href"`
-	CreatedAt    string `json:"createdAt"`
+	ID            string `json:"id"`
+	InboxItemID   string `json:"inboxItemId"`
+	SignalKind    string `json:"signalKind"`
+	TemplateID    string `json:"templateId,omitempty"`
+	TemplateLabel string `json:"templateLabel,omitempty"`
+	Priority      string `json:"priority"`
+	Channel       string `json:"channel"`
+	SubscriberID  string `json:"subscriberId"`
+	Status        string `json:"status"`
+	Reason        string `json:"reason"`
+	Title         string `json:"title"`
+	Body          string `json:"body"`
+	Href          string `json:"href"`
+	CreatedAt     string `json:"createdAt"`
 }
 
 type ApprovalCenterItem struct {
@@ -92,6 +94,8 @@ type ApprovalCenterItem struct {
 	Action            string   `json:"action"`
 	Href              string   `json:"href"`
 	Time              string   `json:"time"`
+	TemplateID        string   `json:"templateId,omitempty"`
+	TemplateLabel     string   `json:"templateLabel,omitempty"`
 	Unread            bool     `json:"unread"`
 	DecisionOptions   []string `json:"decisionOptions"`
 	DeliveryStatus    string   `json:"deliveryStatus"`
@@ -136,6 +140,24 @@ type NotificationSubscriberUpsertInput struct {
 type notificationStateFile struct {
 	Policy      NotificationPolicy       `json:"policy"`
 	Subscribers []NotificationSubscriber `json:"subscribers"`
+}
+
+type notificationSignal struct {
+	ID            string
+	Kind          string
+	Priority      string
+	Room          string
+	RoomID        string
+	RunID         string
+	GuardID       string
+	Title         string
+	Summary       string
+	Action        string
+	Href          string
+	Time          string
+	Unread        bool
+	TemplateID    string
+	TemplateLabel string
 }
 
 func defaultNotificationCenter(now string) NotificationCenter {
@@ -283,6 +305,19 @@ func notificationPriorityForInboxKind(kind string) string {
 	}
 }
 
+func notificationTemplateForInboxKind(kind string) (id, label string) {
+	switch strings.TrimSpace(kind) {
+	case "approval":
+		return "ops_approval", "Approval"
+	case "blocked":
+		return "ops_blocked_escalation", "Blocked Escalation"
+	case "review":
+		return "ops_review", "Review"
+	default:
+		return "ops_status_update", "Status Update"
+	}
+}
+
 func decisionOptionsForInboxKind(kind string) []string {
 	switch strings.TrimSpace(kind) {
 	case "approval":
@@ -321,6 +356,179 @@ func shouldDeliverNotification(preference, priority string) bool {
 	default:
 		return false
 	}
+}
+
+func notificationSignalTime(candidates ...string) string {
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) != "" {
+			return candidate
+		}
+	}
+	return "刚刚"
+}
+
+func notificationRecoveryLabel(status string) string {
+	switch strings.TrimSpace(status) {
+	case authRecoveryStatusVerificationRequired:
+		return "邮箱验证待完成"
+	case authRecoveryStatusDeviceApprovalRequired:
+		return "设备授权待完成"
+	case authRecoveryStatusPasswordResetPending:
+		return "密码重置待完成"
+	case authRecoveryStatusRecovered:
+		return "已恢复"
+	default:
+		return "已就绪"
+	}
+}
+
+func notificationMemberLabel(member WorkspaceMember) string {
+	if strings.TrimSpace(member.Name) != "" {
+		return member.Name
+	}
+	if strings.TrimSpace(member.Email) != "" {
+		return member.Email
+	}
+	return "当前成员"
+}
+
+func findNotificationMember(auth AuthSnapshot, memberID, email string) (WorkspaceMember, bool) {
+	if strings.TrimSpace(memberID) != "" {
+		for _, member := range auth.Members {
+			if member.ID == memberID {
+				return member, true
+			}
+		}
+	}
+	normalizedEmail := normalizeEmail(email)
+	if normalizedEmail != "" {
+		for _, member := range auth.Members {
+			if normalizeEmail(member.Email) == normalizedEmail {
+				return member, true
+			}
+		}
+	}
+	return WorkspaceMember{}, false
+}
+
+func inboxNotificationSignals(snapshot State) []notificationSignal {
+	signals := make([]notificationSignal, 0, len(snapshot.Inbox))
+	roomUnread := make(map[string]int, len(snapshot.Rooms))
+	roomUnreadByTitle := make(map[string]int, len(snapshot.Rooms))
+	for _, room := range snapshot.Rooms {
+		roomUnread[room.ID] = room.Unread
+		roomUnreadByTitle[room.Title] = room.Unread
+	}
+
+	for _, inboxItem := range snapshot.Inbox {
+		templateID, templateLabel := notificationTemplateForInboxKind(inboxItem.Kind)
+		roomID, runID := parseInboxTargetIDs(inboxItem.Href)
+		unread := false
+		if roomID != "" {
+			unread = roomUnread[roomID] > 0
+		} else {
+			unread = roomUnreadByTitle[inboxItem.Room] > 0
+		}
+		signals = append(signals, notificationSignal{
+			ID:            inboxItem.ID,
+			Kind:          inboxItem.Kind,
+			Priority:      notificationPriorityForInboxKind(inboxItem.Kind),
+			Room:          inboxItem.Room,
+			RoomID:        roomID,
+			RunID:         runID,
+			GuardID:       inboxItem.GuardID,
+			Title:         inboxItem.Title,
+			Summary:       inboxItem.Summary,
+			Action:        inboxItem.Action,
+			Href:          inboxItem.Href,
+			Time:          inboxItem.Time,
+			Unread:        unread,
+			TemplateID:    templateID,
+			TemplateLabel: templateLabel,
+		})
+	}
+	return signals
+}
+
+func authNotificationSignals(snapshot State) []notificationSignal {
+	signals := []notificationSignal{}
+	auth := snapshot.Auth
+
+	for _, member := range auth.Members {
+		if member.Status == workspaceMemberStatusInvited {
+			signals = append(signals, notificationSignal{
+				ID:            fmt.Sprintf("auth-invite-%s", member.ID),
+				Kind:          "status",
+				Priority:      notificationPriorityCritical,
+				Room:          "身份 / 恢复",
+				Title:         fmt.Sprintf("邀请待接受 · %s", notificationMemberLabel(member)),
+				Summary:       fmt.Sprintf("%s 已被邀请加入 workspace；通知模板会把首次登录继续前滚到同一条 verify / recovery 链。", defaultString(member.Email, notificationMemberLabel(member))),
+				Action:        "打开 /access 完成首次登录",
+				Href:          "/access",
+				Time:          notificationSignalTime(member.AddedAt),
+				TemplateID:    "auth_invite",
+				TemplateLabel: "Invite",
+			})
+		}
+		if member.PasswordResetStatus == authPasswordResetPending {
+			signals = append(signals, notificationSignal{
+				ID:            fmt.Sprintf("auth-reset-%s", member.ID),
+				Kind:          "status",
+				Priority:      notificationPriorityCritical,
+				Room:          "身份 / 恢复",
+				Title:         fmt.Sprintf("密码重置待完成 · %s", notificationMemberLabel(member)),
+				Summary:       fmt.Sprintf("%s 已进入 reset pending；下一步需要在另一设备完成恢复并回到同一条 session / permission truth。", defaultString(member.Email, notificationMemberLabel(member))),
+				Action:        "打开 /access 完成密码重置",
+				Href:          "/access",
+				Time:          notificationSignalTime(member.PasswordResetRequestedAt, member.LastSeenAt, member.AddedAt),
+				TemplateID:    "auth_password_reset",
+				TemplateLabel: "Password Reset",
+			})
+		}
+	}
+
+	if strings.TrimSpace(auth.Session.Status) != authSessionStatusActive {
+		return signals
+	}
+
+	member, ok := findNotificationMember(auth, auth.Session.MemberID, auth.Session.Email)
+	if !ok {
+		return signals
+	}
+
+	if auth.Session.EmailVerificationStatus != authEmailVerificationVerified {
+		signals = append(signals, notificationSignal{
+			ID:            fmt.Sprintf("auth-verify-%s", member.ID),
+			Kind:          "status",
+			Priority:      notificationPriorityCritical,
+			Room:          "身份 / 恢复",
+			Title:         fmt.Sprintf("邮箱验证待完成 · %s", notificationMemberLabel(member)),
+			Summary:       fmt.Sprintf("%s 还没完成邮箱验证；通知模板会继续把 identity recovery 引回 /access。", defaultString(member.Email, notificationMemberLabel(member))),
+			Action:        "打开 /access 验证邮箱",
+			Href:          "/access",
+			Time:          notificationSignalTime(auth.Session.SignedInAt, member.LastSeenAt, member.AddedAt),
+			TemplateID:    "auth_verify_email",
+			TemplateLabel: "Verify Email",
+		})
+	}
+
+	if auth.Session.DeviceAuthStatus != "" && auth.Session.DeviceAuthStatus != authDeviceStatusAuthorized {
+		signals = append(signals, notificationSignal{
+			ID:            fmt.Sprintf("auth-blocked-recovery-%s", member.ID),
+			Kind:          "blocked",
+			Priority:      notificationPriorityCritical,
+			Room:          "身份 / 恢复",
+			Title:         fmt.Sprintf("跨设备恢复仍被拦截 · %s", defaultString(auth.Session.DeviceLabel, notificationMemberLabel(member))),
+			Summary:       fmt.Sprintf("%s 当前还是 %s；通知模板会把这条 blocked escalation 持续推回 /access。", defaultString(member.Email, notificationMemberLabel(member)), notificationRecoveryLabel(auth.Session.RecoveryStatus)),
+			Action:        "打开 /access 授权当前设备",
+			Href:          "/access",
+			Time:          notificationSignalTime(auth.Session.LastSeenAt, auth.Session.SignedInAt, member.LastSeenAt),
+			TemplateID:    "auth_blocked_recovery",
+			TemplateLabel: "Blocked Recovery Escalation",
+		})
+	}
+
+	return signals
 }
 
 func notificationSuppressionReason(preference, priority string) string {
@@ -440,11 +648,11 @@ func (s *Store) normalizeNotificationStateLocked(state notificationStateFile) no
 }
 
 func buildNotificationCenter(snapshot State, state notificationStateFile, worker NotificationFanoutRun) NotificationCenter {
-	deliveries := make([]NotificationDelivery, 0, len(snapshot.Inbox)*max(1, len(state.Subscribers)))
+	signals := append(inboxNotificationSignals(snapshot), authNotificationSignals(snapshot)...)
+	deliveries := make([]NotificationDelivery, 0, len(signals)*max(1, len(state.Subscribers)))
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	for _, inboxItem := range snapshot.Inbox {
-		priority := notificationPriorityForInboxKind(inboxItem.Kind)
+	for _, signal := range signals {
 		for _, subscriber := range state.Subscribers {
 			status := notificationDeliveryStatusReady
 			reason := "subscriber ready for delivery"
@@ -452,23 +660,25 @@ func buildNotificationCenter(snapshot State, state notificationStateFile, worker
 			case subscriber.Status != notificationSubscriberStatusReady:
 				status = notificationDeliveryStatusBlocked
 				reason = fmt.Sprintf("subscriber status %q blocks delivery", subscriber.Status)
-			case !shouldDeliverNotification(subscriber.EffectivePreference, priority):
+			case !shouldDeliverNotification(subscriber.EffectivePreference, signal.Priority):
 				status = notificationDeliveryStatusSuppressed
-				reason = notificationSuppressionReason(subscriber.EffectivePreference, priority)
+				reason = notificationSuppressionReason(subscriber.EffectivePreference, signal.Priority)
 			}
 			deliveries = append(deliveries, NotificationDelivery{
-				ID:           fmt.Sprintf("delivery-%s-%s", inboxItem.ID, subscriber.ID),
-				InboxItemID:  inboxItem.ID,
-				SignalKind:   inboxItem.Kind,
-				Priority:     priority,
-				Channel:      subscriber.Channel,
-				SubscriberID: subscriber.ID,
-				Status:       status,
-				Reason:       reason,
-				Title:        inboxItem.Title,
-				Body:         inboxItem.Summary,
-				Href:         inboxItem.Href,
-				CreatedAt:    now,
+				ID:            fmt.Sprintf("delivery-%s-%s", signal.ID, subscriber.ID),
+				InboxItemID:   signal.ID,
+				SignalKind:    signal.Kind,
+				TemplateID:    signal.TemplateID,
+				TemplateLabel: signal.TemplateLabel,
+				Priority:      signal.Priority,
+				Channel:       subscriber.Channel,
+				SubscriberID:  subscriber.ID,
+				Status:        status,
+				Reason:        reason,
+				Title:         signal.Title,
+				Body:          signal.Summary,
+				Href:          signal.Href,
+				CreatedAt:     now,
 			})
 		}
 	}
@@ -477,37 +687,32 @@ func buildNotificationCenter(snapshot State, state notificationStateFile, worker
 		Signals: []ApprovalCenterItem{},
 		Recent:  []ApprovalCenterItem{},
 	}
-	roomUnread := make(map[string]int, len(snapshot.Rooms))
-	roomUnreadByTitle := make(map[string]int, len(snapshot.Rooms))
-	for _, room := range snapshot.Rooms {
-		roomUnread[room.ID] = room.Unread
-		roomUnreadByTitle[room.Title] = room.Unread
-	}
-	for _, inboxItem := range snapshot.Inbox {
+	for _, signalSource := range signals {
 		signal := ApprovalCenterItem{
-			ID:              inboxItem.ID,
-			Kind:            inboxItem.Kind,
-			Priority:        notificationPriorityForInboxKind(inboxItem.Kind),
-			Room:            inboxItem.Room,
-			GuardID:         inboxItem.GuardID,
-			Title:           inboxItem.Title,
-			Summary:         inboxItem.Summary,
-			Action:          inboxItem.Action,
-			Href:            inboxItem.Href,
-			Time:            inboxItem.Time,
-			DecisionOptions: decisionOptionsForInboxKind(inboxItem.Kind),
+			ID:              signalSource.ID,
+			Kind:            signalSource.Kind,
+			Priority:        signalSource.Priority,
+			Room:            signalSource.Room,
+			RoomID:          signalSource.RoomID,
+			RunID:           signalSource.RunID,
+			GuardID:         signalSource.GuardID,
+			Title:           signalSource.Title,
+			Summary:         signalSource.Summary,
+			Action:          signalSource.Action,
+			Href:            signalSource.Href,
+			Time:            signalSource.Time,
+			TemplateID:      signalSource.TemplateID,
+			TemplateLabel:   signalSource.TemplateLabel,
+			Unread:          signalSource.Unread,
+			DecisionOptions: decisionOptionsForInboxKind(signalSource.Kind),
 			DeliveryStatus:  notificationDeliveryStatusUnrouted,
 		}
-		signal.RoomID, signal.RunID = parseInboxTargetIDs(inboxItem.Href)
-		if signal.RoomID != "" {
-			signal.Unread = roomUnread[signal.RoomID] > 0
-		} else {
-			signal.Unread = roomUnreadByTitle[inboxItem.Room] > 0
-		}
+		signalDeliveryCount := 0
 		for _, delivery := range deliveries {
-			if delivery.InboxItemID != inboxItem.ID {
+			if delivery.InboxItemID != signalSource.ID {
 				continue
 			}
+			signalDeliveryCount++
 			switch delivery.Status {
 			case notificationDeliveryStatusReady:
 				signal.DeliveryTargets++
@@ -521,17 +726,17 @@ func buildNotificationCenter(snapshot State, state notificationStateFile, worker
 			signal.DeliveryStatus = notificationDeliveryStatusReady
 		case signal.BlockedDeliveries > 0:
 			signal.DeliveryStatus = notificationDeliveryStatusBlocked
-		case len(deliveries) > 0:
+		case signalDeliveryCount > 0:
 			signal.DeliveryStatus = notificationDeliveryStatusSuppressed
 		}
 
-		if inboxItem.Kind == "status" {
+		if signalSource.Kind == "status" {
 			approval.Recent = append(approval.Recent, signal)
 			approval.RecentCount++
 			continue
 		}
 
-		switch inboxItem.Kind {
+		switch signalSource.Kind {
 		case "approval":
 			approval.ApprovalCount++
 		case "blocked":

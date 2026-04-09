@@ -208,6 +208,79 @@ func TestNotificationFanoutWorkerExposesRetryableLatestRunInNotificationCenter(t
 	}
 }
 
+func TestNotificationFanoutWorkerRoutesIdentityTemplatesIntoUnifiedDeliveryChain(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	emailID := createNotificationSubscriber(t, server.URL, NotificationSubscriberRequest{
+		Channel:    "email",
+		Target:     "ops@openshock.dev",
+		Label:      "Ops Oncall",
+		Preference: "critical",
+		Status:     "ready",
+	})
+
+	inviteResp, err := http.Post(server.URL+"/v1/workspace/members", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","name":"Reviewer","role":"viewer"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/workspace/members error = %v", err)
+	}
+	if inviteResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/workspace/members status = %d, want %d", inviteResp.StatusCode, http.StatusCreated)
+	}
+
+	afterInvite := fetchNotificationCenter(t, server.URL)
+	if _, ok := findApprovalSignalByTemplate(afterInvite.ApprovalCenter.Recent, "auth_invite"); !ok {
+		t.Fatalf("invite template missing from approval recent: %#v", afterInvite.ApprovalCenter.Recent)
+	}
+	inviteDelivery, ok := findDeliveryByTemplate(afterInvite.Deliveries, emailID, "auth_invite")
+	if !ok || inviteDelivery.Status != "ready" {
+		t.Fatalf("invite delivery malformed: %#v", afterInvite.Deliveries)
+	}
+
+	inviteRun := postNotificationFanout(t, server.URL)
+	assertFanoutReceiptForTemplate(t, root, inviteRun.Worker, emailID, "auth_invite")
+
+	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session error = %v", err)
+	}
+	if loginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session status = %d, want %d", loginResp.StatusCode, http.StatusOK)
+	}
+
+	resetResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"request_password_reset","email":"reviewer@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery request_password_reset error = %v", err)
+	}
+	if resetResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/recovery request_password_reset status = %d, want %d", resetResp.StatusCode, http.StatusOK)
+	}
+
+	afterRecovery := fetchNotificationCenter(t, server.URL)
+	if _, ok := findApprovalSignalByTemplate(afterRecovery.ApprovalCenter.Recent, "auth_verify_email"); !ok {
+		t.Fatalf("verify template missing from approval recent: %#v", afterRecovery.ApprovalCenter.Recent)
+	}
+	if _, ok := findApprovalSignalByTemplate(afterRecovery.ApprovalCenter.Recent, "auth_password_reset"); !ok {
+		t.Fatalf("password reset template missing from approval recent: %#v", afterRecovery.ApprovalCenter.Recent)
+	}
+	if _, ok := findApprovalSignalByTemplate(afterRecovery.ApprovalCenter.Signals, "auth_blocked_recovery"); !ok {
+		t.Fatalf("blocked recovery template missing from approval signals: %#v", afterRecovery.ApprovalCenter.Signals)
+	}
+
+	for _, templateID := range []string{"auth_verify_email", "auth_password_reset", "auth_blocked_recovery"} {
+		delivery, ok := findDeliveryByTemplate(afterRecovery.Deliveries, emailID, templateID)
+		if !ok || delivery.Status != "ready" {
+			t.Fatalf("template %q delivery malformed: %#v", templateID, afterRecovery.Deliveries)
+		}
+	}
+
+	recoveryRun := postNotificationFanout(t, server.URL)
+	for _, templateID := range []string{"auth_verify_email", "auth_password_reset", "auth_blocked_recovery"} {
+		assertFanoutReceiptForTemplate(t, root, recoveryRun.Worker, emailID, templateID)
+	}
+}
+
 func createNotificationSubscriber(t *testing.T, baseURL string, input NotificationSubscriberRequest) string {
 	t.Helper()
 
@@ -304,4 +377,45 @@ func postNotificationFanout(t *testing.T, baseURL string) struct {
 	}
 	decodeJSON(t, resp, &payload)
 	return payload
+}
+
+func findApprovalSignalByTemplate(items []store.ApprovalCenterItem, templateID string) (store.ApprovalCenterItem, bool) {
+	for _, item := range items {
+		if item.TemplateID == templateID {
+			return item, true
+		}
+	}
+	return store.ApprovalCenterItem{}, false
+}
+
+func findDeliveryByTemplate(deliveries []store.NotificationDelivery, subscriberID, templateID string) (store.NotificationDelivery, bool) {
+	for _, delivery := range deliveries {
+		if delivery.SubscriberID == subscriberID && delivery.TemplateID == templateID {
+			return delivery, true
+		}
+	}
+	return store.NotificationDelivery{}, false
+}
+
+func assertFanoutReceiptForTemplate(t *testing.T, root string, run store.NotificationFanoutRun, subscriberID, templateID string) {
+	t.Helper()
+
+	for _, receipt := range run.Receipts {
+		if receipt.SubscriberID != subscriberID || receipt.TemplateID != templateID {
+			continue
+		}
+		if receipt.Status != "sent" || receipt.DeliveredAt == "" || receipt.PayloadPath == "" {
+			t.Fatalf("receipt for template %q malformed: %#v", templateID, receipt)
+		}
+		body, err := os.ReadFile(filepath.Join(root, "data", filepath.FromSlash(receipt.PayloadPath)))
+		if err != nil {
+			t.Fatalf("ReadFile(%q) error = %v", receipt.PayloadPath, err)
+		}
+		if !bytes.Contains(body, []byte(`"templateId": "`+templateID+`"`)) || !bytes.Contains(body, []byte(`"templateLabel"`)) {
+			t.Fatalf("fanout payload %q missing template fields: %s", receipt.PayloadPath, string(body))
+		}
+		return
+	}
+
+	t.Fatalf("no receipt found for subscriber %q template %q in %#v", subscriberID, templateID, run.Receipts)
 }
