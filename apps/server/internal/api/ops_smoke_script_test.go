@@ -33,7 +33,25 @@ func TestOpsSmokePassesWhenPairingMatchesDaemonTruth(t *testing.T) {
 		case "/healthz":
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})
 		case "/v1/state":
-			writeJSON(w, http.StatusOK, map[string]any{"workspace": map[string]any{"pairedRuntime": "shock-main"}})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"workspace": map[string]any{
+					"pairedRuntime": "shock-main",
+					"quota": map[string]any{
+						"maxAgents":          8,
+						"messageHistoryDays": 30,
+					},
+					"usage": map[string]any{
+						"totalTokens":  4200,
+						"messageCount": 7,
+					},
+				},
+				"runs": []map[string]any{{
+					"id": "run-smoke",
+					"usage": map[string]any{
+						"totalTokens": 1200,
+					},
+				}},
+			})
 		case "/v1/runtime/registry":
 			writeJSON(w, http.StatusOK, map[string]any{
 				"pairedRuntime": "shock-main",
@@ -97,7 +115,25 @@ func TestOpsSmokeFailsWhenPairingDriftsFromDaemonTruth(t *testing.T) {
 		case "/healthz":
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})
 		case "/v1/state":
-			writeJSON(w, http.StatusOK, map[string]any{"workspace": map[string]any{"pairedRuntime": "shock-main"}})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"workspace": map[string]any{
+					"pairedRuntime": "shock-main",
+					"quota": map[string]any{
+						"maxAgents":          8,
+						"messageHistoryDays": 30,
+					},
+					"usage": map[string]any{
+						"totalTokens":  4200,
+						"messageCount": 7,
+					},
+				},
+				"runs": []map[string]any{{
+					"id": "run-smoke",
+					"usage": map[string]any{
+						"totalTokens": 1200,
+					},
+				}},
+			})
 		case "/v1/runtime/registry":
 			writeJSON(w, http.StatusOK, map[string]any{
 				"pairedRuntime": "shock-main",

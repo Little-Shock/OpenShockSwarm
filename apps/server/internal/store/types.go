@@ -11,6 +11,8 @@ type WorkspaceSnapshot struct {
 	RepoBindingStatus  string                         `json:"repoBindingStatus"`
 	RepoAuthMode       string                         `json:"repoAuthMode"`
 	Plan               string                         `json:"plan"`
+	Quota              WorkspaceQuotaSnapshot         `json:"quota"`
+	Usage              WorkspaceUsageSnapshot         `json:"usage"`
 	PairedRuntime      string                         `json:"pairedRuntime"`
 	PairedRuntimeURL   string                         `json:"pairedRuntimeUrl"`
 	PairingStatus      string                         `json:"pairingStatus"`
@@ -21,6 +23,31 @@ type WorkspaceSnapshot struct {
 	RepoBinding        WorkspaceRepoBindingSnapshot   `json:"repoBinding"`
 	GitHubInstallation WorkspaceGitHubInstallSnapshot `json:"githubInstallation"`
 	Onboarding         WorkspaceOnboardingSnapshot    `json:"onboarding"`
+}
+
+type WorkspaceQuotaSnapshot struct {
+	UsedMachines       int    `json:"usedMachines"`
+	MaxMachines        int    `json:"maxMachines"`
+	UsedAgents         int    `json:"usedAgents"`
+	MaxAgents          int    `json:"maxAgents"`
+	UsedChannels       int    `json:"usedChannels"`
+	MaxChannels        int    `json:"maxChannels"`
+	UsedRooms          int    `json:"usedRooms"`
+	MaxRooms           int    `json:"maxRooms"`
+	MessageHistoryDays int    `json:"messageHistoryDays"`
+	RunLogDays         int    `json:"runLogDays"`
+	MemoryDraftDays    int    `json:"memoryDraftDays"`
+	Status             string `json:"status"`
+	Warning            string `json:"warning,omitempty"`
+}
+
+type WorkspaceUsageSnapshot struct {
+	WindowLabel  string `json:"windowLabel"`
+	TotalTokens  int    `json:"totalTokens"`
+	RunCount     int    `json:"runCount"`
+	MessageCount int    `json:"messageCount"`
+	RefreshedAt  string `json:"refreshedAt"`
+	Warning      string `json:"warning,omitempty"`
 }
 
 type WorkspaceRepoBindingSnapshot struct {
@@ -140,15 +167,26 @@ type Issue struct {
 }
 
 type Room struct {
-	ID         string   `json:"id"`
-	IssueKey   string   `json:"issueKey"`
-	Title      string   `json:"title"`
-	Unread     int      `json:"unread"`
-	Summary    string   `json:"summary"`
-	BoardCount int      `json:"boardCount"`
-	RunID      string   `json:"runId"`
-	MessageIDs []string `json:"messageIds"`
-	Topic      Topic    `json:"topic"`
+	ID         string            `json:"id"`
+	IssueKey   string            `json:"issueKey"`
+	Title      string            `json:"title"`
+	Unread     int               `json:"unread"`
+	Summary    string            `json:"summary"`
+	BoardCount int               `json:"boardCount"`
+	RunID      string            `json:"runId"`
+	MessageIDs []string          `json:"messageIds"`
+	Topic      Topic             `json:"topic"`
+	Usage      RoomUsageSnapshot `json:"usage"`
+}
+
+type RoomUsageSnapshot struct {
+	WindowLabel  string `json:"windowLabel"`
+	MessageCount int    `json:"messageCount"`
+	HumanTurns   int    `json:"humanTurns"`
+	AgentTurns   int    `json:"agentTurns"`
+	TotalTokens  int    `json:"totalTokens"`
+	RefreshedAt  string `json:"refreshedAt"`
+	Warning      string `json:"warning,omitempty"`
 }
 
 type RunEvent struct {
@@ -185,30 +223,42 @@ type ToolCall struct {
 }
 
 type Run struct {
-	ID               string     `json:"id"`
-	IssueKey         string     `json:"issueKey"`
-	RoomID           string     `json:"roomId"`
-	TopicID          string     `json:"topicId"`
-	Status           string     `json:"status"`
-	FollowThread     bool       `json:"followThread"`
-	ControlNote      string     `json:"controlNote,omitempty"`
-	Runtime          string     `json:"runtime"`
-	Machine          string     `json:"machine"`
-	Provider         string     `json:"provider"`
-	Branch           string     `json:"branch"`
-	Worktree         string     `json:"worktree"`
-	WorktreePath     string     `json:"worktreePath"`
-	Owner            string     `json:"owner"`
-	StartedAt        string     `json:"startedAt"`
-	Duration         string     `json:"duration"`
-	Summary          string     `json:"summary"`
-	ApprovalRequired bool       `json:"approvalRequired"`
-	Stdout           []string   `json:"stdout"`
-	Stderr           []string   `json:"stderr"`
-	ToolCalls        []ToolCall `json:"toolCalls"`
-	Timeline         []RunEvent `json:"timeline"`
-	NextAction       string     `json:"nextAction"`
-	PullRequest      string     `json:"pullRequest"`
+	ID               string           `json:"id"`
+	IssueKey         string           `json:"issueKey"`
+	RoomID           string           `json:"roomId"`
+	TopicID          string           `json:"topicId"`
+	Status           string           `json:"status"`
+	FollowThread     bool             `json:"followThread"`
+	ControlNote      string           `json:"controlNote,omitempty"`
+	Runtime          string           `json:"runtime"`
+	Machine          string           `json:"machine"`
+	Provider         string           `json:"provider"`
+	Branch           string           `json:"branch"`
+	Worktree         string           `json:"worktree"`
+	WorktreePath     string           `json:"worktreePath"`
+	Owner            string           `json:"owner"`
+	StartedAt        string           `json:"startedAt"`
+	Duration         string           `json:"duration"`
+	Summary          string           `json:"summary"`
+	ApprovalRequired bool             `json:"approvalRequired"`
+	Stdout           []string         `json:"stdout"`
+	Stderr           []string         `json:"stderr"`
+	ToolCalls        []ToolCall       `json:"toolCalls"`
+	Timeline         []RunEvent       `json:"timeline"`
+	Usage            RunUsageSnapshot `json:"usage"`
+	NextAction       string           `json:"nextAction"`
+	PullRequest      string           `json:"pullRequest"`
+}
+
+type RunUsageSnapshot struct {
+	PromptTokens     int    `json:"promptTokens"`
+	CompletionTokens int    `json:"completionTokens"`
+	TotalTokens      int    `json:"totalTokens"`
+	ToolCallCount    int    `json:"toolCallCount"`
+	ContextWindow    int    `json:"contextWindow"`
+	BudgetStatus     string `json:"budgetStatus"`
+	RefreshedAt      string `json:"refreshedAt"`
+	Warning          string `json:"warning,omitempty"`
 }
 
 type Agent struct {

@@ -84,6 +84,34 @@ function runStatusLabel(status: RunStatus) {
   }
 }
 
+function formatCount(value?: number) {
+  return typeof value === "number" ? value.toLocaleString("zh-CN") : "未返回";
+}
+
+function runBudgetStatusLabel(status?: string) {
+  switch (status) {
+    case "near_limit":
+      return "逼近上限";
+    case "watch":
+      return "进入观察";
+    case "healthy":
+      return "健康";
+    default:
+      return "待同步";
+  }
+}
+
+function runBudgetTone(status?: string): "white" | "paper" | "yellow" | "lime" | "pink" | "ink" {
+  switch (status) {
+    case "near_limit":
+      return "pink";
+    case "watch":
+      return "yellow";
+    default:
+      return "white";
+  }
+}
+
 function inboxKindLabel(kind: InboxItem["kind"]) {
   switch (kind) {
     case "approval":
@@ -481,6 +509,29 @@ export function RunDetailView({
           </div>
         </Panel>
       </div>
+
+      <Panel tone={runBudgetTone(run.usage?.budgetStatus)}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-2xl font-bold">Token / Quota</h3>
+            <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+              Run 详情不只显示 branch / worktree，也要把 prompt、completion、context headroom 和预算状态直接暴露给人类。
+            </p>
+          </div>
+          <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+            {runBudgetStatusLabel(run.usage?.budgetStatus)}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <Metric label="Prompt" value={formatCount(run.usage?.promptTokens)} />
+          <Metric label="Completion" value={formatCount(run.usage?.completionTokens)} />
+          <Metric label="Total" value={formatCount(run.usage?.totalTokens)} />
+          <Metric label="Context" value={formatCount(run.usage?.contextWindow)} />
+        </div>
+        <p className="mt-4 text-sm leading-6 opacity-85">
+          {run.usage?.warning ?? "当前还没有暴露 token / quota warning。"}
+        </p>
+      </Panel>
 
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel tone="lime">

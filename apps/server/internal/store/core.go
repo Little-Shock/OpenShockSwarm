@@ -171,6 +171,7 @@ func (s *Store) hydrateMissingDefaults() {
 	s.ensureSessionConsistency()
 	s.ensureAuthConsistency()
 	syncWorkspaceSnapshotDefaults(&s.state.Workspace)
+	s.refreshUsageObservabilityLocked()
 }
 
 func findAgentByID(items []Agent, agentID string) (Agent, bool) {
@@ -366,6 +367,7 @@ func (s *Store) markMemoryArtifactWritesLocked(paths []string, latest string) {
 }
 
 func (s *Store) persistLocked() error {
+	s.refreshUsageObservabilityLocked()
 	body, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
 		return err

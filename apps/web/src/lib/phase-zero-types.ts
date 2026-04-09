@@ -18,6 +18,8 @@ export type WorkspaceSnapshot = {
   repoBindingStatus: string;
   repoAuthMode: string;
   plan: string;
+  quota?: WorkspaceQuotaSnapshot;
+  usage?: WorkspaceUsageSnapshot;
   pairedRuntime: string;
   pairedRuntimeUrl: string;
   pairingStatus: string;
@@ -28,6 +30,31 @@ export type WorkspaceSnapshot = {
   repoBinding: WorkspaceRepoBindingSnapshot;
   githubInstallation: WorkspaceGitHubInstallSnapshot;
   onboarding: WorkspaceOnboardingSnapshot;
+};
+
+export type WorkspaceQuotaSnapshot = {
+  usedMachines: number;
+  maxMachines: number;
+  usedAgents: number;
+  maxAgents: number;
+  usedChannels: number;
+  maxChannels: number;
+  usedRooms: number;
+  maxRooms: number;
+  messageHistoryDays: number;
+  runLogDays: number;
+  memoryDraftDays: number;
+  status: string;
+  warning?: string;
+};
+
+export type WorkspaceUsageSnapshot = {
+  windowLabel: string;
+  totalTokens: number;
+  runCount: number;
+  messageCount: number;
+  refreshedAt: string;
+  warning?: string;
 };
 
 export type WorkspaceRepoBindingSnapshot = {
@@ -243,6 +270,17 @@ export type Room = {
   topic: Topic;
   runId: string;
   messageIds: string[];
+  usage?: RoomUsageSnapshot;
+};
+
+export type RoomUsageSnapshot = {
+  windowLabel: string;
+  messageCount: number;
+  humanTurns: number;
+  agentTurns: number;
+  totalTokens: number;
+  refreshedAt: string;
+  warning?: string;
 };
 
 export type RunEvent = {
@@ -301,8 +339,20 @@ export type Run = {
   stderr: string[];
   toolCalls: ToolCall[];
   timeline: RunEvent[];
+  usage?: RunUsageSnapshot;
   nextAction: string;
   pullRequest: string;
+};
+
+export type RunUsageSnapshot = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  toolCallCount: number;
+  contextWindow: number;
+  budgetStatus: string;
+  refreshedAt: string;
+  warning?: string;
 };
 
 export type AgentStatus = {

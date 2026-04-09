@@ -78,6 +78,38 @@ function buildMachineProfileHref(state: PhaseZeroState, machineRef: string) {
   return buildProfileHref("machine", machine?.id ?? machineRef);
 }
 
+function formatCount(value?: number) {
+  return typeof value === "number" ? value.toLocaleString("zh-CN") : "未返回";
+}
+
+function runBudgetStatusLabel(status?: string) {
+  switch (status) {
+    case "near_limit":
+      return "逼近上限";
+    case "watch":
+      return "进入观察";
+    case "healthy":
+      return "健康";
+    default:
+      return "待同步";
+  }
+}
+
+function formatQuotaCounter(used?: number, limit?: number, label?: string) {
+  if (typeof used !== "number" || typeof limit !== "number" || limit <= 0) {
+    return "未返回";
+  }
+  return `${used}/${limit}${label ? ` ${label}` : ""}`;
+}
+
+function formatRetentionSummary(workspace?: PhaseZeroState["workspace"]) {
+  const quota = workspace?.quota;
+  if (!quota) {
+    return "未返回";
+  }
+  return `${quota.messageHistoryDays}d 消息 / ${quota.runLogDays}d Run / ${quota.memoryDraftDays}d 草稿`;
+}
+
 function DiscussionStateMessage({
   title,
   message,
@@ -2607,6 +2639,82 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     />
                   ) : activeWorkbenchTab === "run" ? (
                     <div data-testid="room-workbench-run-panel" className="space-y-4">
+                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run Usage</p>
+                        <div className="mt-3 border-2 border-[var(--shock-ink)] bg-[#f7f7f7] px-3 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Current Branch</p>
+                              <p className="mt-2 font-display text-[18px] font-bold leading-6">{session?.branch ?? run.branch}</p>
+                            </div>
+                            <span
+                              data-testid="room-run-status"
+                              className={cn(
+                                "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px]",
+                                currentRunStatus === "paused"
+                                  ? "bg-[var(--shock-paper)]"
+                                  : currentRunStatus === "blocked"
+                                    ? "bg-[var(--shock-pink)] text-white"
+                                    : currentRunStatus === "review"
+                                      ? "bg-[var(--shock-lime)]"
+                                      : currentRunStatus === "done"
+                                        ? "bg-[var(--shock-ink)] text-white"
+                                        : "bg-[var(--shock-yellow)]"
+                              )}
+                            >
+                              {runStatusLabel(currentRunStatus)}
+                            </span>
+                          </div>
+                          <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
+                            Worktree {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
+                          </p>
+                          <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
+                            Last Sync {session?.updatedAt || run.startedAt}
+                          </p>
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            <div className="border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2">
+                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Prompt</p>
+                              <p className="mt-1 text-sm font-semibold">{formatCount(run.usage?.promptTokens)}</p>
+                            </div>
+                            <div className="border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2">
+                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Completion</p>
+                              <p className="mt-1 text-sm font-semibold">{formatCount(run.usage?.completionTokens)}</p>
+                            </div>
+                            <div className="border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2">
+                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Budget</p>
+                              <p className="mt-1 text-sm font-semibold">{runBudgetStatusLabel(run.usage?.budgetStatus)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Usage / Quota</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Room</p>
+                            <p className="mt-2 text-sm font-semibold">
+                              {formatCount(room.usage?.messageCount)} msgs / {formatCount(room.usage?.totalTokens)} tokens
+                            </p>
+                            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
+                              {formatCount(room.usage?.humanTurns)} human / {formatCount(room.usage?.agentTurns)} agent · {room.usage?.windowLabel ?? "窗口未返回"}
+                            </p>
+                          </div>
+                          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Workspace</p>
+                            <p className="mt-2 text-sm font-semibold">{state.workspace.plan || "未命名计划"}</p>
+                            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
+                              {formatQuotaCounter(state.workspace.quota?.usedAgents, state.workspace.quota?.maxAgents, "agents")} ·{" "}
+                              {formatQuotaCounter(state.workspace.quota?.usedRooms, state.workspace.quota?.maxRooms, "rooms")}
+                            </p>
+                            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{formatRetentionSummary(state.workspace)}</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.7)]">
+                          {run.usage?.warning ?? room.usage?.warning ?? state.workspace.usage?.warning ?? state.workspace.quota?.warning ?? "当前还没有 usage / quota warning。"}
+                        </p>
+                      </section>
+
                       <RunControlSurface
                         scope="room"
                         run={run}
