@@ -102,6 +102,48 @@ function runtimeProviderInventoryLabel(
     .join(" · ");
 }
 
+function formatCount(value?: number) {
+  return typeof value === "number" ? value.toLocaleString("zh-CN") : "未返回";
+}
+
+function quotaStatusLabel(status?: string) {
+  switch (status) {
+    case "near_limit":
+      return "逼近上限";
+    case "watch":
+      return "进入观察";
+    case "healthy":
+      return "健康";
+    default:
+      return "待同步";
+  }
+}
+
+function formatQuotaCounter(used?: number, limit?: number, label?: string) {
+  if (typeof used !== "number" || typeof limit !== "number" || limit <= 0) {
+    return "未返回";
+  }
+  return `${used}/${limit}${label ? ` ${label}` : ""}`;
+}
+
+function formatRetentionSummary(quota?: {
+  messageHistoryDays?: number;
+  runLogDays?: number;
+  memoryDraftDays?: number;
+}) {
+  if (!quota) {
+    return "未返回";
+  }
+  return `${quota.messageHistoryDays ?? 0}d 消息 / ${quota.runLogDays ?? 0}d Run / ${quota.memoryDraftDays ?? 0}d 草稿`;
+}
+
+function formatWorkspaceUsageWindow(usage?: { totalTokens?: number; windowLabel?: string }) {
+  if (!usage) {
+    return "未返回";
+  }
+  return `${formatCount(usage.totalTokens)} tokens / ${valueOrPlaceholder(usage.windowLabel, "窗口未返回")}`;
+}
+
 function runtimeLeaseIsActive(status?: string) {
   return Boolean(status && status.trim() && status !== "done");
 }
@@ -603,6 +645,14 @@ export function LiveSetupContextRail() {
                 ? `${state.pullRequests.length} 条 live PR`
                 : "待产生",
         },
+        {
+          label: "Quota",
+          value: loading
+            ? "同步中"
+            : error
+              ? "未同步"
+              : `${valueOrPlaceholder(workspace.plan, "未命名计划")} / ${quotaStatusLabel(workspace.quota?.status)} / ${formatQuotaCounter(workspace.quota?.usedAgents, workspace.quota?.maxAgents, "agents")}`,
+        },
       ]}
     />
   );
@@ -719,6 +769,7 @@ export function LiveSetupOverview() {
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
             <WorkspaceMetric label="仓库" value={valueOrPlaceholder(workspace.repo, "当前未返回 repo")} />
             <WorkspaceMetric label="分支" value={valueOrPlaceholder(workspace.branch, "当前未返回 branch")} />
+            <WorkspaceMetric label="计划" value={valueOrPlaceholder(workspace.plan, "当前未返回 plan")} />
             <WorkspaceMetric label="Runtime" value={`${selectedRuntimeLabel} / ${pairingStatusLabel(pairingStatus)}`} />
             <WorkspaceMetric
               label="Shell"
@@ -728,6 +779,16 @@ export function LiveSetupOverview() {
             <WorkspaceMetric label="下一条 Lane" value={assignedRuntimeLabel} />
             <WorkspaceMetric label="调度策略" value={runtimeSchedulerStrategyLabel(scheduler.strategy)} />
             <WorkspaceMetric label="心跳节奏" value={selectedHeartbeatCadence} />
+            <WorkspaceMetric
+              label="Quota"
+              value={formatQuotaCounter(workspace.quota?.usedAgents, workspace.quota?.maxAgents, "agents")}
+            />
+            <WorkspaceMetric
+              label="Room / Channel"
+              value={`${formatQuotaCounter(workspace.quota?.usedRooms, workspace.quota?.maxRooms, "rooms")} · ${formatQuotaCounter(workspace.quota?.usedChannels, workspace.quota?.maxChannels, "channels")}`}
+            />
+            <WorkspaceMetric label="保留期" value={formatRetentionSummary(workspace.quota)} />
+            <WorkspaceMetric label="Usage 窗口" value={formatWorkspaceUsageWindow(workspace.usage)} />
             <WorkspaceMetric label="记忆" value={valueOrPlaceholder(workspace.memoryMode, "当前未返回 memory mode")} />
             <WorkspaceMetric label="模板" value={valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")} testID="setup-onboarding-template" />
             <WorkspaceMetric label="Onboarding" value={valueOrPlaceholder(workspace.onboarding.status, "未声明")} testID="setup-onboarding-status" />
@@ -740,6 +801,11 @@ export function LiveSetupOverview() {
             {selectedRuntimeCLI ? `，CLI 为 ${selectedRuntimeCLI}` : ""}
             {selectedRuntimeInventory ? `，provider/model catalog 为 ${selectedRuntimeInventory}` : ""}。
           </p>
+          {workspace.usage?.warning || workspace.quota?.warning ? (
+            <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2.5 text-sm leading-6">
+              {workspace.usage?.warning ?? workspace.quota?.warning}
+            </p>
+          ) : null}
           <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6">
             {scheduler.summary || "当前还没有 scheduler truth。"}
           </p>

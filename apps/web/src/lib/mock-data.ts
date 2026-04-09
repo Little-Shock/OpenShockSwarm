@@ -18,6 +18,8 @@ export type WorkspaceSnapshot = {
   repoBindingStatus: string;
   repoAuthMode: string;
   plan: string;
+  quota?: WorkspaceQuotaSnapshot;
+  usage?: WorkspaceUsageSnapshot;
   pairedRuntime: string;
   pairedRuntimeUrl: string;
   pairingStatus: string;
@@ -77,6 +79,31 @@ export type WorkspaceMemberPreferences = {
   preferredAgentId?: string;
   startRoute?: string;
   updatedAt?: string;
+};
+
+export type WorkspaceQuotaSnapshot = {
+  usedMachines: number;
+  maxMachines: number;
+  usedAgents: number;
+  maxAgents: number;
+  usedChannels: number;
+  maxChannels: number;
+  usedRooms: number;
+  maxRooms: number;
+  messageHistoryDays: number;
+  runLogDays: number;
+  memoryDraftDays: number;
+  status: string;
+  warning?: string;
+};
+
+export type WorkspaceUsageSnapshot = {
+  windowLabel: string;
+  totalTokens: number;
+  runCount: number;
+  messageCount: number;
+  refreshedAt: string;
+  warning?: string;
 };
 
 export type AuthSession = {
@@ -243,6 +270,17 @@ export type Room = {
   topic: Topic;
   runId: string;
   messageIds: string[];
+  usage?: RoomUsageSnapshot;
+};
+
+export type RoomUsageSnapshot = {
+  windowLabel: string;
+  messageCount: number;
+  humanTurns: number;
+  agentTurns: number;
+  totalTokens: number;
+  refreshedAt: string;
+  warning?: string;
 };
 
 export type RunEvent = {
@@ -301,8 +339,20 @@ export type Run = {
   stderr: string[];
   toolCalls: ToolCall[];
   timeline: RunEvent[];
+  usage?: RunUsageSnapshot;
   nextAction: string;
   pullRequest: string;
+};
+
+export type RunUsageSnapshot = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  toolCallCount: number;
+  contextWindow: number;
+  budgetStatus: string;
+  refreshedAt: string;
+  warning?: string;
 };
 
 export type AgentStatus = {
@@ -580,6 +630,29 @@ export const workspace: WorkspaceSnapshot = {
   repoBindingStatus: "bound",
   repoAuthMode: "local-git-origin",
   plan: "Builder P0",
+  quota: {
+    usedMachines: 2,
+    maxMachines: 4,
+    usedAgents: 3,
+    maxAgents: 8,
+    usedChannels: 3,
+    maxChannels: 12,
+    usedRooms: 3,
+    maxRooms: 16,
+    messageHistoryDays: 30,
+    runLogDays: 14,
+    memoryDraftDays: 90,
+    status: "healthy",
+    warning: "当前 workspace 仍在 Builder P0；先把 limits / retention / usage truth 摆到人类可见面。",
+  },
+  usage: {
+    windowLabel: "过去 24h",
+    totalTokens: 13418,
+    runCount: 3,
+    messageCount: 13,
+    refreshedAt: "2026-04-08T11:02:00Z",
+    warning: "Builder P0 当前以 workspace plan 为主、usage 为辅；先把观察面做清，再决定是否要更重的 billing flow。",
+  },
   pairedRuntime: "shock-main",
   pairedRuntimeUrl: "http://127.0.0.1:8090",
   pairingStatus: "paired",
@@ -942,6 +1015,15 @@ export const rooms: Room[] = [
       owner: "Codex Dockmaster",
       summary: "壳层正在推进中。Agent 正在把机器在线状态、branch 和 Run 详情接进前端。",
     },
+    usage: {
+      windowLabel: "过去 6h",
+      messageCount: 3,
+      humanTurns: 1,
+      agentTurns: 1,
+      totalTokens: 6130,
+      refreshedAt: "2026-04-08T11:02:00Z",
+      warning: "房间 usage 仍在可读范围，消息密度与 run cost 可以继续并排观察。",
+    },
   },
   {
     id: "room-inbox",
@@ -959,6 +1041,15 @@ export const rooms: Room[] = [
       owner: "Claude Review Runner",
       summary: "文案已经准备好，正在等产品确认后合并。",
     },
+    usage: {
+      windowLabel: "过去 6h",
+      messageCount: 2,
+      humanTurns: 1,
+      agentTurns: 1,
+      totalTokens: 4972,
+      refreshedAt: "2026-04-08T11:02:00Z",
+      warning: "这间房已进入 review；下一条消息优先围绕 blocker / no-blocker，而不是继续扩 scope。",
+    },
   },
   {
     id: "room-memory",
@@ -975,6 +1066,15 @@ export const rooms: Room[] = [
       status: "blocked",
       owner: "Memory Clerk",
       summary: "Agent 在写回房间笔记前，需要一个正式的优先级规则。",
+    },
+    usage: {
+      windowLabel: "过去 6h",
+      messageCount: 2,
+      humanTurns: 0,
+      agentTurns: 1,
+      totalTokens: 2488,
+      refreshedAt: "2026-04-08T11:02:00Z",
+      warning: "这间房当前是 blocked 态；继续追加消息前先确认是否该升级到 Inbox。",
     },
   },
 ];
@@ -1079,6 +1179,16 @@ export const runs: Run[] = [
       { id: "ev-3", label: "Runtime 心跳已可见", at: "09:33", tone: "lime" },
       { id: "ev-4", label: "PR 摘要生成中", at: "09:46", tone: "paper" },
     ],
+    usage: {
+      promptTokens: 4368,
+      completionTokens: 1212,
+      totalTokens: 5580,
+      toolCallCount: 2,
+      contextWindow: 16000,
+      budgetStatus: "watch",
+      refreshedAt: "2026-04-08T11:02:00Z",
+      warning: "这条 Run 当前已用 5580 tokens；继续拉长协作前先看 context headroom。",
+    },
     nextAction: "等视觉核对通过后发起 PR。",
     pullRequest: "PR #18",
   },
@@ -1113,6 +1223,16 @@ export const runs: Run[] = [
       { id: "ev-6", label: "房间跳转已接通", at: "10:06", tone: "lime" },
       { id: "ev-7", label: "已发起评审", at: "10:12", tone: "paper" },
     ],
+    usage: {
+      promptTokens: 3540,
+      completionTokens: 1062,
+      totalTokens: 4602,
+      toolCallCount: 1,
+      contextWindow: 32000,
+      budgetStatus: "healthy",
+      refreshedAt: "2026-04-08T11:02:00Z",
+      warning: "当前 token / context headroom 仍健康，可继续沿 Room / Run / PR 收口。",
+    },
     nextAction: "等待人类确认语气与通知默认值。",
     pullRequest: "PR #22",
   },
@@ -1146,6 +1266,16 @@ export const runs: Run[] = [
       { id: "ev-9", label: "检测到冲突", at: "10:31", tone: "pink" },
       { id: "ev-10", label: "已创建 Inbox 升级项", at: "10:33", tone: "paper" },
     ],
+    usage: {
+      promptTokens: 2824,
+      completionTokens: 412,
+      totalTokens: 3236,
+      toolCallCount: 1,
+      contextWindow: 16000,
+      budgetStatus: "healthy",
+      refreshedAt: "2026-04-08T11:02:00Z",
+      warning: "当前 run 虽未逼近 token 上限，但仍被人工批准闸门锁住。",
+    },
     nextAction: "先定优先级规则，再恢复写回。",
     pullRequest: "草稿 PR",
   },

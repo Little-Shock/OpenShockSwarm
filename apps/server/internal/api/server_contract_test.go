@@ -102,6 +102,15 @@ func TestReadOnlySurfaceEndpointsServeSnapshotAndRejectMutations(t *testing.T) {
 				if payload.Workspace.Name == "" || len(payload.Issues) == 0 || len(payload.Inbox) == 0 {
 					t.Fatalf("state payload missing seeded data: %#v", payload.Workspace)
 				}
+				if payload.Workspace.Quota.MaxAgents == 0 || payload.Workspace.Usage.TotalTokens == 0 {
+					t.Fatalf("state payload missing usage/quota observability: %#v", payload.Workspace)
+				}
+				if len(payload.Runs) == 0 || payload.Runs[0].Usage.TotalTokens == 0 {
+					t.Fatalf("state payload missing run usage truth: %#v", payload.Runs)
+				}
+				if len(payload.Rooms) == 0 || payload.Rooms[0].Usage.MessageCount == 0 {
+					t.Fatalf("state payload missing room usage truth: %#v", payload.Rooms)
+				}
 			},
 		},
 		{
@@ -113,6 +122,12 @@ func TestReadOnlySurfaceEndpointsServeSnapshotAndRejectMutations(t *testing.T) {
 				decodeJSON(t, response, &payload)
 				if payload.Name == "" || payload.Repo == "" {
 					t.Fatalf("workspace payload missing repo identity: %#v", payload)
+				}
+				if payload.Quota.MaxAgents == 0 || payload.Quota.MessageHistoryDays == 0 {
+					t.Fatalf("workspace payload missing quota truth: %#v", payload)
+				}
+				if payload.Usage.TotalTokens == 0 || payload.Usage.MessageCount == 0 {
+					t.Fatalf("workspace payload missing usage truth: %#v", payload)
 				}
 			},
 		},

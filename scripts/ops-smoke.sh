@@ -152,6 +152,39 @@ if (registryURL !== expectedDaemonURL) {
 NODE
 }
 
+assert_usage_observability_truth() {
+  local state_body="$1"
+
+  STATE_BODY="$state_body" node <<'NODE'
+const fail = (message) => {
+  console.error(message)
+  process.exit(1)
+}
+
+let state
+try {
+  state = JSON.parse(process.env.STATE_BODY || "{}")
+} catch (error) {
+  fail(`STATE_BODY invalid json: ${error.message}`)
+}
+
+const workspace = state.workspace || {}
+const quota = workspace.quota || {}
+const usage = workspace.usage || {}
+if (!(quota.maxAgents > 0) || !(quota.messageHistoryDays > 0)) {
+  fail("Server state missing workspace quota observability truth")
+}
+if (!Number.isFinite(usage.totalTokens) || !Number.isFinite(usage.messageCount)) {
+  fail("Server state missing workspace usage observability truth")
+}
+
+const runs = Array.isArray(state.runs) ? state.runs : []
+if (!runs[0] || !runs[0].usage || !Number.isFinite(runs[0].usage.totalTokens)) {
+  fail("Server state missing run usage truth")
+}
+NODE
+}
+
 probe_github_connection() {
   local url="$1"
 
@@ -170,7 +203,13 @@ require_cmd node
 
 probe "Server healthz" "$SERVER_URL/healthz" '"service":"openshock-server"'
 probe "Daemon healthz" "$DAEMON_URL/healthz" '"service":"openshock-daemon"'
-probe "Server state" "$SERVER_URL/v1/state" '"workspace"'
+echo "==> Server state"
+request_json "$SERVER_URL/v1/state"
+assert_status "200" "Server state"
+assert_contains '"workspace"' "Server state"
+state_body="$last_body"
+preview_body "$state_body"
+assert_usage_observability_truth "$state_body"
 probe "Server repo binding" "$SERVER_URL/v1/repo/binding" '"bindingStatus"'
 probe_github_connection "$SERVER_URL/v1/github/connection"
 
