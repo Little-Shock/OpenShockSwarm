@@ -34,6 +34,40 @@ function pullRequestStatusLabel(status?: string) {
   }
 }
 
+function mergeableLabel(mergeable?: string) {
+  switch (mergeable) {
+    case "MERGEABLE":
+      return "mergeable";
+    case "CONFLICTING":
+      return "conflicting";
+    case "UNKNOWN":
+      return "computing";
+    default:
+      return "unspecified";
+  }
+}
+
+function mergeStateLabel(mergeStateStatus?: string) {
+  switch (mergeStateStatus) {
+    case "CLEAN":
+      return "clean";
+    case "DIRTY":
+      return "conflicting";
+    case "BEHIND":
+      return "behind base";
+    case "BLOCKED":
+      return "blocked";
+    case "HAS_HOOKS":
+      return "hooks pending";
+    case "UNSTABLE":
+      return "unstable";
+    case "UNKNOWN":
+      return "computing";
+    default:
+      return "unspecified";
+  }
+}
+
 function deliveryStatusLabel(status: PullRequestDeliveryEntry["status"]) {
   switch (status) {
     case "ready":
@@ -267,10 +301,12 @@ export function PullRequestDetailView({
                     {detail.pullRequest.reviewSummary}
                   </p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-3">
                   <FactTile label="Branch" value={detail.pullRequest.branch} />
                   <FactTile label="Base" value={detail.pullRequest.baseBranch ?? "待同步"} />
                   <FactTile label="Reviewer Truth" value={detail.pullRequest.reviewDecision || "REVIEW_REQUIRED"} />
+                  <FactTile label="Mergeable" value={mergeableLabel(detail.pullRequest.mergeable)} />
+                  <FactTile label="Merge Gate" value={mergeStateLabel(detail.pullRequest.mergeStateStatus)} />
                   <FactTile label="Updated" value={detail.pullRequest.updatedAt} />
                 </div>
               </div>

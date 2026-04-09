@@ -49,6 +49,54 @@ func TestPlannerQueueRouteReturnsAssignmentAndAutoMergeTruth(t *testing.T) {
 	}
 }
 
+func TestPlannerQueueRouteBlocksAutoMergeWhenPullRequestSafetyTruthIsDirty(t *testing.T) {
+	root := t.TempDir()
+	s, server, _, pullRequestID := newPlannerTestServer(t, root, nil)
+	defer server.Close()
+
+	if _, err := s.SyncPullRequestFromRemote(pullRequestID, store.PullRequestRemoteSnapshot{
+		Number:           261,
+		Title:            "planner: lock queue",
+		Status:           "in_review",
+		Branch:           "feat/planner-lock",
+		BaseBranch:       "main",
+		Author:           "CodexDockmaster",
+		Provider:         "github",
+		URL:              "https://github.com/Larkspur-Wang/OpenShock/pull/261",
+		Mergeable:        "CONFLICTING",
+		MergeStateStatus: "DIRTY",
+		ReviewDecision:   "APPROVED",
+		UpdatedAt:        "刚刚",
+	}); err != nil {
+		t.Fatalf("SyncPullRequestFromRemote(conflicting) error = %v", err)
+	}
+
+	resp, err := http.Get(server.URL + "/v1/planner/queue")
+	if err != nil {
+		t.Fatalf("GET /v1/planner/queue error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/planner/queue status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload []store.PlannerQueueItem
+	decodeJSON(t, resp, &payload)
+
+	for _, item := range payload {
+		if item.PullRequestID != pullRequestID {
+			continue
+		}
+		if item.AutoMerge.Status != "blocked" || !strings.Contains(item.AutoMerge.Reason, "冲突") {
+			t.Fatalf("auto-merge guard = %#v, want blocked conflicting safety truth", item.AutoMerge)
+		}
+		return
+	}
+
+	t.Fatalf("planner queue missing pull request %q: %#v", pullRequestID, payload)
+}
+
 func TestPlannerSessionAssignmentRouteReassignsCurrentQueue(t *testing.T) {
 	root := t.TempDir()
 	_, server, created, _ := newPlannerTestServer(t, root, nil)
@@ -151,16 +199,18 @@ func TestPlannerAutoMergeRouteAppliesMergeWhenOwnerHasPermission(t *testing.T) {
 	root := t.TempDir()
 	github := &fakeGitHubClient{
 		merged: githubsvc.PullRequest{
-			Number:         261,
-			Title:          "planner: lock queue",
-			URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/261",
-			State:          "MERGED",
-			Merged:         true,
-			ReviewDecision: "APPROVED",
-			HeadRefName:    "feat/planner-lock",
-			BaseRefName:    "main",
-			Author:         "CodexDockmaster",
-			UpdatedAt:      "2026-04-06T07:00:00Z",
+			Number:           261,
+			Title:            "planner: lock queue",
+			URL:              "https://github.com/Larkspur-Wang/OpenShock/pull/261",
+			State:            "MERGED",
+			Merged:           true,
+			Mergeable:        "MERGEABLE",
+			MergeStateStatus: "CLEAN",
+			ReviewDecision:   "APPROVED",
+			HeadRefName:      "feat/planner-lock",
+			BaseRefName:      "main",
+			Author:           "CodexDockmaster",
+			UpdatedAt:        "2026-04-06T07:00:00Z",
 		},
 	}
 	_, server, created, pullRequestID := newPlannerTestServer(t, root, github)
@@ -209,17 +259,19 @@ func TestPlannerAutoMergeRouteRejectsApplyBeforeApproval(t *testing.T) {
 	defer server.Close()
 
 	if _, err := s.SyncPullRequestFromRemote(pullRequestID, store.PullRequestRemoteSnapshot{
-		Number:         261,
-		Title:          "planner: lock queue",
-		Status:         "in_review",
-		Branch:         "feat/planner-lock",
-		BaseBranch:     "main",
-		Author:         "CodexDockmaster",
-		Provider:       "github",
-		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/261",
-		ReviewDecision: "REVIEW_REQUIRED",
-		ReviewSummary:  "等待 reviewer 最终判断。",
-		UpdatedAt:      "刚刚",
+		Number:           261,
+		Title:            "planner: lock queue",
+		Status:           "in_review",
+		Branch:           "feat/planner-lock",
+		BaseBranch:       "main",
+		Author:           "CodexDockmaster",
+		Provider:         "github",
+		URL:              "https://github.com/Larkspur-Wang/OpenShock/pull/261",
+		Mergeable:        "MERGEABLE",
+		MergeStateStatus: "CLEAN",
+		ReviewDecision:   "REVIEW_REQUIRED",
+		ReviewSummary:    "等待 reviewer 最终判断。",
+		UpdatedAt:        "刚刚",
 	}); err != nil {
 		t.Fatalf("SyncPullRequestFromRemote(review_required) error = %v", err)
 	}
@@ -295,17 +347,19 @@ func newPlannerTestServer(t *testing.T, root string, github githubsvc.Client) (*
 		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
 	}
 	if _, err := s.SyncPullRequestFromRemote(pullRequestID, store.PullRequestRemoteSnapshot{
-		Number:         261,
-		Title:          "planner: lock queue",
-		Status:         "in_review",
-		Branch:         created.Branch,
-		BaseBranch:     "main",
-		Author:         "CodexDockmaster",
-		Provider:       "github",
-		URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/261",
-		ReviewDecision: "APPROVED",
-		ReviewSummary:  "GitHub Review 已批准，等待最终合并。",
-		UpdatedAt:      "刚刚",
+		Number:           261,
+		Title:            "planner: lock queue",
+		Status:           "in_review",
+		Branch:           created.Branch,
+		BaseBranch:       "main",
+		Author:           "CodexDockmaster",
+		Provider:         "github",
+		URL:              "https://github.com/Larkspur-Wang/OpenShock/pull/261",
+		Mergeable:        "MERGEABLE",
+		MergeStateStatus: "CLEAN",
+		ReviewDecision:   "APPROVED",
+		ReviewSummary:    "GitHub Review 已批准，等待最终合并。",
+		UpdatedAt:        "刚刚",
 	}); err != nil {
 		t.Fatalf("SyncPullRequestFromRemote(approved) error = %v", err)
 	}
@@ -313,16 +367,18 @@ func newPlannerTestServer(t *testing.T, root string, github githubsvc.Client) (*
 	if github == nil {
 		github = &fakeGitHubClient{
 			merged: githubsvc.PullRequest{
-				Number:         261,
-				Title:          "planner: lock queue",
-				URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/261",
-				State:          "MERGED",
-				Merged:         true,
-				ReviewDecision: "APPROVED",
-				HeadRefName:    created.Branch,
-				BaseRefName:    "main",
-				Author:         "CodexDockmaster",
-				UpdatedAt:      "2026-04-06T07:00:00Z",
+				Number:           261,
+				Title:            "planner: lock queue",
+				URL:              "https://github.com/Larkspur-Wang/OpenShock/pull/261",
+				State:            "MERGED",
+				Merged:           true,
+				Mergeable:        "MERGEABLE",
+				MergeStateStatus: "CLEAN",
+				ReviewDecision:   "APPROVED",
+				HeadRefName:      created.Branch,
+				BaseRefName:      "main",
+				Author:           "CodexDockmaster",
+				UpdatedAt:        "2026-04-06T07:00:00Z",
 			},
 		}
 	}

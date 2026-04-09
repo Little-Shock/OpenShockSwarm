@@ -419,23 +419,25 @@ type AgentHandoff struct {
 }
 
 type PullRequest struct {
-	ID             string                         `json:"id"`
-	Number         int                            `json:"number"`
-	Label          string                         `json:"label"`
-	Title          string                         `json:"title"`
-	Status         string                         `json:"status"`
-	IssueKey       string                         `json:"issueKey"`
-	RoomID         string                         `json:"roomId"`
-	RunID          string                         `json:"runId"`
-	Branch         string                         `json:"branch"`
-	BaseBranch     string                         `json:"baseBranch"`
-	Author         string                         `json:"author"`
-	Provider       string                         `json:"provider"`
-	URL            string                         `json:"url"`
-	ReviewDecision string                         `json:"reviewDecision"`
-	ReviewSummary  string                         `json:"reviewSummary"`
-	Conversation   []PullRequestConversationEntry `json:"conversation,omitempty"`
-	UpdatedAt      string                         `json:"updatedAt"`
+	ID               string                         `json:"id"`
+	Number           int                            `json:"number"`
+	Label            string                         `json:"label"`
+	Title            string                         `json:"title"`
+	Status           string                         `json:"status"`
+	IssueKey         string                         `json:"issueKey"`
+	RoomID           string                         `json:"roomId"`
+	RunID            string                         `json:"runId"`
+	Branch           string                         `json:"branch"`
+	BaseBranch       string                         `json:"baseBranch"`
+	Author           string                         `json:"author"`
+	Provider         string                         `json:"provider"`
+	URL              string                         `json:"url"`
+	Mergeable        string                         `json:"mergeable"`
+	MergeStateStatus string                         `json:"mergeStateStatus"`
+	ReviewDecision   string                         `json:"reviewDecision"`
+	ReviewSummary    string                         `json:"reviewSummary"`
+	Conversation     []PullRequestConversationEntry `json:"conversation,omitempty"`
+	UpdatedAt        string                         `json:"updatedAt"`
 }
 
 type PullRequestConversationEntry struct {
@@ -455,17 +457,19 @@ type PullRequestConversationEntry struct {
 }
 
 type PullRequestRemoteSnapshot struct {
-	Number         int
-	Title          string
-	Status         string
-	Branch         string
-	BaseBranch     string
-	Author         string
-	Provider       string
-	URL            string
-	ReviewDecision string
-	ReviewSummary  string
-	UpdatedAt      string
+	Number           int
+	Title            string
+	Status           string
+	Branch           string
+	BaseBranch       string
+	Author           string
+	Provider         string
+	URL              string
+	Mergeable        string
+	MergeStateStatus string
+	ReviewDecision   string
+	ReviewSummary    string
+	UpdatedAt        string
 }
 
 type Session struct {
@@ -704,14 +708,14 @@ type PullRequestDeliveryGate struct {
 }
 
 type PullRequestDeliveryTemplate struct {
-	TemplateID         string `json:"templateId,omitempty"`
-	Label              string `json:"label"`
-	Status             string `json:"status"`
-	ReadyDeliveries    int    `json:"readyDeliveries"`
-	BlockedDeliveries  int    `json:"blockedDeliveries"`
-	SentReceipts       int    `json:"sentReceipts"`
-	FailedReceipts     int    `json:"failedReceipts"`
-	Href               string `json:"href,omitempty"`
+	TemplateID        string `json:"templateId,omitempty"`
+	Label             string `json:"label"`
+	Status            string `json:"status"`
+	ReadyDeliveries   int    `json:"readyDeliveries"`
+	BlockedDeliveries int    `json:"blockedDeliveries"`
+	SentReceipts      int    `json:"sentReceipts"`
+	FailedReceipts    int    `json:"failedReceipts"`
+	Href              string `json:"href,omitempty"`
 }
 
 type PullRequestDeliveryHandoffNote struct {

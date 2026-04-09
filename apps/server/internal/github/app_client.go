@@ -47,7 +47,9 @@ type githubGraphQLPullRequestResponse struct {
 	Data struct {
 		Repository struct {
 			PullRequest *struct {
-				ReviewDecision string `json:"reviewDecision"`
+				ReviewDecision   string `json:"reviewDecision"`
+				Mergeable        string `json:"mergeable"`
+				MergeStateStatus string `json:"mergeStateStatus"`
 			} `json:"pullRequest"`
 		} `json:"repository"`
 	} `json:"data"`
@@ -58,6 +60,12 @@ type githubGraphQLPullRequestResponse struct {
 
 type githubAPIError struct {
 	Message string `json:"message"`
+}
+
+type githubPullRequestSafetySnapshot struct {
+	ReviewDecision   string
+	Mergeable        string
+	MergeStateStatus string
 }
 
 func (s *Service) createPullRequestWithGitHubApp(workspaceRoot string, input CreatePullRequestInput) (PullRequest, error) {
@@ -115,33 +123,35 @@ func (s *Service) viewPullRequestWithGitHubApp(workspaceRoot, repo string, numbe
 		return PullRequest{}, err
 	}
 
-	reviewDecision, err := fetchGitHubAppReviewDecision(token, repo, number)
+	safetySnapshot, err := fetchGitHubAppPullRequestSafety(token, repo, number)
 	if err != nil {
 		if requireReviewDecision {
 			return PullRequest{}, err
 		}
-		reviewDecision = ""
+		safetySnapshot = githubPullRequestSafetySnapshot{}
 	}
 
 	return PullRequest{
-		Number:         payload.Number,
-		URL:            payload.HTMLURL,
-		Title:          payload.Title,
-		State:          strings.ToUpper(strings.TrimSpace(payload.State)),
-		IsDraft:        payload.Draft,
-		ReviewDecision: strings.TrimSpace(reviewDecision),
-		HeadRefName:    payload.Head.Ref,
-		BaseRefName:    payload.Base.Ref,
-		Author:         payload.User.Login,
-		UpdatedAt:      payload.UpdatedAt,
-		Merged:         payload.Merged || strings.TrimSpace(payload.MergedAt) != "",
+		Number:           payload.Number,
+		URL:              payload.HTMLURL,
+		Title:            payload.Title,
+		State:            strings.ToUpper(strings.TrimSpace(payload.State)),
+		IsDraft:          payload.Draft,
+		Mergeable:        strings.TrimSpace(safetySnapshot.Mergeable),
+		MergeStateStatus: strings.TrimSpace(safetySnapshot.MergeStateStatus),
+		ReviewDecision:   strings.TrimSpace(safetySnapshot.ReviewDecision),
+		HeadRefName:      payload.Head.Ref,
+		BaseRefName:      payload.Base.Ref,
+		Author:           payload.User.Login,
+		UpdatedAt:        payload.UpdatedAt,
+		Merged:           payload.Merged || strings.TrimSpace(payload.MergedAt) != "",
 	}, nil
 }
 
-func fetchGitHubAppReviewDecision(token, repo string, number int) (string, error) {
+func fetchGitHubAppPullRequestSafety(token, repo string, number int) (githubPullRequestSafetySnapshot, error) {
 	parts := strings.SplitN(strings.TrimSpace(repo), "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("invalid repo path %q", repo)
+		return githubPullRequestSafetySnapshot{}, fmt.Errorf("invalid repo path %q", repo)
 	}
 
 	query := map[string]any{
@@ -149,6 +159,8 @@ func fetchGitHubAppReviewDecision(token, repo string, number int) (string, error
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewDecision
+      mergeable
+      mergeStateStatus
     }
   }
 }`,
@@ -161,15 +173,19 @@ func fetchGitHubAppReviewDecision(token, repo string, number int) (string, error
 
 	var payload githubGraphQLPullRequestResponse
 	if err := doGitHubAPIJSONRequest(http.MethodPost, githubGraphQLURL(), token, query, &payload); err != nil {
-		return "", err
+		return githubPullRequestSafetySnapshot{}, err
 	}
 	if len(payload.Errors) > 0 && strings.TrimSpace(payload.Errors[0].Message) != "" {
-		return "", errors.New(strings.TrimSpace(payload.Errors[0].Message))
+		return githubPullRequestSafetySnapshot{}, errors.New(strings.TrimSpace(payload.Errors[0].Message))
 	}
 	if payload.Data.Repository.PullRequest == nil {
-		return "", nil
+		return githubPullRequestSafetySnapshot{}, nil
 	}
-	return strings.TrimSpace(payload.Data.Repository.PullRequest.ReviewDecision), nil
+	return githubPullRequestSafetySnapshot{
+		ReviewDecision:   strings.TrimSpace(payload.Data.Repository.PullRequest.ReviewDecision),
+		Mergeable:        strings.TrimSpace(payload.Data.Repository.PullRequest.Mergeable),
+		MergeStateStatus: strings.TrimSpace(payload.Data.Repository.PullRequest.MergeStateStatus),
+	}, nil
 }
 
 func githubAppInstallationToken(workspaceRoot string) (string, error) {

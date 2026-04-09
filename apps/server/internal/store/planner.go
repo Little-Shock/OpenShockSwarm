@@ -301,6 +301,7 @@ func plannerQueueItemFromState(snapshot State, session Session) PlannerQueueItem
 
 func autoMergeGuardFromState(snapshot State, pr PullRequest) AutoMergeGuard {
 	run, _ := findRunInState(snapshot, pr.RunID)
+	mergeSafetyReason := pullRequestMergeSafetyGuardReason(pr)
 	guard := AutoMergeGuard{
 		Status:         "unavailable",
 		Reason:         "当前还没有 auto-merge guard truth。",
@@ -318,15 +319,18 @@ func autoMergeGuardFromState(snapshot State, pr PullRequest) AutoMergeGuard {
 	case strings.EqualFold(pr.Status, "merged"):
 		guard.Status = "merged"
 		guard.Reason = "PR 已合并，不再需要 auto-merge。"
-	case strings.EqualFold(pr.Status, "changes_requested") || strings.EqualFold(pr.ReviewDecision, "CHANGES_REQUESTED"):
-		guard.Status = "blocked"
-		guard.Reason = "GitHub Review 当前要求补充修改，auto-merge 不可执行。"
 	case strings.EqualFold(pr.Status, "draft"):
 		guard.Status = "blocked"
 		guard.Reason = "PR 仍是 draft，auto-merge 不可执行。"
 	case hasBlockedPlannerGate(snapshot.Inbox, pr):
 		guard.Status = "blocked"
 		guard.Reason = "当前存在 blocked gate，auto-merge 不可执行。"
+	case mergeSafetyReason != "":
+		guard.Status = "blocked"
+		guard.Reason = mergeSafetyReason
+	case strings.EqualFold(pr.Status, "changes_requested") || strings.EqualFold(pr.ReviewDecision, "CHANGES_REQUESTED"):
+		guard.Status = "blocked"
+		guard.Reason = "GitHub Review 当前要求补充修改，auto-merge 不可执行。"
 	case !strings.EqualFold(strings.TrimSpace(pr.ReviewDecision), "APPROVED"):
 		guard.Status = "blocked"
 		guard.Reason = "GitHub Review 尚未批准，auto-merge 仍需等待。"
@@ -341,6 +345,28 @@ func autoMergeGuardFromState(snapshot State, pr PullRequest) AutoMergeGuard {
 	}
 
 	return guard
+}
+
+func pullRequestMergeSafetyGuardReason(pr PullRequest) string {
+	mergeable := normalizeMergeable(pr.Mergeable)
+	mergeStateStatus := normalizeMergeStateStatus(pr.MergeStateStatus)
+
+	switch {
+	case mergeStateStatus == "DIRTY" || mergeable == "CONFLICTING":
+		return "PR 当前与 base 存在冲突，需 refresh current base 后才能继续 merge。"
+	case mergeStateStatus == "BEHIND":
+		return "PR 当前已落后 base，需先 refresh 到 current base 后再继续 merge。"
+	case mergeStateStatus == "BLOCKED":
+		return "GitHub 当前仍报告 merge blocked；需要先通过 branch protections / required checks。"
+	case mergeStateStatus == "HAS_HOOKS":
+		return "GitHub 当前仍在等待 required hooks / protections 收敛，暂不能 auto-merge。"
+	case mergeStateStatus == "UNSTABLE":
+		return "GitHub 当前 merge safety 仍不稳定，需等待 checks 收敛后再继续。"
+	case mergeStateStatus == "UNKNOWN" || mergeable == "UNKNOWN":
+		return "GitHub 正在计算 merge safety，暂不允许贸然 auto-merge。"
+	default:
+		return ""
+	}
 }
 
 func hasBlockedPlannerGate(items []InboxItem, pr PullRequest) bool {

@@ -532,6 +532,8 @@ export type PullRequest = {
   author: string;
   provider?: string;
   url?: string;
+  mergeable?: string;
+  mergeStateStatus?: string;
   reviewDecision?: string;
   reviewSummary: string;
   updatedAt: string;

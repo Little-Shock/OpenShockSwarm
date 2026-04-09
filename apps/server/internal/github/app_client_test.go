@@ -56,7 +56,9 @@ func TestCreatePullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 				"data": map[string]any{
 					"repository": map[string]any{
 						"pullRequest": map[string]any{
-							"reviewDecision": "REVIEW_REQUIRED",
+							"reviewDecision":   "REVIEW_REQUIRED",
+							"mergeable":        "MERGEABLE",
+							"mergeStateStatus": "CLEAN",
 						},
 					},
 				},
@@ -90,8 +92,8 @@ func TestCreatePullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 	if createPayload.Head != "feat/runtime-shell" || createPayload.Base != "main" {
 		t.Fatalf("create payload branches = %#v, want feat/runtime-shell -> main", createPayload)
 	}
-	if pullRequest.Number != 52 || pullRequest.ReviewDecision != "REVIEW_REQUIRED" {
-		t.Fatalf("pull request = %#v, want app-backed created snapshot", pullRequest)
+	if pullRequest.Number != 52 || pullRequest.ReviewDecision != "REVIEW_REQUIRED" || pullRequest.Mergeable != "MERGEABLE" || pullRequest.MergeStateStatus != "CLEAN" {
+		t.Fatalf("pull request = %#v, want app-backed created snapshot with safety truth", pullRequest)
 	}
 }
 
@@ -122,7 +124,9 @@ func TestSyncPullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 				"data": map[string]any{
 					"repository": map[string]any{
 						"pullRequest": map[string]any{
-							"reviewDecision": "CHANGES_REQUESTED",
+							"reviewDecision":   "CHANGES_REQUESTED",
+							"mergeable":        "CONFLICTING",
+							"mergeStateStatus": "DIRTY",
 						},
 					},
 				},
@@ -149,8 +153,8 @@ func TestSyncPullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SyncPullRequest() error = %v", err)
 	}
-	if pullRequest.Number != 73 || pullRequest.ReviewDecision != "CHANGES_REQUESTED" {
-		t.Fatalf("pull request = %#v, want app-backed synced snapshot", pullRequest)
+	if pullRequest.Number != 73 || pullRequest.ReviewDecision != "CHANGES_REQUESTED" || pullRequest.Mergeable != "CONFLICTING" || pullRequest.MergeStateStatus != "DIRTY" {
+		t.Fatalf("pull request = %#v, want app-backed synced snapshot with safety truth", pullRequest)
 	}
 }
 
@@ -238,7 +242,9 @@ func TestSyncPullRequestUsesPersistedInstallationStateWhenEnvInstallationIDIsMis
 				"data": map[string]any{
 					"repository": map[string]any{
 						"pullRequest": map[string]any{
-							"reviewDecision": "APPROVED",
+							"reviewDecision":   "APPROVED",
+							"mergeable":        "MERGEABLE",
+							"mergeStateStatus": "CLEAN",
 						},
 					},
 				},
@@ -265,8 +271,8 @@ func TestSyncPullRequestUsesPersistedInstallationStateWhenEnvInstallationIDIsMis
 	if err != nil {
 		t.Fatalf("SyncPullRequest() error = %v", err)
 	}
-	if pullRequest.Number != 73 || pullRequest.ReviewDecision != "APPROVED" {
-		t.Fatalf("pull request = %#v, want persisted-installation synced snapshot", pullRequest)
+	if pullRequest.Number != 73 || pullRequest.ReviewDecision != "APPROVED" || pullRequest.Mergeable != "MERGEABLE" || pullRequest.MergeStateStatus != "CLEAN" {
+		t.Fatalf("pull request = %#v, want persisted-installation synced snapshot with safety truth", pullRequest)
 	}
 	if _, err := LoadInstallationState(root); err != nil {
 		t.Fatalf("LoadInstallationState() error = %v", err)
@@ -303,7 +309,9 @@ func TestMergePullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 				"data": map[string]any{
 					"repository": map[string]any{
 						"pullRequest": map[string]any{
-							"reviewDecision": "APPROVED",
+							"reviewDecision":   "APPROVED",
+							"mergeable":        "MERGEABLE",
+							"mergeStateStatus": "CLEAN",
 						},
 					},
 				},
@@ -330,8 +338,8 @@ func TestMergePullRequestUsesGitHubAppEffectiveAuthPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergePullRequest() error = %v", err)
 	}
-	if !pullRequest.Merged || pullRequest.State != "CLOSED" {
-		t.Fatalf("pull request = %#v, want merged app-backed snapshot", pullRequest)
+	if !pullRequest.Merged || pullRequest.State != "CLOSED" || pullRequest.Mergeable != "MERGEABLE" || pullRequest.MergeStateStatus != "CLEAN" {
+		t.Fatalf("pull request = %#v, want merged app-backed snapshot with safety truth", pullRequest)
 	}
 }
 

@@ -522,6 +522,8 @@ func sanitizePullRequest(item store.PullRequest) store.PullRequest {
 	item.Title = sanitizeDisplayText(item.Title, "待整理 PR")
 	item.Branch = sanitizeDisplayText(item.Branch, "待整理分支")
 	item.BaseBranch = sanitizeDisplayText(item.BaseBranch, "当前 base 分支正在整理中。")
+	item.Mergeable = sanitizeDisplayText(item.Mergeable, "")
+	item.MergeStateStatus = sanitizeDisplayText(item.MergeStateStatus, "")
 	item.ReviewSummary = sanitizeDisplayText(item.ReviewSummary, "当前 review 摘要正在整理中。")
 	item.Conversation = sanitizeLivePayload(item.Conversation).([]store.PullRequestConversationEntry)
 	return item

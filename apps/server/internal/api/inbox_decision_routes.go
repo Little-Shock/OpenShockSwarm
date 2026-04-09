@@ -151,13 +151,21 @@ func reviewDecisionChangesPullRequest(current store.PullRequest, remote store.Pu
 	if text := strings.TrimSpace(remote.ReviewDecision); text != "" || current.ReviewDecision != "" {
 		nextReviewDecision = strings.TrimSpace(remote.ReviewDecision)
 	}
-	nextSummary := defaultString(strings.TrimSpace(remote.ReviewSummary), summarizeRemotePullRequestStatus(nextStatus, nextReviewDecision))
 	nextTitle := defaultString(strings.TrimSpace(remote.Title), current.Title)
 	nextURL := current.URL
 	if text := strings.TrimSpace(remote.URL); text != "" {
 		nextURL = text
 	}
-	return current.Status != nextStatus || current.ReviewDecision != nextReviewDecision || current.ReviewSummary != nextSummary || current.Title != nextTitle || current.URL != nextURL
+	nextMergeable := current.Mergeable
+	if text := strings.ToUpper(strings.TrimSpace(remote.Mergeable)); text != "" || current.Mergeable != "" {
+		nextMergeable = text
+	}
+	nextMergeStateStatus := current.MergeStateStatus
+	if text := strings.ToUpper(strings.TrimSpace(remote.MergeStateStatus)); text != "" || current.MergeStateStatus != "" {
+		nextMergeStateStatus = text
+	}
+	nextSummary := defaultString(strings.TrimSpace(remote.ReviewSummary), summarizeRemotePullRequestStatus(nextStatus, nextReviewDecision, nextMergeable, nextMergeStateStatus))
+	return current.Status != nextStatus || current.Mergeable != nextMergeable || current.MergeStateStatus != nextMergeStateStatus || current.ReviewDecision != nextReviewDecision || current.ReviewSummary != nextSummary || current.Title != nextTitle || current.URL != nextURL
 }
 
 func findInboxItem(snapshot store.State, inboxItemID string) (store.InboxItem, bool) {
@@ -178,7 +186,7 @@ func findPullRequestForInboxItem(snapshot store.State, item store.InboxItem) (st
 	return store.PullRequest{}, false
 }
 
-func summarizeRemotePullRequestStatus(status, reviewDecision string) string {
+func summarizeRemotePullRequestStatus(status, reviewDecision, mergeable, mergeStateStatus string) string {
 	switch strings.TrimSpace(status) {
 	case "merged":
 		return "PR 已在 GitHub 合并，Issue 与讨论间进入完成状态。"
@@ -187,6 +195,25 @@ func summarizeRemotePullRequestStatus(status, reviewDecision string) string {
 	case "draft":
 		return "远端草稿 PR 已创建，等待进入正式评审。"
 	default:
+		mergeable = strings.ToUpper(strings.TrimSpace(mergeable))
+		mergeStateStatus = strings.ToUpper(strings.TrimSpace(mergeStateStatus))
+		switch {
+		case mergeStateStatus == "DIRTY" || mergeable == "CONFLICTING":
+			return "当前 PR 与 base 存在冲突，需 refresh current base 后再继续 review / merge。"
+		case mergeStateStatus == "BEHIND":
+			return "当前 PR 已落后 base，需先 refresh 到 current base 后再继续合并。"
+		case mergeStateStatus == "BLOCKED":
+			if strings.EqualFold(strings.TrimSpace(reviewDecision), "APPROVED") {
+				return "GitHub Review 已批准，但 branch protections / required checks 仍阻塞 merge。"
+			}
+			return "当前 merge 仍被 branch protections / required checks 阻塞。"
+		case mergeStateStatus == "HAS_HOOKS":
+			return "GitHub 当前仍在等待 required hooks / protections 收敛，merge 还不能放行。"
+		case mergeStateStatus == "UNSTABLE":
+			return "GitHub 当前 merge safety 仍不稳定，需等待 checks 收敛后再继续合并。"
+		case mergeStateStatus == "UNKNOWN" || mergeable == "UNKNOWN":
+			return "GitHub 正在计算 merge safety，暂不允许贸然合并。"
+		}
 		switch strings.TrimSpace(reviewDecision) {
 		case "APPROVED":
 			return "GitHub Review 已批准，等待最终合并。"

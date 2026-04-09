@@ -157,17 +157,19 @@ func buildPullRequestRemoteFromWebhookEvent(current PullRequest, event githubsvc
 	}
 
 	return PullRequestRemoteSnapshot{
-		Number:         defaultInt(event.PullRequestNumber, current.Number),
-		Title:          defaultString(strings.TrimSpace(event.PullRequestTitle), current.Title),
-		Status:         status,
-		Branch:         defaultString(strings.TrimSpace(event.HeadBranch), current.Branch),
-		BaseBranch:     defaultString(strings.TrimSpace(event.BaseBranch), current.BaseBranch),
-		Author:         defaultString(strings.TrimSpace(event.Sender), current.Author),
-		Provider:       defaultString(strings.TrimSpace(current.Provider), "github"),
-		URL:            defaultString(strings.TrimSpace(event.PullRequestURL), current.URL),
-		ReviewDecision: reviewDecision,
-		ReviewSummary:  summarizeWebhookPullRequestEvent(current, event, status, reviewDecision),
-		UpdatedAt:      "刚刚",
+		Number:           defaultInt(event.PullRequestNumber, current.Number),
+		Title:            defaultString(strings.TrimSpace(event.PullRequestTitle), current.Title),
+		Status:           status,
+		Branch:           defaultString(strings.TrimSpace(event.HeadBranch), current.Branch),
+		BaseBranch:       defaultString(strings.TrimSpace(event.BaseBranch), current.BaseBranch),
+		Author:           defaultString(strings.TrimSpace(event.Sender), current.Author),
+		Provider:         defaultString(strings.TrimSpace(current.Provider), "github"),
+		URL:              defaultString(strings.TrimSpace(event.PullRequestURL), current.URL),
+		Mergeable:        current.Mergeable,
+		MergeStateStatus: current.MergeStateStatus,
+		ReviewDecision:   reviewDecision,
+		ReviewSummary:    summarizeWebhookPullRequestEvent(current, event, status, reviewDecision),
+		UpdatedAt:        "刚刚",
 	}
 }
 
@@ -221,7 +223,7 @@ func summarizeWebhookPullRequestEvent(current PullRequest, event githubsvc.Norma
 		}
 	case "comment":
 		if strings.EqualFold(strings.TrimSpace(current.Status), "changes_requested") || strings.EqualFold(strings.TrimSpace(current.ReviewDecision), "CHANGES_REQUESTED") {
-			return defaultString(strings.TrimSpace(current.ReviewSummary), summarizePullRequestStatus(current.Status, current.ReviewDecision))
+			return defaultString(strings.TrimSpace(current.ReviewSummary), summarizePullRequestStatusWithSafety(current.Status, current.ReviewDecision, current.Mergeable, current.MergeStateStatus))
 		}
 		if detail := compactWebhookText(event.CommentBody); detail != "" {
 			return fmt.Sprintf("GitHub 评论已同步：%s", detail)
@@ -259,7 +261,7 @@ func summarizeWebhookPullRequestEvent(current PullRequest, event githubsvc.Norma
 		}
 	}
 
-	return defaultString(strings.TrimSpace(current.ReviewSummary), summarizePullRequestStatus(status, reviewDecision))
+	return defaultString(strings.TrimSpace(current.ReviewSummary), summarizePullRequestStatusWithSafety(status, reviewDecision, current.Mergeable, current.MergeStateStatus))
 }
 
 func webhookCheckBlocksPullRequest(event githubsvc.NormalizedWebhookEvent) bool {
@@ -416,7 +418,7 @@ func pullRequestInboxItem(pr PullRequest, roomTitle string) InboxItem {
 		Room:    roomTitle,
 		Time:    "刚刚",
 		Href:    fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID),
-		Summary: defaultString(strings.TrimSpace(pr.ReviewSummary), summarizePullRequestStatus(pr.Status, pr.ReviewDecision)),
+		Summary: defaultString(strings.TrimSpace(pr.ReviewSummary), summarizePullRequestStatusWithSafety(pr.Status, pr.ReviewDecision, pr.Mergeable, pr.MergeStateStatus)),
 	}
 
 	switch strings.TrimSpace(pr.Status) {

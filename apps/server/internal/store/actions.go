@@ -573,22 +573,24 @@ func (s *Store) CreatePullRequestFromRemote(roomID string, remote PullRequestRem
 	}
 
 	pr := PullRequest{
-		ID:             fmt.Sprintf("pr-%d", number),
-		Number:         number,
-		Label:          pullRequestLabel(number, status),
-		Title:          defaultString(strings.TrimSpace(remote.Title), issueItem.Title),
-		Status:         status,
-		IssueKey:       issueItem.Key,
-		RoomID:         roomID,
-		RunID:          runItem.ID,
-		Branch:         defaultString(strings.TrimSpace(remote.Branch), runItem.Branch),
-		BaseBranch:     defaultString(strings.TrimSpace(remote.BaseBranch), s.state.Workspace.Branch),
-		Author:         defaultString(strings.TrimSpace(remote.Author), runItem.Owner),
-		Provider:       defaultString(strings.TrimSpace(remote.Provider), s.state.Workspace.RepoProvider),
-		URL:            strings.TrimSpace(remote.URL),
-		ReviewDecision: strings.TrimSpace(remote.ReviewDecision),
-		ReviewSummary:  defaultString(strings.TrimSpace(remote.ReviewSummary), summarizePullRequestStatus(status, strings.TrimSpace(remote.ReviewDecision))),
-		UpdatedAt:      defaultString(strings.TrimSpace(remote.UpdatedAt), "刚刚"),
+		ID:               fmt.Sprintf("pr-%d", number),
+		Number:           number,
+		Label:            pullRequestLabel(number, status),
+		Title:            defaultString(strings.TrimSpace(remote.Title), issueItem.Title),
+		Status:           status,
+		IssueKey:         issueItem.Key,
+		RoomID:           roomID,
+		RunID:            runItem.ID,
+		Branch:           defaultString(strings.TrimSpace(remote.Branch), runItem.Branch),
+		BaseBranch:       defaultString(strings.TrimSpace(remote.BaseBranch), s.state.Workspace.Branch),
+		Author:           defaultString(strings.TrimSpace(remote.Author), runItem.Owner),
+		Provider:         defaultString(strings.TrimSpace(remote.Provider), s.state.Workspace.RepoProvider),
+		URL:              strings.TrimSpace(remote.URL),
+		Mergeable:        normalizeMergeable(remote.Mergeable),
+		MergeStateStatus: normalizeMergeStateStatus(remote.MergeStateStatus),
+		ReviewDecision:   strings.TrimSpace(remote.ReviewDecision),
+		ReviewSummary:    defaultString(strings.TrimSpace(remote.ReviewSummary), summarizePullRequestStatusWithSafety(status, strings.TrimSpace(remote.ReviewDecision), remote.Mergeable, remote.MergeStateStatus)),
+		UpdatedAt:        defaultString(strings.TrimSpace(remote.UpdatedAt), "刚刚"),
 	}
 
 	s.state.PullRequests = append([]PullRequest{pr}, s.state.PullRequests...)
@@ -653,6 +655,8 @@ func (s *Store) SyncPullRequestFromRemote(pullRequestID string, remote PullReque
 	oldSummary := pr.ReviewSummary
 	oldTitle := pr.Title
 	oldURL := pr.URL
+	oldMergeable := pr.Mergeable
+	oldMergeStateStatus := pr.MergeStateStatus
 	oldReviewDecision := pr.ReviewDecision
 
 	if remote.Number > 0 {
@@ -679,15 +683,21 @@ func (s *Store) SyncPullRequestFromRemote(pullRequestID string, remote PullReque
 	if text := strings.TrimSpace(remote.URL); text != "" {
 		pr.URL = text
 	}
+	if text := normalizeMergeable(remote.Mergeable); text != "" || pr.Mergeable != "" {
+		pr.Mergeable = text
+	}
+	if text := normalizeMergeStateStatus(remote.MergeStateStatus); text != "" || pr.MergeStateStatus != "" {
+		pr.MergeStateStatus = text
+	}
 	if strings.TrimSpace(remote.ReviewDecision) != "" || pr.ReviewDecision != "" {
 		pr.ReviewDecision = strings.TrimSpace(remote.ReviewDecision)
 	}
 	pr.Label = pullRequestLabel(pr.Number, pr.Status)
-	pr.ReviewSummary = defaultString(strings.TrimSpace(remote.ReviewSummary), summarizePullRequestStatus(pr.Status, pr.ReviewDecision))
+	pr.ReviewSummary = defaultString(strings.TrimSpace(remote.ReviewSummary), summarizePullRequestStatusWithSafety(pr.Status, pr.ReviewDecision, pr.Mergeable, pr.MergeStateStatus))
 	pr.UpdatedAt = defaultString(strings.TrimSpace(remote.UpdatedAt), "刚刚")
 	s.applyPullRequestLifecycleLocked(pr, roomItem, runItem, issueItem)
 
-	changed := oldStatus != pr.Status || oldSummary != pr.ReviewSummary || oldTitle != pr.Title || oldURL != pr.URL || oldReviewDecision != pr.ReviewDecision
+	changed := oldStatus != pr.Status || oldSummary != pr.ReviewSummary || oldTitle != pr.Title || oldURL != pr.URL || oldMergeable != pr.Mergeable || oldMergeStateStatus != pr.MergeStateStatus || oldReviewDecision != pr.ReviewDecision
 	if changed {
 		now := shortClock()
 		runItem.Timeline = append(runItem.Timeline, RunEvent{
@@ -795,6 +805,10 @@ func (s *Store) prependPullRequestInboxLocked(pr PullRequest, roomTitle string) 
 }
 
 func summarizePullRequestStatus(status, reviewDecision string) string {
+	return summarizePullRequestStatusWithSafety(status, reviewDecision, "", "")
+}
+
+func summarizePullRequestStatusWithSafety(status, reviewDecision, mergeable, mergeStateStatus string) string {
 	switch strings.TrimSpace(status) {
 	case "merged":
 		return "PR 已在 GitHub 合并，Issue 与讨论间进入完成状态。"
@@ -803,6 +817,9 @@ func summarizePullRequestStatus(status, reviewDecision string) string {
 	case "draft":
 		return "远端草稿 PR 已创建，等待进入正式评审。"
 	default:
+		if summary := summarizePullRequestMergeSafety(mergeable, mergeStateStatus, reviewDecision); summary != "" {
+			return summary
+		}
 		switch strings.TrimSpace(reviewDecision) {
 		case "APPROVED":
 			return "GitHub Review 已批准，等待最终合并。"
@@ -811,6 +828,40 @@ func summarizePullRequestStatus(status, reviewDecision string) string {
 		default:
 			return "远端 PR 已创建，等待 GitHub Review 或合并。"
 		}
+	}
+}
+
+func normalizeMergeable(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func normalizeMergeStateStatus(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func summarizePullRequestMergeSafety(mergeable, mergeStateStatus, reviewDecision string) string {
+	mergeable = normalizeMergeable(mergeable)
+	mergeStateStatus = normalizeMergeStateStatus(mergeStateStatus)
+	reviewDecision = strings.TrimSpace(reviewDecision)
+
+	switch {
+	case mergeStateStatus == "DIRTY" || mergeable == "CONFLICTING":
+		return "当前 PR 与 base 存在冲突，需 refresh current base 后再继续 review / merge。"
+	case mergeStateStatus == "BEHIND":
+		return "当前 PR 已落后 base，需先 refresh 到 current base 后再继续合并。"
+	case mergeStateStatus == "BLOCKED":
+		if strings.EqualFold(reviewDecision, "APPROVED") {
+			return "GitHub Review 已批准，但 branch protections / required checks 仍阻塞 merge。"
+		}
+		return "当前 merge 仍被 branch protections / required checks 阻塞。"
+	case mergeStateStatus == "HAS_HOOKS":
+		return "GitHub 当前仍在等待 required hooks / protections 收敛，merge 还不能放行。"
+	case mergeStateStatus == "UNSTABLE":
+		return "GitHub 当前 merge safety 仍不稳定，需等待 checks 收敛后再继续合并。"
+	case mergeStateStatus == "UNKNOWN" || mergeable == "UNKNOWN":
+		return "GitHub 正在计算 merge safety，暂不允许贸然合并。"
+	default:
+		return ""
 	}
 }
 
@@ -1061,7 +1112,7 @@ func (s *Store) AppendGitHubPullRequestFailure(roomID, operation, pullRequestLab
 	s.state.Runs[runIndex].Status = "blocked"
 	s.state.Runs[runIndex].Summary = message
 	s.state.Runs[runIndex].NextAction = nextAction
-	s.syncPullRequestFailureSurfaceLocked(roomID, message)
+	s.syncPullRequestFailureSurfaceLocked(roomID, operation, message)
 	alreadyEscalated := s.hasGitHubPullRequestFailureEvidenceLocked(roomID, title, message, failureHref)
 	if !alreadyEscalated {
 		msg := Message{
@@ -1119,7 +1170,7 @@ func (s *Store) AppendGitHubPullRequestFailure(roomID, operation, pullRequestLab
 	return cloneState(s.state), nil
 }
 
-func (s *Store) syncPullRequestFailureSurfaceLocked(roomID, message string) {
+func (s *Store) syncPullRequestFailureSurfaceLocked(roomID, operation, message string) {
 	prIndex := s.findPullRequestByRoomLocked(roomID)
 	if prIndex == -1 {
 		return
@@ -1130,6 +1181,9 @@ func (s *Store) syncPullRequestFailureSurfaceLocked(roomID, message string) {
 	pr.Label = pullRequestLabel(pr.Number, pr.Status)
 	pr.ReviewDecision = ""
 	pr.ReviewSummary = message
+	if strings.TrimSpace(operation) == "merge" {
+		pr.MergeStateStatus = "BLOCKED"
+	}
 	pr.UpdatedAt = "刚刚"
 
 	reviewHref := fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID)

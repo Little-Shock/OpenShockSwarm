@@ -296,8 +296,8 @@ func TestCreatePullRequestPushesBranchAndLoadsRemoteSnapshot(t *testing.T) {
 			"gh pr create --repo Larkspur-Wang/OpenShock --base main --head feat/runtime-shell --title runtime: surface heartbeat and lane state --body issue: OPS-12": {
 				text: "https://github.com/Larkspur-Wang/OpenShock/pull/42",
 			},
-			"gh pr view https://github.com/Larkspur-Wang/OpenShock/pull/42 --repo Larkspur-Wang/OpenShock --json number,title,url,state,isDraft,reviewDecision,headRefName,baseRefName,author,updatedAt,mergedAt": {
-				text: `{"number":42,"title":"runtime: surface heartbeat and lane state","url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"OPEN","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","headRefName":"feat/runtime-shell","baseRefName":"main","updatedAt":"2026-04-06T11:20:00Z","mergedAt":"","author":{"login":"CodexDockmaster"}}`,
+			"gh pr view https://github.com/Larkspur-Wang/OpenShock/pull/42 --repo Larkspur-Wang/OpenShock --json number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefName,baseRefName,author,updatedAt,mergedAt": {
+				text: `{"number":42,"title":"runtime: surface heartbeat and lane state","url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"REVIEW_REQUIRED","headRefName":"feat/runtime-shell","baseRefName":"main","updatedAt":"2026-04-06T11:20:00Z","mergedAt":"","author":{"login":"CodexDockmaster"}}`,
 			},
 		},
 	})
@@ -321,6 +321,9 @@ func TestCreatePullRequestPushesBranchAndLoadsRemoteSnapshot(t *testing.T) {
 	if pullRequest.Author != "CodexDockmaster" {
 		t.Fatalf("pullRequest.Author = %q, want CodexDockmaster", pullRequest.Author)
 	}
+	if pullRequest.Mergeable != "MERGEABLE" || pullRequest.MergeStateStatus != "CLEAN" {
+		t.Fatalf("pullRequest safety truth = %#v, want MERGEABLE/CLEAN", pullRequest)
+	}
 }
 
 func TestMergePullRequestReturnsMergedSnapshot(t *testing.T) {
@@ -330,8 +333,8 @@ func TestMergePullRequestReturnsMergedSnapshot(t *testing.T) {
 		},
 		outputs: map[string]fakeOutput{
 			"gh pr merge 42 --repo Larkspur-Wang/OpenShock --merge --delete-branch=false": {text: "merged"},
-			"gh pr view 42 --repo Larkspur-Wang/OpenShock --json number,title,url,state,isDraft,reviewDecision,headRefName,baseRefName,author,updatedAt,mergedAt": {
-				text: `{"number":42,"title":"runtime: surface heartbeat and lane state","url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"MERGED","isDraft":false,"reviewDecision":"APPROVED","headRefName":"feat/runtime-shell","baseRefName":"main","updatedAt":"2026-04-06T11:24:00Z","mergedAt":"2026-04-06T11:24:00Z","author":{"login":"CodexDockmaster"}}`,
+			"gh pr view 42 --repo Larkspur-Wang/OpenShock --json number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefName,baseRefName,author,updatedAt,mergedAt": {
+				text: `{"number":42,"title":"runtime: surface heartbeat and lane state","url":"https://github.com/Larkspur-Wang/OpenShock/pull/42","state":"MERGED","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","headRefName":"feat/runtime-shell","baseRefName":"main","updatedAt":"2026-04-06T11:24:00Z","mergedAt":"2026-04-06T11:24:00Z","author":{"login":"CodexDockmaster"}}`,
 			},
 		},
 	})
@@ -348,5 +351,8 @@ func TestMergePullRequestReturnsMergedSnapshot(t *testing.T) {
 	}
 	if pullRequest.State != "MERGED" {
 		t.Fatalf("pullRequest.State = %q, want MERGED", pullRequest.State)
+	}
+	if pullRequest.Mergeable != "MERGEABLE" || pullRequest.MergeStateStatus != "CLEAN" {
+		t.Fatalf("pullRequest safety truth = %#v, want MERGEABLE/CLEAN", pullRequest)
 	}
 }

@@ -1242,14 +1242,16 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	github := &fakeGitHubClient{
 		synced: map[int]githubsvc.PullRequest{
 			91: {
-				Number:         91,
-				URL:            "https://github.com/Larkspur-Wang/OpenShock/pull/91",
-				Title:          "PR Detail Route",
-				State:          "OPEN",
-				HeadRefName:    created.Branch,
-				BaseRefName:    "main",
-				Author:         "CodexDockmaster",
-				ReviewDecision: "APPROVED",
+				Number:           91,
+				URL:              "https://github.com/Larkspur-Wang/OpenShock/pull/91",
+				Title:            "PR Detail Route",
+				State:            "OPEN",
+				Mergeable:        "MERGEABLE",
+				MergeStateStatus: "CLEAN",
+				HeadRefName:      created.Branch,
+				BaseRefName:      "main",
+				Author:           "CodexDockmaster",
+				ReviewDecision:   "APPROVED",
 			},
 		},
 	}
@@ -1273,6 +1275,9 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	decodeJSON(t, resp, &detail)
 	if detail.PullRequest.ID != pullRequestID {
 		t.Fatalf("detail pull request = %#v, want %q", detail.PullRequest, pullRequestID)
+	}
+	if detail.PullRequest.Mergeable != "MERGEABLE" || detail.PullRequest.MergeStateStatus != "CLEAN" {
+		t.Fatalf("detail pull request safety = %#v, want MERGEABLE/CLEAN", detail.PullRequest)
 	}
 	if detail.Room.ID != created.RoomID || detail.Run.ID != created.RunID || detail.Issue.RoomID != created.RoomID {
 		t.Fatalf("detail backlinks malformed: %#v", detail)
@@ -1833,6 +1838,9 @@ func TestPullRequestRouteEscalatesBlockedOnGitHubMergeFailure(t *testing.T) {
 	}
 	if pr.Status != "changes_requested" || pr.ReviewDecision != "" || !strings.Contains(pr.ReviewSummary, "PR #96 合并失败：merge blocked by branch protections") {
 		t.Fatalf("merge failure pull request = %#v, want blocked GitHub failure semantics", pr)
+	}
+	if pr.MergeStateStatus != "BLOCKED" {
+		t.Fatalf("merge failure safety truth = %#v, want mergeStateStatus BLOCKED", pr)
 	}
 	if !strings.Contains(run.NextAction, "重试合并") {
 		t.Fatalf("run next action = %q, want GitHub merge retry guidance", run.NextAction)
