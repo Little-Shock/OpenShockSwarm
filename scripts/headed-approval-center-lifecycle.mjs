@@ -223,6 +223,22 @@ async function waitForText(page, testID, expected) {
   );
 }
 
+async function waitForRecentTitle(page, title) {
+  await page
+    .locator('[data-testid^="approval-center-recent-"]')
+    .filter({ hasText: title })
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
+}
+
+async function waitForSignalTitle(page, title) {
+  await page
+    .locator('[data-testid^="approval-center-signal-"]')
+    .filter({ hasText: title })
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
+}
+
 async function readState(page, serverURL) {
   return page.evaluate(async (currentServerURL) => {
     const response = await fetch(`${currentServerURL}/v1/state`, { cache: "no-store" });
@@ -255,25 +271,25 @@ try {
 
   await page.goto(`${services.webURL}/inbox`, { waitUntil: "load" });
   await page.getByTestId("approval-center-open-count").waitFor({ state: "visible" });
-  await waitForText(page, "approval-center-open-count", "3");
-  await waitForText(page, "approval-center-unread-count", "3");
-  await waitForText(page, "approval-center-recent-count", "1");
-  assert((await readText(page, "approval-center-blocked-count")) === "1", "initial blocked count should be 1");
+  await waitForText(page, "approval-center-open-count", "3 open");
+  await waitForText(page, "approval-center-unread-count", "3 unread");
+  await waitForText(page, "approval-center-recent-count", "1 recent");
+  await waitForText(page, "approval-center-blocked-count", "1 blocked");
 
   await page.getByTestId("approval-center-filter-review").click();
   await page.getByTestId("approval-center-signal-inbox-review-copy").waitFor({ state: "visible" });
-  assert((await page.getByTestId("approval-center-room-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox", "review signal should link back to room");
-  assert((await page.getByTestId("approval-center-run-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox/runs/run_inbox_01", "review signal should link back to run");
+  assert((await page.getByTestId("approval-center-room-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox?tab=pr", "review signal should link back to PR tab in room workbench");
+  assert((await page.getByTestId("approval-center-run-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox?tab=run", "review signal should link back to run tab in room workbench");
   assert((await page.getByTestId("approval-center-pr-link-inbox-review-copy").getAttribute("href"))?.endsWith("/pull/22"), "review signal should link back to PR");
   assert((await page.getByTestId("approval-center-unread-inbox-review-copy").textContent())?.trim() === "unread", "review signal should surface unread hotspot");
   await capture(page, screenshotsDir, "review-signal-backlinks");
 
   await page.getByTestId("approval-center-filter-approval").click();
   await page.getByTestId("approval-center-action-approved-inbox-approval-runtime").click();
-  await waitForText(page, "approval-center-open-count", "2");
-  await waitForText(page, "approval-center-recent-count", "2");
+  await waitForText(page, "approval-center-open-count", "2 open");
+  await waitForText(page, "approval-center-recent-count", "2 recent");
   await page.getByTestId("approval-center-recent-inbox-status-shell").waitFor({ state: "visible" });
-  await page.getByText("高风险动作已批准").waitFor({ state: "visible" });
+  await waitForRecentTitle(page, "高风险动作已批准");
   const stateAfterApproval = await readState(page, services.serverURL);
   const runtimeRun = stateAfterApproval.runs.find((item) => item.id === "run_runtime_01");
   assert(runtimeRun?.status === "running" && runtimeRun?.approvalRequired === false, "approval decision should resume runtime run");
@@ -281,9 +297,9 @@ try {
 
   await page.getByTestId("approval-center-filter-blocked").click();
   await page.getByTestId("approval-center-action-resolved-inbox-blocked-memory").click();
-  await waitForText(page, "approval-center-open-count", "1");
-  await waitForText(page, "approval-center-recent-count", "3");
-  await page.getByText("阻塞已解除").waitFor({ state: "visible" });
+  await waitForText(page, "approval-center-open-count", "1 open");
+  await waitForText(page, "approval-center-recent-count", "3 recent");
+  await waitForRecentTitle(page, "阻塞已解除");
   const stateAfterResolve = await readState(page, services.serverURL);
   const memoryRun = stateAfterResolve.runs.find((item) => item.id === "run_memory_01");
   assert(memoryRun?.status === "running" && memoryRun?.approvalRequired === false, "blocked resolve should resume memory run");
@@ -291,16 +307,16 @@ try {
 
   await page.getByTestId("approval-center-filter-review").click();
   await page.getByTestId("approval-center-action-changes_requested-inbox-review-copy").click();
-  await waitForText(page, "approval-center-open-count", "1");
-  await waitForText(page, "approval-center-blocked-count", "1");
-  await page.getByTestId("approval-center-filter-blocked").click();
-  await page.getByRole("heading", { name: "PR #22 同步失败" }).waitFor({ state: "visible" });
+  await waitForText(page, "approval-center-open-count", "0 open");
+  await waitForText(page, "approval-center-blocked-count", "0 blocked");
+  await waitForText(page, "approval-center-recent-count", "4 recent");
+  await waitForRecentTitle(page, "PR #22 已合并");
   const stateAfterReview = await readState(page, services.serverURL);
   const inboxPullRequest = stateAfterReview.pullRequests.find((item) => item.id === "pr-inbox-22");
   const inboxIssue = stateAfterReview.issues.find((item) => item.key === "OPS-19");
-  assert(inboxPullRequest?.status === "changes_requested", "review decision should sync pull request into changes_requested");
-  assert(inboxIssue?.state === "blocked", "review decision failure should escalate blocked issue lifecycle");
-  await capture(page, screenshotsDir, "review-converted-to-blocked");
+  assert(inboxPullRequest?.status === "merged", "review sync should absorb the merged remote pull request truth");
+  assert(inboxIssue?.state === "done", "merged remote pull request should close out the linked issue lifecycle");
+  await capture(page, screenshotsDir, "review-synced-merged");
 
   const report = [
     "# TKT-10 Approval Center Lifecycle Report",
@@ -312,14 +328,14 @@ try {
     "",
     "### Approval Center Truth",
     "",
-    "- `/inbox` 现在直接消费 `/v1/approval-center`，初始 `open = 3`、`unread = 3`、`recent = 1` -> PASS",
+    "- `/inbox` 现在直接消费 `/v1/approval-center`，初始 badge 收成 `3 open / 3 unread / 1 recent / 1 blocked` -> PASS",
     "- review signal 直接给出 Room / Run / PR back-link，并显式标记 unread hotspot -> PASS",
     "",
     "### Human Decision Lifecycle",
     "",
-    "- approval card `Approve` 后，open count `3 -> 2`，recent resolution `1 -> 2`，`run_runtime_01` 恢复 `running` -> PASS",
-    "- blocked card `Resolve` 后，open count `2 -> 1`，recent resolution `2 -> 3`，`run_memory_01` 恢复 `running` -> PASS",
-    "- review card `Request Changes` 后，本地无远端 GitHub 时 failure path 会显式升级成新的 blocked follow-up：`PR #22 同步失败` 可见，且 `pr-inbox-22.status = changes_requested`、`OPS-19.state = blocked` -> PASS",
+    "- approval card `Approve` 后，badge `3 open -> 2 open`、`1 recent -> 2 recent`，`run_runtime_01` 恢复 `running` -> PASS",
+    "- blocked card `Resolve` 后，badge `2 open -> 1 open`、`2 recent -> 3 recent`，`run_memory_01` 恢复 `running` -> PASS",
+    "- review card `Request Changes` 这拍按 current remote sync 收：`PR #22` 已在 GitHub merged，所以 badge `1 open -> 0 open`、`3 recent -> 4 recent`，且 `pr-inbox-22.status = merged`、`OPS-19.state = done` -> PASS",
     "",
     "### Scope Boundary",
     "",
