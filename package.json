@@ -50,6 +50,7 @@
     "test:headed-runtime-lease-conflict-recovery": "node ./scripts/headed-runtime-lease-conflict-recovery.mjs",
     "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",
     "test:headed-frontend-interaction-polish": "node ./scripts/headed-frontend-interaction-polish.mjs",
+    "test:headed-cjk-font-recovery": "node ./scripts/headed-cjk-font-recovery.mjs",
     "test:headed-room-workbench-topic-context": "node ./scripts/headed-room-workbench-topic-context.mjs",
     "test:headed-topic-route-resume-lifecycle": "node ./scripts/headed-topic-route-resume-lifecycle.mjs",
     "test:headed-profile-surface": "node ./scripts/headed-profile-surface.mjs",

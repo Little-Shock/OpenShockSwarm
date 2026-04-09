@@ -23,9 +23,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-body);
-  --font-mono: var(--font-mono);
-  --font-display: var(--font-display);
+  --font-sans: var(--font-body), var(--font-cjk-sans);
+  --font-mono: var(--font-mono), var(--font-cjk-sans);
+  --font-display: var(--font-display), var(--font-cjk-sans);
 }
 
 * {
@@ -50,13 +50,15 @@ body {
   color: var(--foreground);
   font-family:
     var(--font-body),
+    var(--font-cjk-sans),
     "PingFang SC",
     "Hiragino Sans GB",
     "Microsoft YaHei",
     "Noto Sans CJK SC",
     sans-serif;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -64,6 +66,7 @@ body {
 .font-display {
   font-family:
     var(--font-display),
+    var(--font-cjk-sans),
     "PingFang SC",
     "Hiragino Sans GB",
     "Microsoft YaHei",
@@ -73,6 +76,7 @@ body {
 .font-mono {
   font-family:
     var(--font-mono),
+    var(--font-cjk-sans),
     "JetBrains Mono",
     "Sarasa Mono SC",
     "Microsoft YaHei UI",
