@@ -15,6 +15,12 @@ var (
 	liveTruthPathPattern          = regexp.MustCompile(`[A-Za-z]:\\|/tmp/openshock|/home/lark/OpenShock|\.openshock-worktrees|\.slock/`)
 )
 
+// SanitizeLiveState exports the customer-visible hygiene contract so cleanup
+// tooling can rewrite persisted state using the same fail-closed rules.
+func SanitizeLiveState(snapshot store.State) store.State {
+	return sanitizeLiveState(snapshot)
+}
+
 func sanitizeLivePayload(payload any) any {
 	switch typed := payload.(type) {
 	case store.State:

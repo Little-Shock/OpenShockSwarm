@@ -24,6 +24,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if changed, err := sanitizePersistedStateOnStartup(stateStore); err != nil {
+		log.Fatal(err)
+	} else if changed {
+		log.Printf("sanitized persisted live state at startup: %s", statePath)
+	}
 
 	server := api.New(stateStore, httpClient, api.Config{
 		ControlURL:          controlURL,
@@ -36,6 +41,10 @@ func main() {
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func sanitizePersistedStateOnStartup(stateStore *store.Store) (bool, error) {
+	return stateStore.RewriteState(api.SanitizeLiveState)
 }
 
 func envOr(key, fallback string) string {
