@@ -26,7 +26,7 @@
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create，以及 delegated closeout lifecycle sync；下一批继续前滚到更重的 auto-closeout、automation policy 与更深自动协作策略。
+4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync，以及 delivery delegation automation policy；下一批继续前滚到更重的 auto-closeout 与更深自动协作策略。
 5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
@@ -861,6 +861,28 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-lifecycle -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-lifecycle.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-059`
+
+## TKT-71 Delivery Delegation Automation Policy
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 final lane closeout 之后的 delivery delegate 自动化策略做成正式 workspace governance 配置，而不是把“永远自动起 delegated handoff”写死在代码里。
+- 范围:
+  - workspace governance `formal-handoff / signal-only` delivery delegation mode
+  - `/settings` delivery delegation policy editor / durable truth
+  - signal-only policy -> PR detail delegation signal without auto-created closeout handoff
+  - Mailbox / related inbox policy-aligned closeout behavior
+- 依赖: `TKT-68` `TKT-69` `TKT-70`
+- Done When:
+  - workspace governance 支持 `formal-handoff` 与 `signal-only` 两种 delivery delegation automation policy，并能持久化恢复
+  - `signal-only` 模式下，final QA closeout 后 PR detail 仍会给出 `Delivery Delegation` card 和 related inbox signal，但不会自动创建 `delivery-closeout` handoff
+  - `/settings`、PR detail 和 Mailbox 会读取同一份 policy truth，而不是出现某页改了、某页继续按旧默认运行的分裂
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-policy -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-policy.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-060`
 
 ---
 

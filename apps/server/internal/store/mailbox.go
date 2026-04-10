@@ -326,6 +326,9 @@ func (s *Store) ensureDeliveryDelegationHandoffLocked(roomID string) error {
 	if prIndex == -1 {
 		return nil
 	}
+	if workspaceGovernanceDeliveryDelegationMode(s.state.Workspace) != governanceDeliveryDelegationModeFormalHandoff {
+		return nil
+	}
 
 	snapshot := cloneState(s.state)
 	hydrateWorkspaceGovernance(&snapshot.Workspace, &snapshot)

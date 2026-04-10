@@ -31,6 +31,7 @@ func TestWorkspaceConfigAndMemberPreferencesPersistAcrossReload(t *testing.T) {
 			ResumeURL:      "/setup?resume=tkt-37",
 		},
 		Governance: &WorkspaceGovernanceConfigInput{
+			DeliveryDelegationMode: governanceDeliveryDelegationModeSignalOnly,
 			TeamTopology: []WorkspaceGovernanceLaneConfig{
 				{ID: "lead", Label: "Research Lead", Role: "方向与验收", DefaultAgent: "Lead Operator", Lane: "scope / final synthesis"},
 				{ID: "collector", Label: "Field Collector", Role: "一线证据收集", DefaultAgent: "Collector", Lane: "intake -> evidence"},
@@ -55,11 +56,17 @@ func TestWorkspaceConfigAndMemberPreferencesPersistAcrossReload(t *testing.T) {
 	if len(workspace.Governance.ConfiguredTopology) != 5 || workspace.Governance.ConfiguredTopology[1].Label != "Field Collector" {
 		t.Fatalf("workspace governance configured topology = %#v, want persisted custom topology", workspace.Governance.ConfiguredTopology)
 	}
+	if workspace.Governance.DeliveryDelegationMode != governanceDeliveryDelegationModeSignalOnly {
+		t.Fatalf("workspace governance mode = %q, want %q", workspace.Governance.DeliveryDelegationMode, governanceDeliveryDelegationModeSignalOnly)
+	}
 	if nextState.Workspace.Onboarding.ResumeURL != "/setup?resume=tkt-37" {
 		t.Fatalf("state workspace onboarding = %#v, want resume url", nextState.Workspace.Onboarding)
 	}
 	if len(nextState.Workspace.Governance.TeamTopology) != 5 || nextState.Workspace.Governance.TeamTopology[4].ID != "publisher" {
 		t.Fatalf("state governance topology = %#v, want derived custom topology", nextState.Workspace.Governance.TeamTopology)
+	}
+	if nextState.Workspace.Governance.DeliveryDelegationMode != governanceDeliveryDelegationModeSignalOnly {
+		t.Fatalf("state governance mode = %q, want %q", nextState.Workspace.Governance.DeliveryDelegationMode, governanceDeliveryDelegationModeSignalOnly)
 	}
 
 	updatedState, member, err := s.UpdateWorkspaceMemberPreferences("member-larkspur", WorkspaceMemberPreferencesInput{
@@ -103,6 +110,9 @@ func TestWorkspaceConfigAndMemberPreferencesPersistAcrossReload(t *testing.T) {
 	}
 	if len(snapshot.Workspace.Governance.ConfiguredTopology) != 5 || snapshot.Workspace.Governance.ConfiguredTopology[4].ID != "publisher" {
 		t.Fatalf("reloaded configured topology = %#v, want persisted publisher lane", snapshot.Workspace.Governance.ConfiguredTopology)
+	}
+	if snapshot.Workspace.Governance.DeliveryDelegationMode != governanceDeliveryDelegationModeSignalOnly {
+		t.Fatalf("reloaded governance mode = %q, want %q", snapshot.Workspace.Governance.DeliveryDelegationMode, governanceDeliveryDelegationModeSignalOnly)
 	}
 
 	reloadedMember := findWorkspaceMemberByEmail(snapshot.Auth.Members, "larkspur@openshock.dev")

@@ -72,18 +72,18 @@ func buildPullRequestDeliveryDelegation(
 	pr PullRequest,
 	governedCloseout WorkspaceGovernanceSuggestedHandoff,
 ) PullRequestDeliveryDelegation {
+	delegationMode := workspaceGovernanceDeliveryDelegationMode(snapshot.Workspace)
 	result := PullRequestDeliveryDelegation{
 		Status:  "pending",
 		Summary: "等待 final verify / governed closeout 收口后，再明确最终 delivery delegate。",
 		Href:    fmt.Sprintf("/pull-requests/%s", pr.ID),
 	}
 
-	if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
-		result.Status = "done"
-		result.Summary = "这条 PR 已合并，delivery delegation 已完成。"
-		return result
-	}
 	if governedCloseout.Status != "done" {
+		if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
+			result.Status = "done"
+			result.Summary = "这条 PR 已合并，delivery delegation 已完成。"
+		}
 		return result
 	}
 
@@ -111,27 +111,74 @@ func buildPullRequestDeliveryDelegation(
 		switch handoff.Status {
 		case "blocked":
 			result.Status = "blocked"
-			result.Summary = fmt.Sprintf(
-				"%s 的 delivery closeout handoff 当前 blocked：%s",
-				targetAgent,
-				defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction),
-			)
+			if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
+				result.Summary = fmt.Sprintf(
+					"这条 PR 已合并，但 %s 的 delivery closeout handoff 当前 blocked：%s",
+					targetAgent,
+					defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction),
+				)
+			} else {
+				result.Summary = fmt.Sprintf(
+					"%s 的 delivery closeout handoff 当前 blocked：%s",
+					targetAgent,
+					defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction),
+				)
+			}
 			return result
 		case "completed":
 			result.Status = "done"
-			result.Summary = fmt.Sprintf(
-				"%s 已完成 formal delivery closeout handoff；当前等待最终 merge / release receipt 收口。",
-				targetAgent,
-			)
+			if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
+				result.Summary = fmt.Sprintf(
+					"%s 已完成 formal delivery closeout handoff；这条 PR 的 merge / release receipt 已归档。",
+					targetAgent,
+				)
+			} else {
+				result.Summary = fmt.Sprintf(
+					"%s 已完成 formal delivery closeout handoff；当前等待最终 merge / release receipt 收口。",
+					targetAgent,
+				)
+			}
 			return result
 		default:
-			result.Summary = fmt.Sprintf(
-				"%s 已完成 governed closeout；系统已为 %s 自动创建 formal delivery closeout handoff，可直接进入最后一棒收口。",
-				defaultString(governedCloseout.FromAgent, "当前治理链"),
-				targetAgent,
-			)
+			if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
+				result.Summary = fmt.Sprintf(
+					"这条 PR 已合并；%s 的 formal delivery closeout handoff 当前为 %s，继续围 merge / release receipt 做最后收口。",
+					targetAgent,
+					handoff.Status,
+				)
+			} else {
+				result.Summary = fmt.Sprintf(
+					"%s 已完成 governed closeout；系统已为 %s 自动创建 formal delivery closeout handoff，可直接进入最后一棒收口。",
+					defaultString(governedCloseout.FromAgent, "当前治理链"),
+					targetAgent,
+				)
+			}
 			return result
 		}
+	}
+	if delegationMode == governanceDeliveryDelegationModeSignalOnly {
+		result.Summary = fmt.Sprintf(
+			"%s 已完成 governed closeout；当前 workspace delivery policy = signal-only，由 %s（%s）按 delivery signal 决定是否手动起 formal closeout handoff。",
+			defaultString(governedCloseout.FromAgent, "当前治理链"),
+			targetAgent,
+			lane.Label,
+		)
+		if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
+			result.Status = "done"
+			result.Summary = fmt.Sprintf(
+				"这条 PR 已合并；当前 workspace delivery policy = signal-only，%s 的 formal closeout 不再自动起单。",
+				targetAgent,
+			)
+		}
+		return result
+	}
+	if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
+		result.Summary = fmt.Sprintf(
+			"这条 PR 已合并；当前仍可交给 %s（%s）补 merge / release receipt 收口。",
+			targetAgent,
+			lane.Label,
+		)
+		return result
 	}
 	result.Summary = fmt.Sprintf(
 		"%s 已完成 governed closeout；下一步交给 %s（%s）复核 release gate、operator handoff note 与最终交付收口。",

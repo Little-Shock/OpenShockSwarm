@@ -120,19 +120,20 @@ type CredentialProfileAuditEntry struct {
 }
 
 type WorkspaceGovernanceSnapshot struct {
-	TemplateID          string                                `json:"templateId,omitempty"`
-	Label               string                                `json:"label,omitempty"`
-	Summary             string                                `json:"summary,omitempty"`
-	ConfiguredTopology  []WorkspaceGovernanceLaneConfig       `json:"configuredTopology,omitempty"`
-	TeamTopology        []WorkspaceGovernanceLane             `json:"teamTopology,omitempty"`
-	HandoffRules        []WorkspaceGovernanceRule             `json:"handoffRules,omitempty"`
-	RoutingPolicy       WorkspaceGovernanceRoutingPolicy      `json:"routingPolicy"`
-	EscalationSLA       WorkspaceGovernanceEscalationSLA      `json:"escalationSla"`
-	NotificationPolicy  WorkspaceGovernanceNotificationPolicy `json:"notificationPolicy"`
-	ResponseAggregation WorkspaceResponseAggregation          `json:"responseAggregation"`
-	HumanOverride       WorkspaceHumanOverride                `json:"humanOverride"`
-	Walkthrough         []WorkspaceGovernanceWalkthrough      `json:"walkthrough,omitempty"`
-	Stats               WorkspaceGovernanceStats              `json:"stats"`
+	TemplateID             string                                `json:"templateId,omitempty"`
+	Label                  string                                `json:"label,omitempty"`
+	Summary                string                                `json:"summary,omitempty"`
+	ConfiguredTopology     []WorkspaceGovernanceLaneConfig       `json:"configuredTopology,omitempty"`
+	DeliveryDelegationMode string                                `json:"deliveryDelegationMode,omitempty"`
+	TeamTopology           []WorkspaceGovernanceLane             `json:"teamTopology,omitempty"`
+	HandoffRules           []WorkspaceGovernanceRule             `json:"handoffRules,omitempty"`
+	RoutingPolicy          WorkspaceGovernanceRoutingPolicy      `json:"routingPolicy"`
+	EscalationSLA          WorkspaceGovernanceEscalationSLA      `json:"escalationSla"`
+	NotificationPolicy     WorkspaceGovernanceNotificationPolicy `json:"notificationPolicy"`
+	ResponseAggregation    WorkspaceResponseAggregation          `json:"responseAggregation"`
+	HumanOverride          WorkspaceHumanOverride                `json:"humanOverride"`
+	Walkthrough            []WorkspaceGovernanceWalkthrough      `json:"walkthrough,omitempty"`
+	Stats                  WorkspaceGovernanceStats              `json:"stats"`
 }
 
 type WorkspaceGovernanceLaneConfig struct {

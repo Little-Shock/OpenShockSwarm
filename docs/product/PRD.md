@@ -314,7 +314,7 @@ OpenShock 不只是 Agent 控制台，也是一套真正面向团队上线的系
 
 - 正式交接走 Agent Mailbox / handoff ledger，而不是只靠公共频道喊话
 - 角色拓扑、审批链和 escalation path 必须人类可见
-- 角色拓扑不只做静态预览，还要围当前 room / run truth 派生默认下一棒 governed handoff；当前一棒完成时应允许 auto-advance 到下一棒；final lane done 时要显式回链 delivery entry / closeout，并继续派生最终 delivery delegate / inbox signal / delegated closeout handoff；缺少合法接收方时必须显式 blocked
+- 角色拓扑不只做静态预览，还要围当前 room / run truth 派生默认下一棒 governed handoff；当前一棒完成时应允许 auto-advance 到下一棒；final lane done 时要显式回链 delivery entry / closeout，并继续派生最终 delivery delegate / inbox signal / delegated closeout handoff；delivery delegate 还要支持 `formal-handoff / signal-only` automation policy；缺少合法接收方时必须显式 blocked
 - 人类始终能把自动协作降级回单 Agent 或人工接管
 
 ---
@@ -733,7 +733,7 @@ online -> busy -> offline
 18. Onboarding Studio：`开发团队 / 研究团队 / 空白自定义` 模板
 19. Workspace / User / Agent / Machine 配置持久化与恢复
 20. 多 Agent handoff ledger、ack / blocked / escalation contract
-21. 多 Agent 角色拓扑：PM / Architect / Splitter / Developer / Reviewer / QA 与研究团队变体，并能派生 governed next-handoff suggestion / auto-advance policy / delivery closeout backlink / final delivery delegation signal / delegated closeout handoff
+21. 多 Agent 角色拓扑：PM / Architect / Splitter / Developer / Reviewer / QA 与研究团队变体，并能派生 governed next-handoff suggestion / auto-advance policy / delivery closeout backlink / final delivery delegation signal / delegated closeout handoff / delivery delegation automation policy
 
 ### P2：后续探索
 

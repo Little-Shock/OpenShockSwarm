@@ -28,9 +28,10 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 			"currentStep":"identity-proof",
 			"completedSteps":["workspace-created","repo-bound","agent-profile"],
 			"resumeUrl":"/setup?resume=tkt-37"
-		},
-		"governance":{
-			"teamTopology":[
+			},
+			"governance":{
+				"deliveryDelegationMode":"signal-only",
+				"teamTopology":[
 				{"id":"lead","label":"Research Lead","role":"方向与验收","defaultAgent":"Lead Operator","lane":"scope / final synthesis"},
 				{"id":"collector","label":"Field Collector","role":"一线证据收集","defaultAgent":"Collector","lane":"intake -> evidence"},
 				{"id":"synthesizer","label":"Synthesizer","role":"归纳与草案","defaultAgent":"Synthesizer","lane":"evidence -> synthesis"},
@@ -68,6 +69,9 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 	}
 	if len(payload.Workspace.Governance.ConfiguredTopology) != 5 || payload.Workspace.Governance.ConfiguredTopology[1].Label != "Field Collector" {
 		t.Fatalf("workspace governance configured topology = %#v, want persisted custom topology", payload.Workspace.Governance.ConfiguredTopology)
+	}
+	if payload.Workspace.Governance.DeliveryDelegationMode != "signal-only" {
+		t.Fatalf("workspace governance mode = %q, want signal-only", payload.Workspace.Governance.DeliveryDelegationMode)
 	}
 	if len(payload.State.Workspace.Governance.TeamTopology) != 5 || payload.State.Workspace.Governance.TeamTopology[4].ID != "publisher" {
 		t.Fatalf("state governance topology = %#v, want derived publisher lane", payload.State.Workspace.Governance.TeamTopology)
@@ -115,6 +119,9 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 	}
 	if len(workspace.Governance.TeamTopology) != 5 || workspace.Governance.TeamTopology[1].Label != "Field Collector" {
 		t.Fatalf("GET workspace governance team topology = %#v, want derived custom lane labels", workspace.Governance.TeamTopology)
+	}
+	if workspace.Governance.DeliveryDelegationMode != "signal-only" {
+		t.Fatalf("GET workspace governance mode = %q, want signal-only", workspace.Governance.DeliveryDelegationMode)
 	}
 }
 

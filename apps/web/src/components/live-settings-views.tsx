@@ -118,6 +118,25 @@ const ONBOARDING_STATUS_OPTIONS = [
 const START_ROUTE_OPTIONS = ["/chat/all", "/rooms", "/inbox", "/mailbox", "/setup", "/board", "/settings", "/access"] as const;
 type GovernanceLaneDraft = WorkspaceGovernanceLaneConfig;
 
+type DeliveryDelegationMode = "formal-handoff" | "signal-only";
+
+const DELIVERY_DELEGATION_MODE_OPTIONS: Array<{
+  mode: DeliveryDelegationMode;
+  value: string;
+  label: string;
+}> = [
+  {
+    mode: "formal-handoff",
+    value: "formal-handoff",
+    label: "final lane closeout 后自动创建 delegated closeout handoff，并把最后一棒继续挂进 Mailbox / Inbox ledger。",
+  },
+  {
+    mode: "signal-only",
+    value: "signal-only",
+    label: "final lane closeout 只派 delivery delegation signal；是否起 formal closeout handoff 由人类按 signal 决定。",
+  },
+];
+
 function inboxKindLabel(kind: ApprovalCenterItem["kind"]) {
   switch (kind) {
     case "approval":
@@ -330,6 +349,14 @@ function nextGovernanceLaneId(lanes: GovernanceLaneDraft[]) {
     index += 1;
   }
   return `lane-${index}`;
+}
+
+function normalizeDeliveryDelegationMode(value?: string): DeliveryDelegationMode {
+  return value === "signal-only" ? "signal-only" : "formal-handoff";
+}
+
+function deliveryDelegationModeLabel(mode: DeliveryDelegationMode) {
+  return mode === "signal-only" ? "signal only" : "formal handoff";
 }
 
 function hasWorkspaceManagePermission(state: PhaseZeroState) {
@@ -994,6 +1021,7 @@ function GovernanceTopologyPanel() {
   const workspace = state.workspace;
   const canManage = hasWorkspaceManagePermission(state);
   const [lanes, setLanes] = useState<GovernanceLaneDraft[]>([]);
+  const [deliveryDelegationMode, setDeliveryDelegationMode] = useState<DeliveryDelegationMode>("formal-handoff");
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1004,6 +1032,7 @@ function GovernanceTopologyPanel() {
       return;
     }
     setLanes(governanceLaneDrafts(workspace));
+    setDeliveryDelegationMode(normalizeDeliveryDelegationMode(workspace.governance.deliveryDelegationMode));
   }, [dirty, workspace]);
 
   function updateLane(index: number, patch: Partial<GovernanceLaneDraft>) {
@@ -1051,6 +1080,7 @@ function GovernanceTopologyPanel() {
           resumeUrl: workspace.onboarding.resumeUrl ?? "",
         },
         governance: {
+          deliveryDelegationMode,
           teamTopology: lanes.map((lane) => ({
             id: lane.id.trim(),
             label: lane.label.trim(),
@@ -1061,7 +1091,7 @@ function GovernanceTopologyPanel() {
         },
       });
       setDirty(false);
-      setSuccess("team topology 已写回 workspace truth；reload / restart 后会继续维持同一条治理链。");
+      setSuccess("team topology / delivery policy 已写回 workspace truth；reload / restart 后会继续维持同一条治理链。");
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology update failed");
     } finally {
@@ -1087,11 +1117,12 @@ function GovernanceTopologyPanel() {
           resumeUrl: workspace.onboarding.resumeUrl ?? "",
         },
         governance: {
+          deliveryDelegationMode: "formal-handoff",
           teamTopology: [],
         },
       });
       setDirty(false);
-      setSuccess("当前 team topology 已恢复为模板默认值。");
+      setSuccess("当前 team topology 与 delivery policy 已恢复为模板默认值。");
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology reset failed");
     } finally {
@@ -1112,10 +1143,10 @@ function GovernanceTopologyPanel() {
       </div>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
         `CHK-21` 这层不再只展示只读治理预览。PM / Architect / Developer / Reviewer / QA 或研究团队变体现在可以在 settings 里直接改 lane、角色、default agent 和 handoff path，
-        setup / mailbox / agents 会继续读取同一份 durable topology。
+        setup / mailbox / agents 会继续读取同一份 durable topology；final closeout 要不要自动起 delegated handoff，也在这里收成正式 policy。
       </p>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
         <FactTile label="Template" value={valueOrPlaceholder(workspace.governance.label, "未命名治理链")} />
         <FactTile label="Configured Lanes" value={String(lanes.length)} testID="settings-governance-topology-count" />
         <FactTile
@@ -1123,9 +1154,42 @@ function GovernanceTopologyPanel() {
           value={lanes.length > 0 ? lanes.map((lane) => lane.label || lane.id).join(" -> ") : "未声明"}
           testID="settings-governance-route-preview"
         />
+        <FactTile
+          label="Delivery Policy"
+          value={deliveryDelegationModeLabel(deliveryDelegationMode)}
+          testID="settings-governance-delivery-policy"
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">delivery delegation policy</p>
+              <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                final lane closeout 后，是直接自动起 delegated closeout handoff，还是先只发 signal，由人类决定是否补 formal handoff。
+              </p>
+            </div>
+            <span className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
+              {deliveryDelegationModeLabel(deliveryDelegationMode)}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {DELIVERY_DELEGATION_MODE_OPTIONS.map((option) => (
+              <PolicyButton
+                key={option.mode}
+                active={deliveryDelegationMode === option.mode}
+                onClick={() => {
+                  setDeliveryDelegationMode(option.mode);
+                  setDirty(true);
+                }}
+                value={option.value}
+                label={option.label}
+                testID={`settings-governance-delivery-mode-${option.mode}`}
+              />
+            ))}
+          </div>
+        </div>
         <div className="space-y-3">
           {lanes.map((lane, index) => (
             <div

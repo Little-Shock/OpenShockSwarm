@@ -153,6 +153,7 @@ func hydrateWorkspaceGovernance(workspace *WorkspaceSnapshot, state *State) {
 	escalationSLA := buildGovernanceEscalationSLA(effectiveTemplate, focus)
 	notificationPolicy := buildGovernanceNotificationPolicy(*workspace, effectiveTemplate, focus)
 	responseAggregation := buildResponseAggregation(focus, humanOverride)
+	deliveryDelegationMode := workspaceGovernanceDeliveryDelegationMode(*workspace)
 	stats.SLABreaches = escalationSLA.BreachedEscalations
 	stats.AggregationSources = len(responseAggregation.Sources)
 
@@ -167,21 +168,25 @@ func hydrateWorkspaceGovernance(workspace *WorkspaceSnapshot, state *State) {
 			summary = fmt.Sprintf("%s 当前锚在 %s，并把 issue -> handoff -> review -> test -> final response 摆成同一条治理链。", template.Label, focus.Issue.Key)
 		}
 	}
+	if deliveryDelegationMode == governanceDeliveryDelegationModeSignalOnly {
+		summary += " final closeout 当前只派 delivery signal，不自动起 delegated closeout handoff。"
+	}
 
 	workspace.Governance = WorkspaceGovernanceSnapshot{
-		TemplateID:          effectiveTemplate.TemplateID,
-		Label:               effectiveTemplate.Label,
-		Summary:             summary,
-		ConfiguredTopology:  configuredTopology,
-		TeamTopology:        buildGovernanceTeamTopology(effectiveTemplate, focus, humanOverride),
-		HandoffRules:        buildGovernanceRules(focus, stats, humanOverride),
-		RoutingPolicy:       routingPolicy,
-		EscalationSLA:       escalationSLA,
-		NotificationPolicy:  notificationPolicy,
-		ResponseAggregation: responseAggregation,
-		HumanOverride:       humanOverride,
-		Walkthrough:         buildGovernanceWalkthrough(focus, responseAggregation),
-		Stats:               stats,
+		TemplateID:             effectiveTemplate.TemplateID,
+		Label:                  effectiveTemplate.Label,
+		Summary:                summary,
+		ConfiguredTopology:     configuredTopology,
+		DeliveryDelegationMode: deliveryDelegationMode,
+		TeamTopology:           buildGovernanceTeamTopology(effectiveTemplate, focus, humanOverride),
+		HandoffRules:           buildGovernanceRules(focus, stats, humanOverride),
+		RoutingPolicy:          routingPolicy,
+		EscalationSLA:          escalationSLA,
+		NotificationPolicy:     notificationPolicy,
+		ResponseAggregation:    responseAggregation,
+		HumanOverride:          humanOverride,
+		Walkthrough:            buildGovernanceWalkthrough(focus, responseAggregation),
+		Stats:                  stats,
 	}
 }
 

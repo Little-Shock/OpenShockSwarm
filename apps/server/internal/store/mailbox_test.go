@@ -757,6 +757,90 @@ func TestDeliveryDelegationHandoffLifecycleSyncsBackToPullRequest(t *testing.T) 
 	}
 }
 
+func TestDeliveryDelegationSignalOnlyPolicySkipsAutoCreatedHandoff(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[len(topology)-1].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			DeliveryDelegationMode: governanceDeliveryDelegationModeSignalOnly,
+			TeamTopology:           topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 developer lane 正式交给 reviewer",
+		Summary:     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff() error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged reviewer) error = %v", err)
+	}
+	reviewerClosedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:                "completed",
+		ActingAgentID:         "agent-claude-review-runner",
+		Note:                  "review 已完成，直接把 QA 接力拉起来。",
+		ContinueGovernedRoute: true,
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed reviewer continue) error = %v", err)
+	}
+	qaHandoff := reviewerClosedState.Mailbox[0]
+
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-memory-clerk",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged qa) error = %v", err)
+	}
+	finalState, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-memory-clerk",
+		Note:          "QA 验证完成，可以进入 PR delivery closeout。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed qa) error = %v", err)
+	}
+
+	detail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok {
+		t.Fatalf("PullRequestDetail() missing runtime PR detail")
+	}
+	if detail.Delivery.Delegation.Status != "ready" ||
+		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		detail.Delivery.Delegation.HandoffStatus != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "signal-only") {
+		t.Fatalf("delivery delegation = %#v, want signal-only delivery delegate without auto-created handoff", detail.Delivery.Delegation)
+	}
+	delegationInbox := findInboxItemByID(finalState.Inbox, deliveryDelegationInboxItemID("pr-runtime-18"))
+	if delegationInbox == nil || delegationInbox.Kind != "status" || !strings.Contains(delegationInbox.Summary, "signal-only") {
+		t.Fatalf("delegation inbox = %#v, want signal-only delivery delegation signal", finalState.Inbox)
+	}
+	for _, item := range finalState.Mailbox {
+		if item.Kind == handoffKindDeliveryCloseout && item.RoomID == "room-runtime" {
+			t.Fatalf("mailbox = %#v, want no auto-created delivery-closeout handoff under signal-only policy", finalState.Mailbox)
+		}
+	}
+}
+
 func findInboxItemByHandoffID(items []InboxItem, handoffID string) *InboxItem {
 	for index := range items {
 		if items[index].HandoffID == handoffID {

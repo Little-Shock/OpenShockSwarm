@@ -108,6 +108,7 @@ type WorkspaceConfigUpdateInput = {
   };
   governance?: {
     teamTopology?: WorkspaceGovernanceLaneConfig[];
+    deliveryDelegationMode?: string;
   };
 };
 

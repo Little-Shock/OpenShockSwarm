@@ -140,7 +140,8 @@ type WorkspaceOnboardingRequest struct {
 }
 
 type WorkspaceGovernanceRequest struct {
-	TeamTopology []store.WorkspaceGovernanceLaneConfig `json:"teamTopology"`
+	TeamTopology           []store.WorkspaceGovernanceLaneConfig `json:"teamTopology"`
+	DeliveryDelegationMode string                                `json:"deliveryDelegationMode"`
 }
 
 type WorkspaceUpdateRequest struct {
@@ -264,7 +265,8 @@ func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		var governance *store.WorkspaceGovernanceConfigInput
 		if req.Governance != nil {
 			governance = &store.WorkspaceGovernanceConfigInput{
-				TeamTopology: append([]store.WorkspaceGovernanceLaneConfig{}, req.Governance.TeamTopology...),
+				TeamTopology:           append([]store.WorkspaceGovernanceLaneConfig{}, req.Governance.TeamTopology...),
+				DeliveryDelegationMode: req.Governance.DeliveryDelegationMode,
 			}
 		}
 		nextState, workspace, err := s.store.UpdateWorkspaceConfig(store.WorkspaceConfigUpdateInput{
@@ -292,7 +294,8 @@ func writeWorkspaceConfigError(w http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrWorkspaceResumeURLInvalid),
 		errors.Is(err, store.ErrWorkspaceStartRouteInvalid),
 		errors.Is(err, store.ErrWorkspacePreferredAgentNotFound),
-		errors.Is(err, store.ErrWorkspaceGovernanceTopologyInvalid):
+		errors.Is(err, store.ErrWorkspaceGovernanceTopologyInvalid),
+		errors.Is(err, store.ErrWorkspaceGovernanceDeliveryDelegationModeInvalid):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

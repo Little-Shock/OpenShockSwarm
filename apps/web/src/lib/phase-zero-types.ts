@@ -130,6 +130,7 @@ export type WorkspaceGovernanceSnapshot = {
   label?: string;
   summary?: string;
   configuredTopology?: WorkspaceGovernanceLaneConfig[];
+  deliveryDelegationMode?: string;
   teamTopology: WorkspaceGovernanceLane[];
   handoffRules: WorkspaceGovernanceRule[];
   routingPolicy: WorkspaceGovernanceRoutingPolicy;

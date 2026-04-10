@@ -12,14 +12,18 @@ const (
 	workspaceOnboardingInProgress = "in_progress"
 	workspaceOnboardingReady      = "ready"
 	workspaceOnboardingDone       = "done"
+
+	governanceDeliveryDelegationModeFormalHandoff = "formal-handoff"
+	governanceDeliveryDelegationModeSignalOnly    = "signal-only"
 )
 
 var (
-	ErrWorkspaceOnboardingStatusInvalid   = errors.New("workspace onboarding status is invalid")
-	ErrWorkspaceResumeURLInvalid          = errors.New("workspace resume url must start with /")
-	ErrWorkspaceStartRouteInvalid         = errors.New("workspace start route must start with /")
-	ErrWorkspacePreferredAgentNotFound    = errors.New("preferred agent not found")
-	ErrWorkspaceGovernanceTopologyInvalid = errors.New("workspace governance topology is invalid")
+	ErrWorkspaceOnboardingStatusInvalid                 = errors.New("workspace onboarding status is invalid")
+	ErrWorkspaceResumeURLInvalid                        = errors.New("workspace resume url must start with /")
+	ErrWorkspaceStartRouteInvalid                       = errors.New("workspace start route must start with /")
+	ErrWorkspacePreferredAgentNotFound                  = errors.New("preferred agent not found")
+	ErrWorkspaceGovernanceTopologyInvalid               = errors.New("workspace governance topology is invalid")
+	ErrWorkspaceGovernanceDeliveryDelegationModeInvalid = errors.New("workspace governance delivery delegation mode is invalid")
 )
 
 type WorkspaceConfigUpdateInput struct {
@@ -33,7 +37,8 @@ type WorkspaceConfigUpdateInput struct {
 }
 
 type WorkspaceGovernanceConfigInput struct {
-	TeamTopology []WorkspaceGovernanceLaneConfig
+	TeamTopology           []WorkspaceGovernanceLaneConfig
+	DeliveryDelegationMode string
 }
 
 type WorkspaceMemberPreferencesInput struct {
@@ -201,6 +206,25 @@ func normalizeWorkspaceResumeURL(value string) (string, error) {
 		return "", ErrWorkspaceResumeURLInvalid
 	}
 	return value, nil
+}
+
+func normalizeWorkspaceGovernanceDeliveryDelegationMode(value string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "", governanceDeliveryDelegationModeFormalHandoff, "formal_handoff", "formal":
+		return governanceDeliveryDelegationModeFormalHandoff, nil
+	case governanceDeliveryDelegationModeSignalOnly, "signal_only", "signal":
+		return governanceDeliveryDelegationModeSignalOnly, nil
+	default:
+		return "", ErrWorkspaceGovernanceDeliveryDelegationModeInvalid
+	}
+}
+
+func workspaceGovernanceDeliveryDelegationMode(workspace WorkspaceSnapshot) string {
+	mode, err := normalizeWorkspaceGovernanceDeliveryDelegationMode(workspace.Governance.DeliveryDelegationMode)
+	if err != nil {
+		return governanceDeliveryDelegationModeFormalHandoff
+	}
+	return mode
 }
 
 func sessionHasPermission(session AuthSession, permission string) bool {
@@ -373,6 +397,7 @@ func syncWorkspaceSnapshotDefaults(workspace *WorkspaceSnapshot) {
 	} else {
 		workspace.Governance.ConfiguredTopology = defaultGovernanceTopology
 	}
+	workspace.Governance.DeliveryDelegationMode = workspaceGovernanceDeliveryDelegationMode(*workspace)
 	if strings.TrimSpace(workspace.Sandbox.Profile) == "" {
 		workspace.Sandbox = defaultSandbox
 	} else {
@@ -462,6 +487,13 @@ func (s *Store) UpdateWorkspaceConfig(input WorkspaceConfigUpdateInput) (State, 
 		workspace.Onboarding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	currentTemplateID := canonicalWorkspaceOnboardingTemplateID(workspace.Onboarding.TemplateID)
+	if input.Governance != nil {
+		mode, err := normalizeWorkspaceGovernanceDeliveryDelegationMode(defaultString(input.Governance.DeliveryDelegationMode, workspace.Governance.DeliveryDelegationMode))
+		if err != nil {
+			return State{}, WorkspaceSnapshot{}, err
+		}
+		workspace.Governance.DeliveryDelegationMode = mode
+	}
 	if input.Governance != nil && input.Governance.TeamTopology != nil {
 		if len(input.Governance.TeamTopology) == 0 {
 			workspace.Governance.ConfiguredTopology = defaultWorkspaceGovernanceTopology(currentTemplateID)

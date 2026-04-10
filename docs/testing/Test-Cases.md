@@ -788,3 +788,19 @@
   6. 再次打开 `/pull-requests/pr-runtime-18`，确认 delegation card 变为 `delegation done` / `handoff completed`，related inbox signal 也同步显示完成态。
 - 预期结果: delegated closeout handoff 不会成为只在 Mailbox 内可见的孤岛 lifecycle；blocked 和 completed 都应回写到同一条 PR delivery contract，同时 governed route 继续维持 final-lane closeout done-state。
 - 业务结论: 2026 年 4 月 11 日 `TKT-70` 已把 delegated closeout handoff 的 lifecycle sync 接回 `PullRequestDeliveryEntry.delegation` 与 deterministic inbox signal。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-lifecycle.md` 已记录 `delegated handoff blocked -> PR detail blocked -> re-ack -> completed -> PR detail done` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 已锁住 blocker note 回写、completed 状态回写与 governance done-state 隔离，因此这条 delegated lifecycle contract 用例当前转为 `Pass`。
+
+## TC-060 Delivery Delegation Automation Policy
+
+- 业务目标: 确认 final lane closeout 之后的 delivery delegate 不再只有单一硬编码行为，而是支持 `formal-handoff / signal-only` 两种 automation policy，并且 `signal-only` 模式下不会偷偷自动起 delegated closeout handoff。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 governed auto-advance、done-state delivery backlink、delivery delegation signal，以及可编辑的 workspace governance topology。
+- 测试步骤:
+  1. 将 workspace governance 的 `deliveryDelegationMode` 切到 `signal-only`，并保留可解析的 PM / Spec Captain owner lane。
+  2. 通过 governed route 创建 `Developer -> Reviewer` handoff，并用 `Complete + Auto-Advance` 自动生成 `Reviewer -> QA` followup。
+  3. 由 QA acknowledge 并完成 final lane handoff，写入 closeout note。
+  4. 打开 `/pull-requests/pr-runtime-18`，确认 `Delivery Delegation` card 仍显示 `delegate ready`，summary 明确写回 `signal-only` policy，且 related inbox signal 同步出现。
+  5. 检查 Mailbox ledger，确认没有自动新建 `delivery-closeout` handoff。
+  6. 打开 `/settings`，确认 delivery delegation policy 读回同一条 `signal only` durable truth。
+- 预期结果: delivery delegation automation policy 必须是显式可配置的产品行为；`signal-only` 模式下系统只派 delegation signal，不自动物化 delegated closeout handoff，但 PR detail、Mailbox 和 Settings 仍读同一份 workspace truth。
+- 业务结论: 2026 年 4 月 11 日 `TKT-71` 已把 `formal-handoff / signal-only` delivery delegation automation policy 接进 workspace governance durable config。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-policy.md` 已记录 `signal-only policy -> PR delegation signal -> no auto-created handoff -> settings policy truth` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 policy persistence、PR detail delegation summary 与 Mailbox no-auto-create contract，因此这条 delivery delegation automation policy 用例当前转为 `Pass`。

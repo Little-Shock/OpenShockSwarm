@@ -36,6 +36,7 @@
     "test:headed-governed-mailbox-closeout": "node ./scripts/headed-governed-mailbox-route.mjs --mode closeout",
     "test:headed-governed-mailbox-delegation": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegation",
     "test:headed-governed-mailbox-delegate-handoff": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-handoff",
+    "test:headed-governed-mailbox-delegate-policy": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-policy",
     "test:headed-governed-mailbox-delegate-lifecycle": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-lifecycle",
     "test:headed-multi-agent-governance": "node ./scripts/headed-multi-agent-governance.mjs",
     "test:headed-control-plane-runtime-governance": "node ./scripts/headed-control-plane-runtime-governance.mjs",

@@ -175,6 +175,7 @@ function sanitizeWorkspaceGovernance(
     label: "",
     summary: "",
     configuredTopology: [],
+    deliveryDelegationMode: "formal-handoff",
     teamTopology: [],
     handoffRules: [],
     routingPolicy: {
@@ -247,6 +248,7 @@ function sanitizeWorkspaceGovernance(
     ...safeGovernance,
     label: sanitizeDisplayText(safeGovernance.label ?? "", "当前治理链正在整理中。"),
     summary: sanitizeDisplayText(safeGovernance.summary ?? "", "当前多 Agent 治理摘要正在整理中。"),
+    deliveryDelegationMode: sanitizeDisplayText(safeGovernance.deliveryDelegationMode ?? "", "formal-handoff"),
     configuredTopology: (safeGovernance.configuredTopology ?? []).map((lane) => {
       const safeLane = lane ?? {
         id: "",
