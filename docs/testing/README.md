@@ -1,5 +1,7 @@
 # Testing Docs
 
+- [Test Report 2026-04-11 Windows Chrome PR Conversation / Usage Observability](./Test-Report-2026-04-11-windows-chrome-pr-conversation-usage-observability.md)
+  - `TKT-39` `TKT-41` 的 Windows Chrome 有头报告，覆盖 `webhook review/comment/thread -> Inbox -> Room PR tab -> PR Detail -> run/room/workspace usage`
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
   - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
 - [Test Report 2026-04-10 Windows Chrome Control-Plane / Runtime Replay / Governance](./Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md)
@@ -137,6 +139,8 @@
   - 验证 `/setup`、machine profile、`/agents` 与 Agent profile editor 是否共享同一份 machine capability / provider-model catalog truth，并允许写回 provider+model+runtime affinity
 - `pnpm test:headed-control-plane-runtime-governance`
   - 用 Windows Chrome 串起 `/v1/control-plane/*`、`/v1/runtime/publish*`、`/agents` 治理面和 dirty projection fail-closed browser evidence
+- `pnpm test:headed-pr-conversation-usage-observability`
+  - 用 Windows Chrome 串起 `review webhook -> Inbox -> Room PR tab -> PR Detail -> /runs -> /settings`，验证 `TKT-39` `TKT-41`
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-runtime-lease-conflict-recovery`

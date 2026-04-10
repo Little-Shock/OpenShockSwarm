@@ -437,7 +437,7 @@
 
 ## TKT-39 Review Comment Sync / PR Conversation Backfill
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 PR review comment / thread resolution 从“只靠 webhook 粗同步”补成可回看、可回链的产品真相。
 - 范围:
@@ -449,12 +449,15 @@
   - review comment、thread resolution、change request 能稳定回写到 PR / Room / Inbox
   - reload 或 webhook replay 后不会丢失 review conversation truth
   - 至少有一组 API + browser evidence 覆盖 `comment -> sync -> room/inbox back-link`
+- 最新证据:
+  - `go test ./internal/api` 已锁住 review sync、repeat replay dedupe、PR detail backlink contract
+  - `docs/testing/Test-Report-2026-04-11-windows-chrome-pr-conversation-usage-observability.md`
 - Checklist: `CHK-07` `CHK-08`
 - Test Cases: `TC-025` `TC-026`
 
 ## TKT-41 Usage / Token / Quota Observability
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把上下文窗口、token、quota 与执行成本补成正式可观察真相。
 - 范围:
@@ -466,6 +469,9 @@
   - 用户能看到 run / workspace 级 usage、quota 与 context cost
   - 关键 usage 指标不再只藏在日志或 CLI 输出里
   - verify / report 至少有一条证据覆盖 usage observability
+- 最新证据:
+  - `pnpm verify:web`
+  - `docs/testing/Test-Report-2026-04-11-windows-chrome-pr-conversation-usage-observability.md`
 - Checklist: `CHK-06` `CHK-15`
 - Test Cases: `TC-021` `TC-026`
 

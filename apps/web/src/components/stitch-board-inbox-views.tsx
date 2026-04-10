@@ -853,7 +853,7 @@ export function StitchInboxView() {
                     const pullRequest = findPullRequestForItem(item);
                     const room = findRoomForItem(item);
                     const guard = item.guardId ? state.guards.find((entry) => entry.id === item.guardId) : undefined;
-                    const preferredRoomTab = item.kind === "review" ? "pr" : "context";
+                    const preferredRoomTab = pullRequest ? "pr" : item.kind === "review" ? "pr" : "context";
                     const roomHref = room
                       ? `/rooms/${room.id}?tab=${preferredRoomTab}`
                       : item.roomId

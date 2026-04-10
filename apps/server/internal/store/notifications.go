@@ -332,7 +332,18 @@ func decisionOptionsForInboxKind(kind string) []string {
 }
 
 func parseInboxTargetIDs(href string) (roomID, runID string) {
-	trimmed := strings.Trim(strings.TrimSpace(href), "/")
+	trimmed := strings.TrimSpace(href)
+	if trimmed == "" {
+		return "", ""
+	}
+
+	if pathOnly, _, ok := strings.Cut(trimmed, "?"); ok {
+		trimmed = pathOnly
+	}
+	if pathOnly, _, ok := strings.Cut(trimmed, "#"); ok {
+		trimmed = pathOnly
+	}
+	trimmed = strings.Trim(trimmed, "/")
 	if trimmed == "" {
 		return "", ""
 	}

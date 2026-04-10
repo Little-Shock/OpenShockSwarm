@@ -16,6 +16,7 @@ import {
   type Message,
   type PhaseZeroState,
   type PullRequest,
+  type PullRequestConversationEntry,
   type Room,
   type Run,
   type Session,
@@ -55,6 +56,32 @@ function pullRequestStatusLabel(status?: string) {
       return "已合并";
     default:
       return "未创建";
+  }
+}
+
+function conversationKindLabel(kind: PullRequestConversationEntry["kind"]) {
+  switch (kind) {
+    case "review":
+      return "Review";
+    case "review_comment":
+      return "Comment";
+    case "review_thread":
+      return "Thread";
+    default:
+      return "Note";
+  }
+}
+
+function conversationBadgeTone(kind: PullRequestConversationEntry["kind"]) {
+  switch (kind) {
+    case "review":
+      return "bg-[var(--shock-lime)]";
+    case "review_thread":
+      return "bg-[var(--shock-purple)] text-white";
+    case "review_comment":
+      return "bg-[var(--shock-yellow)]";
+    default:
+      return "bg-white";
   }
 }
 
@@ -1125,6 +1152,8 @@ function RoomPullRequestWorkbenchPanel({
   prError: string | null;
   relatedSignals: ApprovalCenterItem[];
 }) {
+  const conversation = pullRequest?.conversation?.slice(0, 3) ?? [];
+
   return (
     <div data-testid="room-workbench-pr-panel" className="space-y-4">
       <Panel tone="white" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
@@ -1191,6 +1220,78 @@ function RoomPullRequestWorkbenchPanel({
           >
             Topic Context
           </Link>
+        </div>
+      </Panel>
+
+      <Panel tone="paper">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+              Recent Review Conversation
+            </p>
+            <p className="mt-2 font-display text-[22px] font-bold">把最新 comment / thread 直接带回 room</p>
+          </div>
+          <span
+            data-testid="room-pr-conversation-count"
+            className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+          >
+            {conversation.length} entries
+          </span>
+        </div>
+        <div className="mt-4 space-y-3">
+          {conversation.length === 0 ? (
+            <p
+              data-testid="room-pr-conversation-empty"
+              className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]"
+            >
+              当前还没有 webhook 回流的 review conversation；一旦 comment / thread 到达，这里会和 PR detail 共用同一份 ledger。
+            </p>
+          ) : (
+            conversation.map((entry) => (
+              <article
+                key={entry.id}
+                data-testid={`room-pr-conversation-entry-${entry.id}`}
+                className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4 shadow-[var(--shock-shadow-sm)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-full border border-[var(--shock-ink)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em]",
+                      conversationBadgeTone(entry.kind)
+                    )}
+                  >
+                    {conversationKindLabel(entry.kind)}
+                  </span>
+                  <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{entry.author}</span>
+                  <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{entry.updatedAt || "刚刚"}</span>
+                  {entry.threadStatus ? (
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                      {entry.threadStatus}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-3 text-sm leading-6">{entry.summary}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {entry.path ? (
+                    <span className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px]">
+                      {entry.path}
+                      {entry.line ? `:${entry.line}` : ""}
+                    </span>
+                  ) : null}
+                  {entry.url ? (
+                    <Link
+                      href={entry.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
+                    >
+                      Remote Comment
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
+            ))
+          )}
         </div>
       </Panel>
 
@@ -2815,10 +2916,10 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                         </div>
                       </section>
 
-                      <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
+                      <section data-testid="room-workbench-usage-panel" className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
                         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Usage / Quota</p>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                          <div data-testid="room-workbench-room-usage-summary" className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                             <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Room</p>
                             <p className="mt-2 text-sm font-semibold">
                               {formatCount(room.usage?.messageCount)} msgs / {formatCount(room.usage?.totalTokens)} tokens
@@ -2827,7 +2928,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                               {formatCount(room.usage?.humanTurns)} human / {formatCount(room.usage?.agentTurns)} agent · {room.usage?.windowLabel ?? "窗口未返回"}
                             </p>
                           </div>
-                          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                          <div data-testid="room-workbench-workspace-usage-summary" className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                             <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Workspace</p>
                             <p className="mt-2 text-sm font-semibold">{state.workspace.plan || "未命名计划"}</p>
                             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
@@ -2837,7 +2938,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{formatRetentionSummary(state.workspace)}</p>
                           </div>
                         </div>
-                        <p className="mt-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.7)]">
+                        <p data-testid="room-workbench-usage-warning" className="mt-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.7)]">
                           {run.usage?.warning ?? room.usage?.warning ?? state.workspace.usage?.warning ?? state.workspace.quota?.warning ?? "当前还没有 usage / quota warning。"}
                         </p>
                       </section>

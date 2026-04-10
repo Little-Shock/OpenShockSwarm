@@ -1204,7 +1204,7 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePullRequestFromRemote() error = %v", err)
 	}
-	if _, err := s.UpsertPullRequestConversationFromWebhook(pullRequestID, githubsvc.NormalizedWebhookEvent{
+	if _, _, err := s.ApplyGitHubWebhookEvent(githubsvc.NormalizedWebhookEvent{
 		DeliveryID:        "delivery-pr-detail",
 		Event:             "pull_request_review_comment",
 		Kind:              "review_comment",
@@ -1221,7 +1221,7 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 		ConversationAt:    "2026-04-09T01:49:00Z",
 		CommentBody:       "please add PR detail route",
 	}); err != nil {
-		t.Fatalf("UpsertPullRequestConversationFromWebhook() error = %v", err)
+		t.Fatalf("ApplyGitHubWebhookEvent() error = %v", err)
 	}
 	if _, _, _, _, err := s.UpsertNotificationSubscriber(store.NotificationSubscriberUpsertInput{
 		Channel:    "browser_push",
@@ -1287,6 +1287,9 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	}
 	if len(detail.RelatedInbox) == 0 {
 		t.Fatalf("detail related inbox = %#v, want PR-linked inbox card", detail.RelatedInbox)
+	}
+	if detail.RelatedInbox[0].Href != "/rooms/"+created.RoomID+"?tab=pr" {
+		t.Fatalf("detail related inbox = %#v, want PR workbench deep link first", detail.RelatedInbox)
 	}
 	if detail.Delivery.Status != "ready" || !detail.Delivery.ReleaseReady {
 		t.Fatalf("detail delivery gate status = %#v, want ready + releaseReady", detail.Delivery)

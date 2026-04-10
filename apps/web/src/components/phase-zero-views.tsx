@@ -719,7 +719,7 @@ export function RunDetailView({
         </Panel>
       </div>
 
-      <Panel tone={runBudgetTone(run.usage?.budgetStatus)}>
+      <Panel data-testid="run-detail-usage-panel" tone={runBudgetTone(run.usage?.budgetStatus)}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="font-display text-2xl font-bold">Token / Quota</h3>
@@ -727,7 +727,7 @@ export function RunDetailView({
               Run 详情不只显示 branch / worktree，也要把 prompt、completion、context headroom 和预算状态直接暴露给人类。
             </p>
           </div>
-          <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          <span data-testid="run-detail-usage-status" className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
             {runBudgetStatusLabel(run.usage?.budgetStatus)}
           </span>
         </div>
@@ -737,7 +737,7 @@ export function RunDetailView({
           <Metric label="Total" value={formatCount(run.usage?.totalTokens)} />
           <Metric label="Context" value={formatCount(run.usage?.contextWindow)} />
         </div>
-        <p className="mt-4 text-sm leading-6 opacity-85">
+        <p data-testid="run-detail-usage-warning" className="mt-4 text-sm leading-6 opacity-85">
           {run.usage?.warning ?? "当前还没有暴露 token / quota warning。"}
         </p>
       </Panel>

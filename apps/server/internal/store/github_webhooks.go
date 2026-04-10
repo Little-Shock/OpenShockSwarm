@@ -417,7 +417,7 @@ func pullRequestInboxItem(pr PullRequest, roomTitle string) InboxItem {
 		ID:      fmt.Sprintf("inbox-pr-%s-%d", pr.Status, time.Now().UnixNano()),
 		Room:    roomTitle,
 		Time:    "刚刚",
-		Href:    fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID),
+		Href:    pullRequestReviewContextHref(pr),
 		Summary: defaultString(strings.TrimSpace(pr.ReviewSummary), summarizePullRequestStatusWithSafety(pr.Status, pr.ReviewDecision, pr.Mergeable, pr.MergeStateStatus)),
 	}
 
@@ -426,11 +426,11 @@ func pullRequestInboxItem(pr PullRequest, roomTitle string) InboxItem {
 		item.Title = fmt.Sprintf("%s 已合并", pr.Label)
 		item.Kind = "status"
 		item.Action = "打开房间"
+		item.Href = fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID)
 	case "changes_requested":
 		item.Title = fmt.Sprintf("%s 需要补充修改", pr.Label)
 		item.Kind = "blocked"
 		item.Action = "恢复执行"
-		item.Href = fmt.Sprintf("/rooms/%s", pr.RoomID)
 	case "draft":
 		item.Title = fmt.Sprintf("%s 草稿已同步", pr.Label)
 		item.Kind = "review"
@@ -444,11 +444,30 @@ func pullRequestInboxItem(pr PullRequest, roomTitle string) InboxItem {
 	return item
 }
 
+func pullRequestReviewContextHref(pr PullRequest) string {
+	return fmt.Sprintf("/rooms/%s?tab=pr", pr.RoomID)
+}
+
+func trackedPullRequestInboxHrefs(pr PullRequest) []string {
+	return []string{
+		pullRequestReviewContextHref(pr),
+		fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID),
+		fmt.Sprintf("/rooms/%s", pr.RoomID),
+	}
+}
+
 func isTrackedPullRequestInboxItem(item InboxItem, pr PullRequest) bool {
 	if item.Kind != "review" && item.Kind != "blocked" && item.Kind != "status" {
 		return false
 	}
-	if item.Href != fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID) && item.Href != fmt.Sprintf("/rooms/%s", pr.RoomID) {
+	hrefMatches := false
+	for _, href := range trackedPullRequestInboxHrefs(pr) {
+		if item.Href == href {
+			hrefMatches = true
+			break
+		}
+	}
+	if !hrefMatches {
 		return false
 	}
 	labelPrefix := strings.TrimSpace(pr.Label)

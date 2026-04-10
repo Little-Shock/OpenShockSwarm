@@ -208,10 +208,11 @@ func TestGitHubWebhookRouteSyncsReviewEventIntoState(t *testing.T) {
 	if issue.State != "blocked" || room.Topic.Status != "blocked" {
 		t.Fatalf("issue/room state = (%#v, %#v), want blocked", issue, room)
 	}
-	if countInboxItems(*response.State, "blocked", "PR #42 需要补充修改", "/rooms/"+tracked.RoomID) != 1 {
+	if countInboxItems(*response.State, "blocked", "PR #42 需要补充修改", "/rooms/"+tracked.RoomID+"?tab=pr") != 1 {
 		t.Fatalf("blocked inbox surface malformed: %#v", response.State.Inbox)
 	}
-	if inboxHasKindAndHref(*response.State, "review", "/rooms/"+tracked.RoomID+"/runs/"+tracked.RunID) {
+	if inboxHasKindAndHref(*response.State, "review", "/rooms/"+tracked.RoomID+"?tab=pr") ||
+		inboxHasKindAndHref(*response.State, "review", "/rooms/"+tracked.RoomID+"/runs/"+tracked.RunID) {
 		t.Fatalf("stale review inbox item remained after webhook review sync: %#v", response.State.Inbox)
 	}
 }
@@ -482,7 +483,7 @@ func TestGitHubWebhookRouteDoesNotDuplicateRepeatedCheckEvents(t *testing.T) {
 	if first.State == nil || second.State == nil {
 		t.Fatalf("expected webhook state payloads for repeated check sync")
 	}
-	if countInboxItems(*second.State, "review", "PR #77 已准备评审", "/rooms/"+tracked.RoomID+"/runs/"+tracked.RunID) != 1 {
+	if countInboxItems(*second.State, "review", "PR #77 已准备评审", "/rooms/"+tracked.RoomID+"?tab=pr") != 1 {
 		t.Fatalf("review inbox duplicated after repeated check event: %#v", second.State.Inbox)
 	}
 	if countRoomMessages(*second.State, tracked.RoomID, "PR #77 已同步到 GitHub 当前状态：in_review。") != 1 {

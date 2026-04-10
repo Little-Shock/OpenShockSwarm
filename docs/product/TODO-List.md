@@ -1,7 +1,7 @@
 # OpenShock To Do List
 
-**版本:** 0.8
-**更新日期:** 2026 年 4 月 10 日
+**版本:** 0.9
+**更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -52,31 +52,14 @@
 - `GAP-30 / TKT-60`
   - `/v1/runtime/publish`、cursor dedupe、replay evidence packet、run detail replay panel 已形成可回放 contract。
 
+### 2026-04-11 已收口
+
+- `GAP-21 / TKT-39`
+  - review comment / review thread / changes requested 现在会稳定回写到 PR conversation ledger，并且 Inbox、Room PR tab、PR Detail 已统一深链到同一条 review 上下文。
+- `GAP-22 / TKT-41`
+  - run / room / workspace 三层 usage、quota、retention 与 warning 已进入正式产品面，并已有 Windows Chrome 有头证据，不再只停在 smoke / logs / setup 边栏。
+
 ### 当前必须先收的 GAP
-
-### GAP-21 PR Review Conversation / Thread Backfill
-
-- 现状:
-  - webhook replay 和 PR 主链已站住
-  - 但 review comment / thread resolution / reopen consistency 还没形成完整产品真相
-- 对应票:
-  - `TKT-39`
-- 相关合同:
-  - `CHK-07`
-  - `CHK-08`
-- 优先级: P1
-
-### GAP-22 Usage / Token / Quota Observability
-
-- 现状:
-  - 当前已有基础 release / experience metrics
-  - 但 run / room / workspace 的 token、quota、context cost 还没有稳定产品面
-- 对应票:
-  - `TKT-41`
-- 相关合同:
-  - `CHK-06`
-  - `CHK-15`
-- 优先级: P1
 
 ### GAP-23 Invite / Verify / Reset Notification Template Delivery
 
@@ -131,11 +114,10 @@
 
 ## 四、推荐推进顺序
 
-1. 先做 `TKT-39` `TKT-41`，把 PR conversation 和 usage / quota observability 补成用户可感知的真相。
-2. 然后做 `TKT-44`，把恢复通知链、invite / verify / reset 和 template bootstrap 收成同一条首次启动旅程。
-3. 接着做 `TKT-46`，把 restricted sandbox、network / tool policy 收成正式配置面。
-4. 再做 `TKT-48`，把 workspace plan / usage limit / retention 拉到正式产品面。
-5. 最后做 `TKT-49`，把 release-ready / handoff contract 收成交付闭环。
+1. `TKT-39` `TKT-41` 已收口；下一批先做 `TKT-44`，把恢复通知链、invite / verify / reset 和 template bootstrap 收成同一条首次启动旅程。
+2. 接着做 `TKT-46`，把 restricted sandbox、network / tool policy 收成正式配置面。
+3. 再做 `TKT-48`，把 workspace plan / usage limit / retention 拉到正式产品面。
+4. 最后做 `TKT-49`，把 release-ready / handoff contract 收成交付闭环。
 
 ---
 

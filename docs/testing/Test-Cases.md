@@ -297,7 +297,7 @@
   1. 执行 `pnpm ops:smoke`。
   2. 对比 pairing URL 与 runtime registry/实际 bridge 结果。
 - 预期结果: smoke 失败并指出 pairing 漂移。
-- 业务结论: 当前 smoke 会显式比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 daemon URL；pairing 漂移时会 fail-closed 并指出 mismatch。
+- 业务结论: 当前 smoke 会显式比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 daemon URL；pairing 漂移时会 fail-closed 并指出 mismatch。2026 年 4 月 11 日 `TKT-41` 又新增 `pnpm test:headed-pr-conversation-usage-observability`，在 Windows Chrome 中继续把 `/rooms/:id?tab=run -> /runs/:id -> /settings` 的 run / room / workspace usage、quota、retention 与 warning 一次性回放，因此这条 `CHK-15` 已不再只靠 release smoke，而是也有正式产品面证据。
 
 ## TC-022 GitHub App Effective Auth PR Contract
 
@@ -347,7 +347,7 @@
   1. 回放 pull request、review、comment、merge 事件。
   2. 检查 state / inbox / room / pull request 是否更新。
 - 预期结果: webhook 事件被规范化、验签、写回，且失败态可见。
-- 业务结论: 2026 年 4 月 7 日新增 `pnpm test:webhook-replay`，会起临时 `openshock-server` 并对 `/v1/github/webhook` 回放 signed review / comment / check / merge 事件，同时验证 bad-signature 与 untracked PR failure contract。当前这条 replay / review-sync 用例已可独立复核并通过。
+- 业务结论: 2026 年 4 月 7 日新增 `pnpm test:webhook-replay`，会起临时 `openshock-server` 并对 `/v1/github/webhook` 回放 signed review / comment / check / merge 事件，同时验证 bad-signature 与 untracked PR failure contract。2026 年 4 月 11 日 `TKT-39` 又补了 `pnpm test:headed-pr-conversation-usage-observability`：同一条 review replay 现在会把 `changes_requested -> review_comment -> review_thread(resolved)` 回写进 PR conversation ledger，并在浏览器里验证 `Inbox -> Room PR tab -> PR Detail` 三处都沿同一条 review 上下文回链。因此这条 webhook review sync 现在不只停在 API replay，而是已有产品面 back-link 证据。
 
 ## TC-026 Headed Setup 到 PR Journey
 
@@ -360,7 +360,7 @@
   2. 创建一条 issue，进入 room / run。
   3. 验证 PR 入口处于可继续推进状态。
 - 预期结果: Setup 到执行 lane 的用户旅程可稳定自动化回放。
-- 业务结论: 2026 年 4 月 7 日已先用 headed Chromium harness 稳定回放 `Setup -> Issue -> Room`，验证 room 内 PR 入口保持可继续推进状态；同日 `TKT-06` 又把 `/setup -> issue -> room -> remote PR create -> merge` 接成真实远端浏览器闭环，并把 no-auth failure path 显式打到 room / inbox / blocked surface。这条 Setup 到 PR journey 的 headed 回放当前已可独立复核并通过；`TC-015` 的 installation-complete live callback 仍留在后续远端范围。
+- 业务结论: 2026 年 4 月 7 日已先用 headed Chromium harness 稳定回放 `Setup -> Issue -> Room`，验证 room 内 PR 入口保持可继续推进状态；同日 `TKT-06` 又把 `/setup -> issue -> room -> remote PR create -> merge` 接成真实远端浏览器闭环，并把 no-auth failure path 显式打到 room / inbox / blocked surface。2026 年 4 月 11 日 `TKT-39` `TKT-41` 进一步补了 `pnpm test:headed-pr-conversation-usage-observability`，把 room 之后的 `PR Detail / Room PR tab / Inbox back-link / run-room-workspace usage` 再串成一条 headed walkthrough，因此这条 PR journey 当前不仅能到 PR 入口，还能继续验证 review conversation 和 usage observability 的后半段收口。
 
 ## TC-027 Sandbox / Destructive Approval Guard
 

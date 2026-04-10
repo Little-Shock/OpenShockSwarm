@@ -797,33 +797,15 @@ func (s *Store) applyPullRequestLifecycleLocked(pr *PullRequest, roomItem *Room,
 }
 
 func (s *Store) prependPullRequestInboxLocked(pr PullRequest, roomTitle string) {
-	item := InboxItem{
-		ID:   fmt.Sprintf("inbox-pr-%s-%d", pr.Status, time.Now().UnixNano()),
-		Room: roomTitle,
-		Time: "刚刚",
-		Href: fmt.Sprintf("/rooms/%s/runs/%s", pr.RoomID, pr.RunID),
+	item := pullRequestInboxItem(pr, roomTitle)
+	filtered := make([]InboxItem, 0, len(s.state.Inbox))
+	for _, existing := range s.state.Inbox {
+		if isTrackedPullRequestInboxItem(existing, pr) {
+			continue
+		}
+		filtered = append(filtered, existing)
 	}
-
-	switch pr.Status {
-	case "merged":
-		item.Title = fmt.Sprintf("%s 已合并", pr.Label)
-		item.Kind = "status"
-		item.Summary = "远端 PR 已完成合并，可以回到 Board 查看 Done 列。"
-		item.Action = "打开房间"
-	case "changes_requested":
-		item.Title = fmt.Sprintf("%s 需要补充修改", pr.Label)
-		item.Kind = "blocked"
-		item.Summary = "GitHub Review 已要求补充修改，当前需求需要 follow-up run。"
-		item.Action = "恢复执行"
-		item.Href = fmt.Sprintf("/rooms/%s", pr.RoomID)
-	default:
-		item.Title = fmt.Sprintf("%s 已准备评审", pr.Label)
-		item.Kind = "review"
-		item.Summary = "远端 PR 已创建并同步回控制面，等待人类做最终判断。"
-		item.Action = "打开评审"
-	}
-
-	s.state.Inbox = append([]InboxItem{item}, s.state.Inbox...)
+	s.state.Inbox = append([]InboxItem{item}, filtered...)
 }
 
 func summarizePullRequestStatus(status, reviewDecision string) string {

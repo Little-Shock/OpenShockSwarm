@@ -153,9 +153,9 @@ function SurfaceStateMessage({
   );
 }
 
-function FactTile({ label, value }: { label: string; value: string }) {
+function FactTile({ label, value, testID }: { label: string; value: string; testID?: string }) {
   return (
-    <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+    <div data-testid={testID} className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
       <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">{label}</p>
       <p className="mt-1.5 font-display text-[18px] font-semibold">{value}</p>
     </div>
@@ -272,10 +272,10 @@ export function PullRequestDetailView({
       contextBody={
         detail ? (
           <div className="grid gap-2 md:grid-cols-4">
-            <FactTile label="Room" value={detail.room.title} />
-            <FactTile label="Run" value={detail.run.id} />
-            <FactTile label="Issue" value={detail.issue.key} />
-            <FactTile label="Release Ready" value={detail.delivery.releaseReady ? "yes" : "not yet"} />
+            <FactTile label="Room" value={detail.room.title} testID="pull-request-context-room" />
+            <FactTile label="Run" value={detail.run.id} testID="pull-request-context-run" />
+            <FactTile label="Issue" value={detail.issue.key} testID="pull-request-context-issue" />
+            <FactTile label="Release Ready" value={detail.delivery.releaseReady ? "yes" : "not yet"} testID="pull-request-context-release-ready" />
           </div>
         ) : undefined
       }
@@ -313,18 +313,21 @@ export function PullRequestDetailView({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
                   href={`/rooms/${detail.room.id}?tab=pr`}
+                  data-testid="pull-request-room-pr-link"
                   className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                 >
                   Room PR Tab
                 </Link>
                 <Link
                   href={`/rooms/${detail.room.id}?tab=run`}
+                  data-testid="pull-request-room-run-link"
                   className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                 >
                   Run Context
                 </Link>
                 <Link
                   href="/inbox"
+                  data-testid="pull-request-inbox-link"
                   className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                 >
                   Inbox Back-link
@@ -424,7 +427,7 @@ export function PullRequestDetailView({
                       <p className="mt-2 font-display text-[22px] font-bold">Comment / Thread Timeline</p>
                     </div>
                     <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                      {detail.conversation.length} entries
+                      <span data-testid="pull-request-conversation-count">{detail.conversation.length}</span> entries
                     </span>
                   </div>
                   <div className="mt-4 space-y-3">
@@ -436,6 +439,7 @@ export function PullRequestDetailView({
                       detail.conversation.map((entry) => (
                         <article
                           key={entry.id}
+                          data-testid={`pull-request-conversation-entry-${entry.id}`}
                           className="border-2 border-[var(--shock-ink)] bg-white px-4 py-4 shadow-[var(--shock-shadow-sm)]"
                         >
                           <div className="flex flex-wrap items-center gap-2">
@@ -531,7 +535,7 @@ export function PullRequestDetailView({
                       </p>
                     ) : (
                       detail.relatedInbox.map((item) => (
-                        <div key={item.id} className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                        <div key={item.id} data-testid={`pull-request-related-inbox-${item.id}`} className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
                           <p className="font-display text-[18px] font-bold">{item.title}</p>
                           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{item.summary}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
