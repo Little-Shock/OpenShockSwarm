@@ -4,6 +4,8 @@
   - `TKT-44` 的 Windows Chrome 有头报告，覆盖 `/settings` identity template chain 与 `/access` invite / verify / reset / blocked recovery 同链路回放
 - [Test Report 2026-04-11 Windows Chrome Restricted Sandbox Policy](./Test-Report-2026-04-11-windows-chrome-restricted-sandbox-policy.md)
   - `TKT-46` 的 Windows Chrome 有头报告，覆盖 `/runs/:id` restricted profile、allowlist、approval_required 与 same-target override/retry
+- [Test Report 2026-04-11 Windows Chrome Delivery Entry / Release Gate](./Test-Report-2026-04-11-windows-chrome-delivery-entry-release-gate.md)
+  - `TKT-49` 的 Windows Chrome 有头报告，覆盖 PR detail 的 release gate、handoff note、delivery template、evidence bundle 与回链
 - [Test Report 2026-04-11 Windows Chrome PR Conversation / Usage Observability](./Test-Report-2026-04-11-windows-chrome-pr-conversation-usage-observability.md)
   - `TKT-39` `TKT-41` `TKT-48` 的 Windows Chrome 有头报告，覆盖 `webhook review/comment/thread -> Inbox -> Room PR tab -> PR Detail -> run/room/workspace usage`
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
@@ -117,6 +119,8 @@
   - 验证 `/settings` identity template chain 与 `/access` invite / verify / reset / blocked recovery 是否属于同一条 delivery journey
 - `pnpm test:headed-restricted-sandbox-policy`
   - 验证 `/runs/:id` restricted profile、allowlist、approval_required、same-target override/retry 与 reload persistence
+- `pnpm test:headed-delivery-entry-release-gate`
+  - 验证 `/pull-requests/:id` 的 release gate、handoff note、delivery template、evidence bundle 与 gate/back-link drill-in
 - `pnpm test:headed-memory-governance`
   - 验证 memory center 的 injection preview、promotion queue、governed ledger
 - `pnpm test:headed-memory-viewer-correction-forget`

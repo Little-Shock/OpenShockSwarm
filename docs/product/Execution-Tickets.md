@@ -579,7 +579,7 @@
 
 ## TKT-49 Delivery Entry / Release Gate / Handoff Note Contract
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P2`
 - 目标: 把交付入口、release-ready 标准与 handoff note 收成单一可执行契约。
 - 范围:

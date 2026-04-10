@@ -193,8 +193,15 @@ function DeliveryGateCard({ gate }: { gate: PullRequestDeliveryGate }) {
 }
 
 function DeliveryTemplateCard({ template }: { template: PullRequestDeliveryTemplate }) {
+  const templateSuffix = (template.templateId || template.label || "untyped")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "untyped";
   return (
-    <article className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[var(--shock-shadow-sm)]">
+    <article
+      data-testid={`delivery-template-${templateSuffix}`}
+      className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 shadow-[var(--shock-shadow-sm)]"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={cn(
@@ -364,9 +371,9 @@ export function PullRequestDetailView({
                   <p className="mt-4 max-w-4xl text-sm leading-6 opacity-85">{detail.delivery.summary}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <FactTile label="Gates" value={String(detail.delivery.gates.length)} />
-                  <FactTile label="Templates" value={String(detail.delivery.templates.length)} />
-                  <FactTile label="Evidence" value={String(detail.delivery.evidence.length)} />
+                  <FactTile label="Gates" value={String(detail.delivery.gates.length)} testID="pull-request-delivery-gates-count" />
+                  <FactTile label="Templates" value={String(detail.delivery.templates.length)} testID="pull-request-delivery-templates-count" />
+                  <FactTile label="Evidence" value={String(detail.delivery.evidence.length)} testID="pull-request-delivery-evidence-count" />
                 </div>
               </div>
             </Panel>
@@ -404,7 +411,10 @@ export function PullRequestDetailView({
                           {detail.delivery.handoffNote.summary}
                         </p>
                       </div>
-                      <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
+                      <span
+                        data-testid="delivery-handoff-status"
+                        className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+                      >
                         {detail.delivery.releaseReady ? "ready to hand off" : "handoff blocked"}
                       </span>
                     </div>

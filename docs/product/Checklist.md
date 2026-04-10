@@ -42,11 +42,9 @@
   - 执行隔离与权限控制
 - 主要 GAP:
   - `app.slock.ai` 式 profile-grade 入口、壳层密度和主视觉细节仍可继续收平
-  - PR conversation / review thread backfill 还没形成完整产品真相
   - token / quota / usage / retention 的正式产品面已站住，但更细的时间维度 rollup 仍待补齐
   - onboarding 的首次启动主链已站住，但更细的模板运营与团队默认治理仍可继续增强
   - PM / Architect / Splitter / Developer / Reviewer / QA 等角色拓扑还没做成正式可配置 team topology
-  - delivery-ready / handoff contract 仍留后续批次
   - 更重的长期记忆整理与外部 provider 编排仍未完成
 
 ---
@@ -298,9 +296,9 @@
   - [x] 2026-04-10 Windows Chrome 有头链路已补齐 control-plane `/v1`、runtime replay、routing SLA / aggregation 与 dirty projection fail-closed 证据
   - [x] 2026-04-11 Windows Chrome 有头链路已补齐 restricted sandbox `approval_required -> same-target override/retry -> reload persistence` 证据
   - [x] 2026-04-11 Windows Chrome 有头链路已补齐 `/rooms -> /runs -> /settings` 的 workspace plan / usage / quota / retention 证据
+  - [x] 2026-04-11 Windows Chrome 有头链路已补齐 PR delivery entry、release gate、operator handoff note 与 evidence bundle 同页复核证据
 - 当前 GAP:
   - [ ] 历史型 rate 指标仍有一部分只到 `partial`，后续还要补 durable event rollup / time-series truth
-  - [ ] 更细粒度的 release-ready / delivery-ready 指标仍留后续
 - 对应 Test Cases: `TC-011` `TC-021` `TC-026` `TC-042` `TC-047` `TC-048` `TC-049`
 
 ### CHK-16 app.slock.ai 壳层对齐与导航秩序
@@ -398,9 +396,10 @@
   - [x] Skill / Policy / memory governance 已有基础产品面
   - [x] Agent Mailbox 已补成正式通信面，handoff request / ack / blocked / complete lifecycle 可在 Room / Inbox / Mailbox 同步追踪
   - [x] workspace governance 现已显式暴露 routing policy、escalation SLA、notification policy、response aggregation audit 与 human override trace，并已有 Windows Chrome 有头证据
+  - [x] PR detail 现在也已升级成 single delivery contract：release gate、operator handoff note、delivery template 与 evidence bundle 可在同页复核
 - 当前 GAP:
   - [ ] PM / Architect / Splitter / Developer / Reviewer / QA 等角色拓扑还未成为可配置 team topology
-  - [ ] 更深的 agent-to-agent communication、workspace-level plan / retention / delivery handoff contract 仍留后续
+  - [ ] 更深的 agent-to-agent communication 与角色默认治理仍留后续
 - 对应 Test Cases: `TC-039` `TC-041` `TC-050`
 
 ### CHK-22 配置持久化、数据库与恢复真相
@@ -422,11 +421,9 @@
 
 ## 四、近期收口顺序
 
-1. 先收 `CHK-07` `CHK-08` 的 PR conversation / review thread backfill，避免交付真相仍停在粗粒度 webhook。
-2. 再收 `CHK-06` `CHK-15` 的 usage / token / quota / retention 汇总面。
-3. 然后补 `CHK-11` `CHK-13` `CHK-20` 的 invite / verify / reset / recovery template 链。
-4. 接着推进 `CHK-12` `CHK-15` 的 restricted sandbox / network / tool policy。
-5. 最后收 `CHK-21` `CHK-22` 的 configurable team topology、workspace plan / retention 和 delivery-ready / handoff contract。
+1. 继续收 `CHK-16` 的 shell density、视觉细节和 `app.slock.ai` 式高频交互抛光。
+2. 继续推进 `CHK-21` 的 configurable team topology、角色默认治理与更深的 agent-to-agent communication。
+3. 继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
 
 ---
 

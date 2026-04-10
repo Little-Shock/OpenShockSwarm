@@ -64,26 +64,18 @@
   - restricted sandbox 已通过 Windows Chrome 有头链路收成正式产品面；`run-level profile -> approval_required -> same-target override/retry -> reload persistence` 已有当前轮证据。
 - `GAP-26 / TKT-48`
   - workspace plan / usage / retention 已通过 Windows Chrome 有头链路收成正式产品面；`/rooms -> /runs -> /settings` 的 plan、quota、warning 与 retention 已共享同一份 live truth。
+- `GAP-27 / TKT-49`
+  - PR delivery entry 已通过 Windows Chrome 有头链路收成单一判断入口；release gate、operator handoff note、delivery template 和 evidence bundle 已同页可复核。
 
 ### 当前必须先收的 GAP
 
-### GAP-27 Delivery Entry / Release Gate / Handoff Contract
-
-- 现状:
-  - headed suite、Windows Chrome 全量报告、runbook 都已存在
-  - 但 release-ready、handoff note、customer-facing evidence 还没收成单一合同
-- 对应票:
-  - `TKT-49`
-- 相关合同:
-  - `CHK-15`
-  - `CHK-21`
-- 优先级: P2
+当前这一批执行票已全部收口；新的 active GAP 需要从最新 PRD / Checklist 重新开批，而不是继续沿用这四张票。
 
 ---
 
 ## 四、推荐推进顺序
 
-1. 最后做 `TKT-49`，把 release-ready / handoff contract 收成交付闭环。
+1. 重新审视 `CHK-16` `CHK-21` 和长期记忆 / team topology 相关后续票，再开下一批。
 
 ---
 

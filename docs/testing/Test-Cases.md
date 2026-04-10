@@ -360,7 +360,7 @@
   2. 创建一条 issue，进入 room / run。
   3. 验证 PR 入口处于可继续推进状态。
 - 预期结果: Setup 到执行 lane 的用户旅程可稳定自动化回放。
-- 业务结论: 2026 年 4 月 7 日已先用 headed Chromium harness 稳定回放 `Setup -> Issue -> Room`，验证 room 内 PR 入口保持可继续推进状态；同日 `TKT-06` 又把 `/setup -> issue -> room -> remote PR create -> merge` 接成真实远端浏览器闭环，并把 no-auth failure path 显式打到 room / inbox / blocked surface。2026 年 4 月 11 日 `TKT-39` `TKT-41` `TKT-48` 进一步补了 `pnpm test:headed-pr-conversation-usage-observability`，把 room 之后的 `PR Detail / Room PR tab / Inbox back-link / run-room-workspace usage` 再串成一条 headed walkthrough，因此这条 PR journey 当前不仅能到 PR 入口，还能继续验证 review conversation 和 workspace plan / usage / retention 的后半段收口。
+- 业务结论: 2026 年 4 月 7 日已先用 headed Chromium harness 稳定回放 `Setup -> Issue -> Room`，验证 room 内 PR 入口保持可继续推进状态；同日 `TKT-06` 又把 `/setup -> issue -> room -> remote PR create -> merge` 接成真实远端浏览器闭环，并把 no-auth failure path 显式打到 room / inbox / blocked surface。2026 年 4 月 11 日 `TKT-39` `TKT-41` `TKT-48` 进一步补了 `pnpm test:headed-pr-conversation-usage-observability`，把 room 之后的 `PR Detail / Room PR tab / Inbox back-link / run-room-workspace usage` 再串成一条 headed walkthrough；同日 `TKT-49` 又新增 `pnpm test:headed-delivery-entry-release-gate`，把 PR detail 上的 release gate、handoff note、delivery template 与 evidence bundle 做成独立的 Windows Chrome drill-in。因此这条 PR journey 当前不仅能到 PR 入口，还能继续验证交付判断与 closeout contract 的后半段收口。
 
 ## TC-027 Sandbox / Destructive Approval Guard
 

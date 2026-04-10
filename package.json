@@ -64,6 +64,7 @@
     "test:headed-remote-pr-loop": "node ./scripts/headed-remote-pr-browser-loop.mjs",
     "test:headed-github-public-ingress": "node ./scripts/headed-github-public-ingress.mjs",
     "test:headed-pr-conversation-usage-observability": "node ./scripts/headed-pr-conversation-usage-observability.mjs",
+    "test:headed-delivery-entry-release-gate": "node ./scripts/headed-delivery-entry-release-gate.mjs",
     "test:webhook-replay": "node ./scripts/github-webhook-replay.mjs",
     "verify:server": "bash -lc 'root=$(pwd); cd apps/server && OPENSHOCK_WORKSPACE_ROOT=\"${OPENSHOCK_WORKSPACE_ROOT:-$root}\" \"$root/scripts/go.sh\" test ./...'",
     "verify:daemon": "bash -lc 'root=$(pwd); cd apps/daemon && \"$root/scripts/go.sh\" test ./...'",
