@@ -48,6 +48,7 @@
     "test:headed-governed-mailbox-delegate-child-context": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-child-context",
     "test:headed-governed-mailbox-delegate-child-timeline": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-child-timeline",
     "test:headed-governed-mailbox-delegate-parent-timeline": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-parent-timeline",
+    "test:headed-governed-mailbox-delegate-room-trace": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-room-trace",
     "test:headed-governed-mailbox-delegate-policy": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-policy",
     "test:headed-governed-mailbox-delegate-auto-complete": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-auto-complete",
     "test:headed-governed-mailbox-delegate-comment-sync": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-comment-sync",

@@ -1,6 +1,6 @@
 # 产品需求文档 (PRD): OpenShock.ai
 
-**版本:** 2.14 (全量基线恢复版)
+**版本:** 2.15 (全量基线恢复版)
 **版本日期:** 2026 年 4 月 11 日
 **产品定位:** 面向 AI 原生研发团队的本地优先协作操作系统
 **产品总纲:** **Slock 的壳，Multica 的骨，Lody 的隔离执行。**
@@ -314,7 +314,7 @@ OpenShock 不只是 Agent 控制台，也是一套真正面向团队上线的系
 
 - 正式交接走 Agent Mailbox / handoff ledger，而不是只靠公共频道喊话
 - 角色拓扑、审批链和 escalation path 必须人类可见
-- 角色拓扑不只做静态预览，还要围当前 room / run truth 派生默认下一棒 governed handoff；当前一棒完成时应允许 auto-advance 到下一棒；final lane done 时要显式回链 delivery entry / closeout，并继续派生最终 delivery delegate / inbox signal / delegated closeout handoff；delivery delegate 还要支持 `formal-handoff / signal-only / auto-complete` automation policy；delegated closeout 的 formal comment、blocked response handoff、response-handoff formal comment、response-progress resume signal、retry attempt、parent/child mailbox visibility、child-ledger resume action、response-history preservation、child-ledger parent-status visibility 与 lifecycle 也必须同步回 PR detail / related inbox / parent handoff / next action / mailbox shell；缺少合法接收方时必须显式 blocked
+- 角色拓扑不只做静态预览，还要围当前 room / run truth 派生默认下一棒 governed handoff；当前一棒完成时应允许 auto-advance 到下一棒；final lane done 时要显式回链 delivery entry / closeout，并继续派生最终 delivery delegate / inbox signal / delegated closeout handoff；delivery delegate 还要支持 `formal-handoff / signal-only / auto-complete` automation policy；delegated closeout 的 formal comment、blocked response handoff、response-handoff formal comment、response-progress resume signal、retry attempt、parent/child mailbox visibility、child-ledger resume action、response-history preservation、child-ledger parent-status visibility、child/parent lifecycle timeline，以及 room 主消息流里的 orchestration sync 也必须同步回 PR detail / related inbox / parent handoff / next action / mailbox shell / room shell；缺少合法接收方时必须显式 blocked
 - 人类始终能把自动协作降级回单 Agent 或人工接管
 
 ---
@@ -675,7 +675,7 @@ online -> busy -> offline
    - SLA / priority / required output
 4. 系统应能基于当前 lane、team topology 和 room truth 给出默认下一棒 handoff suggestion；如果当前 handoff 未完成则回链当前 ledger，如果下一 lane 没有合法接收方则显式 blocked
 5. 接收 Agent 必须 ack、blocked 或 complete
-6. 如果 final delivery closeout 被 `blocked`，系统必须自动起一条回给 source 的 response handoff，把 unblock work 物化成正式协作对象，并把 response status / deep link / retry attempt / latest formal comment / resume signal / parent-child mailbox visibility / child-ledger resume action / response-history preservation / child-ledger parent-status visibility / child-ledger last-action and inbox-summary sync / child-ledger lifecycle message sync / latest formal comment preservation after parent follow-through / parent-ledger response-progress timeline 暴露回 PR detail、related inbox、父级 handoff、run next action 与 mailbox shell
+6. 如果 final delivery closeout 被 `blocked`，系统必须自动起一条回给 source 的 response handoff，把 unblock work 物化成正式协作对象，并把 response status / deep link / retry attempt / latest formal comment / resume signal / parent-child mailbox visibility / child-ledger resume action / response-history preservation / child-ledger parent-status visibility / child-ledger last-action and inbox-summary sync / child-ledger lifecycle message sync / latest formal comment preservation after parent follow-through / parent-ledger response-progress timeline / room main-trace sync 暴露回 PR detail、related inbox、父级 handoff、run next action、mailbox shell 与 room shell
 7. Reviewer / QA Agent 把 verdict 写回 Room / Inbox / Run / PR
 8. 人类可以随时 pause、reroute、merge lane 或降级回单 Agent 执行
 
@@ -734,7 +734,7 @@ online -> busy -> offline
 18. Onboarding Studio：`开发团队 / 研究团队 / 空白自定义` 模板
 19. Workspace / User / Agent / Machine 配置持久化与恢复
 20. 多 Agent handoff ledger、ack / blocked / escalation contract
-21. 多 Agent 角色拓扑：PM / Architect / Splitter / Developer / Reviewer / QA 与研究团队变体，并能派生 governed next-handoff suggestion / auto-advance policy / delivery closeout backlink / final delivery delegation signal / delegated closeout handoff / blocked delegated-closeout response handoff / `formal-handoff / signal-only / auto-complete` delivery delegation automation policy，并把 delegated closeout formal comment / response-handoff formal comment / response progress resume signal / response status / retry attempt / parent-child mailbox visibility / child-ledger resume action / response-history preservation / child-ledger parent-status visibility / child-ledger last-action and inbox-summary sync / child-ledger lifecycle message sync / latest formal comment preservation after parent follow-through / parent-ledger response-progress timeline / lifecycle 回写到 PR detail / related inbox / parent handoff / next action / mailbox shell
+21. 多 Agent 角色拓扑：PM / Architect / Splitter / Developer / Reviewer / QA 与研究团队变体，并能派生 governed next-handoff suggestion / auto-advance policy / delivery closeout backlink / final delivery delegation signal / delegated closeout handoff / blocked delegated-closeout response handoff / `formal-handoff / signal-only / auto-complete` delivery delegation automation policy，并把 delegated closeout formal comment / response-handoff formal comment / response progress resume signal / response status / retry attempt / parent-child mailbox visibility / child-ledger resume action / response-history preservation / child-ledger parent-status visibility / child-ledger last-action and inbox-summary sync / child-ledger lifecycle message sync / latest formal comment preservation after parent follow-through / parent-ledger response-progress timeline / room main-trace sync / lifecycle 回写到 PR detail / related inbox / parent handoff / next action / mailbox shell / room shell
 
 ### P2：后续探索
 

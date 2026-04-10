@@ -1260,6 +1260,10 @@ func TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff(t *testing.T
 	if !hasMailboxMessage(parentAfterComment.Messages, "response-progress", sourceComment) {
 		t.Fatalf("parent handoff messages after response comment = %#v, want response-progress ledger entry", parentAfterComment.Messages)
 	}
+	if !roomMessagesContain(commentState.RoomMessages["room-runtime"], "[Mailbox Sync]") ||
+		!roomMessagesContain(commentState.RoomMessages["room-runtime"], sourceComment) {
+		t.Fatalf("room messages after response comment = %#v, want room sync trace for child response comment", commentState.RoomMessages["room-runtime"])
+	}
 	commentRun := findRunByID(commentState, delegatedHandoff.RunID)
 	if commentRun == nil || !strings.Contains(commentRun.NextAction, sourceComment) {
 		t.Fatalf("comment run = %#v, want response progress next action", commentRun)
@@ -1297,6 +1301,10 @@ func TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff(t *testing.T
 	}
 	if !hasMailboxMessage(parentAfterComplete.Messages, "response-progress", completeNote) {
 		t.Fatalf("parent handoff messages after response completion = %#v, want response-progress completion entry", parentAfterComplete.Messages)
+	}
+	if !roomMessagesContain(completedState.RoomMessages["room-runtime"], sourceComment) ||
+		!roomMessagesContain(completedState.RoomMessages["room-runtime"], completeNote) {
+		t.Fatalf("room messages after response completion = %#v, want preserved room sync trace for response progress", completedState.RoomMessages["room-runtime"])
 	}
 	completedRun := findRunByID(completedState, delegatedHandoff.RunID)
 	if completedRun == nil || !strings.Contains(completedRun.NextAction, completeNote) {
@@ -1725,6 +1733,15 @@ func hasMailboxMessage(items []MailboxMessage, kind, needle string) bool {
 			continue
 		}
 		if strings.Contains(item.Body, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func roomMessagesContain(items []Message, needle string) bool {
+	for _, item := range items {
+		if strings.Contains(item.Message, needle) {
 			return true
 		}
 	}

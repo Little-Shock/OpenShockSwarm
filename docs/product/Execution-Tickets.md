@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.16
+**版本:** 1.17
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -26,7 +26,7 @@
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration、retry attempt truth、parent surface context preservation、child response context sync、child response timeline sync，以及 parent response timeline sync；下一批继续前滚到更深自动协作策略与跨 Agent closeout orchestration。
+4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration、retry attempt truth、parent surface context preservation、child response context sync、child response timeline sync、parent response timeline sync，以及 room main-trace sync；下一批继续前滚到更深自动协作策略与跨 Agent closeout orchestration。
 5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
@@ -1194,6 +1194,29 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-parent-timeline -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-timeline.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-074`
+
+## TKT-86 Delegated Response Room Trace Sync
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 child `delivery-reply` 对 parent delegated closeout 的关键 progress，从 Mailbox / PR / Inbox 再推进到 Room 主消息流，让房间里直接可回放“child 已回复、parent 现在该怎么接”的 orchestration 叙事。
+- 范围:
+  - parent-synced child response progress -> room main trace writeback
+  - `[Mailbox Sync]` narration for response comment / response complete
+  - room-history preservation across comment + completion sync
+  - Windows Chrome walkthrough for room chat replay
+- 依赖: `TKT-77` `TKT-85`
+- Done When:
+  - child `delivery-reply` 的 formal comment 会在 Room 主消息流里追加一条 `[Mailbox Sync]` 叙事，明确 parent closeout 已收到这轮 unblock context
+  - child `delivery-reply` 完成后，Room 主消息流会继续写出同步后的 completion guidance，而不只留在 Mailbox / PR / Inbox
+  - Room 历史里会同时保留 comment sync 和 completion sync 两条记录，跨 Agent closeout 的关键轨迹不再只藏在局部 ledger
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api -run "TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff|TestDelegatedResponseProgressReflectsInParentMailboxAndRun" -count=1'`
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger|TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest" -count=1'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-room-trace -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-075`
 
 ---
 

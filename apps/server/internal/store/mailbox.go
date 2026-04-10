@@ -776,6 +776,9 @@ func (s *Store) syncDeliveryDelegationResponseParentLocked(
 		progressAction,
 		response.UpdatedAt,
 	)
+	if action == "comment" || action == "completed" {
+		s.appendDeliveryDelegationResponseParentRoomTraceLocked(*parent, progressAction)
+	}
 
 	if runIndex := s.findRunByIDLocked(parent.RunID); runIndex != -1 {
 		s.state.Runs[runIndex].NextAction = progressAction
@@ -786,6 +789,20 @@ func (s *Store) syncDeliveryDelegationResponseParentLocked(
 		item.UpdatedAt = response.UpdatedAt
 	})
 	s.updateDeliveryDelegationParentInboxProgressLocked(*parent, progressAction)
+}
+
+func (s *Store) appendDeliveryDelegationResponseParentRoomTraceLocked(parent AgentHandoff, progressAction string) {
+	if strings.TrimSpace(parent.RoomID) == "" || strings.TrimSpace(progressAction) == "" {
+		return
+	}
+	s.appendRoomMessageLocked(parent.RoomID, Message{
+		ID:      fmt.Sprintf("%s-system-%d", parent.RoomID, time.Now().UnixNano()),
+		Speaker: "System",
+		Role:    "system",
+		Tone:    "blocked",
+		Message: fmt.Sprintf("[Mailbox Sync] \"%s\" 已同步 unblock response 进度：%s", parent.Title, progressAction),
+		Time:    shortClock(),
+	})
 }
 
 func deliveryDelegationResponseParentAction(

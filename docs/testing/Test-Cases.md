@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.14
+**版本:** 1.15
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1026,3 +1026,19 @@
   6. 再次打开 parent card，确认前面的 `response progress` timeline entry 仍然保留，没有被 parent 自己后续的新动作洗掉。
 - 预期结果: parent delegated closeout 不应只靠一条不断被覆盖的 `lastAction` 来表达 child response 的进度。target 深看 parent ledger 历史时，必须能直接回放 child comment / child complete 这些关键节点。
 - 业务结论: 2026 年 4 月 11 日 `TKT-85` 已把 parent-ledger response timeline 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-timeline.md` 已记录 `child comment -> parent response-progress timeline -> child complete -> parent follow-through history preserved` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web`、`go test ./internal/store ./internal/api -count=1` 与定向回归 `go test ./internal/store ./internal/api -run "TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff|TestDelegatedCloseoutHandoffLifecycleReflectsInPullRequestDetail|TestDelegatedResponseProgressReflectsInParentMailboxAndRun|TestDelegatedResponseCommentsReflectInPullRequestDetail" -count=1` 已锁住 parent `response-progress` ledger、既有 summary contract 与 parent/child lifecycle 不被污染，因此这条 parent timeline visibility 用例当前转为 `Pass`。
+
+## TC-075 Delegated Response Room Trace Sync
+
+- 业务目标: 确认 child `delivery-reply` 对 parent delegated closeout 的关键 progress 不只会写进 Mailbox / PR / Inbox；Room 主消息流也必须同步追加显式 `[Mailbox Sync]` 叙事，让房间里直接可回放“child 已回复、parent 现在该怎么接”的 orchestrated trace。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 delegated closeout formal handoff、blocked 后自动创建的 `delivery-reply` response handoff，以及 parent / child mailbox orchestration 主链已成立。
+- 测试步骤:
+  1. 使用 `formal-handoff` policy，让 final QA closeout 自动生成 delegated closeout handoff，并让 parent 进入 `blocked`。
+  2. 在 child `delivery-reply` 上补一条 formal comment。
+  3. 打开 `/rooms/room-runtime?tab=chat`，确认 Room 主消息流新增一条 `[Mailbox Sync]` 叙事，内容明确写出 parent closeout 已同步这条 child comment，并提示后续重新 acknowledge 主 closeout。
+  4. 完成 child `delivery-reply`。
+  5. 刷新 Room 主消息流，确认又新增一条 `[Mailbox Sync]` completion 叙事。
+  6. 检查 Room 历史，确认 comment sync 和 completion sync 两条记录同时保留。
+- 预期结果: Room 不应继续是这条跨 Agent closeout 尾链的盲区。即使人类不打开 Mailbox / PR / Inbox，也必须能在 Room 主消息流里直接回放 child response 已经回推 parent 的关键轨迹。
+- 业务结论: 2026 年 4 月 11 日 `TKT-86` 已把 room main-trace sync 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace.md` 已记录 `child comment -> room [Mailbox Sync] -> child complete -> room [Mailbox Sync] preserved` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web`、`go test ./internal/store ./internal/api -run "TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff|TestDelegatedResponseProgressReflectsInParentMailboxAndRun" -count=1` 与对抗性回归 `go test ./internal/store -run "TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger|TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest" -count=1` 已锁住 room trace writeback、既有 parent/inbox/run sync 以及普通 handoff / retry truth 不被污染，因此这条 room-trace sync 用例当前转为 `Pass`。

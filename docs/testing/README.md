@@ -54,6 +54,8 @@
   - `TKT-84` 的 Windows Chrome 有头报告，覆盖 child `delivery-reply` 在 parent resume / complete 后的 `parent-progress` lifecycle messages，以及 latest formal comment preservation
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Parent Timeline](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-timeline.md)
   - `TKT-85` 的 Windows Chrome 有头报告，覆盖 parent delegated closeout 上的 `response-progress` lifecycle messages 与 child response history preservation
+- [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Room Trace](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace.md)
+  - `TKT-86` 的 Windows Chrome 有头报告，覆盖 child `delivery-reply` 对 parent closeout 的 `[Mailbox Sync]` room main-trace writeback 与 comment/completion history preservation
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
   - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
 - [Test Report 2026-04-10 Windows Chrome Control-Plane / Runtime Replay / Governance](./Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md)
@@ -237,6 +239,8 @@
   - 验证 child `delivery-reply` 在 parent closeout resume / complete 后，child lifecycle messages 是否追加 `parent-progress` entry，且 PR detail 是否继续保留 latest formal comment
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-parent-timeline -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-timeline.md`
   - 验证 parent delegated closeout 的 lifecycle messages 是否显式追加 child response 的 `response-progress` entry，并在 parent 后续动作后继续保留
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-room-trace -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace.md`
+  - 验证 child `delivery-reply` 的 comment / complete 是否会把 parent-synced orchestration 追加进 Room 主消息流，并保留 `[Mailbox Sync]` 历史
 - `pnpm test:headed-onboarding-studio`
   - 验证 `/setup` 的 template selection、progress refresh、finish closeout，以及 reload / server restart / second browser context recovery
 - `pnpm test:headed-agent-profile-editor`

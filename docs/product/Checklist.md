@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.17
+**版本:** 1.18
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -420,11 +420,12 @@
   - [x] parent delegated closeout 被重新 `acknowledged` / `completed` 后，child `delivery-reply` 的 lifecycle messages 现在也会显式追加 `parent-progress` 事件；source 深看 child ledger 历史时，不会再像 parent 后续从未接住过这条 closeout
   - [x] `Delivery Delegation` summary 里的 latest formal comment 现在会在 response complete、parent resume、parent complete 之后继续保留；后续 lifecycle event 不会把 formal comment 真相洗掉
   - [x] child `delivery-reply` 的 formal comment / response complete 现在也会显式落进 parent delegated closeout 自己的 lifecycle messages，作为 `response-progress` timeline；target 深看 parent ledger 时，不再只剩一条不断被覆盖的 `lastAction`
+  - [x] child `delivery-reply` 的 formal comment / response complete 现在也会显式写进 Room 主消息流，作为 `[Mailbox Sync]` orchestration 叙事；房间里不再只靠 Mailbox / PR / Inbox 才知道 parent closeout 已收到这轮 unblock progress
   - [x] PR detail 现在也已升级成 single delivery contract：release gate、operator handoff note、delivery template 与 evidence bundle 可在同页复核
   - [x] `/settings` 现在可直接编辑 team topology，并把 lane / role / default agent / handoff path 写回 durable workspace truth；`/setup` `/mailbox` `/agents` 会继续读取同一份配置，且已补 Windows Chrome 有头证据
 - 当前 GAP:
   - [ ] 更深的 agent-to-agent communication 与跨 Agent closeout orchestration 仍留后续
-- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074`
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -470,7 +471,7 @@
 - `CHK-14` `CHK-15` -> `TKT-31`
 - `CHK-19` -> `TKT-25` `TKT-32` `TKT-33`
 - `CHK-20` -> `TKT-29` `TKT-34`
-- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69` `TKT-70` `TKT-71` `TKT-72` `TKT-73` `TKT-74` `TKT-75` `TKT-76` `TKT-77` `TKT-78` `TKT-79` `TKT-80` `TKT-81` `TKT-82` `TKT-83` `TKT-84` `TKT-85`
+- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69` `TKT-70` `TKT-71` `TKT-72` `TKT-73` `TKT-74` `TKT-75` `TKT-76` `TKT-77` `TKT-78` `TKT-79` `TKT-80` `TKT-81` `TKT-82` `TKT-83` `TKT-84` `TKT-85` `TKT-86`
 - `CHK-22` -> `TKT-37`
 - `CHK-07` `CHK-08` -> `TKT-39`
 - `CHK-06` -> `TKT-40` `TKT-52`

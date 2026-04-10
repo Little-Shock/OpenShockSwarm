@@ -2474,6 +2474,20 @@ func TestDelegatedResponseProgressReflectsInParentMailboxAndRun(t *testing.T) {
 		!strings.Contains(parentCommentInbox.Summary, sourceComment) {
 		t.Fatalf("parent inbox after response comment = %#v, want blocker + response progress summary", parentCommentInbox)
 	}
+	stateCommentResp, err := http.Get(server.URL + "/v1/state")
+	if err != nil {
+		t.Fatalf("GET /v1/state after response comment error = %v", err)
+	}
+	defer stateCommentResp.Body.Close()
+	if stateCommentResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/state after response comment status = %d, want %d", stateCommentResp.StatusCode, http.StatusOK)
+	}
+	var stateAfterComment store.State
+	decodeJSON(t, stateCommentResp, &stateAfterComment)
+	if !roomMessagesContain(stateAfterComment, "room-runtime", "[Mailbox Sync]") ||
+		!roomMessagesContain(stateAfterComment, "room-runtime", sourceComment) {
+		t.Fatalf("room messages after response comment = %#v, want room sync trace for child response comment", stateAfterComment.RoomMessages["room-runtime"])
+	}
 
 	runCommentResp, err := http.Get(server.URL + "/v1/runs")
 	if err != nil {
@@ -2543,6 +2557,20 @@ func TestDelegatedResponseProgressReflectsInParentMailboxAndRun(t *testing.T) {
 		!strings.Contains(parentCompleteInbox.Summary, blockNote) ||
 		!strings.Contains(parentCompleteInbox.Summary, completeNote) {
 		t.Fatalf("parent inbox after response completion = %#v, want completion progress summary", parentCompleteInbox)
+	}
+	stateCompleteResp, err := http.Get(server.URL + "/v1/state")
+	if err != nil {
+		t.Fatalf("GET /v1/state after response completion error = %v", err)
+	}
+	defer stateCompleteResp.Body.Close()
+	if stateCompleteResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/state after response completion status = %d, want %d", stateCompleteResp.StatusCode, http.StatusOK)
+	}
+	var stateAfterComplete store.State
+	decodeJSON(t, stateCompleteResp, &stateAfterComplete)
+	if !roomMessagesContain(stateAfterComplete, "room-runtime", sourceComment) ||
+		!roomMessagesContain(stateAfterComplete, "room-runtime", completeNote) {
+		t.Fatalf("room messages after response completion = %#v, want preserved room sync trace for child response progress", stateAfterComplete.RoomMessages["room-runtime"])
 	}
 
 	runCompleteResp, err := http.Get(server.URL + "/v1/runs")
