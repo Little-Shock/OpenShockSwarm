@@ -867,3 +867,19 @@
   6. 再次打开 `/pull-requests/pr-runtime-18`，确认 delegation card 仍显示 `reply completed` + `reply x2`，主 delegated closeout 则继续保持 blocked，等待 target 再次 acknowledge。
 - 预期结果: delegated closeout retry 不能只留在 Mailbox 历史列表里；产品必须把“这是第几轮 unblock response”显式写回 PR detail，并且最新 deep link 必须始终指向当前生效的 response handoff，不能误指旧 attempt。
 - 业务结论: 2026 年 4 月 11 日 `TKT-75` 已把 delegated closeout retry attempt counting、最新 response deep-link rollover 与 PR detail `reply xN` truth 接回 delivery contract。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-retry.md` 已记录 `first blocked -> first response -> re-ack -> second blocked -> reply x2 -> second response completed` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 second-attempt response handoff recreation、`reply x2` 可见性与主 lifecycle 保持，因此这条 retry visibility 用例当前转为 `Pass`。
+
+## TC-065 Delegated Response Handoff Comment Sync
+
+- 业务目标: 确认 `delivery-reply` response handoff 上的 source / target formal comment 不只留在 response ledger 本身，而是会同步回 PR detail `Delivery Delegation` summary 与 related inbox signal。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 delegated closeout formal handoff、blocked 后自动创建的 `delivery-reply` response handoff，以及 retry / response lifecycle 的正式 contract。
+- 测试步骤:
+  1. 使用 `formal-handoff` policy，让 final QA closeout 自动生成 delegated closeout handoff。
+  2. 由 target 将 delegated closeout 标记为 `blocked`，确认系统自动生成 `delivery-reply` response handoff。
+  3. 以 source agent 身份在 response handoff 上补一条 formal comment。
+  4. 打开 `/pull-requests/pr-runtime-18`，确认 `Delivery Delegation` summary 与 related inbox signal 已同步出现这条 source response comment，且 response status 仍保持 `reply requested`。
+  5. 切换为 target agent，在同一条 response handoff 上补一条新的 formal comment。
+  6. 再次打开 `/pull-requests/pr-runtime-18`，确认 `Delivery Delegation` summary 与 related inbox signal 已更新为最新 target response comment，且 response lifecycle 仍保持 `reply requested`。
+- 预期结果: response handoff 上的 formal comment 必须进入同一份 delivery contract；PR detail 与 related inbox 都应显示最新 response comment，同时 comment sync 不能偷偷篡改 response lifecycle。
+- 业务结论: 2026 年 4 月 11 日 `TKT-76` 已把 `delivery-reply` response handoff latest formal comment 接回 PR detail `Delivery Delegation` summary 与 related inbox signal。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response-comment-sync.md` 已记录 `blocked -> source response comment sync -> target response comment supersede -> reply requested preserved` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 latest response-comment contract 与 lifecycle preservation，因此这条跨 Agent response comment sync 用例当前转为 `Pass`。

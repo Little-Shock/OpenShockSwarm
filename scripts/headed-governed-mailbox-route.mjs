@@ -31,6 +31,8 @@ const runMode =
             ? "delegate-response"
           : parsedArgs.mode === "delegate-retry"
             ? "delegate-retry"
+          : parsedArgs.mode === "delegate-response-comment-sync"
+            ? "delegate-response-comment-sync"
           : parsedArgs.mode === "delegate-policy"
             ? "delegate-policy"
           : parsedArgs.mode === "delegate-auto-complete"
@@ -55,6 +57,8 @@ const evidencePrefix =
             ? "openshock-tkt74-governed-route-"
           : runMode === "delegate-retry"
             ? "openshock-tkt75-governed-route-"
+          : runMode === "delegate-response-comment-sync"
+            ? "openshock-tkt76-governed-route-"
           : runMode === "delegate-policy"
             ? "openshock-tkt71-governed-route-"
           : runMode === "delegate-auto-complete"
@@ -379,6 +383,7 @@ try {
     runMode === "delegate-handoff" ||
     runMode === "delegate-response" ||
     runMode === "delegate-retry" ||
+    runMode === "delegate-response-comment-sync" ||
     runMode === "delegate-policy" ||
     runMode === "delegate-auto-complete" ||
     runMode === "delegate-comment-sync" ||
@@ -472,6 +477,7 @@ try {
     runMode === "delegate-handoff" ||
     runMode === "delegate-response" ||
     runMode === "delegate-retry" ||
+    runMode === "delegate-response-comment-sync" ||
     runMode === "delegate-policy" ||
     runMode === "delegate-auto-complete" ||
     runMode === "delegate-comment-sync" ||
@@ -518,6 +524,7 @@ try {
       runMode === "delegate-handoff" ||
       runMode === "delegate-response" ||
       runMode === "delegate-retry" ||
+      runMode === "delegate-response-comment-sync" ||
       runMode === "delegate-policy" ||
       runMode === "delegate-auto-complete" ||
       runMode === "delegate-comment-sync" ||
@@ -557,6 +564,7 @@ try {
         runMode === "delegate-handoff" ||
         runMode === "delegate-response" ||
         runMode === "delegate-retry" ||
+        runMode === "delegate-response-comment-sync" ||
         runMode === "delegate-policy" ||
         runMode === "delegate-auto-complete" ||
         runMode === "delegate-comment-sync" ||
@@ -666,6 +674,7 @@ try {
           runMode === "delegate-handoff" ||
           runMode === "delegate-response" ||
           runMode === "delegate-retry" ||
+          runMode === "delegate-response-comment-sync" ||
           runMode === "delegate-lifecycle"
         ) {
           assert(
@@ -1010,6 +1019,104 @@ try {
               "- PR detail 的 `Delivery Delegation` card 现在会显式显示 `reply x2` 这类 retry attempt truth，说明 cross-agent closeout retry 已进入正式 delivery contract -> PASS",
               "- 第二轮 response 完成后，PR detail 仍维持 `reply completed` + `reply x2`，并继续要求 target 重新 acknowledge 主 closeout handoff，retry orchestration 没有偷改主 lifecycle -> PASS",
             ];
+          } else if (runMode === "delegate-response-comment-sync") {
+            const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
+            await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
+            await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
+            await page.waitForFunction(
+              (handoffId) =>
+                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
+              delegatedHandoffID
+            );
+
+            await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
+            const responseHandoffHref = await page.getByTestId("delivery-delegation-response-open").getAttribute("href");
+            assert(responseHandoffHref, "response handoff link should expose href");
+            const responseURL = new URL(responseHandoffHref, webURL);
+            const responseHandoffID = responseURL.searchParams.get("handoffId");
+            assert(responseHandoffID, "response handoff href should include handoffId");
+            const responseHandoff = await waitForMailboxWhere(
+              serverURL,
+              (item) => item.id === responseHandoffID,
+              "response handoff missing during response comment sync run"
+            );
+
+            await page.goto(responseURL.toString(), { waitUntil: "load" });
+            await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
+            const sourceComment = "source 说明：release receipt checklist 正在补。";
+            await fetchJSON(`${serverURL}/v1/mailbox/${responseHandoffID}`, {
+              method: "POST",
+              body: JSON.stringify({
+                action: "comment",
+                actingAgentId: responseHandoff.fromAgentId,
+                note: sourceComment,
+              }),
+            });
+            await page.reload({ waitUntil: "load" });
+            await page.waitForFunction(
+              ({ handoffId, note }) => {
+                const card = document.querySelector(`[data-testid="mailbox-card-${handoffId}"]`);
+                return card?.textContent?.includes(note) ?? false;
+              },
+              { handoffId: responseHandoffID, note: sourceComment }
+            );
+            await capture(page, "delivery-response-handoff-source-comment");
+
+            await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
+            await page.waitForFunction(
+              ({ note }) => document.querySelector('[data-testid="delivery-delegation-summary"]')?.textContent?.includes(note),
+              { note: sourceComment }
+            );
+            assert(
+              (await readText(page, "delivery-delegation-response-status")) === "reply requested",
+              "response comment should preserve response handoff lifecycle"
+            );
+            await page.waitForFunction(
+              ({ note }) =>
+                document
+                  .querySelector('[data-testid="pull-request-related-inbox-inbox-delivery-delegation-pr-runtime-18"]')
+                  ?.textContent?.includes(note) ?? false,
+              { note: sourceComment }
+            );
+            await capture(page, "pull-request-delivery-response-source-comment-sync");
+
+            const targetComment = "target 回应：等 owner 签字后我会重新接住。";
+            await fetchJSON(`${serverURL}/v1/mailbox/${responseHandoffID}`, {
+              method: "POST",
+              body: JSON.stringify({
+                action: "comment",
+                actingAgentId: responseHandoff.toAgentId,
+                note: targetComment,
+              }),
+            });
+            await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
+            await page.waitForFunction(
+              ({ note }) => document.querySelector('[data-testid="delivery-delegation-summary"]')?.textContent?.includes(note),
+              { note: targetComment }
+            );
+            assert(
+              (await readText(page, "delivery-delegation-response-status")) === "reply requested",
+              "target response comment should preserve response handoff lifecycle"
+            );
+            await page.waitForFunction(
+              ({ note }) =>
+                document
+                  .querySelector('[data-testid="pull-request-related-inbox-inbox-delivery-delegation-pr-runtime-18"]')
+                  ?.textContent?.includes(note) ?? false,
+              { note: targetComment }
+            );
+            await capture(page, "pull-request-delivery-response-target-comment-sync");
+
+            reportTitle = "# 2026-04-11 Governed Mailbox Delegate Response Comment Sync Report";
+            reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-governed-mailbox-delegate-response-comment-sync -- --report ${path.relative(projectRoot, reportPath)}`;
+            reportTicket = "TKT-76";
+            reportTestCase = "TC-065";
+            reportScope = "delivery-reply formal comments、PR detail response summary sync、related inbox latest response comment";
+            resultLines = [
+              "- `delivery-reply` response handoff 上的 source formal comment 现在会同步回 PR detail `Delivery Delegation` summary，而不是只留在 response ledger 本身 -> PASS",
+              "- related inbox signal 也会跟着写回最新 response formal comment，说明二级 unblock response 沟通已经进入单一 delivery contract -> PASS",
+              "- source / target comment sync 过程中 response handoff 继续维持 `reply requested`，comment 不会偷偷把 response lifecycle 改坏 -> PASS",
+            ];
           } else if (runMode === "delegate-lifecycle") {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
@@ -1097,6 +1204,8 @@ try {
           // report metadata already set inside the delegate-response branch above
         } else if (runMode === "delegate-retry") {
           // report metadata already set inside the delegate-retry branch above
+        } else if (runMode === "delegate-response-comment-sync") {
+          // report metadata already set inside the delegate-response-comment-sync branch above
         } else if (runMode === "delegate-lifecycle") {
           reportTitle = "# 2026-04-11 Governed Mailbox Delegate Lifecycle Sync Report";
           reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-governed-mailbox-delegate-lifecycle -- --report ${path.relative(projectRoot, reportPath)}`;

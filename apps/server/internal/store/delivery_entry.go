@@ -342,15 +342,16 @@ func deliveryDelegationResponseSummary(handoff *AgentHandoff, attemptCount int) 
 		return ""
 	}
 	attemptLabel := fmt.Sprintf("第 %d 轮", attemptCount)
+	commentSuffix := deliveryDelegationLatestCommentSuffix(*handoff)
 	switch handoff.Status {
 	case "acknowledged":
-		return fmt.Sprintf(" 系统已为%s向 %s 起 unblock response handoff；%s 当前正在补充 closeout response。", attemptLabel, handoff.ToAgent, handoff.ToAgent)
+		return fmt.Sprintf(" 系统已为%s向 %s 起 unblock response handoff；%s 当前正在补充 closeout response。%s", attemptLabel, handoff.ToAgent, handoff.ToAgent, commentSuffix)
 	case "blocked":
-		return fmt.Sprintf(" %s unblock response handoff 当前也 blocked：%s。", attemptLabel, defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction))
+		return fmt.Sprintf(" %s unblock response handoff 当前也 blocked：%s。%s", attemptLabel, defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction), commentSuffix)
 	case "completed":
-		return fmt.Sprintf(" %s 已完成%s unblock response；当前等待 %s 重新 acknowledge final delivery closeout。", handoff.ToAgent, attemptLabel, handoff.FromAgent)
+		return fmt.Sprintf(" %s 已完成%s unblock response；当前等待 %s 重新 acknowledge final delivery closeout。%s", handoff.ToAgent, attemptLabel, handoff.FromAgent, commentSuffix)
 	default:
-		return fmt.Sprintf(" 系统已为%s向 %s 起 unblock response handoff，等待补 closeout response。", attemptLabel, handoff.ToAgent)
+		return fmt.Sprintf(" 系统已为%s向 %s 起 unblock response handoff，等待补 closeout response。%s", attemptLabel, handoff.ToAgent, commentSuffix)
 	}
 }
 

@@ -972,6 +972,28 @@
 - Checklist: `CHK-21`
 - Test Cases: `TC-064`
 
+## TKT-76 Delegated Response Comment Sync
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 `delivery-reply` response handoff 上的 formal comment 也纳入同一条 delivery contract，让 source / target 的 unblock 沟通不只留在 response ledger 局部卡片里。
+- 范围:
+  - response handoff latest formal comment -> PR detail delegation summary
+  - related inbox latest response-comment sync
+  - source / target dual-comment response coverage
+  - response lifecycle preservation during comment sync
+- 依赖: `TKT-74` `TKT-75`
+- Done When:
+  - `delivery-reply` response handoff 上的 source / target formal comment 会同步回 PR detail `Delivery Delegation` summary
+  - related inbox signal 会同步带回最新 response formal comment，而不是继续停在旧 unblock summary
+  - response comment sync 不会把 `reply requested` lifecycle 偷偷改坏
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-response-comment-sync -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response-comment-sync.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-065`
+
 ---
 
 ## 五、已完成批次归档
