@@ -106,25 +106,34 @@ func buildPullRequestDeliveryDelegation(
 	result.TargetAgent = targetAgent
 	if handoff := findPullRequestDeliveryDelegationHandoff(snapshot.Mailbox, pr, targetAgent); handoff != nil {
 		commentSuffix := deliveryDelegationLatestCommentSuffix(*handoff)
+		responseHandoff := findLatestDeliveryDelegationResponseHandoff(snapshot.Mailbox, handoff.ID)
 		result.HandoffID = handoff.ID
 		result.HandoffHref = mailboxInboxHref(handoff.ID, handoff.RoomID)
 		result.HandoffStatus = handoff.Status
+		if responseHandoff != nil {
+			result.ResponseHandoffID = responseHandoff.ID
+			result.ResponseHandoffHref = mailboxInboxHref(responseHandoff.ID, responseHandoff.RoomID)
+			result.ResponseHandoffStatus = responseHandoff.Status
+		}
 		switch handoff.Status {
 		case "blocked":
+			responseSummary := deliveryDelegationResponseSummary(responseHandoff)
 			result.Status = "blocked"
 			if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
 				result.Summary = fmt.Sprintf(
-					"这条 PR 已合并，但 %s 的 delivery closeout handoff 当前 blocked：%s%s",
+					"这条 PR 已合并，但 %s 的 delivery closeout handoff 当前 blocked：%s%s%s",
 					targetAgent,
 					defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction),
 					commentSuffix,
+					responseSummary,
 				)
 			} else {
 				result.Summary = fmt.Sprintf(
-					"%s 的 delivery closeout handoff 当前 blocked：%s%s",
+					"%s 的 delivery closeout handoff 当前 blocked：%s%s%s",
 					targetAgent,
 					defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction),
 					commentSuffix,
+					responseSummary,
 				)
 			}
 			return result
@@ -293,6 +302,36 @@ func deliveryDelegationLatestCommentSuffix(handoff AgentHandoff) string {
 		return ""
 	}
 	return fmt.Sprintf(" 最新 formal comment：%s 说“%s”。", latest.AuthorName, body)
+}
+
+func findLatestDeliveryDelegationResponseHandoff(mailbox []AgentHandoff, parentHandoffID string) *AgentHandoff {
+	for index := range mailbox {
+		handoff := &mailbox[index]
+		if handoff.Kind != handoffKindDeliveryReply {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(handoff.ParentHandoffID), strings.TrimSpace(parentHandoffID)) {
+			continue
+		}
+		return handoff
+	}
+	return nil
+}
+
+func deliveryDelegationResponseSummary(handoff *AgentHandoff) string {
+	if handoff == nil {
+		return ""
+	}
+	switch handoff.Status {
+	case "acknowledged":
+		return fmt.Sprintf(" 系统已向 %s 起 unblock response handoff；%s 当前正在补充 closeout response。", handoff.ToAgent, handoff.ToAgent)
+	case "blocked":
+		return fmt.Sprintf(" unblock response handoff 当前也 blocked：%s。", defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction))
+	case "completed":
+		return fmt.Sprintf(" %s 已完成 unblock response；当前等待 %s 重新 acknowledge final delivery closeout。", handoff.ToAgent, handoff.FromAgent)
+	default:
+		return fmt.Sprintf(" 系统已向 %s 起 unblock response handoff，等待补 closeout response。", handoff.ToAgent)
+	}
 }
 
 func pullRequestDeliveryDelegationTitle(pr PullRequest, targetAgent string) string {

@@ -198,7 +198,7 @@ func resolveGovernanceFocus(state State) governanceFocus {
 
 	if len(state.Mailbox) > 0 {
 		for _, candidate := range state.Mailbox {
-			if candidate.Kind == handoffKindDeliveryCloseout {
+			if isGovernanceSidecarHandoff(candidate.Kind) {
 				continue
 			}
 			handoff := candidate
@@ -257,7 +257,7 @@ func resolveGovernanceFocus(state State) governanceFocus {
 	}
 
 	for _, handoff := range state.Mailbox {
-		if handoff.Kind == handoffKindDeliveryCloseout {
+		if isGovernanceSidecarHandoff(handoff.Kind) {
 			continue
 		}
 		if roomID != "" && handoff.RoomID != roomID {
@@ -290,6 +290,15 @@ func resolveGovernanceFocus(state State) governanceFocus {
 	}
 
 	return focus
+}
+
+func isGovernanceSidecarHandoff(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case handoffKindDeliveryCloseout, handoffKindDeliveryReply:
+		return true
+	default:
+		return false
+	}
 }
 
 func buildGovernanceStats(state State) WorkspaceGovernanceStats {

@@ -904,6 +904,9 @@ export type PullRequestDeliveryDelegation = {
   handoffId?: string;
   handoffHref?: string;
   handoffStatus?: HandoffStatus;
+  responseHandoffId?: string;
+  responseHandoffHref?: string;
+  responseHandoffStatus?: HandoffStatus;
 };
 
 export type PullRequestDeliveryHandoffNote = {

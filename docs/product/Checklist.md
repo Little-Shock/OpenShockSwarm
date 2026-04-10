@@ -407,11 +407,12 @@
   - [x] workspace governance 现在也支持 `formal-handoff / signal-only` 两种 delivery delegation automation policy；`/settings`、PR detail 和 Mailbox 会读取同一份 durable truth，`signal-only` 下只派 delegation signal，不自动物化 delegated closeout handoff
   - [x] workspace governance 现在还支持 `auto-complete` delivery delegation automation policy；final lane closeout 后 PR detail / related inbox 会直接把 delivery delegate 收成 `delegation done`，且不会额外物化 delegated closeout handoff
   - [x] delegated closeout handoff 上的 source / target formal comment 现在也会同步回 PR detail `Delivery Delegation` summary 与 related inbox signal，且不会把 `handoff requested` lifecycle 偷偷改坏
+  - [x] delegated closeout handoff 在 target `blocked` 后，现在会自动物化一条 `delivery-reply` formal handoff，把 unblock response 回给 source；PR detail delegation card 会同步显示 `reply requested / reply completed` 与 deep link，且 response 完成后原 closeout handoff 仍保持 blocked，直到 target 重新 acknowledge
   - [x] PR detail 现在也已升级成 single delivery contract：release gate、operator handoff note、delivery template 与 evidence bundle 可在同页复核
   - [x] `/settings` 现在可直接编辑 team topology，并把 lane / role / default agent / handoff path 写回 durable workspace truth；`/setup` `/mailbox` `/agents` 会继续读取同一份配置，且已补 Windows Chrome 有头证据
 - 当前 GAP:
-  - [ ] 更深的 agent-to-agent communication 与跨 Agent closeout orchestration 仍留后续
-- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062`
+  - [ ] 更深的 agent-to-agent communication、delegate redo / retry policy 与跨 Agent closeout orchestration 仍留后续
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -457,7 +458,7 @@
 - `CHK-14` `CHK-15` -> `TKT-31`
 - `CHK-19` -> `TKT-25` `TKT-32` `TKT-33`
 - `CHK-20` -> `TKT-29` `TKT-34`
-- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69` `TKT-70` `TKT-71` `TKT-72` `TKT-73`
+- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69` `TKT-70` `TKT-71` `TKT-72` `TKT-73` `TKT-74`
 - `CHK-22` -> `TKT-37`
 - `CHK-07` `CHK-08` -> `TKT-39`
 - `CHK-06` -> `TKT-40` `TKT-52`

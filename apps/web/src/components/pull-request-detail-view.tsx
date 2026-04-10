@@ -158,6 +158,36 @@ function delegationHandoffStatusTone(status?: PullRequestDeliveryDelegation["han
   }
 }
 
+function delegationResponseStatusLabel(status?: PullRequestDeliveryDelegation["responseHandoffStatus"]) {
+  switch (status) {
+    case "acknowledged":
+      return "reply active";
+    case "blocked":
+      return "reply blocked";
+    case "completed":
+      return "reply completed";
+    case "requested":
+      return "reply requested";
+    default:
+      return "";
+  }
+}
+
+function delegationResponseStatusTone(status?: PullRequestDeliveryDelegation["responseHandoffStatus"]) {
+  switch (status) {
+    case "acknowledged":
+      return "bg-[var(--shock-lime)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    case "completed":
+      return "bg-[var(--shock-yellow)]";
+    case "requested":
+      return "bg-white";
+    default:
+      return "bg-white";
+  }
+}
+
 function conversationKindLabel(kind: PullRequestConversationEntry["kind"]) {
   switch (kind) {
     case "review":
@@ -531,6 +561,17 @@ export function PullRequestDetailView({
                         {delegationHandoffStatusLabel(detail.delivery.delegation.handoffStatus)}
                       </span>
                     ) : null}
+                    {detail.delivery.delegation.responseHandoffStatus ? (
+                      <span
+                        data-testid="delivery-delegation-response-status"
+                        className={cn(
+                          "border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                          delegationResponseStatusTone(detail.delivery.delegation.responseHandoffStatus)
+                        )}
+                      >
+                        {delegationResponseStatusLabel(detail.delivery.delegation.responseHandoffStatus)}
+                      </span>
+                    ) : null}
                     {(detail.delivery.delegation.handoffHref || detail.delivery.delegation.href) ? (
                       <Link
                         href={detail.delivery.delegation.handoffHref || detail.delivery.delegation.href || "#"}
@@ -538,6 +579,15 @@ export function PullRequestDetailView({
                         className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
                       >
                         {detail.delivery.delegation.handoffHref ? "Open Delegated Handoff" : "Open Delivery Context"}
+                      </Link>
+                    ) : null}
+                    {detail.delivery.delegation.responseHandoffHref ? (
+                      <Link
+                        href={detail.delivery.delegation.responseHandoffHref}
+                        data-testid="delivery-delegation-response-open"
+                        className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]"
+                      >
+                        Open Unblock Reply
                       </Link>
                     ) : null}
                   </div>

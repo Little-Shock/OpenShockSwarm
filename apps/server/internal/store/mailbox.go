@@ -30,15 +30,17 @@ const (
 	handoffKindManual           = "manual"
 	handoffKindGoverned         = "governed"
 	handoffKindDeliveryCloseout = "delivery-closeout"
+	handoffKindDeliveryReply    = "delivery-reply"
 )
 
 type MailboxCreateInput struct {
-	RoomID      string
-	FromAgentID string
-	ToAgentID   string
-	Title       string
-	Summary     string
-	Kind        string
+	RoomID          string
+	FromAgentID     string
+	ToAgentID       string
+	ParentHandoffID string
+	Title           string
+	Summary         string
+	Kind            string
 }
 
 type MailboxUpdateInput struct {
@@ -157,7 +159,7 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 		Body:       defaultString(note, presentation.Summary),
 		CreatedAt:  updatedAt,
 	})
-	if action == "acknowledged" && handoff.Kind != handoffKindDeliveryCloseout {
+	if action == "acknowledged" && handoff.Kind != handoffKindDeliveryCloseout && handoff.Kind != handoffKindDeliveryReply {
 		s.state.Rooms[roomIndex].Topic.Owner = handoff.ToAgent
 		s.state.Runs[runIndex].Owner = handoff.ToAgent
 		s.state.Issues[issueIndex].Owner = handoff.ToAgent
@@ -177,6 +179,11 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 		Message: presentation.RoomMessage,
 		Time:    nowClock,
 	})
+	if action == "blocked" && handoff.Kind == handoffKindDeliveryCloseout {
+		if err := s.ensureDeliveryDelegationResponseHandoffLocked(*handoff, note); err != nil {
+			return State{}, AgentHandoff{}, err
+		}
+	}
 	if action == "completed" && input.ContinueGovernedRoute {
 		if err := s.continueGovernedRouteLocked(*handoff); err != nil {
 			return State{}, AgentHandoff{}, err
@@ -187,7 +194,7 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 			return State{}, AgentHandoff{}, err
 		}
 	}
-	if action == "completed" || handoff.Kind == handoffKindDeliveryCloseout {
+	if action == "completed" || handoff.Kind == handoffKindDeliveryCloseout || handoff.Kind == handoffKindDeliveryReply {
 		s.syncDeliveryDelegationInboxLocked(handoff.RoomID)
 	}
 
@@ -249,23 +256,24 @@ func (s *Store) createHandoffLocked(input MailboxCreateInput) (AgentHandoff, err
 		CreatedAt:  createdAt,
 	}
 	handoff := AgentHandoff{
-		ID:          handoffID,
-		Kind:        handoffKind,
-		Title:       title,
-		Summary:     summary,
-		Status:      "requested",
-		IssueKey:    s.state.Issues[issueIndex].Key,
-		RoomID:      roomID,
-		RunID:       s.state.Runs[runIndex].ID,
-		FromAgentID: fromAgent.ID,
-		FromAgent:   fromAgent.Name,
-		ToAgentID:   toAgent.ID,
-		ToAgent:     toAgent.Name,
-		InboxItemID: inboxItemID,
-		RequestedAt: createdAt,
-		UpdatedAt:   createdAt,
-		LastAction:  fmt.Sprintf("等待 %s acknowledge / block 这次交接。", toAgent.Name),
-		Messages:    []MailboxMessage{message},
+		ID:              handoffID,
+		Kind:            handoffKind,
+		ParentHandoffID: strings.TrimSpace(input.ParentHandoffID),
+		Title:           title,
+		Summary:         summary,
+		Status:          "requested",
+		IssueKey:        s.state.Issues[issueIndex].Key,
+		RoomID:          roomID,
+		RunID:           s.state.Runs[runIndex].ID,
+		FromAgentID:     fromAgent.ID,
+		FromAgent:       fromAgent.Name,
+		ToAgentID:       toAgent.ID,
+		ToAgent:         toAgent.Name,
+		InboxItemID:     inboxItemID,
+		RequestedAt:     createdAt,
+		UpdatedAt:       createdAt,
+		LastAction:      fmt.Sprintf("等待 %s acknowledge / block 这次交接。", toAgent.Name),
+		Messages:        []MailboxMessage{message},
 	}
 
 	s.state.Mailbox = append([]AgentHandoff{handoff}, s.state.Mailbox...)
@@ -376,6 +384,41 @@ func (s *Store) ensureDeliveryDelegationHandoffLocked(roomID string) error {
 	return err
 }
 
+func (s *Store) ensureDeliveryDelegationResponseHandoffLocked(blockedHandoff AgentHandoff, note string) error {
+	if blockedHandoff.Kind != handoffKindDeliveryCloseout {
+		return nil
+	}
+	if strings.TrimSpace(blockedHandoff.FromAgentID) == "" || strings.TrimSpace(blockedHandoff.ToAgentID) == "" {
+		return nil
+	}
+	if strings.EqualFold(blockedHandoff.FromAgentID, blockedHandoff.ToAgentID) {
+		return nil
+	}
+	if existing := findLatestDeliveryDelegationResponseHandoff(s.state.Mailbox, blockedHandoff.ID); existing != nil && existing.Status != "completed" {
+		return nil
+	}
+
+	summary := fmt.Sprintf(
+		"%s 在 \"%s\" 上 blocked：%s。请 %s 补 unblock response，回复后由 %s 重新 acknowledge final delivery closeout。",
+		blockedHandoff.ToAgent,
+		blockedHandoff.Title,
+		note,
+		blockedHandoff.FromAgent,
+		blockedHandoff.ToAgent,
+	)
+	title := fmt.Sprintf("回应 %s 的 delivery closeout blocker", blockedHandoff.ToAgent)
+	_, err := s.createHandoffLocked(MailboxCreateInput{
+		RoomID:          blockedHandoff.RoomID,
+		FromAgentID:     blockedHandoff.ToAgentID,
+		ToAgentID:       blockedHandoff.FromAgentID,
+		ParentHandoffID: blockedHandoff.ID,
+		Title:           title,
+		Summary:         summary,
+		Kind:            handoffKindDeliveryReply,
+	})
+	return err
+}
+
 func (s *Store) syncDeliveryDelegationInboxLocked(roomID string) {
 	prIndex := s.findPullRequestByRoomLocked(strings.TrimSpace(roomID))
 	if prIndex == -1 {
@@ -464,6 +507,8 @@ func normalizeHandoffKind(kind string) string {
 		return handoffKindGoverned
 	case handoffKindDeliveryCloseout:
 		return handoffKindDeliveryCloseout
+	case handoffKindDeliveryReply:
+		return handoffKindDeliveryReply
 	default:
 		return handoffKindManual
 	}

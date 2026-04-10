@@ -1585,17 +1585,55 @@ func TestDelegatedCloseoutHandoffLifecycleReflectsInPullRequestDetail(t *testing
 		!strings.Contains(blockedDetail.Delivery.Delegation.Summary, blockNote) {
 		t.Fatalf("blocked delegation = %#v, want blocked summary with blocker note", blockedDetail.Delivery.Delegation)
 	}
+	if blockedDetail.Delivery.Delegation.ResponseHandoffID == "" ||
+		blockedDetail.Delivery.Delegation.ResponseHandoffStatus != "requested" {
+		t.Fatalf("blocked delegation = %#v, want auto-created unblock response handoff", blockedDetail.Delivery.Delegation)
+	}
 	relatedBlocked := false
 	for _, item := range blockedDetail.RelatedInbox {
 		if item.ID == "inbox-delivery-delegation-pr-runtime-18" {
 			relatedBlocked = true
-			if item.Kind != "blocked" || !strings.Contains(item.Summary, blockNote) {
+			if item.Kind != "blocked" || !strings.Contains(item.Summary, blockNote) || !strings.Contains(item.Summary, "unblock response handoff") {
 				t.Fatalf("blocked delegation inbox item = %#v, want blocked signal with blocker note", item)
 			}
 		}
 	}
 	if !relatedBlocked {
 		t.Fatalf("blocked related inbox = %#v, want delivery delegation signal", blockedDetail.RelatedInbox)
+	}
+
+	responseAckResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+blockedDetail.Delivery.Delegation.ResponseHandoffID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": delegatedHandoff.FromAgentID,
+	})
+	defer responseAckResp.Body.Close()
+	if responseAckResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST delivery reply acknowledged status = %d, want %d", responseAckResp.StatusCode, http.StatusOK)
+	}
+	responseCompleteResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+blockedDetail.Delivery.Delegation.ResponseHandoffID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": delegatedHandoff.FromAgentID,
+		"note":          "release receipt checklist 已补齐，请重新接住 delivery closeout。",
+	})
+	defer responseCompleteResp.Body.Close()
+	if responseCompleteResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST delivery reply completed status = %d, want %d", responseCompleteResp.StatusCode, http.StatusOK)
+	}
+
+	responseDetailResp, err := http.Get(server.URL + "/v1/pull-requests/pr-runtime-18/detail")
+	if err != nil {
+		t.Fatalf("GET response detail error = %v", err)
+	}
+	defer responseDetailResp.Body.Close()
+	if responseDetailResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET response detail status = %d, want %d", responseDetailResp.StatusCode, http.StatusOK)
+	}
+	var responseDetail store.PullRequestDetail
+	decodeJSON(t, responseDetailResp, &responseDetail)
+	if responseDetail.Delivery.Delegation.Status != "blocked" ||
+		responseDetail.Delivery.Delegation.ResponseHandoffStatus != "completed" ||
+		!strings.Contains(responseDetail.Delivery.Delegation.Summary, "重新 acknowledge final delivery closeout") {
+		t.Fatalf("response detail delegation = %#v, want blocked delegation with completed response handoff", responseDetail.Delivery.Delegation)
 	}
 
 	ackDelegatedResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+detail.Delivery.Delegation.HandoffID, map[string]string{

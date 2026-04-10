@@ -928,6 +928,28 @@
 - Checklist: `CHK-21`
 - Test Cases: `TC-062`
 
+## TKT-74 Delegated Closeout Response Handoff Orchestration
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 当 delegated closeout handoff 被 target `blocked` 时，把 unblock work 明确物化成一条回给 source 的 formal response handoff，而不是只把 blocker note 留在原 handoff 文案里。
+- 范围:
+  - `delivery-reply` handoff kind / parent linkage
+  - blocked delegated closeout -> response handoff auto-create
+  - PR detail `Delivery Delegation` response status / deep link
+  - governance done-state isolation during delegated response lifecycle
+- 依赖: `TKT-69` `TKT-70` `TKT-73`
+- Done When:
+  - delegated closeout handoff 进入 `blocked` 后，系统会自动创建 `target -> source` 的 `delivery-reply` formal handoff，并保留 parent linkage
+  - PR detail 的 `Delivery Delegation` card 会显式显示 `reply requested / reply completed` 与 response deep link
+  - source 完成 unblock response 后，原 delegated closeout handoff 仍保持 `blocked`，直到 target 显式重新 acknowledge，而不是被 response completion 偷偷改成 done
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-response -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-063`
+
 ---
 
 ## 五、已完成批次归档

@@ -688,24 +688,25 @@ type MailboxMessage struct {
 }
 
 type AgentHandoff struct {
-	ID          string           `json:"id"`
-	Kind        string           `json:"kind,omitempty"`
-	Title       string           `json:"title"`
-	Summary     string           `json:"summary"`
-	Status      string           `json:"status"`
-	IssueKey    string           `json:"issueKey"`
-	RoomID      string           `json:"roomId"`
-	RunID       string           `json:"runId"`
-	FromAgentID string           `json:"fromAgentId"`
-	FromAgent   string           `json:"fromAgent"`
-	ToAgentID   string           `json:"toAgentId"`
-	ToAgent     string           `json:"toAgent"`
-	InboxItemID string           `json:"inboxItemId,omitempty"`
-	RequestedAt string           `json:"requestedAt"`
-	UpdatedAt   string           `json:"updatedAt"`
-	LastAction  string           `json:"lastAction"`
-	LastNote    string           `json:"lastNote,omitempty"`
-	Messages    []MailboxMessage `json:"messages"`
+	ID              string           `json:"id"`
+	Kind            string           `json:"kind,omitempty"`
+	ParentHandoffID string           `json:"parentHandoffId,omitempty"`
+	Title           string           `json:"title"`
+	Summary         string           `json:"summary"`
+	Status          string           `json:"status"`
+	IssueKey        string           `json:"issueKey"`
+	RoomID          string           `json:"roomId"`
+	RunID           string           `json:"runId"`
+	FromAgentID     string           `json:"fromAgentId"`
+	FromAgent       string           `json:"fromAgent"`
+	ToAgentID       string           `json:"toAgentId"`
+	ToAgent         string           `json:"toAgent"`
+	InboxItemID     string           `json:"inboxItemId,omitempty"`
+	RequestedAt     string           `json:"requestedAt"`
+	UpdatedAt       string           `json:"updatedAt"`
+	LastAction      string           `json:"lastAction"`
+	LastNote        string           `json:"lastNote,omitempty"`
+	Messages        []MailboxMessage `json:"messages"`
 }
 
 type PullRequest struct {
@@ -1013,15 +1014,18 @@ type PullRequestDeliveryTemplate struct {
 }
 
 type PullRequestDeliveryDelegation struct {
-	Status        string `json:"status"`
-	TargetLane    string `json:"targetLane,omitempty"`
-	TargetAgent   string `json:"targetAgent,omitempty"`
-	Summary       string `json:"summary"`
-	Href          string `json:"href,omitempty"`
-	InboxItemID   string `json:"inboxItemId,omitempty"`
-	HandoffID     string `json:"handoffId,omitempty"`
-	HandoffHref   string `json:"handoffHref,omitempty"`
-	HandoffStatus string `json:"handoffStatus,omitempty"`
+	Status                string `json:"status"`
+	TargetLane            string `json:"targetLane,omitempty"`
+	TargetAgent           string `json:"targetAgent,omitempty"`
+	Summary               string `json:"summary"`
+	Href                  string `json:"href,omitempty"`
+	InboxItemID           string `json:"inboxItemId,omitempty"`
+	HandoffID             string `json:"handoffId,omitempty"`
+	HandoffHref           string `json:"handoffHref,omitempty"`
+	HandoffStatus         string `json:"handoffStatus,omitempty"`
+	ResponseHandoffID     string `json:"responseHandoffId,omitempty"`
+	ResponseHandoffHref   string `json:"responseHandoffHref,omitempty"`
+	ResponseHandoffStatus string `json:"responseHandoffStatus,omitempty"`
 }
 
 type PullRequestDeliveryHandoffNote struct {

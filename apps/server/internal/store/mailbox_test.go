@@ -719,12 +719,50 @@ func TestDeliveryDelegationHandoffLifecycleSyncsBackToPullRequest(t *testing.T) 
 		!strings.Contains(blockedDetail.Delivery.Delegation.Summary, blockNote) {
 		t.Fatalf("blocked delegation = %#v, want blocked summary with blocker note", blockedDetail.Delivery.Delegation)
 	}
+	if blockedDetail.Delivery.Delegation.ResponseHandoffID == "" ||
+		blockedDetail.Delivery.Delegation.ResponseHandoffStatus != "requested" {
+		t.Fatalf("blocked delegation = %#v, want auto-created unblock response handoff", blockedDetail.Delivery.Delegation)
+	}
+	responseHandoff := findHandoffByID(blockedState.Mailbox, blockedDetail.Delivery.Delegation.ResponseHandoffID)
+	if responseHandoff == nil ||
+		responseHandoff.Kind != handoffKindDeliveryReply ||
+		responseHandoff.ParentHandoffID != delegatedHandoffID ||
+		responseHandoff.FromAgentID != delegatedHandoff.ToAgentID ||
+		responseHandoff.ToAgentID != delegatedHandoff.FromAgentID {
+		t.Fatalf("response handoff = %#v, want delivery-reply from target back to source", responseHandoff)
+	}
 	blockedInbox := findInboxItemByID(blockedState.Inbox, deliveryDelegationInboxItemID("pr-runtime-18"))
-	if blockedInbox == nil || blockedInbox.Kind != "blocked" || !strings.Contains(blockedInbox.Summary, blockNote) {
+	if blockedInbox == nil || blockedInbox.Kind != "blocked" || !strings.Contains(blockedInbox.Summary, blockNote) || !strings.Contains(blockedInbox.Summary, "unblock response handoff") {
 		t.Fatalf("blocked delegation inbox = %#v, want blocked delivery delegation signal", blockedState.Inbox)
 	}
 	if blockedState.Workspace.Governance.RoutingPolicy.SuggestedHandoff.Status != "done" {
 		t.Fatalf("suggested handoff = %#v, want governance route to stay done during delegated closeout", blockedState.Workspace.Governance.RoutingPolicy.SuggestedHandoff)
+	}
+
+	if _, _, err := s.AdvanceHandoff(responseHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: responseHandoff.ToAgentID,
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged delivery reply) error = %v", err)
+	}
+	responseCompletedState, _, err := s.AdvanceHandoff(responseHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: responseHandoff.ToAgentID,
+		Note:          "release receipt checklist 已补齐，请重新接住 delivery closeout。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed delivery reply) error = %v", err)
+	}
+	responseCompletedDetail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok ||
+		responseCompletedDetail.Delivery.Delegation.Status != "blocked" ||
+		responseCompletedDetail.Delivery.Delegation.ResponseHandoffStatus != "completed" ||
+		!strings.Contains(responseCompletedDetail.Delivery.Delegation.Summary, "重新 acknowledge final delivery closeout") {
+		t.Fatalf("response-completed delegation = %#v, want blocked delegation with completed response handoff", responseCompletedDetail.Delivery.Delegation)
+	}
+	responseCompletedInbox := findInboxItemByID(responseCompletedState.Inbox, deliveryDelegationInboxItemID("pr-runtime-18"))
+	if responseCompletedInbox == nil || !strings.Contains(responseCompletedInbox.Summary, "重新 acknowledge final delivery closeout") {
+		t.Fatalf("response-completed delegation inbox = %#v, want response completion summary", responseCompletedState.Inbox)
 	}
 
 	if _, _, err := s.AdvanceHandoff(delegatedHandoffID, MailboxUpdateInput{

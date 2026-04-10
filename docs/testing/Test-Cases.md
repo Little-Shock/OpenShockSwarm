@@ -835,3 +835,19 @@
   5. 再次打开 `/pull-requests/pr-runtime-18`，确认 `Delivery Delegation` summary 与 related inbox signal 已更新为最新 target comment，且 handoff lifecycle 仍保持 `requested`，没有被 comment 意外改坏。
 - 预期结果: delegated closeout 上的 formal comment 必须进入同一份 delivery contract；PR detail 和 related inbox 都应显示最新 closeout comment，同时 comment sync 不能偷偷篡改 delegated handoff lifecycle。
 - 业务结论: 2026 年 4 月 11 日 `TKT-73` 已把 delegated closeout latest formal comment 接回 PR detail `Delivery Delegation` summary 与 related inbox signal。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-comment-sync.md` 已记录 `source comment -> PR detail sync -> target comment -> related inbox latest-comment sync` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 latest-comment contract 与 lifecycle preservation，因此这条跨 Agent closeout comment sync 用例当前转为 `Pass`。
+
+## TC-063 Delegated Closeout Blocked Response Handoff
+
+- 业务目标: 确认 delegated closeout handoff 被 target `blocked` 后，系统会自动创建一条 `delivery-reply` response handoff 把 unblock work 回给 source，并把这条 response lifecycle 继续同步回 PR detail `Delivery Delegation` contract。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 formal delegated closeout handoff auto-create、delegation lifecycle sync，以及 source / target 的 formal mailbox closeout contract。
+- 测试步骤:
+  1. 使用 `formal-handoff` policy，让 final QA closeout 自动生成 `delivery-closeout` handoff。
+  2. 进入 delegated closeout handoff，由 target agent 将其标记为 `blocked` 并写入 blocker note。
+  3. 打开 `/pull-requests/pr-runtime-18`，确认 `Delivery Delegation` card 仍显示 `delegate blocked / handoff blocked`，并新增 `reply requested` 状态与 unblock response deep link。
+  4. 通过 response deep link 打开自动创建的 `delivery-reply` handoff，确认它是 `target -> source` 的 formal response ledger，且 parent 指回原 delegated closeout handoff。
+  5. 由 source acknowledge 并完成 response handoff，补充 unblock note。
+  6. 再次打开 `/pull-requests/pr-runtime-18`，确认 delegation card 变为 `reply completed`，summary 写回“等待 target 重新 acknowledge final delivery closeout”，且原 delegated closeout 仍保持 `blocked`。
+- 预期结果: blocked delegated closeout 不能只停在 blocker note；系统必须把 unblock work 物化成独立的 response handoff，并把 response status / link 回写到 PR detail，但 response completion 不能越权篡改原 delegated closeout lifecycle。
+- 业务结论: 2026 年 4 月 11 日 `TKT-74` 已把 `delivery-reply` response handoff、parent linkage 与 PR detail `reply requested / reply completed` contract 接回同一条 delivery orchestration。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md` 已记录 `blocked delegated closeout -> auto-created response handoff -> response completed -> main handoff still blocked` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 response handoff auto-create、PR detail writeback 与 governance done-state 隔离，因此这条 blocked response orchestration 用例当前转为 `Pass`。

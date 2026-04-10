@@ -90,10 +90,12 @@
   - workspace governance 现在还支持 `auto-complete` delivery delegation automation policy；final lane closeout 后 PR detail / related inbox 会直接写成 `delegation done`，而不是额外再起 delegated closeout handoff，且 `/settings` / Mailbox 继续读同一份 durable truth。
 - `GAP-42 / TKT-73`
   - delegated closeout handoff 上的 source / target formal comment 现在也会同步回 PR detail `Delivery Delegation` summary 与 related inbox signal；多 Agent closeout 沟通不再只留在 Mailbox 局部 ledger。
+- `GAP-43 / TKT-74`
+  - delegated closeout handoff 在 target `blocked` 后，现在还会自动创建一条 `delivery-reply` response handoff 回给 source；PR detail delegation card 会同步显示 `reply requested / reply completed` 与 deep link，且 response 完成后主 closeout handoff 仍保持 blocked，直到 target 重新 acknowledge。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle 回写到 PR contract”或“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”，而是更深的 agent-to-agent orchestration 和跨 Agent closeout 编排。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”或“能不能把 blocked delegated closeout 物化成 response handoff”，而是更深的 agent-to-agent orchestration、delegate redo / retry policy 与跨 Agent closeout 编排。
 
 ---
 
