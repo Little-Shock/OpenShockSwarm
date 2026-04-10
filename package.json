@@ -37,6 +37,7 @@
     "test:headed-governed-mailbox-delegation": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegation",
     "test:headed-governed-mailbox-delegate-handoff": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-handoff",
     "test:headed-governed-mailbox-delegate-response": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-response",
+    "test:headed-governed-mailbox-delegate-retry": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-retry",
     "test:headed-governed-mailbox-delegate-policy": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-policy",
     "test:headed-governed-mailbox-delegate-auto-complete": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-auto-complete",
     "test:headed-governed-mailbox-delegate-comment-sync": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-comment-sync",

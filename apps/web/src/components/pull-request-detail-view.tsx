@@ -572,6 +572,14 @@ export function PullRequestDetailView({
                         {delegationResponseStatusLabel(detail.delivery.delegation.responseHandoffStatus)}
                       </span>
                     ) : null}
+                    {detail.delivery.delegation.responseAttemptCount ? (
+                      <span
+                        data-testid="delivery-delegation-response-attempts"
+                        className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
+                      >
+                        reply x{detail.delivery.delegation.responseAttemptCount}
+                      </span>
+                    ) : null}
                     {(detail.delivery.delegation.handoffHref || detail.delivery.delegation.href) ? (
                       <Link
                         href={detail.delivery.delegation.handoffHref || detail.delivery.delegation.href || "#"}

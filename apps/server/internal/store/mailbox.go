@@ -394,7 +394,7 @@ func (s *Store) ensureDeliveryDelegationResponseHandoffLocked(blockedHandoff Age
 	if strings.EqualFold(blockedHandoff.FromAgentID, blockedHandoff.ToAgentID) {
 		return nil
 	}
-	if existing := findLatestDeliveryDelegationResponseHandoff(s.state.Mailbox, blockedHandoff.ID); existing != nil && existing.Status != "completed" {
+	if existing, _ := findLatestDeliveryDelegationResponseHandoff(s.state.Mailbox, blockedHandoff.ID); existing != nil && existing.Status != "completed" {
 		return nil
 	}
 

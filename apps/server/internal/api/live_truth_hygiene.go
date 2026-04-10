@@ -583,6 +583,9 @@ func sanitizePullRequestDeliveryDelegation(item store.PullRequestDeliveryDelegat
 	item.HandoffID = sanitizeDisplayText(item.HandoffID, "")
 	item.HandoffHref = sanitizeDisplayText(item.HandoffHref, "")
 	item.HandoffStatus = sanitizeDisplayText(item.HandoffStatus, "")
+	if item.ResponseAttemptCount < 0 {
+		item.ResponseAttemptCount = 0
+	}
 	item.ResponseHandoffID = sanitizeDisplayText(item.ResponseHandoffID, "")
 	item.ResponseHandoffHref = sanitizeDisplayText(item.ResponseHandoffHref, "")
 	item.ResponseHandoffStatus = sanitizeDisplayText(item.ResponseHandoffStatus, "")

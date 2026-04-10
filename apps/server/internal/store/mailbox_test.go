@@ -795,6 +795,169 @@ func TestDeliveryDelegationHandoffLifecycleSyncsBackToPullRequest(t *testing.T) 
 	}
 }
 
+func TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[len(topology)-1].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			TeamTopology: topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 developer lane 正式交给 reviewer",
+		Summary:     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff() error = %v", err)
+	}
+
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged reviewer) error = %v", err)
+	}
+	reviewerClosedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:                "completed",
+		ActingAgentID:         "agent-claude-review-runner",
+		Note:                  "review 已完成，直接把 QA 接力拉起来。",
+		ContinueGovernedRoute: true,
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed reviewer continue) error = %v", err)
+	}
+	qaHandoff := reviewerClosedState.Mailbox[0]
+
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-memory-clerk",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged qa) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-memory-clerk",
+		Note:          "QA 验证完成，可以进入 PR delivery closeout。",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(completed qa) error = %v", err)
+	}
+
+	initialDetail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok || initialDetail.Delivery.Delegation.HandoffID == "" {
+		t.Fatalf("PullRequestDetail() = %#v, want auto-created delivery delegation handoff", initialDetail)
+	}
+	delegatedHandoffID := initialDetail.Delivery.Delegation.HandoffID
+	delegatedHandoff := findHandoffByID(s.Snapshot().Mailbox, delegatedHandoffID)
+	if delegatedHandoff == nil {
+		t.Fatalf("delegated handoff %q missing from mailbox", delegatedHandoffID)
+	}
+
+	if _, _, err := s.AdvanceHandoff(delegatedHandoffID, MailboxUpdateInput{
+		Action:        "blocked",
+		ActingAgentID: delegatedHandoff.ToAgentID,
+		Note:          "第一轮 blocker：release 文案待确认。",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(first blocked delegated closeout) error = %v", err)
+	}
+	firstBlockedDetail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok ||
+		firstBlockedDetail.Delivery.Delegation.ResponseAttemptCount != 1 ||
+		firstBlockedDetail.Delivery.Delegation.ResponseHandoffStatus != "requested" {
+		t.Fatalf("first blocked delegation = %#v, want first response attempt requested", firstBlockedDetail.Delivery.Delegation)
+	}
+	firstResponseHandoffID := firstBlockedDetail.Delivery.Delegation.ResponseHandoffID
+	if _, _, err := s.AdvanceHandoff(firstResponseHandoffID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: delegatedHandoff.FromAgentID,
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged first delivery reply) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(firstResponseHandoffID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: delegatedHandoff.FromAgentID,
+		Note:          "第一轮 unblock response 已补齐。",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(completed first delivery reply) error = %v", err)
+	}
+
+	if _, _, err := s.AdvanceHandoff(delegatedHandoffID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: delegatedHandoff.ToAgentID,
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(re-ack delegated closeout before retry) error = %v", err)
+	}
+	reblockedState, _, err := s.AdvanceHandoff(delegatedHandoffID, MailboxUpdateInput{
+		Action:        "blocked",
+		ActingAgentID: delegatedHandoff.ToAgentID,
+		Note:          "第二轮 blocker：release owner 还没签字。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(second blocked delegated closeout) error = %v", err)
+	}
+	reblockedDetail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok ||
+		reblockedDetail.Delivery.Delegation.ResponseAttemptCount != 2 ||
+		reblockedDetail.Delivery.Delegation.ResponseHandoffStatus != "requested" ||
+		reblockedDetail.Delivery.Delegation.ResponseHandoffID == firstResponseHandoffID ||
+		!strings.Contains(reblockedDetail.Delivery.Delegation.Summary, "第 2 轮") {
+		t.Fatalf("reblocked delegation = %#v, want second response retry surfaced", reblockedDetail.Delivery.Delegation)
+	}
+	secondResponseHandoff := findHandoffByID(reblockedState.Mailbox, reblockedDetail.Delivery.Delegation.ResponseHandoffID)
+	if secondResponseHandoff == nil || secondResponseHandoff.ParentHandoffID != delegatedHandoffID {
+		t.Fatalf("second response handoff = %#v, want new retry handoff linked to delegated closeout", secondResponseHandoff)
+	}
+	responseHandoffs := 0
+	for _, item := range reblockedState.Mailbox {
+		if item.Kind == handoffKindDeliveryReply && item.ParentHandoffID == delegatedHandoffID {
+			responseHandoffs += 1
+		}
+	}
+	if responseHandoffs != 2 {
+		t.Fatalf("response handoff count = %d, want 2 retry ledgers", responseHandoffs)
+	}
+
+	if _, _, err := s.AdvanceHandoff(secondResponseHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: secondResponseHandoff.ToAgentID,
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged second delivery reply) error = %v", err)
+	}
+	secondResponseState, _, err := s.AdvanceHandoff(secondResponseHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: secondResponseHandoff.ToAgentID,
+		Note:          "第二轮 unblock response 已补齐，请重新接住。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed second delivery reply) error = %v", err)
+	}
+	secondResponseDetail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok ||
+		secondResponseDetail.Delivery.Delegation.Status != "blocked" ||
+		secondResponseDetail.Delivery.Delegation.ResponseAttemptCount != 2 ||
+		secondResponseDetail.Delivery.Delegation.ResponseHandoffStatus != "completed" ||
+		!strings.Contains(secondResponseDetail.Delivery.Delegation.Summary, "第 2 轮") {
+		t.Fatalf("second-response delegation = %#v, want completed second retry response", secondResponseDetail.Delivery.Delegation)
+	}
+	secondResponseInbox := findInboxItemByID(secondResponseState.Inbox, deliveryDelegationInboxItemID("pr-runtime-18"))
+	if secondResponseInbox == nil || !strings.Contains(secondResponseInbox.Summary, "第 2 轮") {
+		t.Fatalf("second-response inbox = %#v, want retry attempt summary", secondResponseState.Inbox)
+	}
+}
+
 func TestDeliveryDelegationSignalOnlyPolicySkipsAutoCreatedHandoff(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "state.json")

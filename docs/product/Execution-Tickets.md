@@ -26,7 +26,7 @@
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy，以及 delegated closeout comment sync；下一批继续前滚到更深自动协作策略与跨 Agent closeout orchestration。
+4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration，以及 retry attempt truth；下一批继续前滚到更深自动协作策略与跨 Agent closeout orchestration。
 5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
@@ -949,6 +949,28 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-response -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-063`
+
+## TKT-75 Delegated Closeout Retry Attempt Truth
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 delegated closeout 的第二轮及后续 retry attempt 收成正式产品真相，让人类能明确看到当前是第几轮 unblock response，而不是只能靠历史 ledger 自己数。
+- 范围:
+  - delegated response retry attempt counting
+  - latest retry handoff deep-link rollover
+  - PR detail `reply xN` visibility
+  - retry-attempt summary sync back to related delivery contract
+- 依赖: `TKT-74`
+- Done When:
+  - delegated closeout 发生第二轮及后续 `blocked -> response -> re-ack -> blocked` 时，系统会自动创建新的 `delivery-reply` handoff，而不是复用旧 response ledger
+  - PR detail 的 `Delivery Delegation` card 会显式显示 `reply xN` 这类 retry attempt truth，并始终 deep-link 到最新一轮 response handoff
+  - 第二轮 response 完成后，主 delegated closeout handoff 仍保持 blocked，直到 target 重新 acknowledge，retry visibility 不会偷偷篡改主 lifecycle
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-retry -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-retry.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-064`
 
 ---
 

@@ -106,10 +106,11 @@ func buildPullRequestDeliveryDelegation(
 	result.TargetAgent = targetAgent
 	if handoff := findPullRequestDeliveryDelegationHandoff(snapshot.Mailbox, pr, targetAgent); handoff != nil {
 		commentSuffix := deliveryDelegationLatestCommentSuffix(*handoff)
-		responseHandoff := findLatestDeliveryDelegationResponseHandoff(snapshot.Mailbox, handoff.ID)
+		responseHandoff, responseAttemptCount := findLatestDeliveryDelegationResponseHandoff(snapshot.Mailbox, handoff.ID)
 		result.HandoffID = handoff.ID
 		result.HandoffHref = mailboxInboxHref(handoff.ID, handoff.RoomID)
 		result.HandoffStatus = handoff.Status
+		result.ResponseAttemptCount = responseAttemptCount
 		if responseHandoff != nil {
 			result.ResponseHandoffID = responseHandoff.ID
 			result.ResponseHandoffHref = mailboxInboxHref(responseHandoff.ID, responseHandoff.RoomID)
@@ -117,7 +118,7 @@ func buildPullRequestDeliveryDelegation(
 		}
 		switch handoff.Status {
 		case "blocked":
-			responseSummary := deliveryDelegationResponseSummary(responseHandoff)
+			responseSummary := deliveryDelegationResponseSummary(responseHandoff, responseAttemptCount)
 			result.Status = "blocked"
 			if strings.EqualFold(strings.TrimSpace(pr.Status), "merged") {
 				result.Summary = fmt.Sprintf(
@@ -304,7 +305,8 @@ func deliveryDelegationLatestCommentSuffix(handoff AgentHandoff) string {
 	return fmt.Sprintf(" 最新 formal comment：%s 说“%s”。", latest.AuthorName, body)
 }
 
-func findLatestDeliveryDelegationResponseHandoff(mailbox []AgentHandoff, parentHandoffID string) *AgentHandoff {
+func findLatestDeliveryDelegationResponseHandoff(mailbox []AgentHandoff, parentHandoffID string) (*AgentHandoff, int) {
+	attemptCount := 0
 	for index := range mailbox {
 		handoff := &mailbox[index]
 		if handoff.Kind != handoffKindDeliveryReply {
@@ -313,24 +315,42 @@ func findLatestDeliveryDelegationResponseHandoff(mailbox []AgentHandoff, parentH
 		if !strings.EqualFold(strings.TrimSpace(handoff.ParentHandoffID), strings.TrimSpace(parentHandoffID)) {
 			continue
 		}
-		return handoff
+		attemptCount += 1
+		if attemptCount == 1 {
+			return handoff, countDeliveryDelegationResponseHandoffs(mailbox[index+1:], parentHandoffID) + attemptCount
+		}
 	}
-	return nil
+	return nil, attemptCount
 }
 
-func deliveryDelegationResponseSummary(handoff *AgentHandoff) string {
-	if handoff == nil {
+func countDeliveryDelegationResponseHandoffs(mailbox []AgentHandoff, parentHandoffID string) int {
+	count := 0
+	for index := range mailbox {
+		handoff := mailbox[index]
+		if handoff.Kind != handoffKindDeliveryReply {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(handoff.ParentHandoffID), strings.TrimSpace(parentHandoffID)) {
+			count += 1
+		}
+	}
+	return count
+}
+
+func deliveryDelegationResponseSummary(handoff *AgentHandoff, attemptCount int) string {
+	if handoff == nil || attemptCount <= 0 {
 		return ""
 	}
+	attemptLabel := fmt.Sprintf("第 %d 轮", attemptCount)
 	switch handoff.Status {
 	case "acknowledged":
-		return fmt.Sprintf(" 系统已向 %s 起 unblock response handoff；%s 当前正在补充 closeout response。", handoff.ToAgent, handoff.ToAgent)
+		return fmt.Sprintf(" 系统已为%s向 %s 起 unblock response handoff；%s 当前正在补充 closeout response。", attemptLabel, handoff.ToAgent, handoff.ToAgent)
 	case "blocked":
-		return fmt.Sprintf(" unblock response handoff 当前也 blocked：%s。", defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction))
+		return fmt.Sprintf(" %s unblock response handoff 当前也 blocked：%s。", attemptLabel, defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction))
 	case "completed":
-		return fmt.Sprintf(" %s 已完成 unblock response；当前等待 %s 重新 acknowledge final delivery closeout。", handoff.ToAgent, handoff.FromAgent)
+		return fmt.Sprintf(" %s 已完成%s unblock response；当前等待 %s 重新 acknowledge final delivery closeout。", handoff.ToAgent, attemptLabel, handoff.FromAgent)
 	default:
-		return fmt.Sprintf(" 系统已向 %s 起 unblock response handoff，等待补 closeout response。", handoff.ToAgent)
+		return fmt.Sprintf(" 系统已为%s向 %s 起 unblock response handoff，等待补 closeout response。", attemptLabel, handoff.ToAgent)
 	}
 }
 

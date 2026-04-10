@@ -32,6 +32,8 @@
   - `TKT-73` 的 Windows Chrome 有头报告，覆盖 delegated closeout source / target formal comment、PR detail delegation summary sync 与 related inbox latest-comment sync
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Response](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md)
   - `TKT-74` 的 Windows Chrome 有头报告，覆盖 delegated closeout blocked 后的 `delivery-reply` auto-create、PR detail `reply requested / reply completed` 状态与 unblock response orchestration
+- [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Retry](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-retry.md)
+  - `TKT-75` 的 Windows Chrome 有头报告，覆盖 delegated closeout 第二轮 response retry、最新 `delivery-reply` handoff 重建，以及 PR detail `reply x2` retry truth
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
   - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
 - [Test Report 2026-04-10 Windows Chrome Control-Plane / Runtime Replay / Governance](./Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md)
@@ -193,6 +195,8 @@
   - 验证 delegated closeout handoff 上的 source / target formal comment 是否同步回 PR detail `Delivery Delegation` summary 与 related inbox latest-comment signal，并保持 handoff lifecycle 不变
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-response -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md`
   - 验证 delegated closeout handoff 在 `blocked` 后是否自动创建 `delivery-reply` response handoff、PR detail 是否显示 `reply requested / reply completed`，以及 response completion 是否保持主 closeout handoff 继续 blocked
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-retry -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-retry.md`
+  - 验证 delegated closeout 第二轮及后续 retry 是否创建新的 `delivery-reply` handoff、PR detail 是否显示 `reply xN`，以及最新 response deep link 是否始终指向当前 attempt
 - `pnpm test:headed-onboarding-studio`
   - 验证 `/setup` 的 template selection、progress refresh、finish closeout，以及 reload / server restart / second browser context recovery
 - `pnpm test:headed-agent-profile-editor`

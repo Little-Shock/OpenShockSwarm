@@ -1023,6 +1023,7 @@ type PullRequestDeliveryDelegation struct {
 	HandoffID             string `json:"handoffId,omitempty"`
 	HandoffHref           string `json:"handoffHref,omitempty"`
 	HandoffStatus         string `json:"handoffStatus,omitempty"`
+	ResponseAttemptCount  int    `json:"responseAttemptCount,omitempty"`
 	ResponseHandoffID     string `json:"responseHandoffId,omitempty"`
 	ResponseHandoffHref   string `json:"responseHandoffHref,omitempty"`
 	ResponseHandoffStatus string `json:"responseHandoffStatus,omitempty"`

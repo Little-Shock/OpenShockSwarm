@@ -851,3 +851,19 @@
   6. 再次打开 `/pull-requests/pr-runtime-18`，确认 delegation card 变为 `reply completed`，summary 写回“等待 target 重新 acknowledge final delivery closeout”，且原 delegated closeout 仍保持 `blocked`。
 - 预期结果: blocked delegated closeout 不能只停在 blocker note；系统必须把 unblock work 物化成独立的 response handoff，并把 response status / link 回写到 PR detail，但 response completion 不能越权篡改原 delegated closeout lifecycle。
 - 业务结论: 2026 年 4 月 11 日 `TKT-74` 已把 `delivery-reply` response handoff、parent linkage 与 PR detail `reply requested / reply completed` contract 接回同一条 delivery orchestration。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md` 已记录 `blocked delegated closeout -> auto-created response handoff -> response completed -> main handoff still blocked` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 response handoff auto-create、PR detail writeback 与 governance done-state 隔离，因此这条 blocked response orchestration 用例当前转为 `Pass`。
+
+## TC-064 Delegated Closeout Retry Attempt Visibility
+
+- 业务目标: 确认 delegated closeout 在第二轮及后续 `blocked -> response -> re-ack -> blocked` 时，系统不会复用旧 response ledger，而是会新建最新 response handoff，并把 retry attempt 数直接写回 PR detail `Delivery Delegation`。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 delegated closeout formal handoff、blocked 后自动 response handoff，以及 response completion 后主 closeout 继续保持 blocked 的 contract。
+- 测试步骤:
+  1. 使用 `formal-handoff` policy，让 final QA closeout 自动生成 delegated closeout handoff。
+  2. 让 target 将 delegated closeout 标记为 `blocked`，再由 source 完成第一轮 response handoff。
+  3. 让 target 重新 acknowledge 主 delegated closeout，然后再次标记为 `blocked`。
+  4. 打开 `/pull-requests/pr-runtime-18`，确认 `Delivery Delegation` card 现在显示 `reply x2`，summary 明确写回“第 2 轮”，且 response deep link 已指向最新一轮 handoff。
+  5. 打开第二轮 response handoff，完成 response。
+  6. 再次打开 `/pull-requests/pr-runtime-18`，确认 delegation card 仍显示 `reply completed` + `reply x2`，主 delegated closeout 则继续保持 blocked，等待 target 再次 acknowledge。
+- 预期结果: delegated closeout retry 不能只留在 Mailbox 历史列表里；产品必须把“这是第几轮 unblock response”显式写回 PR detail，并且最新 deep link 必须始终指向当前生效的 response handoff，不能误指旧 attempt。
+- 业务结论: 2026 年 4 月 11 日 `TKT-75` 已把 delegated closeout retry attempt counting、最新 response deep-link rollover 与 PR detail `reply xN` truth 接回 delivery contract。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-retry.md` 已记录 `first blocked -> first response -> re-ack -> second blocked -> reply x2 -> second response completed` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 与 `pnpm verify:web` 已锁住 second-attempt response handoff recreation、`reply x2` 可见性与主 lifecycle 保持，因此这条 retry visibility 用例当前转为 `Pass`。
