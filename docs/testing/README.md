@@ -48,6 +48,8 @@
   - `TKT-81` 的 Windows Chrome 有头报告，覆盖 child `delivery-reply` card 上的 `parent blocked / parent acknowledged / parent completed` 状态前滚
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Parent Context](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-context.md)
   - `TKT-82` 的 Windows Chrome 有头报告，覆盖 parent delegated closeout 在 resume / complete 后的 Mailbox card、handoff inbox signal 与 Run detail context history preservation
+- [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Child Context](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-child-context.md)
+  - `TKT-83` 的 Windows Chrome 有头报告，覆盖 child `delivery-reply` 在 parent resume / complete 后的 `lastAction` 与 child inbox summary 同步前滚
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
   - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
 - [Test Report 2026-04-10 Windows Chrome Control-Plane / Runtime Replay / Governance](./Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md)
@@ -225,6 +227,8 @@
   - 验证 child `delivery-reply` card 是否会随 parent closeout 前滚为 `parent blocked / parent acknowledged / parent completed`
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-parent-context -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-context.md`
   - 验证 parent delegated closeout 在 reply 驱动 resume / complete 后，parent Mailbox card、handoff inbox signal 与 Run detail 是否继续保留 `reply xN / 第 N 轮 unblock response` 历史
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-child-context -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-child-context.md`
+  - 验证 child `delivery-reply` 在 parent closeout resume / complete 后，child `lastAction` 与 child inbox summary 是否同步前滚到 parent follow-through 真相
 - `pnpm test:headed-onboarding-studio`
   - 验证 `/setup` 的 template selection、progress refresh、finish closeout，以及 reload / server restart / second browser context recovery
 - `pnpm test:headed-agent-profile-editor`

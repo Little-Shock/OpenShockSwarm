@@ -946,7 +946,9 @@ export function LiveMailboxPageContent() {
                       </div>
 
                       <p className="mt-3 text-base leading-7">{handoff.summary}</p>
-                      <p className="mt-3 text-sm leading-6 opacity-80">{handoff.lastAction}</p>
+                      <p data-testid={`mailbox-last-action-${handoff.id}`} className="mt-3 text-sm leading-6 opacity-80">
+                        {handoff.lastAction}
+                      </p>
                       {parentHandoff ? (
                         <div className="mt-4 flex flex-wrap gap-2">
                           <span

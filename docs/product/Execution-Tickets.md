@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.13
+**版本:** 1.14
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -26,7 +26,7 @@
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration、retry attempt truth，以及 parent surface context preservation；下一批继续前滚到更深自动协作策略与跨 Agent closeout orchestration。
+4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration、retry attempt truth、parent surface context preservation，以及 child response context sync；下一批继续前滚到更深自动协作策略与跨 Agent closeout orchestration。
 5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
@@ -1124,6 +1124,29 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-parent-context -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-context.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-071`
+
+## TKT-83 Delivery Reply Child Context Sync
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 child `delivery-reply` 从“chip 能看到 parent 进度”继续升级成“正文和 child inbox signal 也跟着 parent 前滚”，避免 source agent 看到已更新的 parent status，却还读到过期的旧说明。
+- 范围:
+  - child response `lastAction` sync after parent resume/completion
+  - child handoff inbox summary sync after parent follow-through
+  - parent-status chip + child body consistency
+  - Windows Chrome walkthrough for child ledger context replay
+- 依赖: `TKT-81` `TKT-82`
+- Done When:
+  - child `delivery-reply` 在 parent 重新 `acknowledged` 后，`lastAction` 会同步切到 parent acknowledged 的真实上下文
+  - parent 最终 `completed` 后，child card 的正文与 child inbox summary 会继续前滚到 parent completed，而不是停在旧的 unblock response 文案
+  - source agent 在 child ledger 内即可同时读到 parent status 与 parent follow-through 的正文真相
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger|TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest" -count=1'`
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api -count=1'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-child-context -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-child-context.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-072`
 
 ---
 

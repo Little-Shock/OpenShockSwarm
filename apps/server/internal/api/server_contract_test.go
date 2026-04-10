@@ -1707,6 +1707,18 @@ func TestDelegatedCloseoutHandoffLifecycleReflectsInPullRequestDetail(t *testing
 		!strings.Contains(parentResumeInbox.Summary, "已重新 acknowledge final delivery closeout") {
 		t.Fatalf("parent inbox after delegated resume = %#v, want preserved response history summary", parentResumeInbox)
 	}
+	responseResume := findMailboxHandoffByID(mailboxAfterResume, blockedDetail.Delivery.Delegation.ResponseHandoffID)
+	if responseResume == nil ||
+		!strings.Contains(responseResume.LastAction, "已重新 acknowledge 主 closeout") ||
+		!strings.Contains(responseResume.LastAction, "第 1 轮") {
+		t.Fatalf("response handoff after delegated resume = %#v, want child ledger synced to parent acknowledged", responseResume)
+	}
+	responseResumeInbox := findInboxItemByIDContract(inboxAfterResume, responseResume.InboxItemID)
+	if responseResumeInbox == nil ||
+		!strings.Contains(responseResumeInbox.Summary, "已重新 acknowledge 主 closeout") ||
+		!strings.Contains(responseResumeInbox.Summary, "第 1 轮") {
+		t.Fatalf("response inbox after delegated resume = %#v, want child inbox synced to parent acknowledged", responseResumeInbox)
+	}
 
 	runResumeResp, err := http.Get(server.URL + "/v1/runs")
 	if err != nil {
@@ -1796,6 +1808,18 @@ func TestDelegatedCloseoutHandoffLifecycleReflectsInPullRequestDetail(t *testing
 		!strings.Contains(parentCompletedInbox.Summary, "第 1 轮") ||
 		!strings.Contains(parentCompletedInbox.Summary, "也已完成 final delivery closeout") {
 		t.Fatalf("parent inbox after delegated completion = %#v, want preserved completion history summary", parentCompletedInbox)
+	}
+	responseCompleted := findMailboxHandoffByID(mailboxAfterParentComplete, blockedDetail.Delivery.Delegation.ResponseHandoffID)
+	if responseCompleted == nil ||
+		!strings.Contains(responseCompleted.LastAction, "已完成主 closeout") ||
+		!strings.Contains(responseCompleted.LastAction, "第 1 轮") {
+		t.Fatalf("response handoff after delegated completion = %#v, want child ledger synced to parent completion", responseCompleted)
+	}
+	responseCompletedInbox := findInboxItemByIDContract(inboxAfterParentComplete, responseCompleted.InboxItemID)
+	if responseCompletedInbox == nil ||
+		!strings.Contains(responseCompletedInbox.Summary, "已完成主 closeout") ||
+		!strings.Contains(responseCompletedInbox.Summary, "第 1 轮") {
+		t.Fatalf("response inbox after delegated completion = %#v, want child inbox synced to parent completion", responseCompletedInbox)
 	}
 
 	runCompletedResp, err := http.Get(server.URL + "/v1/runs")

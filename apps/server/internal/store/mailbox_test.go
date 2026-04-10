@@ -1275,6 +1275,18 @@ func TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff(t *testing.T
 		!strings.Contains(parentResumeInbox.Summary, "已重新 acknowledge final delivery closeout") {
 		t.Fatalf("parent inbox after resume = %#v, want preserved response history summary", parentResumeInbox)
 	}
+	responseAfterResume := findHandoffByID(reAckState.Mailbox, responseHandoffID)
+	if responseAfterResume == nil ||
+		!strings.Contains(responseAfterResume.LastAction, "已重新 acknowledge 主 closeout") ||
+		!strings.Contains(responseAfterResume.LastAction, "第 1 轮") {
+		t.Fatalf("response handoff after resume = %#v, want child ledger synced to parent acknowledged", responseAfterResume)
+	}
+	responseResumeInbox := findInboxItemByID(reAckState.Inbox, responseAfterResume.InboxItemID)
+	if responseResumeInbox == nil ||
+		!strings.Contains(responseResumeInbox.Summary, "已重新 acknowledge 主 closeout") ||
+		!strings.Contains(responseResumeInbox.Summary, "第 1 轮") {
+		t.Fatalf("response inbox after resume = %#v, want child inbox synced to parent acknowledged", responseResumeInbox)
+	}
 	resumedRun := findRunByID(reAckState, delegatedHandoff.RunID)
 	if resumedRun == nil ||
 		!strings.Contains(resumedRun.NextAction, "第 1 轮") ||
@@ -1308,6 +1320,18 @@ func TestDeliveryDelegationResponseProgressSyncsBackToParentHandoff(t *testing.T
 		!strings.Contains(parentCompletedInbox.Summary, "第 1 轮") ||
 		!strings.Contains(parentCompletedInbox.Summary, "也已完成 final delivery closeout") {
 		t.Fatalf("parent inbox after final closeout = %#v, want preserved completion history summary", parentCompletedInbox)
+	}
+	responseAfterFinalCloseout := findHandoffByID(parentCompleteState.Mailbox, responseHandoffID)
+	if responseAfterFinalCloseout == nil ||
+		!strings.Contains(responseAfterFinalCloseout.LastAction, "已完成主 closeout") ||
+		!strings.Contains(responseAfterFinalCloseout.LastAction, "第 1 轮") {
+		t.Fatalf("response handoff after final closeout = %#v, want child ledger synced to parent completion", responseAfterFinalCloseout)
+	}
+	responseCompletedInbox := findInboxItemByID(parentCompleteState.Inbox, responseAfterFinalCloseout.InboxItemID)
+	if responseCompletedInbox == nil ||
+		!strings.Contains(responseCompletedInbox.Summary, "已完成主 closeout") ||
+		!strings.Contains(responseCompletedInbox.Summary, "第 1 轮") {
+		t.Fatalf("response inbox after final closeout = %#v, want child inbox synced to parent completion", responseCompletedInbox)
 	}
 	parentCompletedRun := findRunByID(parentCompleteState, delegatedHandoff.RunID)
 	if parentCompletedRun == nil ||

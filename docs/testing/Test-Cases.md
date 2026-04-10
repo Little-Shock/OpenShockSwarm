@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.11
+**版本:** 1.12
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -978,3 +978,19 @@
   7. 再次检查 parent Mailbox card 与 Run detail，确认它们继续显示 `第 1 轮` 与 `也已完成 final delivery closeout`。
 - 预期结果: child response history 不应只在统一 delivery contract 里可见。parent closeout 自己的执行面也必须带着这段上下文继续前滚和收口，否则 target 在 parent surface 会重新掉回“只看见一条抽象 done/resume 文案”的黑盒状态。
 - 业务结论: 2026 年 4 月 11 日 `TKT-82` 已把 parent delegated closeout 自己的 Mailbox / run context history preservation 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-context.md` 已记录 `parent resume mailbox -> run detail -> parent completed mailbox -> run detail` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web`、`go test ./internal/store ./internal/api -count=1` 与对抗性回归 `go test ./internal/store -run "TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger|TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest" -count=1` 已锁住普通 handoff 不受污染、retry truth 不回退，以及 parent surface history preservation，因此这条 parent-surface context 用例当前转为 `Pass`。
+
+## TC-072 Delivery Reply Child Context Sync
+
+- 业务目标: 确认 child `delivery-reply` 不只会显示 parent-status chip；当 parent delegated closeout 重新被接住或最终完成时，child ledger 自己的正文和 child inbox summary 也会同步前滚到同一份真相。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 delegated closeout formal handoff、blocked 后自动创建并完成的 `delivery-reply` response handoff，以及 child card 的 parent-status chip / parent deep-link。
+- 测试步骤:
+  1. 使用 `formal-handoff` policy，让 final QA closeout 自动生成 delegated closeout handoff。
+  2. 由 target 将 delegated closeout 标记为 `blocked`，并完成 child `delivery-reply`。
+  3. 打开 child `delivery-reply` card，确认它先显示 `parent blocked`。
+  4. 让 parent delegated closeout 重新进入 `acknowledged`，刷新 child card，确认 `lastAction` 切到“已重新 acknowledge 主 closeout”且包含 `第 1 轮`。
+  5. 检查 child 对应 inbox item，确认 summary 也切到同样的 parent acknowledged 文案。
+  6. 完成 parent delegated closeout，再次刷新 child card 与 child inbox item，确认两者都前滚到“已完成主 closeout”且仍保留 `第 1 轮`。
+- 预期结果: child `delivery-reply` 不应出现“chip 说 parent 已接住 / 已完成，但正文和 child inbox 还停在旧 response 文案”的真相撕裂。source agent 必须在 child ledger 内看到一致的 parent follow-through 上下文。
+- 业务结论: 2026 年 4 月 11 日 `TKT-83` 已把 child-ledger context sync 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-child-context.md` 已记录 `parent blocked -> parent acknowledged child-context sync -> parent completed child-context sync` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web`、`go test ./internal/store ./internal/api -count=1` 与对抗性回归 `go test ./internal/store -run "TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger|TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest" -count=1` 已锁住 child `lastAction`、child inbox summary、普通 handoff lifecycle 与 retry truth 不被污染，因此这条 child-context follow-through 用例当前转为 `Pass`。

@@ -1591,7 +1591,12 @@ export function StitchInboxView() {
                                   </span>
                                 ) : null}
                               </div>
-                              <p className="mt-4 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
+                              <p
+                                data-testid={`mailbox-last-action-${handoff.id}`}
+                                className="mt-4 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]"
+                              >
+                                {handoff.lastAction}
+                              </p>
                               {handoff.lastNote ? (
                                 <p className="mt-2 border-l-4 border-[var(--shock-ink)] pl-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
                                   latest note: {handoff.lastNote}

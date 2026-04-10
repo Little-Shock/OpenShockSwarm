@@ -201,6 +201,9 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 	if handoff.Kind == handoffKindDeliveryReply {
 		s.syncDeliveryDelegationResponseParentLocked(*handoff, action, note, actingAgent.Name)
 	}
+	if handoff.Kind == handoffKindDeliveryCloseout {
+		s.syncDeliveryDelegationParentProgressIntoLatestResponseLocked(*handoff, action)
+	}
 
 	if err := s.persistLocked(); err != nil {
 		return State{}, AgentHandoff{}, err
@@ -845,6 +848,69 @@ func (s *Store) updateDeliveryDelegationParentInboxProgressLocked(parent AgentHa
 		} else {
 			s.state.Inbox[index].Summary = fmt.Sprintf("最新 unblock response：%s", progressAction)
 		}
+		return
+	}
+}
+
+func (s *Store) syncDeliveryDelegationParentProgressIntoLatestResponseLocked(parent AgentHandoff, action string) {
+	if parent.Kind != handoffKindDeliveryCloseout {
+		return
+	}
+	if action != "acknowledged" && action != "completed" {
+		return
+	}
+
+	response, attemptCount := findLatestDeliveryDelegationResponseHandoff(s.state.Mailbox, parent.ID)
+	if response == nil || attemptCount <= 0 {
+		return
+	}
+
+	progressAction := deliveryDelegationParentResponseChildAction(parent, attemptCount)
+	if progressAction == "" {
+		return
+	}
+
+	response.LastAction = progressAction
+	response.UpdatedAt = parent.UpdatedAt
+	s.updateDeliveryDelegationResponseChildInboxProgressLocked(*response, progressAction)
+}
+
+func deliveryDelegationParentResponseChildAction(parent AgentHandoff, attemptCount int) string {
+	attemptLabel := fmt.Sprintf("第 %d 轮", max(1, attemptCount))
+	switch parent.Status {
+	case "acknowledged":
+		return fmt.Sprintf(
+			"%s 已重新 acknowledge 主 closeout；这条%s unblock response 现在可以直接回放 parent acknowledged。",
+			parent.ToAgent,
+			attemptLabel,
+		)
+	case "completed":
+		return fmt.Sprintf(
+			"%s 已完成主 closeout；这条%s unblock response 已随 parent closeout 一起收口。",
+			parent.ToAgent,
+			attemptLabel,
+		)
+	default:
+		return ""
+	}
+}
+
+func (s *Store) updateDeliveryDelegationResponseChildInboxProgressLocked(response AgentHandoff, progressAction string) {
+	for index := range s.state.Inbox {
+		if s.state.Inbox[index].ID != response.InboxItemID {
+			continue
+		}
+
+		s.state.Inbox[index].Time = "刚刚"
+		s.state.Inbox[index].Action = "打开 Mailbox"
+		s.state.Inbox[index].Href = mailboxInboxHref(response.ID, response.RoomID)
+		s.state.Inbox[index].HandoffID = response.ID
+		if response.Status == "blocked" {
+			s.state.Inbox[index].Kind = "blocked"
+		} else {
+			s.state.Inbox[index].Kind = "status"
+		}
+		s.state.Inbox[index].Summary = progressAction
 		return
 	}
 }
