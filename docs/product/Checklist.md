@@ -242,8 +242,9 @@
   - [x] issue 创建类操作具备基本 401/403 权限防护
   - [x] issue / room / run / inbox / repo / runtime 的关键写入口已按 live session permission 进入 allow / disable split
   - [x] destructive action approval、secret / credential scope、越界写保护现在都以统一 guard truth 出现在 room / inbox / run，并且人类决策会回写 run lifecycle
+  - [x] workspace / agent / run 现在都可声明 restricted sandbox profile、network / command / tool allowlist，并已有 2026-04-11 Windows Chrome override/retry 证据
 - 当前 GAP:
-  - [ ] 沙盒能力目前仍主要继承本地环境
+  - [ ] 更重的 OS/container isolation 仍主要继承本地环境；当前 restricted profile 主要负责 policy gate，不等于彻底脱离本机执行边界
 - 对应 Test Cases: `TC-011` `TC-024` `TC-027`
 
 ### CHK-13 身份、成员、角色与仓库授权
@@ -295,6 +296,7 @@
   - [x] `pnpm test:headed-setup` 已能输出 headed Chromium 截图、trace、日志和 markdown 报告
   - [x] `pnpm check:live-truth-hygiene` 已进入 `verify:web`，会拦 direct mock-data import、placeholder 文案和 tracked live-truth residue
   - [x] 2026-04-10 Windows Chrome 有头链路已补齐 control-plane `/v1`、runtime replay、routing SLA / aggregation 与 dirty projection fail-closed 证据
+  - [x] 2026-04-11 Windows Chrome 有头链路已补齐 restricted sandbox `approval_required -> same-target override/retry -> reload persistence` 证据
 - 当前 GAP:
   - [ ] 历史型 rate 指标仍有一部分只到 `partial`，后续还要补 durable event rollup / time-series truth
   - [ ] 更细粒度的 release-ready / delivery-ready 指标与 workspace-level 观察面仍留后续

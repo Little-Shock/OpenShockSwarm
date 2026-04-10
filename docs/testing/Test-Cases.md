@@ -372,7 +372,7 @@
   1. 触发 destructive git 或越界写入动作。
   2. 检查系统是否拦截并生成 approval item。
 - 预期结果: 高风险动作不会直接执行，系统产生显式审批记录。
-- 业务结论: 2026 年 4 月 8 日 `TKT-30` 已新增 `pnpm test:headed-destructive-guard -- --report docs/testing/Test-Report-2026-04-08-destructive-guard.md`。当前 destructive git 与跨 scope 写入都会先进入显式 guard truth，`/inbox` 能看到 `Action / Sandbox / Secrets / Target` 边界，`/rooms/:roomId` 与 `/runs/:runId` 也会复用同一 guard 状态；并且 non-happy `defer` 路径会把 destructive run 保持在 `blocked + approval_required`，不会静默继续执行。因此这条安全 gate 当前转为 `Pass`。
+- 业务结论: 2026 年 4 月 8 日 `TKT-30` 已新增 `pnpm test:headed-destructive-guard -- --report docs/testing/Test-Report-2026-04-08-destructive-guard.md`。当前 destructive git 与跨 scope 写入都会先进入显式 guard truth，`/inbox` 能看到 `Action / Sandbox / Secrets / Target` 边界，`/rooms/:roomId` 与 `/runs/:runId` 也会复用同一 guard 状态；并且 non-happy `defer` 路径会把 destructive run 保持在 `blocked + approval_required`，不会静默继续执行。2026 年 4 月 11 日 `TKT-46` 又用 `pnpm test:headed-restricted-sandbox-policy` 补了 Windows Chrome 有头证据，把 `restricted profile -> allowlist check -> approval_required -> same-target override/retry -> reload persistence` 收成同一条 run-level policy loop，因此这条安全 gate 继续保持 `Pass`。
 
 ## TC-028 app.slock.ai Shell / Sidebar / Search Entry
 

@@ -2,6 +2,8 @@
 
 - [Test Report 2026-04-11 Windows Chrome Identity Template Recovery Journey](./Test-Report-2026-04-11-windows-chrome-identity-template-recovery-journey.md)
   - `TKT-44` 的 Windows Chrome 有头报告，覆盖 `/settings` identity template chain 与 `/access` invite / verify / reset / blocked recovery 同链路回放
+- [Test Report 2026-04-11 Windows Chrome Restricted Sandbox Policy](./Test-Report-2026-04-11-windows-chrome-restricted-sandbox-policy.md)
+  - `TKT-46` 的 Windows Chrome 有头报告，覆盖 `/runs/:id` restricted profile、allowlist、approval_required 与 same-target override/retry
 - [Test Report 2026-04-11 Windows Chrome PR Conversation / Usage Observability](./Test-Report-2026-04-11-windows-chrome-pr-conversation-usage-observability.md)
   - `TKT-39` `TKT-41` 的 Windows Chrome 有头报告，覆盖 `webhook review/comment/thread -> Inbox -> Room PR tab -> PR Detail -> run/room/workspace usage`
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
@@ -113,6 +115,8 @@
   - 验证 browser push / email policy、subscriber、receipt、retry
 - `pnpm test:headed-identity-template-recovery-journey`
   - 验证 `/settings` identity template chain 与 `/access` invite / verify / reset / blocked recovery 是否属于同一条 delivery journey
+- `pnpm test:headed-restricted-sandbox-policy`
+  - 验证 `/runs/:id` restricted profile、allowlist、approval_required、same-target override/retry 与 reload persistence
 - `pnpm test:headed-memory-governance`
   - 验证 memory center 的 injection preview、promotion queue、governed ledger
 - `pnpm test:headed-memory-viewer-correction-forget`

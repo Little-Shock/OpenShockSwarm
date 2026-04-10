@@ -50,6 +50,15 @@ function timestamp() {
   return new Date().toISOString();
 }
 
+function reportDateLabel() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -254,6 +263,8 @@ try {
   const webPort = await freePort();
   const serverPort = await freePort();
   const serverURL = `http://127.0.0.1:${serverPort}`;
+  const reportDate = reportDateLabel();
+  const reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-restricted-sandbox-policy -- --report ${path.relative(projectRoot, reportPath)}`;
   const serverChild = startServer(serverPort);
   await waitForHealth(serverURL);
   const webURL = await startWeb(webPort, serverURL);
@@ -327,9 +338,9 @@ try {
   results.push("- reload 后，run policy 与 latest decision 会继续从 persisted state 读回，不会退回默认 trusted / idle。");
 
   const report = [
-    "# Test Report 2026-04-09 Restricted Sandbox Policy",
+    `# Test Report ${reportDate} Restricted Sandbox Policy`,
     "",
-    `- Command: \`pnpm test:headed-restricted-sandbox-policy -- --report ${path.relative(projectRoot, reportPath)}\``,
+    `- Command: \`${reportCommand}\``,
     `- Generated At: ${timestamp()}`,
     "",
     "## Result",

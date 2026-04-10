@@ -545,7 +545,7 @@
 
 ## TKT-46 Restricted Local Sandbox / Network / Tool Policy
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 在 trusted sandbox 之上继续补 network / tool / command 白名单和 profile 化策略。
 - 范围:
