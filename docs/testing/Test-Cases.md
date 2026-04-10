@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.8
+**版本:** 1.9
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -702,3 +702,17 @@
   4. 检查下一条 governed suggestion 是否前滚到 `Reviewer -> QA`；若当前 topology 缺少合法 QA target，状态必须显式为 `blocked`，而不是随机挑现有 Agent。
 - 预期结果: governed route 会围当前 room truth 稳定建议下一棒 handoff；已存在 handoff 时不会重复创建；缺目标 Agent 时显式 `blocked` 并要求人工选择或补 topology truth。
 - 业务结论: 2026 年 4 月 11 日 `TKT-64` 已新增 `workspace.governance.routingPolicy.suggestedHandoff`，并把 `/mailbox` 与 Inbox compose 接到同一条 governed suggestion truth。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md` 已记录 `ready -> active -> blocked` 的 Windows Chrome 有头 exact replay，同时 `go test ./internal/store ./internal/api` 已锁住 current-room lane resolution、active handoff focus 与 missing QA target fail-closed，因此这条默认角色治理用例当前转为 `Pass`。
+
+## TC-054 Governed Mailbox Auto-Create / Compose Shortcut
+
+- 业务目标: 确认 governed route 不只会推荐 source/target，而是允许人类在 `/mailbox` 与 Inbox compose 上直接一键起单，并保持两处 surface 的 lifecycle 同步。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 `workspace.governance.routingPolicy.suggestedHandoff`、Mailbox create contract，以及同一 room 上的 `/mailbox` / Inbox compose governed route surface。
+- 测试步骤:
+  1. 打开 `/inbox?roomId=room-runtime`，确认 compose governed route 处于 `ready`，并显示 `Create Handoff` 一键入口。
+  2. 再打开 `/mailbox?roomId=room-runtime`，点击 `Create Governed Handoff`，直接创建 formal handoff。
+  3. 返回 Inbox，检查 compose governed route 是否同步转为 `active`，并能聚焦同一条 handoff。
+  4. 完成当前 reviewer handoff，确认 `/mailbox` 与 Inbox compose 两处 governed route 都同步前滚到 `blocked QA` fallback。
+- 预期结果: governed route 在两处 surface 上都能一键起单；起单后不会出现一处 active、一处还停在 ready 的分裂状态；完成后也会围同一条 topology truth 前滚到下一 lane。
+- 业务结论: 2026 年 4 月 11 日 `TKT-65` 已把 governed auto-create shortcut 补进 `/mailbox` 与 Inbox compose。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md` 已记录 `compose ready -> mailbox one-click create -> both active -> blocked replay` 的 Windows Chrome 有头 exact replay，因此这条 friction-reduction 增强当前转为 `Pass`。

@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const evidenceRoot =
   process.env.OPENSHOCK_E2E_ARTIFACTS_DIR?.trim() ||
-  (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt64-governed-route-")));
+  (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt65-governed-route-")));
 const artifactsDir = path.resolve(evidenceRoot);
 const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath
@@ -285,11 +285,22 @@ let page = null;
 try {
   const { webURL, serverURL } = await startServices();
   resolveChromiumExecutable();
-  const requestTitle = `把 governed reviewer lane 正式交出去 ${Date.now()}`;
+  const initialState = await readState(serverURL);
+  const requestTitle = initialState.workspace.governance.routingPolicy.suggestedHandoff.draftTitle;
+  assert(requestTitle, "governed route should expose a draft title before auto-create");
 
   browser = await launchChromiumSession(chromium);
   context = await browser.newContext({ viewport: { width: 1440, height: 1280 } });
   page = await context.newPage();
+
+  await page.goto(`${webURL}/inbox?roomId=room-runtime`, { waitUntil: "load" });
+  await page.getByTestId("mailbox-compose-governed-route").waitFor({ state: "visible" });
+  assert(
+    (await readText(page, "mailbox-compose-governed-route-status")) === "ready",
+    "governed compose route should start in ready state"
+  );
+  await page.getByTestId("mailbox-compose-governed-route-create").waitFor({ state: "visible" });
+  await capture(page, "governed-compose-ready");
 
   await page.goto(`${webURL}/mailbox?roomId=room-runtime`, { waitUntil: "load" });
   await page.getByTestId("mailbox-governed-route").waitFor({ state: "visible" });
@@ -308,9 +319,7 @@ try {
   );
   await capture(page, "governed-route-ready");
 
-  await page.getByTestId("mailbox-governed-route-apply").click();
-  await page.getByTestId("mailbox-create-title").fill(requestTitle);
-  await page.getByTestId("mailbox-create-submit").click();
+  await page.getByTestId("mailbox-governed-route-create").click();
 
   const handoff = await waitForMailbox(serverURL, requestTitle);
   await page.getByTestId(`mailbox-card-${handoff.id}`).waitFor({ state: "visible" });
@@ -320,8 +329,15 @@ try {
   );
   await capture(page, "governed-route-active");
 
-  await page.getByTestId("mailbox-governed-route-focus").click();
-  await page.waitForURL(new RegExp(`/inbox\\?handoffId=${handoff.id}`), { timeout: 30_000 });
+  await page.goto(`${webURL}/inbox?roomId=room-runtime&handoffId=${handoff.id}`, { waitUntil: "load" });
+  await page.getByTestId("mailbox-compose-governed-route").waitFor({ state: "visible" });
+  assert(
+    (await readText(page, "mailbox-compose-governed-route-status")) === "active",
+    "governed compose route should become active after auto-create"
+  );
+  await capture(page, "governed-compose-active");
+
+  await page.getByTestId("mailbox-compose-governed-route-focus").click();
   await page.getByTestId(`mailbox-card-${handoff.id}`).waitFor({ state: "visible" });
   await capture(page, "governed-route-focus-inbox");
 
@@ -340,6 +356,12 @@ try {
   });
   await capture(page, "governed-route-next-blocked");
 
+  await page.goto(`${webURL}/inbox?roomId=room-runtime`, { waitUntil: "load" });
+  await page.waitForFunction(() => {
+    return document.querySelector('[data-testid="mailbox-compose-governed-route-status"]')?.textContent?.trim() === "blocked";
+  });
+  await capture(page, "governed-compose-next-blocked");
+
   const report = [
     "# 2026-04-11 Governed Mailbox Route Report",
     "",
@@ -348,9 +370,9 @@ try {
     "",
     "## Results",
     "",
-    "- `/mailbox` create form 现在会读取 `workspace.governance.routingPolicy.suggestedHandoff`，默认按当前 room owner 所在 lane 给出下一棒 governed route，而不是随机挑一个非 owner agent -> PASS",
-    "- 创建推荐 handoff 后，governed route 会切到 `active` 并提供聚焦当前 handoff 的回链，防止同一路由被重复创建 -> PASS",
-    "- 完成当前 reviewer handoff 后，governed route 会继续前滚到下一条 lane；当 QA lane 缺少可映射 agent 时，状态会显式转成 `blocked`，不会静默回退到随机接收方 -> PASS",
+    "- `/mailbox` 与 Inbox compose 都会读取 `workspace.governance.routingPolicy.suggestedHandoff`，并在 `ready` 状态下显式给出 `Create Governed Handoff` 一键起单入口 -> PASS",
+    "- 通过 governed route 一键起单后，`/mailbox` 与 Inbox compose 会一起切到 `active`，并提供聚焦当前 handoff 的回链，防止同一路由被重复创建 -> PASS",
+    "- 完成当前 reviewer handoff 后，两处 governed surface 会一起前滚到下一条 lane；当 QA lane 缺少可映射 agent 时，状态会显式转成 `blocked`，不会静默回退到随机接收方 -> PASS",
     "",
     "## Screenshots",
     "",

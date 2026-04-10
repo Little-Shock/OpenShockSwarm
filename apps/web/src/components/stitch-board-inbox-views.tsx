@@ -616,6 +616,22 @@ export function StitchInboxView() {
     setComposeSummary(governedSuggestion.draftSummary ?? "按当前治理链继续推进下一棒。");
   }
 
+  function governedComposeInput() {
+    if (governedSuggestion.roomId !== composeRoomId || governedSuggestion.status !== "ready") {
+      return null;
+    }
+    if (!governedSuggestion.fromAgentId || !governedSuggestion.toAgentId || !governedSuggestion.draftTitle?.trim()) {
+      return null;
+    }
+    return {
+      roomId: governedSuggestion.roomId,
+      fromAgentId: governedSuggestion.fromAgentId,
+      toAgentId: governedSuggestion.toAgentId,
+      title: governedSuggestion.draftTitle.trim(),
+      summary: governedSuggestion.draftSummary?.trim() ?? "",
+    };
+  }
+
   useEffect(() => {
     if (loading || error || state.rooms.length === 0 || state.agents.length === 0) {
       return;
@@ -718,20 +734,22 @@ export function StitchInboxView() {
     }
   }
 
-  async function handleCreateHandoff() {
+  async function submitComposeHandoff(
+    input: {
+      roomId: string;
+      fromAgentId: string;
+      toAgentId: string;
+      title: string;
+      summary: string;
+    }
+  ) {
     if (!canManageMailbox || creatingHandoff) {
       return;
     }
     setMailboxError(null);
     setCreatingHandoff(true);
     try {
-      await createHandoff({
-        roomId: composeRoomId,
-        fromAgentId: composeFromAgentId,
-        toAgentId: composeToAgentId,
-        title: composeTitle.trim(),
-        summary: composeSummary.trim(),
-      });
+      await createHandoff(input);
       setComposeTitle("把 fresh head reviewer lane 交给下一位 Agent");
       setComposeSummary("请你接住 current exact-head reviewer lane，并在 mailbox 里显式回写 blocked / complete。");
     } catch (handoffError) {
@@ -742,6 +760,25 @@ export function StitchInboxView() {
     } finally {
       setCreatingHandoff(false);
     }
+  }
+
+  async function handleCreateHandoff() {
+    await submitComposeHandoff({
+      roomId: composeRoomId,
+      fromAgentId: composeFromAgentId,
+      toAgentId: composeToAgentId,
+      title: composeTitle.trim(),
+      summary: composeSummary.trim(),
+    });
+  }
+
+  async function handleCreateGovernedComposeRoute() {
+    const input = governedComposeInput();
+    if (!input) {
+      return;
+    }
+    applyGovernedComposeRoute();
+    await submitComposeHandoff(input);
   }
 
   async function handleMailboxAction(
@@ -1212,14 +1249,25 @@ export function StitchInboxView() {
                             </div>
                             <div className="flex flex-wrap gap-2">
                               {governedSuggestion.status === "ready" ? (
-                                <button
-                                  type="button"
-                                  data-testid="mailbox-compose-governed-route-apply"
-                                  onClick={applyGovernedComposeRoute}
-                                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-2 font-mono text-[10px]"
-                                >
-                                  Apply Route
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    data-testid="mailbox-compose-governed-route-apply"
+                                    onClick={applyGovernedComposeRoute}
+                                    className="border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-2 font-mono text-[10px]"
+                                  >
+                                    Apply Route
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="mailbox-compose-governed-route-create"
+                                    onClick={() => void handleCreateGovernedComposeRoute()}
+                                    disabled={!canManageMailbox || creatingHandoff}
+                                    className="border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] text-white disabled:opacity-60"
+                                  >
+                                    {creatingHandoff ? "Creating..." : "Create Handoff"}
+                                  </button>
+                                </>
                               ) : null}
                               {governedSuggestion.status === "active" && governedSuggestion.href ? (
                                 <Link

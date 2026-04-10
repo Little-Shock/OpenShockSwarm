@@ -12,6 +12,8 @@
   - `TKT-63` 的 Windows Chrome 有头报告，覆盖 `create -> source comment -> blocked -> target comment -> acknowledged -> completed` 的双边 mailbox 通信链路
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Route](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md)
   - `TKT-64` 的 Windows Chrome 有头报告，覆盖 `/mailbox` 与 Inbox compose 的 governed next-handoff 默认路由、active focus 与 missing-target blocked fallback
+- [Test Report 2026-04-11 Windows Chrome Governed Mailbox Auto-Create](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md)
+  - `TKT-65` 的 Windows Chrome 有头报告，覆盖 `/mailbox` 与 Inbox compose 上的 governed 一键起单、双面 active 同步与 blocked replay
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
   - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
 - [Test Report 2026-04-10 Windows Chrome Control-Plane / Runtime Replay / Governance](./Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md)
@@ -153,6 +155,8 @@
   - 验证 mailbox 的 source / target formal comment、blocked note guard、blocked-tone preservation 与 lifecycle closeout 回放
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md`
   - 验证 governed route suggestion 会按当前 room truth 自动填充 source/target、聚焦 active handoff，并在缺少 QA target 时显式 blocked
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md`
+  - 验证 governed route 在 `/mailbox` 与 Inbox compose 的一键起单、双面 active 同步，以及 handoff 完成后的 blocked replay
 - `pnpm test:headed-onboarding-studio`
   - 验证 `/setup` 的 template selection、progress refresh、finish closeout，以及 reload / server restart / second browser context recovery
 - `pnpm test:headed-agent-profile-editor`

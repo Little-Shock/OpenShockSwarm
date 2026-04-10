@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.10
+**版本:** 1.11
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -26,7 +26,7 @@
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作接下来重点从已落地的 SLA / routing / aggregation、formal comment 与 governed next-route default，继续前滚到 delivery delegation、自动创建/自动推进与更深自动协作策略。
+4. 多 Agent 协作接下来重点从已落地的 SLA / routing / aggregation、formal comment、governed next-route default 与 one-click auto-create，继续前滚到 auto-advance、auto-closeout、delivery delegation 与更深自动协作策略。
 5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
@@ -731,6 +731,27 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-053`
+
+## TKT-65 Governed Mailbox Auto-Create / Compose Shortcut
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 governed route 从“会建议”推进到“可一键起单”，减少 `/mailbox` 与 Inbox compose 上的重复选择和二次确认摩擦。
+- 范围:
+  - `/mailbox` governed route create shortcut
+  - Inbox compose governed route create shortcut
+  - active focus back-link after auto-create
+  - same-route blocked replay on both surfaces
+- 依赖: `TKT-64`
+- Done When:
+  - `/mailbox` 与 Inbox compose 在 `ready` governed route 下都提供一键创建 formal handoff 入口
+  - auto-create 后两处 surface 会同步切到 `active` 并提供同一条 focus handoff 回链
+  - handoff 完成后，两处 surface 都会前滚到下一条 lane；如果缺少 target agent，则同样显式 `blocked`
+- 最新证据:
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-054`
 
 ---
 

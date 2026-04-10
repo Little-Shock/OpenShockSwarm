@@ -255,20 +255,39 @@ export function LiveMailboxPageContent() {
     roomId,
   ]);
 
-  async function handleCreate() {
+  function governedCreateInput() {
+    if (governedSuggestion.roomId !== roomId || governedSuggestion.status !== "ready") {
+      return null;
+    }
+    if (!governedSuggestion.fromAgentId || !governedSuggestion.toAgentId || !governedSuggestion.draftTitle?.trim()) {
+      return null;
+    }
+    return {
+      roomId: governedSuggestion.roomId,
+      fromAgentId: governedSuggestion.fromAgentId,
+      toAgentId: governedSuggestion.toAgentId,
+      title: governedSuggestion.draftTitle.trim(),
+      summary: governedSuggestion.draftSummary?.trim() ?? "",
+    };
+  }
+
+  async function submitCreate(
+    input: {
+      roomId: string;
+      fromAgentId: string;
+      toAgentId: string;
+      title: string;
+      summary: string;
+    },
+    busyLabel: string
+  ) {
     if (busyKey || !canMutate) {
       return;
     }
-    setBusyKey("create");
+    setBusyKey(busyLabel);
     setActionError(null);
     try {
-      await createHandoff({
-        roomId,
-        fromAgentId,
-        toAgentId,
-        title: title.trim(),
-        summary: summary.trim(),
-      });
+      await createHandoff(input);
     } catch (mutationError) {
       setActionError({
         id: "create",
@@ -277,6 +296,28 @@ export function LiveMailboxPageContent() {
     } finally {
       setBusyKey("");
     }
+  }
+
+  async function handleCreate() {
+    await submitCreate(
+      {
+        roomId,
+        fromAgentId,
+        toAgentId,
+        title: title.trim(),
+        summary: summary.trim(),
+      },
+      "create"
+    );
+  }
+
+  async function handleCreateGovernedRoute() {
+    const input = governedCreateInput();
+    if (!input) {
+      return;
+    }
+    applyGovernedRouteSuggestion();
+    await submitCreate(input, "governed-create");
   }
 
   async function handleAdvance(handoff: AgentHandoff, action: "acknowledged" | "blocked" | "comment" | "completed") {
@@ -588,14 +629,25 @@ export function LiveMailboxPageContent() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {governedSuggestion.status === "ready" ? (
-                          <button
-                            type="button"
-                            data-testid="mailbox-governed-route-apply"
-                            onClick={applyGovernedRouteSuggestion}
-                            className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                          >
-                            Apply Governed Route
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              data-testid="mailbox-governed-route-apply"
+                              onClick={applyGovernedRouteSuggestion}
+                              className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                            >
+                              Apply Governed Route
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mailbox-governed-route-create"
+                              onClick={() => void handleCreateGovernedRoute()}
+                              disabled={!canMutate || busyKey === "governed-create"}
+                              className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white disabled:opacity-60"
+                            >
+                              {busyKey === "governed-create" ? "Creating..." : "Create Governed Handoff"}
+                            </button>
+                          </>
                         ) : null}
                         {governedSuggestion.status === "active" && governedSuggestion.href ? (
                           <Link

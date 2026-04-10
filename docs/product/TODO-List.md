@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.2
+**版本:** 1.3
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -72,17 +72,19 @@
   - mailbox 现在已补 source / target 双边 formal comment；`request -> source comment -> blocked -> target comment -> ack -> complete` 已有 Windows Chrome 有头链路，且 comment 不会冲掉 blocked tone 或 lifecycle note。
 - `GAP-33 / TKT-64`
   - governed next-handoff 默认治理现在已站住；`/mailbox` 与 Inbox compose 会按当前 room truth 和 team topology 自动建议下一棒，并在缺少 QA target 时显式 blocked，而不是随机回退。
+- `GAP-34 / TKT-65`
+  - governed route 现在已补一键起单；`/mailbox` 与 Inbox compose 都可以直接 `Create Handoff`，并在创建后同步切到 `active`，完成后一起回放到 blocked QA fallback。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”或“能不能给下一棒默认路由”，而是 topology 之后的自动创建/自动推进策略、agent-to-agent orchestration 和更重的跨 Agent delivery delegation。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”或“能不能一键起单”，而是 topology 之后的自动推进/自动收口策略、agent-to-agent orchestration 和更重的跨 Agent delivery delegation。
 
 ---
 
 ## 四、推荐推进顺序
 
 1. 先围 `CHK-16` 的 shell density / high-frequency interaction polish 开票。
-2. 再围 `CHK-21` 的 auto-create / auto-advance、automation policy 与 delivery delegation 开票。
+2. 再围 `CHK-21` 的 auto-advance / auto-closeout、automation policy 与 delivery delegation 开票。
 3. 最后继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
 
 ---
