@@ -369,6 +369,7 @@ func sanitizeWorkspace(workspace store.WorkspaceSnapshot) store.WorkspaceSnapsho
 func sanitizeWorkspaceGovernance(governance store.WorkspaceGovernanceSnapshot) store.WorkspaceGovernanceSnapshot {
 	governance.Label = sanitizeDisplayText(governance.Label, "当前治理链正在整理中。")
 	governance.Summary = sanitizeDisplayText(governance.Summary, "当前多 Agent 治理摘要正在整理中。")
+	governance.ConfiguredTopology = sanitizeWorkspaceGovernanceTopologyConfig(governance.ConfiguredTopology)
 	governance.TeamTopology = sanitizeLivePayload(governance.TeamTopology).([]store.WorkspaceGovernanceLane)
 	governance.HandoffRules = sanitizeLivePayload(governance.HandoffRules).([]store.WorkspaceGovernanceRule)
 	governance.RoutingPolicy = sanitizeWorkspaceRoutingPolicy(governance.RoutingPolicy)
@@ -378,6 +379,20 @@ func sanitizeWorkspaceGovernance(governance store.WorkspaceGovernanceSnapshot) s
 	governance.HumanOverride = sanitizeWorkspaceHumanOverride(governance.HumanOverride)
 	governance.Walkthrough = sanitizeLivePayload(governance.Walkthrough).([]store.WorkspaceGovernanceWalkthrough)
 	return governance
+}
+
+func sanitizeWorkspaceGovernanceTopologyConfig(items []store.WorkspaceGovernanceLaneConfig) []store.WorkspaceGovernanceLaneConfig {
+	sanitized := make([]store.WorkspaceGovernanceLaneConfig, 0, len(items))
+	for _, item := range items {
+		sanitized = append(sanitized, store.WorkspaceGovernanceLaneConfig{
+			ID:           sanitizeDisplayText(item.ID, "lane"),
+			Label:        sanitizeDisplayText(item.Label, "未命名治理角色"),
+			Role:         sanitizeDisplayText(item.Role, "当前职责正在整理中。"),
+			DefaultAgent: sanitizeDisplayText(item.DefaultAgent, ""),
+			Lane:         sanitizeDisplayText(item.Lane, ""),
+		})
+	}
+	return sanitized
 }
 
 func sanitizeWorkspaceGovernanceLane(item store.WorkspaceGovernanceLane) store.WorkspaceGovernanceLane {

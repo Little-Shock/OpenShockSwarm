@@ -28,6 +28,15 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 			"currentStep":"identity-proof",
 			"completedSteps":["workspace-created","repo-bound","agent-profile"],
 			"resumeUrl":"/setup?resume=tkt-37"
+		},
+		"governance":{
+			"teamTopology":[
+				{"id":"lead","label":"Research Lead","role":"方向与验收","defaultAgent":"Lead Operator","lane":"scope / final synthesis"},
+				{"id":"collector","label":"Field Collector","role":"一线证据收集","defaultAgent":"Collector","lane":"intake -> evidence"},
+				{"id":"synthesizer","label":"Synthesizer","role":"归纳与草案","defaultAgent":"Synthesizer","lane":"evidence -> synthesis"},
+				{"id":"reviewer","label":"Peer Reviewer","role":"交叉复核","defaultAgent":"Review Runner","lane":"review / challenge"},
+				{"id":"publisher","label":"Publisher","role":"发布与归档","defaultAgent":"Lead Operator","lane":"publish / closeout"}
+			]
 		}
 	}`)))
 	if err != nil {
@@ -56,6 +65,12 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 	}
 	if payload.State.Workspace.MemoryMode != "governed-first / recovery ready" {
 		t.Fatalf("state workspace = %#v, want updated memory mode", payload.State.Workspace)
+	}
+	if len(payload.Workspace.Governance.ConfiguredTopology) != 5 || payload.Workspace.Governance.ConfiguredTopology[1].Label != "Field Collector" {
+		t.Fatalf("workspace governance configured topology = %#v, want persisted custom topology", payload.Workspace.Governance.ConfiguredTopology)
+	}
+	if len(payload.State.Workspace.Governance.TeamTopology) != 5 || payload.State.Workspace.Governance.TeamTopology[4].ID != "publisher" {
+		t.Fatalf("state governance topology = %#v, want derived publisher lane", payload.State.Workspace.Governance.TeamTopology)
 	}
 	if payload.Workspace.Sandbox.Profile != "restricted" || len(payload.Workspace.Sandbox.AllowedTools) != 2 {
 		t.Fatalf("workspace sandbox payload = %#v, want restricted sandbox policy", payload.Workspace.Sandbox)
@@ -94,6 +109,12 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 	}
 	if len(workspace.Onboarding.Materialization.Channels) != 3 || len(workspace.Onboarding.Materialization.Agents) == 0 {
 		t.Fatalf("GET workspace onboarding materialization = %#v, want persisted template package", workspace.Onboarding.Materialization)
+	}
+	if len(workspace.Governance.ConfiguredTopology) != 5 || workspace.Governance.ConfiguredTopology[4].ID != "publisher" {
+		t.Fatalf("GET workspace configured topology = %#v, want persisted publisher lane", workspace.Governance.ConfiguredTopology)
+	}
+	if len(workspace.Governance.TeamTopology) != 5 || workspace.Governance.TeamTopology[1].Label != "Field Collector" {
+		t.Fatalf("GET workspace governance team topology = %#v, want derived custom lane labels", workspace.Governance.TeamTopology)
 	}
 }
 

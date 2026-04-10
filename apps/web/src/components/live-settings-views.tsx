@@ -24,6 +24,7 @@ import type {
   CredentialProfile,
   PhaseZeroState,
   SandboxProfile,
+  WorkspaceGovernanceLaneConfig,
   WorkspaceMember,
 } from "@/lib/phase-zero-types";
 
@@ -115,6 +116,7 @@ const ONBOARDING_STATUS_OPTIONS = [
   { value: "done", label: "已完成" },
 ] as const;
 const START_ROUTE_OPTIONS = ["/chat/all", "/rooms", "/inbox", "/mailbox", "/setup", "/board", "/settings", "/access"] as const;
+type GovernanceLaneDraft = WorkspaceGovernanceLaneConfig;
 
 function inboxKindLabel(kind: ApprovalCenterItem["kind"]) {
   switch (kind) {
@@ -299,6 +301,35 @@ function agentLabel(agentID: string | undefined, agents: AgentStatus[]) {
     return "未绑定";
   }
   return agents.find((agent) => agent.id === agentID)?.name ?? agentID;
+}
+
+function governanceLaneDrafts(workspace: PhaseZeroState["workspace"]): GovernanceLaneDraft[] {
+  const configured = workspace.governance.configuredTopology ?? [];
+  if (configured.length > 0) {
+    return configured.map((lane) => ({
+      id: lane.id,
+      label: lane.label,
+      role: lane.role,
+      defaultAgent: lane.defaultAgent ?? "",
+      lane: lane.lane ?? "",
+    }));
+  }
+
+  return workspace.governance.teamTopology.map((lane) => ({
+    id: lane.id,
+    label: lane.label,
+    role: lane.role,
+    defaultAgent: lane.defaultAgent ?? "",
+    lane: lane.lane ?? "",
+  }));
+}
+
+function nextGovernanceLaneId(lanes: GovernanceLaneDraft[]) {
+  let index = lanes.length + 1;
+  while (lanes.some((lane) => lane.id === `lane-${index}`)) {
+    index += 1;
+  }
+  return `lane-${index}`;
 }
 
 function hasWorkspaceManagePermission(state: PhaseZeroState) {
@@ -760,15 +791,15 @@ function WorkspaceDurableConfigPanel() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">workspace durable truth</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">把 onboarding / repo / install / memory / sandbox 配置收成同一份工作区真值</h2>
+          <h2 className="mt-2 font-display text-3xl font-bold">把 onboarding / repo / install / memory / sandbox / governance 配置收成同一份工作区真值</h2>
         </div>
         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
           {onboardingStatusLabel(workspace.onboarding.status)}
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-        `#126` 这层不再把 onboarding progress、template selection、repo binding、GitHub installation、workspace preference 和 sandbox baseline 分散在多页临时状态里；
-        settings 写回后，setup / access 会读取同一份 durable snapshot。
+        `#126` 这层不再把 onboarding progress、template selection、repo binding、GitHub installation、workspace preference、sandbox baseline 和 team topology
+        分散在多页临时状态里；settings 写回后，setup / access / mailbox / agents 会读取同一份 durable snapshot。
       </p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -950,6 +981,272 @@ function WorkspaceDurableConfigPanel() {
         ) : null}
         {success ? (
           <p data-testid="settings-workspace-success" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 text-sm">
+            {success}
+          </p>
+        ) : null}
+      </form>
+    </Panel>
+  );
+}
+
+function GovernanceTopologyPanel() {
+  const { state, updateWorkspaceConfig } = usePhaseZeroState();
+  const workspace = state.workspace;
+  const canManage = hasWorkspaceManagePermission(state);
+  const [lanes, setLanes] = useState<GovernanceLaneDraft[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dirty) {
+      return;
+    }
+    setLanes(governanceLaneDrafts(workspace));
+  }, [dirty, workspace]);
+
+  function updateLane(index: number, patch: Partial<GovernanceLaneDraft>) {
+    setLanes((current) =>
+      current.map((lane, laneIndex) => (laneIndex === index ? { ...lane, ...patch } : lane))
+    );
+    setDirty(true);
+  }
+
+  function addLane() {
+    setLanes((current) => [
+      ...current,
+      {
+        id: nextGovernanceLaneId(current),
+        label: `New Lane ${current.length + 1}`,
+        role: "新职责",
+        defaultAgent: "",
+        lane: "",
+      },
+    ]);
+    setDirty(true);
+  }
+
+  function removeLane(index: number) {
+    setLanes((current) => current.filter((_, laneIndex) => laneIndex !== index));
+    setDirty(true);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateWorkspaceConfig({
+        plan: workspace.plan,
+        browserPush: workspace.browserPush,
+        memoryMode: workspace.memoryMode,
+        sandbox: workspace.sandbox,
+        onboarding: {
+          status: workspace.onboarding.status,
+          templateId: workspace.onboarding.templateId ?? "",
+          currentStep: workspace.onboarding.currentStep ?? "",
+          completedSteps: workspace.onboarding.completedSteps ?? [],
+          resumeUrl: workspace.onboarding.resumeUrl ?? "",
+        },
+        governance: {
+          teamTopology: lanes.map((lane) => ({
+            id: lane.id.trim(),
+            label: lane.label.trim(),
+            role: lane.role.trim(),
+            defaultAgent: lane.defaultAgent?.trim() ?? "",
+            lane: lane.lane?.trim() ?? "",
+          })),
+        },
+      });
+      setDirty(false);
+      setSuccess("team topology 已写回 workspace truth；reload / restart 后会继续维持同一条治理链。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology update failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleResetTemplate() {
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateWorkspaceConfig({
+        plan: workspace.plan,
+        browserPush: workspace.browserPush,
+        memoryMode: workspace.memoryMode,
+        sandbox: workspace.sandbox,
+        onboarding: {
+          status: workspace.onboarding.status,
+          templateId: workspace.onboarding.templateId ?? "",
+          currentStep: workspace.onboarding.currentStep ?? "",
+          completedSteps: workspace.onboarding.completedSteps ?? [],
+          resumeUrl: workspace.onboarding.resumeUrl ?? "",
+        },
+        governance: {
+          teamTopology: [],
+        },
+      });
+      setDirty(false);
+      setSuccess("当前 team topology 已恢复为模板默认值。");
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology reset failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Panel tone="paper">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">configurable team topology</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">把多 Agent 角色拓扑做成正式可配置、可恢复的 workspace truth</h2>
+        </div>
+        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+          {valueOrPlaceholder(workspace.governance.templateId, "blank-custom")}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
+        `CHK-21` 这层不再只展示只读治理预览。PM / Architect / Developer / Reviewer / QA 或研究团队变体现在可以在 settings 里直接改 lane、角色、default agent 和 handoff path，
+        setup / mailbox / agents 会继续读取同一份 durable topology。
+      </p>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <FactTile label="Template" value={valueOrPlaceholder(workspace.governance.label, "未命名治理链")} />
+        <FactTile label="Configured Lanes" value={String(lanes.length)} testID="settings-governance-topology-count" />
+        <FactTile
+          label="Route Preview"
+          value={lanes.length > 0 ? lanes.map((lane) => lane.label || lane.id).join(" -> ") : "未声明"}
+          testID="settings-governance-route-preview"
+        />
+      </div>
+
+      <form onSubmit={handleSubmit} className="mt-5 space-y-4 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <div className="space-y-3">
+          {lanes.map((lane, index) => (
+            <div
+              key={`${lane.id || "lane"}-${index}`}
+              data-testid={`settings-governance-lane-row-${index}`}
+              className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">lane {index + 1}</p>
+                  <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">保持已知语义时，推荐继续沿用已有 lane id；新增 lane 会自动按当前 order 进入 routing matrix。</p>
+                </div>
+                <button
+                  type="button"
+                  data-testid={`settings-governance-remove-lane-${index}`}
+                  onClick={() => removeLane(index)}
+                  disabled={pending || !canManage || lanes.length <= 2}
+                  className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Remove Lane
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <label className="grid gap-2 text-sm">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">id</span>
+                  <input
+                    data-testid={`settings-governance-lane-id-${index}`}
+                    value={lane.id}
+                    onChange={(event) => updateLane(index, { id: event.target.value })}
+                    className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">label</span>
+                  <input
+                    data-testid={`settings-governance-lane-label-${index}`}
+                    value={lane.label}
+                    onChange={(event) => updateLane(index, { label: event.target.value })}
+                    className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">role</span>
+                  <input
+                    data-testid={`settings-governance-lane-role-${index}`}
+                    value={lane.role}
+                    onChange={(event) => updateLane(index, { role: event.target.value })}
+                    className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">default agent</span>
+                  <input
+                    data-testid={`settings-governance-lane-default-agent-${index}`}
+                    value={lane.defaultAgent ?? ""}
+                    onChange={(event) => updateLane(index, { defaultAgent: event.target.value })}
+                    className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">lane path</span>
+                  <input
+                    data-testid={`settings-governance-lane-path-${index}`}
+                    value={lane.lane ?? ""}
+                    onChange={(event) => updateLane(index, { lane: event.target.value })}
+                    className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+            当前 preview 会被 `/setup`、`/mailbox` 和 `/agents` 同步读取；如果切模板又想回到默认 topology，可以直接 reset。
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              data-testid="settings-governance-add-lane"
+              onClick={addLane}
+              disabled={pending || !canManage}
+              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Add Lane
+            </button>
+            <button
+              type="button"
+              data-testid="settings-governance-reset-template"
+              onClick={() => {
+                void handleResetTemplate();
+              }}
+              disabled={pending || !canManage}
+              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Reset Template
+            </button>
+            <button
+              type="submit"
+              data-testid="settings-governance-save"
+              disabled={pending || !canManage}
+              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {pending ? "写回中..." : "写回 Team Topology"}
+            </button>
+          </div>
+        </div>
+
+        {!canManage ? (
+          <p className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 text-sm">
+            当前账号没有 `workspace.manage` 权限，所以这里只能查看、不能写回。
+          </p>
+        ) : null}
+        {error ? (
+          <p data-testid="settings-governance-error" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm text-white">
+            {error}
+          </p>
+        ) : null}
+        {success ? (
+          <p data-testid="settings-governance-success" className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 text-sm">
             {success}
           </p>
         ) : null}
@@ -1609,6 +1906,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       ) : null}
 
       <WorkspaceDurableConfigPanel />
+      <GovernanceTopologyPanel />
       <WorkspacePlanObservabilityPanel />
       <CredentialProfilesPanel />
       <MemberPreferencePanel />

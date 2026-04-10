@@ -143,6 +143,8 @@
   - 验证 device authorization、email verification、password reset、session recovery 与 external identity binding
 - `pnpm test:headed-config-persistence-recovery`
   - 验证 workspace/member config 在 `/settings -> /access -> /setup` 的同源投影，以及 reload / server restart / second browser context recovery
+- `pnpm test:headed-configurable-team-topology`
+  - 验证 `/settings` team topology editor、`/setup` `/mailbox` `/agents` 的同源治理投影，以及 reload / server restart / second browser context recovery
 - `pnpm test:headed-onboarding-studio`
   - 验证 `/setup` 的 template selection、progress refresh、finish closeout，以及 reload / server restart / second browser context recovery
 - `pnpm test:headed-agent-profile-editor`

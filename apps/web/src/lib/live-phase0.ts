@@ -9,6 +9,7 @@ import type {
   PhaseZeroState,
   SandboxDecision,
   SandboxPolicy,
+  WorkspaceGovernanceLaneConfig,
 } from "@/lib/phase-zero-types";
 import { sanitizePhaseZeroState } from "@/lib/phase-zero-helpers";
 
@@ -104,6 +105,9 @@ type WorkspaceConfigUpdateInput = {
     currentStep: string;
     completedSteps: string[];
     resumeUrl: string;
+  };
+  governance?: {
+    teamTopology?: WorkspaceGovernanceLaneConfig[];
   };
 };
 
@@ -283,6 +287,7 @@ const EMPTY_PHASE_ZERO_STATE: PhaseZeroState = {
       materialization: {},
     },
     governance: {
+      configuredTopology: [],
       teamTopology: [],
       handoffRules: [],
       routingPolicy: {

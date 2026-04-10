@@ -123,6 +123,7 @@ type WorkspaceGovernanceSnapshot struct {
 	TemplateID          string                                `json:"templateId,omitempty"`
 	Label               string                                `json:"label,omitempty"`
 	Summary             string                                `json:"summary,omitempty"`
+	ConfiguredTopology  []WorkspaceGovernanceLaneConfig       `json:"configuredTopology,omitempty"`
 	TeamTopology        []WorkspaceGovernanceLane             `json:"teamTopology,omitempty"`
 	HandoffRules        []WorkspaceGovernanceRule             `json:"handoffRules,omitempty"`
 	RoutingPolicy       WorkspaceGovernanceRoutingPolicy      `json:"routingPolicy"`
@@ -132,6 +133,14 @@ type WorkspaceGovernanceSnapshot struct {
 	HumanOverride       WorkspaceHumanOverride                `json:"humanOverride"`
 	Walkthrough         []WorkspaceGovernanceWalkthrough      `json:"walkthrough,omitempty"`
 	Stats               WorkspaceGovernanceStats              `json:"stats"`
+}
+
+type WorkspaceGovernanceLaneConfig struct {
+	ID           string `json:"id"`
+	Label        string `json:"label"`
+	Role         string `json:"role"`
+	DefaultAgent string `json:"defaultAgent,omitempty"`
+	Lane         string `json:"lane,omitempty"`
 }
 
 type WorkspaceGovernanceLane struct {

@@ -87,28 +87,92 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 	}
 }
 
+func defaultWorkspaceGovernanceTopology(templateID string) []WorkspaceGovernanceLaneConfig {
+	template := governanceTemplateFor(templateID)
+	configured := make([]WorkspaceGovernanceLaneConfig, 0, len(template.Topology))
+	for _, lane := range template.Topology {
+		configured = append(configured, WorkspaceGovernanceLaneConfig{
+			ID:           lane.ID,
+			Label:        lane.Label,
+			Role:         lane.Role,
+			DefaultAgent: lane.DefaultAgent,
+			Lane:         lane.Lane,
+		})
+	}
+	return configured
+}
+
+func configuredGovernanceTemplate(template governanceTemplateDefinition, configured []WorkspaceGovernanceLaneConfig) governanceTemplateDefinition {
+	if len(configured) == 0 {
+		return template
+	}
+
+	effective := template
+	effective.Topology = make([]governanceTemplateLaneDefinition, 0, len(configured))
+	for _, lane := range configured {
+		effective.Topology = append(effective.Topology, governanceTemplateLaneDefinition{
+			ID:           lane.ID,
+			Label:        lane.Label,
+			Role:         lane.Role,
+			DefaultAgent: lane.DefaultAgent,
+			Lane:         lane.Lane,
+		})
+	}
+	return effective
+}
+
+func governanceTopologyCustomized(configured []WorkspaceGovernanceLaneConfig, template []governanceTemplateLaneDefinition) bool {
+	if len(configured) != len(template) {
+		return true
+	}
+	for index := range configured {
+		if configured[index].ID != template[index].ID ||
+			configured[index].Label != template[index].Label ||
+			configured[index].Role != template[index].Role ||
+			configured[index].DefaultAgent != template[index].DefaultAgent ||
+			configured[index].Lane != template[index].Lane {
+			return true
+		}
+	}
+	return false
+}
+
 func hydrateWorkspaceGovernance(workspace *WorkspaceSnapshot, state *State) {
 	template := governanceTemplateFor(workspace.Onboarding.TemplateID)
+	configuredTopology := append([]WorkspaceGovernanceLaneConfig{}, workspace.Governance.ConfiguredTopology...)
+	if len(configuredTopology) == 0 {
+		configuredTopology = defaultWorkspaceGovernanceTopology(template.TemplateID)
+	}
+	customizedTopology := governanceTopologyCustomized(configuredTopology, template.Topology)
+	effectiveTemplate := configuredGovernanceTemplate(template, configuredTopology)
 	focus := resolveGovernanceFocus(*state)
 	stats := buildGovernanceStats(*state)
 	humanOverride := buildHumanOverride(focus)
-	routingPolicy := buildGovernanceRoutingPolicy(template, focus, humanOverride)
-	escalationSLA := buildGovernanceEscalationSLA(template, focus)
-	notificationPolicy := buildGovernanceNotificationPolicy(*workspace, template, focus)
+	routingPolicy := buildGovernanceRoutingPolicy(effectiveTemplate, focus, humanOverride)
+	escalationSLA := buildGovernanceEscalationSLA(effectiveTemplate, focus)
+	notificationPolicy := buildGovernanceNotificationPolicy(*workspace, effectiveTemplate, focus)
 	responseAggregation := buildResponseAggregation(focus, humanOverride)
 	stats.SLABreaches = escalationSLA.BreachedEscalations
 	stats.AggregationSources = len(responseAggregation.Sources)
 
-	summary := template.Summary
+	summary := effectiveTemplate.Summary
+	if customizedTopology {
+		summary = fmt.Sprintf("%s 当前启用了 %d lane 的可配置 team topology；后续 lane、default agent 和 handoff route 会继续围同一份 durable truth 前滚。", template.Label, len(effectiveTemplate.Topology))
+	}
 	if focus.Issue != nil {
-		summary = fmt.Sprintf("%s 当前锚在 %s，并把 issue -> handoff -> review -> test -> final response 摆成同一条治理链。", template.Label, focus.Issue.Key)
+		if customizedTopology {
+			summary = fmt.Sprintf("%s 当前锚在 %s，并沿 %d lane configurable topology 推进 issue -> handoff -> review -> test -> final response。", template.Label, focus.Issue.Key, len(effectiveTemplate.Topology))
+		} else {
+			summary = fmt.Sprintf("%s 当前锚在 %s，并把 issue -> handoff -> review -> test -> final response 摆成同一条治理链。", template.Label, focus.Issue.Key)
+		}
 	}
 
 	workspace.Governance = WorkspaceGovernanceSnapshot{
-		TemplateID:          template.TemplateID,
-		Label:               template.Label,
+		TemplateID:          effectiveTemplate.TemplateID,
+		Label:               effectiveTemplate.Label,
 		Summary:             summary,
-		TeamTopology:        buildGovernanceTeamTopology(template, focus, humanOverride),
+		ConfiguredTopology:  configuredTopology,
+		TeamTopology:        buildGovernanceTeamTopology(effectiveTemplate, focus, humanOverride),
 		HandoffRules:        buildGovernanceRules(focus, stats, humanOverride),
 		RoutingPolicy:       routingPolicy,
 		EscalationSLA:       escalationSLA,
@@ -247,7 +311,7 @@ func buildGovernanceRoutingPolicy(template governanceTemplateDefinition, focus g
 		} else if index == 0 && focus.Issue != nil {
 			status = "ready"
 			summary = fmt.Sprintf("%s 当前把 %s 正式路由到后续 lanes。", lane.Label, focus.Issue.Key)
-		} else if nextLane.ID == "reviewer" && (focus.PullRequest != nil || len(focus.ReviewInbox) > 0) {
+		} else if isGovernanceReviewLane(nextLane) && (focus.PullRequest != nil || len(focus.ReviewInbox) > 0) {
 			status = "active"
 			summary = fmt.Sprintf("review gate 已显式出现，%s 将接住下一棒。", nextLane.Label)
 		}
@@ -516,30 +580,30 @@ func buildGovernanceTeamTopology(template governanceTemplateDefinition, focus go
 }
 
 func resolveGovernanceLaneState(lane governanceTemplateLaneDefinition, focus governanceFocus, humanOverride WorkspaceHumanOverride) (string, string) {
-	switch lane.ID {
-	case "pm", "lead", "owner":
+	switch {
+	case isGovernanceOwnerLane(lane):
 		if humanOverride.Status == "required" {
 			return "active", humanOverride.Summary
 		}
 		if focus.Issue != nil {
 			return "ready", fmt.Sprintf("%s 当前把 %s 的 acceptance 和 final response 锚在同一条 issue truth 上。", lane.Label, focus.Issue.Key)
 		}
-	case "architect":
+	case isGovernanceArchitectureLane(lane):
 		if focus.Room != nil {
 			return "ready", fmt.Sprintf("%s 已把 room / run / PR 边界锚在 %s。", lane.Label, focus.Room.Title)
 		}
-	case "developer", "collector", "member":
+	case isGovernanceExecutionLane(lane):
 		if focus.Run != nil {
 			return governanceStatusFromRun(focus.Run.Status), fmt.Sprintf("当前 live lane 继续沿 %s 推进：%s。", defaultString(focus.Run.Owner, lane.DefaultAgent), focus.Run.Summary)
 		}
-	case "synthesizer":
+	case isGovernanceSynthesisLane(lane):
 		if focus.LatestHandoff != nil {
 			return governanceStatusFromHandoff(focus.LatestHandoff.Status), fmt.Sprintf("handoff ledger 已把 %s -> %s 摆成 formal chain。", focus.LatestHandoff.FromAgent, focus.LatestHandoff.ToAgent)
 		}
 		if focus.Room != nil {
 			return "ready", fmt.Sprintf("%s 会围 %s 的 room context 聚合结论。", lane.Label, focus.Room.Title)
 		}
-	case "reviewer":
+	case isGovernanceReviewLane(lane):
 		switch {
 		case focus.LatestHandoff != nil:
 			return governanceStatusFromHandoff(focus.LatestHandoff.Status), fmt.Sprintf("当前 reviewer loop 由 handoff %s 驱动：%s。", focus.LatestHandoff.ID, focus.LatestHandoff.LastAction)
@@ -548,7 +612,7 @@ func resolveGovernanceLaneState(lane governanceTemplateLaneDefinition, focus gov
 		case len(focus.ReviewInbox) > 0:
 			return "active", fmt.Sprintf("Inbox 已摆出 reviewer gate：%s。", focus.ReviewInbox[0].Title)
 		}
-	case "qa":
+	case isGovernanceVerificationLane(lane):
 		status, summary := buildVerificationRule(focus)
 		return status, summary
 	}
@@ -557,6 +621,44 @@ func resolveGovernanceLaneState(lane governanceTemplateLaneDefinition, focus gov
 		return "ready", fmt.Sprintf("%s 模板已围 %s 起链，等待当前 lane 前滚。", lane.Label, focus.Issue.Key)
 	}
 	return "pending", fmt.Sprintf("%s 还在等待第一条 live governance evidence。", lane.Label)
+}
+
+func governanceLaneSummaryText(lane governanceTemplateLaneDefinition) string {
+	return strings.ToLower(strings.Join([]string{lane.ID, lane.Label, lane.Role, lane.Lane}, " "))
+}
+
+func governanceLaneMatchesAny(lane governanceTemplateLaneDefinition, keywords ...string) bool {
+	text := governanceLaneSummaryText(lane)
+	for _, keyword := range keywords {
+		if keyword != "" && strings.Contains(text, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isGovernanceOwnerLane(lane governanceTemplateLaneDefinition) bool {
+	return governanceLaneMatchesAny(lane, "pm", "lead", "owner", "目标", "验收", "final response", "scope")
+}
+
+func isGovernanceArchitectureLane(lane governanceTemplateLaneDefinition) bool {
+	return governanceLaneMatchesAny(lane, "architect", "splitter", "拆解", "边界", "shape", "split")
+}
+
+func isGovernanceExecutionLane(lane governanceTemplateLaneDefinition) bool {
+	return governanceLaneMatchesAny(lane, "developer", "collector", "member", "build", "collect", "实现", "执行", "evidence")
+}
+
+func isGovernanceSynthesisLane(lane governanceTemplateLaneDefinition) bool {
+	return governanceLaneMatchesAny(lane, "synthesizer", "synthesis", "归纳", "草案")
+}
+
+func isGovernanceReviewLane(lane governanceTemplateLaneDefinition) bool {
+	return governanceLaneMatchesAny(lane, "review", "reviewer", "复核", "verdict")
+}
+
+func isGovernanceVerificationLane(lane governanceTemplateLaneDefinition) bool {
+	return governanceLaneMatchesAny(lane, "qa", "test", "verify", "release gate", "验证", "测试")
 }
 
 func buildGovernanceRules(focus governanceFocus, stats WorkspaceGovernanceStats, humanOverride WorkspaceHumanOverride) []WorkspaceGovernanceRule {

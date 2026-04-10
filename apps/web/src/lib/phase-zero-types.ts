@@ -129,6 +129,7 @@ export type WorkspaceGovernanceSnapshot = {
   templateId?: string;
   label?: string;
   summary?: string;
+  configuredTopology?: WorkspaceGovernanceLaneConfig[];
   teamTopology: WorkspaceGovernanceLane[];
   handoffRules: WorkspaceGovernanceRule[];
   routingPolicy: WorkspaceGovernanceRoutingPolicy;
@@ -138,6 +139,14 @@ export type WorkspaceGovernanceSnapshot = {
   humanOverride: WorkspaceHumanOverride;
   walkthrough: WorkspaceGovernanceWalkthrough[];
   stats: WorkspaceGovernanceStats;
+};
+
+export type WorkspaceGovernanceLaneConfig = {
+  id: string;
+  label: string;
+  role: string;
+  defaultAgent?: string;
+  lane?: string;
 };
 
 export type WorkspaceGovernanceLane = {

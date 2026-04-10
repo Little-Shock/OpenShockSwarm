@@ -42,6 +42,7 @@
     "test:headed-dm-followed-thread-saved-later": "node ./scripts/headed-dm-followed-thread-saved-later.mjs",
     "test:headed-device-auth-email-recovery": "node ./scripts/headed-device-auth-email-recovery.mjs",
     "test:headed-config-persistence-recovery": "node ./scripts/headed-config-persistence-recovery.mjs",
+    "test:headed-configurable-team-topology": "node ./scripts/headed-configurable-team-topology.mjs",
     "test:headed-onboarding-studio": "node ./scripts/headed-onboarding-studio.mjs",
     "test:headed-first-start-journey": "node ./scripts/headed-onboarding-studio.mjs",
     "test:headed-restricted-sandbox-policy": "node ./scripts/headed-restricted-sandbox-policy.mjs",

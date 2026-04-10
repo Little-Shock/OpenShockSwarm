@@ -661,3 +661,16 @@
   3. 观察 final response aggregation 是否保留参与 Agent、decision path、override trace 与 closeout explanation。
 - 预期结果: 多 Agent 协作具备正式 routing / SLA / aggregation 语义；人类能知道“为什么发给谁、谁超时、最后答案由谁聚合”。
 - 业务结论: 2026 年 4 月 10 日 `TKT-61` 已把 routing matrix、escalation SLA、notification policy、response aggregation audit 与 human override trace 补进同一份 `workspace.governance` 快照；同日 Windows Chrome 有头报告已串起 `/setup -> /mailbox -> /agents`，验证 blocked escalation、notification targets、routing rules 和 aggregated final response 同页前滚。因此这条治理硬化用例现在可按 `Pass` 收口。
+
+## TC-051 Configurable Team Topology / Governance Persistence
+
+- 业务目标: 确认 team topology 不再只是模板只读预览，而是可编辑、可持久化、可被多治理面同源读取的 workspace truth。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21` `CHK-22`
+- 前置条件: 存在 `/settings` workspace config writeback、`workspace.governance` 派生快照，以及 `/setup` `/mailbox` `/agents` governance replay surface。
+- 测试步骤:
+  1. 在 `/settings` 编辑 team topology，修改既有 lane，并新增一条新 lane。
+  2. 打开 `/setup`、`/mailbox`、`/agents`，检查三处 governance surface 是否都读取到同一份新 topology。
+  3. 刷新浏览器并重启 server，再次检查 topology 和 lane label 是否保持一致。
+- 预期结果: team topology 会作为 durable workspace truth 被持久化；治理预览和治理回放都围同一份 lane / role / default-agent 配置前滚，不会退回固定模板。
+- 业务结论: 2026 年 4 月 11 日 `TKT-62` 已新增 `/settings` team topology editor、workspace durable topology persistence，以及 headed `pnpm test:headed-configurable-team-topology`。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-configurable-team-topology.md` 已记录 `/settings -> /setup -> /mailbox -> /agents` 的 exact replay，并验证 reload / server restart / second browser context 后仍保持同一份 Builder/Ops topology，因此这条可配置治理拓扑用例当前转为 `Pass`。

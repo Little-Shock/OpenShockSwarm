@@ -139,12 +139,17 @@ type WorkspaceOnboardingRequest struct {
 	ResumeURL      string   `json:"resumeUrl"`
 }
 
+type WorkspaceGovernanceRequest struct {
+	TeamTopology []store.WorkspaceGovernanceLaneConfig `json:"teamTopology"`
+}
+
 type WorkspaceUpdateRequest struct {
 	Plan        string                      `json:"plan"`
 	BrowserPush string                      `json:"browserPush"`
 	MemoryMode  string                      `json:"memoryMode"`
 	Sandbox     *SandboxPolicyRequest       `json:"sandbox,omitempty"`
 	Onboarding  *WorkspaceOnboardingRequest `json:"onboarding,omitempty"`
+	Governance  *WorkspaceGovernanceRequest `json:"governance,omitempty"`
 }
 
 type RuntimeSelectionResponse struct {
@@ -256,12 +261,19 @@ func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 				AllowedTools:    req.Sandbox.AllowedTools,
 			}
 		}
+		var governance *store.WorkspaceGovernanceConfigInput
+		if req.Governance != nil {
+			governance = &store.WorkspaceGovernanceConfigInput{
+				TeamTopology: append([]store.WorkspaceGovernanceLaneConfig{}, req.Governance.TeamTopology...),
+			}
+		}
 		nextState, workspace, err := s.store.UpdateWorkspaceConfig(store.WorkspaceConfigUpdateInput{
 			Plan:        req.Plan,
 			BrowserPush: req.BrowserPush,
 			MemoryMode:  req.MemoryMode,
 			Sandbox:     sandbox,
 			Onboarding:  onboarding,
+			Governance:  governance,
 			UpdatedBy:   currentAuthActor(s.store.Snapshot().Auth.Session),
 		})
 		if err != nil {
@@ -279,7 +291,8 @@ func writeWorkspaceConfigError(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrWorkspaceOnboardingStatusInvalid),
 		errors.Is(err, store.ErrWorkspaceResumeURLInvalid),
 		errors.Is(err, store.ErrWorkspaceStartRouteInvalid),
-		errors.Is(err, store.ErrWorkspacePreferredAgentNotFound):
+		errors.Is(err, store.ErrWorkspacePreferredAgentNotFound),
+		errors.Is(err, store.ErrWorkspaceGovernanceTopologyInvalid):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

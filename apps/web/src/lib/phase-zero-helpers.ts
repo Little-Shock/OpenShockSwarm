@@ -174,6 +174,7 @@ function sanitizeWorkspaceGovernance(
     templateId: "",
     label: "",
     summary: "",
+    configuredTopology: [],
     teamTopology: [],
     handoffRules: [],
     routingPolicy: {
@@ -228,6 +229,23 @@ function sanitizeWorkspaceGovernance(
     ...safeGovernance,
     label: sanitizeDisplayText(safeGovernance.label ?? "", "当前治理链正在整理中。"),
     summary: sanitizeDisplayText(safeGovernance.summary ?? "", "当前多 Agent 治理摘要正在整理中。"),
+    configuredTopology: (safeGovernance.configuredTopology ?? []).map((lane) => {
+      const safeLane = lane ?? {
+        id: "",
+        label: "",
+        role: "",
+        defaultAgent: "",
+        lane: "",
+      };
+      return {
+        ...safeLane,
+        id: sanitizeDisplayText(safeLane.id, "lane"),
+        label: sanitizeDisplayText(safeLane.label, "未命名治理角色"),
+        role: sanitizeDisplayText(safeLane.role, "当前职责正在整理中。"),
+        defaultAgent: sanitizeDisplayText(safeLane.defaultAgent ?? "", ""),
+        lane: sanitizeDisplayText(safeLane.lane ?? "", ""),
+      };
+    }),
     teamTopology: (safeGovernance.teamTopology ?? []).map((lane) => {
       const safeLane = lane ?? {
         id: "",

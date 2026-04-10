@@ -1,7 +1,7 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.7
-**更新日期:** 2026 年 4 月 10 日
+**版本:** 1.8
+**更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -24,10 +24,10 @@
 ## 二、当前批次优先级
 
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
-2. 当前主线已经吸收 `/v1` contract、no-shadow-truth、runtime replay evidence；下一批改收 PR conversation、usage/quota、identity recovery template 和 restricted sandbox。
+2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作接下来重点从基础 SLA / routing / aggregation，前滚到 configurable team topology、delivery handoff 和 workspace plan / retention。
-5. 记忆 provider、restricted sandbox、workspace plan、delivery gate 进入下一批长期 backlog。
+4. 多 Agent 协作接下来重点从基础 SLA / routing / aggregation，前滚到更深的 agent-to-agent communication、delivery handoff 和默认角色治理。
+5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
 
@@ -665,6 +665,28 @@
   - 至少有一条端到端证据覆盖 `issue -> handoff -> escalation -> aggregated final response`
 - Checklist: `CHK-21`
 - Test Cases: `TC-050`
+
+## TKT-62 Configurable Team Topology / Governance Persistence
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 `PM / Architect / Developer / Reviewer / QA` 这类治理拓扑从只读模板预览收成真正可编辑、可恢复的 workspace truth。
+- 范围:
+  - `/settings` team topology editor
+  - workspace durable topology persistence
+  - `/setup` `/mailbox` `/agents` governance replay 读同一份 topology
+  - reload / restart / second-context recovery evidence
+- 依赖: `TKT-36` `TKT-37` `TKT-61`
+- Done When:
+  - 用户可以在 `/settings` 直接修改 lane / role / default agent / handoff path
+  - `workspace.governance` 会优先围 durable topology 派生，而不是退回固定模板
+  - 至少有一条 Windows Chrome 有头证据覆盖 `settings edit -> setup/mailbox/agents replay -> reload/restart recovery`
+- 最新证据:
+  - `go test ./internal/store -run TestWorkspaceConfig`
+  - `go test ./internal/api -run TestWorkspaceConfigRoutePersistsDurableSnapshot`
+  - `docs/testing/Test-Report-2026-04-11-windows-chrome-configurable-team-topology.md`
+- Checklist: `CHK-21` `CHK-22`
+- Test Cases: `TC-051`
 
 ---
 

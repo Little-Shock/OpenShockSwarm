@@ -15,10 +15,11 @@ const (
 )
 
 var (
-	ErrWorkspaceOnboardingStatusInvalid = errors.New("workspace onboarding status is invalid")
-	ErrWorkspaceResumeURLInvalid        = errors.New("workspace resume url must start with /")
-	ErrWorkspaceStartRouteInvalid       = errors.New("workspace start route must start with /")
-	ErrWorkspacePreferredAgentNotFound  = errors.New("preferred agent not found")
+	ErrWorkspaceOnboardingStatusInvalid   = errors.New("workspace onboarding status is invalid")
+	ErrWorkspaceResumeURLInvalid          = errors.New("workspace resume url must start with /")
+	ErrWorkspaceStartRouteInvalid         = errors.New("workspace start route must start with /")
+	ErrWorkspacePreferredAgentNotFound    = errors.New("preferred agent not found")
+	ErrWorkspaceGovernanceTopologyInvalid = errors.New("workspace governance topology is invalid")
 )
 
 type WorkspaceConfigUpdateInput struct {
@@ -27,7 +28,12 @@ type WorkspaceConfigUpdateInput struct {
 	MemoryMode  string
 	Sandbox     *SandboxPolicy
 	Onboarding  *WorkspaceOnboardingSnapshot
+	Governance  *WorkspaceGovernanceConfigInput
 	UpdatedBy   string
+}
+
+type WorkspaceGovernanceConfigInput struct {
+	TeamTopology []WorkspaceGovernanceLaneConfig
 }
 
 type WorkspaceMemberPreferencesInput struct {
@@ -223,12 +229,51 @@ func normalizeCompletedSteps(values []string, fallback []string) []string {
 	return normalized
 }
 
+func normalizeWorkspaceGovernanceTopology(values []WorkspaceGovernanceLaneConfig) ([]WorkspaceGovernanceLaneConfig, error) {
+	if len(values) < 2 {
+		return nil, fmt.Errorf("%w: at least 2 lanes are required", ErrWorkspaceGovernanceTopologyInvalid)
+	}
+
+	seen := map[string]bool{}
+	normalized := make([]WorkspaceGovernanceLaneConfig, 0, len(values))
+	for index, item := range values {
+		label := strings.TrimSpace(item.Label)
+		role := strings.TrimSpace(item.Role)
+		if label == "" {
+			return nil, fmt.Errorf("%w: lane %d label is required", ErrWorkspaceGovernanceTopologyInvalid, index+1)
+		}
+		if role == "" {
+			return nil, fmt.Errorf("%w: lane %d role is required", ErrWorkspaceGovernanceTopologyInvalid, index+1)
+		}
+
+		laneID := slugify(defaultString(strings.TrimSpace(item.ID), label))
+		if laneID == "" {
+			laneID = fmt.Sprintf("lane-%d", index+1)
+		}
+		if seen[laneID] {
+			return nil, fmt.Errorf("%w: duplicate lane id %q", ErrWorkspaceGovernanceTopologyInvalid, laneID)
+		}
+		seen[laneID] = true
+
+		normalized = append(normalized, WorkspaceGovernanceLaneConfig{
+			ID:           laneID,
+			Label:        label,
+			Role:         role,
+			DefaultAgent: strings.TrimSpace(item.DefaultAgent),
+			Lane:         strings.TrimSpace(item.Lane),
+		})
+	}
+
+	return normalized, nil
+}
+
 func syncWorkspaceSnapshotDefaults(workspace *WorkspaceSnapshot) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	defaultBinding := defaultWorkspaceRepoBinding(*workspace, now)
 	defaultInstall := defaultWorkspaceGitHubInstallation(*workspace, now)
 	defaultOnboarding := defaultWorkspaceOnboarding(now)
 	defaultSandbox := defaultSandboxPolicy(now)
+	defaultGovernanceTopology := defaultWorkspaceGovernanceTopology(defaultString(workspace.Onboarding.TemplateID, defaultOnboarding.TemplateID))
 
 	if strings.TrimSpace(workspace.Repo) == "" {
 		workspace.Repo = defaultBinding.Repo
@@ -321,6 +366,13 @@ func syncWorkspaceSnapshotDefaults(workspace *WorkspaceSnapshot) {
 	if strings.TrimSpace(workspace.Onboarding.UpdatedAt) == "" {
 		workspace.Onboarding.UpdatedAt = defaultOnboarding.UpdatedAt
 	}
+	if len(workspace.Governance.ConfiguredTopology) == 0 {
+		workspace.Governance.ConfiguredTopology = defaultGovernanceTopology
+	} else if normalized, err := normalizeWorkspaceGovernanceTopology(workspace.Governance.ConfiguredTopology); err == nil {
+		workspace.Governance.ConfiguredTopology = normalized
+	} else {
+		workspace.Governance.ConfiguredTopology = defaultGovernanceTopology
+	}
 	if strings.TrimSpace(workspace.Sandbox.Profile) == "" {
 		workspace.Sandbox = defaultSandbox
 	} else {
@@ -376,6 +428,7 @@ func (s *Store) UpdateWorkspaceConfig(input WorkspaceConfigUpdateInput) (State, 
 	defer s.mu.Unlock()
 
 	workspace := s.state.Workspace
+	previousTemplateID := canonicalWorkspaceOnboardingTemplateID(workspace.Onboarding.TemplateID)
 	if text := strings.TrimSpace(input.Plan); text != "" {
 		workspace.Plan = text
 	}
@@ -407,6 +460,20 @@ func (s *Store) UpdateWorkspaceConfig(input WorkspaceConfigUpdateInput) (State, 
 		workspace.Onboarding.ResumeURL = defaultString(resumeURL, workspace.Onboarding.ResumeURL)
 		workspace.Onboarding.CompletedSteps = normalizeCompletedSteps(input.Onboarding.CompletedSteps, workspace.Onboarding.CompletedSteps)
 		workspace.Onboarding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	currentTemplateID := canonicalWorkspaceOnboardingTemplateID(workspace.Onboarding.TemplateID)
+	if input.Governance != nil && input.Governance.TeamTopology != nil {
+		if len(input.Governance.TeamTopology) == 0 {
+			workspace.Governance.ConfiguredTopology = defaultWorkspaceGovernanceTopology(currentTemplateID)
+		} else {
+			normalized, err := normalizeWorkspaceGovernanceTopology(input.Governance.TeamTopology)
+			if err != nil {
+				return State{}, WorkspaceSnapshot{}, err
+			}
+			workspace.Governance.ConfiguredTopology = normalized
+		}
+	} else if previousTemplateID != currentTemplateID {
+		workspace.Governance.ConfiguredTopology = defaultWorkspaceGovernanceTopology(currentTemplateID)
 	}
 
 	s.state.Workspace = workspace
