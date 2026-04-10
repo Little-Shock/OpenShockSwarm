@@ -1,7 +1,7 @@
 # OpenShock Product Checklist
 
-**版本:** 1.6
-**更新日期:** 2026 年 4 月 9 日
+**版本:** 1.7
+**更新日期:** 2026 年 4 月 10 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -41,15 +41,13 @@
   - 多 runtime 调度与 failover
   - 执行隔离与权限控制
 - 主要 GAP:
-  - `app.slock.ai` 式真实 quick search / search result、DM、saved/later、profile surface 仍未收平
-  - Room workbench tabs 和 Board 轻量 planning card 仍未收完
-  - Agent / Machine profile、prompt/avatar、memory binding、本地 CLI/model 偏好还没产品化
-  - 场景化 onboarding、开发团队/研究团队模板、user/workspace config 持久化仍未建立
-  - Agent Mailbox、多 Agent handoff、角色治理与 response aggregation 仍未收口
-  - GitHub App installation-complete 后的 live webhook / repo 持续同步
-  - 设备授权 / 完整邮箱验证 / 更完整成员权限链路
-  - destructive action approval、secrets 分层、越界写保护
-  - 更重的长期记忆整理与外部 provider 编排
+  - `app.slock.ai` 式 profile-grade 入口、壳层密度和主视觉细节仍可继续收平
+  - PR conversation / review thread backfill 还没形成完整产品真相
+  - token / quota / usage / retention 仍缺更稳定的产品面和时间维度汇总
+  - onboarding 的 identity chain 还没和模板 bootstrap 完全并成一条首次启动旅程
+  - PM / Architect / Splitter / Developer / Reviewer / QA 等角色拓扑还没做成正式可配置 team topology
+  - restricted sandbox、network / tool allowlist、delivery-ready / handoff contract 仍留后续批次
+  - 更重的长期记忆整理与外部 provider 编排仍未完成
 
 ---
 
@@ -98,10 +96,11 @@
   - [x] `Run` 作为执行真相在 detail 页面可见
   - [x] SSE 已能返回初始 `snapshot`
   - [x] `/v1/state` 与 `/v1/state/stream` 现在会对 visible truth 做 fail-closed hygiene；placeholder / E2E residue / 内部路径不会再直接漏进 issue / room / run / inbox / memory surface
+  - [x] 公开 control-plane 已补齐版本化 `/v1/control-plane/commands`、`/v1/control-plane/events`、`/v1/control-plane/debug/commands/:id`、`/v1/control-plane/debug/rejections` contract，并覆盖稳定 error family、idempotency 与 browser readback
 - 当前 GAP:
   - [ ] Issue/Room/Run/PR/Inbox 的跨对象一致性仍需更多回归锁定
-  - [ ] 实时事件目前只站住 Phase 0 基线，缺少更完整的事件 contract
-- 对应 Test Cases: `TC-009` `TC-011` `TC-012` `TC-042`
+  - [ ] 更重的 durable event rollup / 历史时间线产品面仍留后续
+- 对应 Test Cases: `TC-009` `TC-011` `TC-012` `TC-042` `TC-047` `TC-048`
 
 ### CHK-04 工作流 A: 工作区初始化
 
@@ -150,7 +149,7 @@
 - 当前 GAP:
   - [x] Topic 已补齐独立 `/topics/:topicId` route、guidance edit surface 与 resume deep link，不再只困在 room workbench tab 内
   - [ ] token-quota 与更细粒度执行可观测性尚未完成
-- 对应 Test Cases: `TC-006` `TC-007` `TC-018` `TC-031` `TC-043` `TC-045`
+- 对应 Test Cases: `TC-006` `TC-007` `TC-018` `TC-031` `TC-043` `TC-046`
 
 ### CHK-07 工作流 D: PR 与 Review 闭环
 
@@ -277,9 +276,10 @@
   - [x] server 现在会按 active lease 压力给出显式 runtime scheduler 决策，并把 next-lane truth 带进 `/v1/state` 与 `/v1/runtime/registry`
   - [x] `/setup` 与 `/agents` 现在会直接消费 runtime scheduler / lease / failover truth，不再停在旧的 placeholder 注释窗口
   - [x] offline selected runtime 现在会显式 failover 到可调度的 least-loaded runtime，并把 failover reason 回写到 run / session truth
+  - [x] daemon -> server publish 已收成 `/v1/runtime/publish` + `/v1/runtime/publish/replay` contract；cursor dedupe、closeout reason、failure anchor 与 run detail replay panel 已站住
 - 当前 GAP:
-  - [ ] lease/conflict guard 与更细粒度 scheduler policy 仍需继续加强
-- 对应 Test Cases: `TC-003` `TC-004` `TC-020`
+  - [ ] lease/conflict guard 与更细粒度 scheduler policy / readiness hook 仍需继续加强
+- 对应 Test Cases: `TC-003` `TC-004` `TC-020` `TC-049`
 
 ### CHK-15 成功指标、验收门与观测
 
@@ -294,9 +294,11 @@
   - [x] `ops:smoke` 已会比对 pairing URL、runtime registry、server runtime bridge 与 daemon runtime 的 URL 真值
   - [x] `pnpm test:headed-setup` 已能输出 headed Chromium 截图、trace、日志和 markdown 报告
   - [x] `pnpm check:live-truth-hygiene` 已进入 `verify:web`，会拦 direct mock-data import、placeholder 文案和 tracked live-truth residue
+  - [x] 2026-04-10 Windows Chrome 有头链路已补齐 control-plane `/v1`、runtime replay、routing SLA / aggregation 与 dirty projection fail-closed 证据
 - 当前 GAP:
   - [ ] 历史型 rate 指标仍有一部分只到 `partial`，后续还要补 durable event rollup / time-series truth
-- 对应 Test Cases: `TC-011` `TC-021` `TC-026` `TC-042`
+  - [ ] 更细粒度的 release-ready / delivery-ready 指标与 workspace-level 观察面仍留后续
+- 对应 Test Cases: `TC-011` `TC-021` `TC-026` `TC-042` `TC-047` `TC-048` `TC-049`
 
 ### CHK-16 app.slock.ai 壳层对齐与导航秩序
 
@@ -392,11 +394,11 @@
   - [x] issue -> room -> run、Inbox、stop/resume/follow-thread、人类纠偏基线已站住
   - [x] Skill / Policy / memory governance 已有基础产品面
   - [x] Agent Mailbox 已补成正式通信面，handoff request / ack / blocked / complete lifecycle 可在 Room / Inbox / Mailbox 同步追踪
+  - [x] workspace governance 现已显式暴露 routing policy、escalation SLA、notification policy、response aggregation audit 与 human override trace，并已有 Windows Chrome 有头证据
 - 当前 GAP:
   - [ ] PM / Architect / Splitter / Developer / Reviewer / QA 等角色拓扑还未成为可配置 team topology
-  - [ ] 更完整的多 Agent handoff routing / escalation SLA / notification policy 还未收口
-  - [ ] 多 Agent response aggregation 和 human override 还未形成正式治理面
-- 对应 Test Cases: `TC-039` `TC-041`
+  - [ ] 更深的 agent-to-agent communication、workspace-level plan / retention / delivery handoff contract 仍留后续
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -407,22 +409,20 @@
   - [x] server 已有文件状态存储
   - [x] auth session persistence 已成立
   - [x] memory artifact 已有 version / governance / external edit sync contract
-- [x] workspace / member preference、GitHub identity 与既有 agent profile edit 现在可回到统一 durable store / database schema
-- [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
-- [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
+  - [x] workspace / member preference、GitHub identity 与既有 agent profile edit 现在可回到统一 durable store / database schema
+  - [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
+  - [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
 - 对应 Test Cases: `TC-040`
 
 ---
 
 ## 四、近期收口顺序
 
-1. 先收 `CHK-16` 剩余的 quick search / result surface，把当前统一壳层真正打磨到高频可用。
-2. 再收 `CHK-17`，把 DM / followed thread / profile / room workbench tabs 接成统一前台工作面。
-3. 并行启动 `CHK-19` 和 `CHK-22`，把 Agent / Machine 配置面与持久化真相先补出来。
-4. 然后处理 `CHK-20`，把 onboarding、团队模板和首次启动路径产品化。
-5. 再推进 `CHK-21`，把 Agent Mailbox、多 Agent handoff 和治理链收口。
-6. 最后处理 `CHK-18`，把 Board 的 planning card 和回跳关系轻量化。
-7. 并行保留 `CHK-07/CHK-12/CHK-13/CHK-14/CHK-15` 的 GitHub live callback、设备授权、destructive guard、scheduler hardening 与持续观测。
+1. 先收 `CHK-07` `CHK-08` 的 PR conversation / review thread backfill，避免交付真相仍停在粗粒度 webhook。
+2. 再收 `CHK-06` `CHK-15` 的 usage / token / quota / retention 汇总面。
+3. 然后补 `CHK-11` `CHK-13` `CHK-20` 的 invite / verify / reset / recovery template 链。
+4. 接着推进 `CHK-12` `CHK-15` 的 restricted sandbox / network / tool policy。
+5. 最后收 `CHK-21` `CHK-22` 的 configurable team topology、workspace plan / retention 和 delivery-ready / handoff contract。
 
 ---
 
@@ -445,6 +445,15 @@
 - `CHK-14` `CHK-15` -> `TKT-31`
 - `CHK-19` -> `TKT-25` `TKT-32` `TKT-33`
 - `CHK-20` -> `TKT-29` `TKT-34`
-- `CHK-21` -> `TKT-35` `TKT-36`
+- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61`
 - `CHK-22` -> `TKT-37`
-- `CHK-03` `CHK-15` -> `TKT-38`
+- `CHK-07` `CHK-08` -> `TKT-39`
+- `CHK-06` -> `TKT-40` `TKT-52`
+- `CHK-10` `CHK-22` -> `TKT-42` `TKT-43`
+- `CHK-11` `CHK-13` `CHK-20` -> `TKT-44`
+- `CHK-12` `CHK-13` -> `TKT-45`
+- `CHK-12` `CHK-15` -> `TKT-46`
+- `CHK-15` `CHK-22` -> `TKT-48`
+- `CHK-15` `CHK-21` -> `TKT-49`
+- `CHK-03` `CHK-15` -> `TKT-38` `TKT-58` `TKT-59`
+- `CHK-14` `CHK-15` -> `TKT-31` `TKT-60`

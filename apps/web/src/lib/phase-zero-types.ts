@@ -131,6 +131,9 @@ export type WorkspaceGovernanceSnapshot = {
   summary?: string;
   teamTopology: WorkspaceGovernanceLane[];
   handoffRules: WorkspaceGovernanceRule[];
+  routingPolicy: WorkspaceGovernanceRoutingPolicy;
+  escalationSla: WorkspaceGovernanceEscalationSLA;
+  notificationPolicy: WorkspaceGovernanceNotificationPolicy;
   responseAggregation: WorkspaceResponseAggregation;
   humanOverride: WorkspaceHumanOverride;
   walkthrough: WorkspaceGovernanceWalkthrough[];
@@ -155,11 +158,59 @@ export type WorkspaceGovernanceRule = {
   href?: string;
 };
 
+export type WorkspaceGovernanceRoutingPolicy = {
+  status: string;
+  summary: string;
+  defaultRoute?: string;
+  rules?: WorkspaceGovernanceRouteRule[];
+};
+
+export type WorkspaceGovernanceRouteRule = {
+  id: string;
+  trigger: string;
+  fromLane: string;
+  toLane: string;
+  policy: string;
+  summary: string;
+  status: string;
+};
+
+export type WorkspaceGovernanceEscalationSLA = {
+  status: string;
+  summary: string;
+  timeoutMinutes: number;
+  retryBudget: number;
+  activeEscalations: number;
+  breachedEscalations: number;
+  nextEscalation?: string;
+};
+
+export type WorkspaceGovernanceNotificationPolicy = {
+  status: string;
+  summary: string;
+  browserPush?: string;
+  targets?: string[];
+  escalationChannel?: string;
+};
+
+export type WorkspaceResponseAggregationAuditEntry = {
+  id: string;
+  label: string;
+  status: string;
+  actor?: string;
+  summary: string;
+  occurredAt?: string;
+};
+
 export type WorkspaceResponseAggregation = {
   status: string;
   summary: string;
   sources?: string[];
   finalResponse?: string;
+  aggregator?: string;
+  decisionPath?: string[];
+  overrideTrace?: string[];
+  auditTrail?: WorkspaceResponseAggregationAuditEntry[];
 };
 
 export type WorkspaceHumanOverride = {
@@ -182,6 +233,40 @@ export type WorkspaceGovernanceStats = {
   blockedEscalations: number;
   reviewGates: number;
   humanOverrideGates: number;
+  slaBreaches: number;
+  aggregationSources: number;
+};
+
+export type RuntimePublishRecord = {
+  id: string;
+  runtimeId: string;
+  runId: string;
+  sessionId?: string;
+  roomId?: string;
+  sequence: number;
+  cursor: number;
+  phase: string;
+  status: string;
+  summary: string;
+  idempotencyKey?: string;
+  failureAnchor?: string;
+  closeoutReason?: string;
+  evidenceLines?: string[];
+  occurredAt: string;
+};
+
+export type RuntimeReplayEvidencePacket = {
+  runId: string;
+  sessionId?: string;
+  roomId?: string;
+  runtimeId: string;
+  lastCursor: number;
+  status: string;
+  summary: string;
+  failureAnchor?: string;
+  closeoutReason?: string;
+  replayAnchor?: string;
+  events: RuntimePublishRecord[];
 };
 
 export type WorkspaceMemberPreferences = {

@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
-**版本:** 1.4
-**更新日期:** 2026 年 4 月 9 日
+**版本:** 1.5
+**更新日期:** 2026 年 4 月 10 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -596,7 +596,7 @@
 - 预期结果: `/inbox` 在手机上可以被打开、查看并完成轻量 triage；更重的策略编辑继续回 `/settings`，而不是把桌面工作台整块复制到 mobile。
 - 业务结论: 2026 年 4 月 9 日 `TKT-47` 新增 `pnpm test:headed-mobile-notification-triage` 与对应 `docs/testing/Test-Report-2026-04-09-mobile-notification-triage.md`。当前 headed Chromium mobile replay 已验证 `/inbox` 在 390px 视口下无横向溢出、mobile triage 摘要初始值为 `3 / 3 / 1 / 1`，首张 signal card 高度压到 640px 以下，并把 guard / backlinks / recent ledger 收成按需展开，因此这条 mobile light-notification 路径当前可按 `Pass` 收口。
 
-## TC-045 Topic Route / Edit Lifecycle / Resume Deep Link
+## TC-046 Topic Route / Edit Lifecycle / Resume Deep Link
 
 - 业务目标: 确认 Topic 不再只作为 room workbench 的子 tab 存在，而是可独立直达、可写回 guidance、可直接恢复 continuity 的一等 route。
 - 当前执行状态: Pass
@@ -609,3 +609,55 @@
   4. 从 Topic route 回跳到 room topic workbench，确认 route drill-in 与 room-first collaboration 没有断链。
 - 预期结果: Topic 成为可独立直达的一等对象；人类可在同一路由完成 guidance edit、reload persistence 与 resume，不需要再绕回 room tab 才能继续。
 - 业务结论: 2026 年 4 月 9 日 `TKT-52` 新增 `pnpm test:headed-topic-route-resume-lifecycle` 与对应 `docs/testing/Test-Report-2026-04-09-topic-route-resume-lifecycle.md`。当前 headed Chromium exact replay 已验证 `run detail -> /topics/topic-runtime` deep link、topic guidance 写回、topic route 上的 stop/reload/resume continuity，以及回跳 `/rooms/room-runtime?tab=topic` 的 backlink，因此这条 Topic route / edit lifecycle / resume deep-link 路径当前可按 `Pass` 收口。
+
+## TC-047 Control-Plane `/v1` Command / Event / Debug Read Model
+
+- 业务目标: 确认公开 control-plane 不再把 command、timeline 和 debug 语义混在同一个入口里，而是形成稳定的 `/v1` contract。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-03` `CHK-15`
+- 前置条件: 存在版本化 `/v1` 资源、command 写入口、event read-model 与 debug/rejection read-model。
+- 测试步骤:
+  1. 通过 `/v1` 创建或更新一条 control-plane 资源，并记录 request / idempotency key。
+  2. 分别读取 event timeline、debug history、rejection reason / replay anchor。
+  3. 对同一请求重试，确认 write contract、event cursor 与 error family 保持稳定。
+- 预期结果: 外部 consumer 能在不依赖前台壳层私有逻辑的前提下写 command、读 event、读 debug history，并得到稳定的 HTTP / error family / replay 语义。
+- 业务结论: 2026 年 4 月 10 日 `TKT-58` 已新增 `/v1/control-plane/commands`、`/v1/control-plane/events`、`/v1/control-plane/debug/commands/:id`、`/v1/control-plane/debug/rejections` 与对应 go contract tests；同日 Windows Chrome 有头 `docs/testing/Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md` 还补了 `write -> replay -> rejection/debug readback -> issue browser readback` 证据。因此这条 `/v1` command / event / debug read-model 现在可按 `Pass` 收口。
+
+## TC-048 Shell Adapter / No-Shadow-Truth Boundary
+
+- 业务目标: 确认 shell adapter 只消费稳定真相做投影，而不会悄悄长成第二套正式状态源。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-03` `CHK-15`
+- 前置条件: shell 存在 adapter / projection 层，且至少一条 surface 同时依赖 server truth 与 adapter fan-in。
+- 测试步骤:
+  1. 对同一组对象分别读取底层 `/v1` truth 与 shell adapter projection。
+  2. 注入缺字段、脏字段或 stale projection，观察 shell 是否 fail-closed 回退到产品级 fallback。
+  3. 验证 shell 不会因为本地 projection 或 mock residue 继续显示与 `/v1` 冲突的状态。
+- 预期结果: adapter 只能投影稳定真相；一旦上游 truth 不完整，shell 选择 fail-closed，而不是留下 shadow truth 或局部假状态。
+- 业务结论: 2026 年 4 月 10 日 `TKT-59` 已把 live truth hygiene 扩到 governance / control-plane / runtime publish 新字段，并把 `check-live-truth-hygiene` 固定进 `pnpm verify:web`；同日 Windows Chrome 有头报告还在 `/agents` 上对 dirty `/v1/state` 做了对抗性注入，确认 adapter 会 fail-closed 回退到产品级 fallback，而不是继续展示 placeholder / mock / path residue。因此这条 no-shadow-truth boundary 现在可按 `Pass` 收口。
+
+## TC-049 Runtime Publish Cursor / Replay Evidence Packet
+
+- 业务目标: 确认 daemon -> server 的 publish、replay、closeout 具备 cursor、去重和 evidence packet 语义，而不是只靠一次性状态写回。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-14` `CHK-15`
+- 前置条件: 存在 runtime publish cursor、run closeout/read-model 与 replay/debug evidence surface。
+- 测试步骤:
+  1. 启动一条 run，并让 daemon 连续 publish 多条事件。
+  2. 重复发送部分事件，验证 server 不会重复落账或破坏 sequence。
+  3. 读取 closeout / replay evidence packet，检查 failure anchor、closeout reason 与 publish cursor 是否一致。
+- 预期结果: runtime publish 在重复、恢复、closeout 三种路径下都保持可重放、可解释、可复核；release gate 可以围 evidence packet 做回归验证。
+- 业务结论: 2026 年 4 月 10 日 `TKT-60` 已新增 `/v1/runtime/publish`、`/v1/runtime/publish/replay` 与对应 go contract tests；同日 Windows Chrome 有头报告已在 `run_memory_01` 上回放 `publish -> retry -> replay/closeout readback -> run detail browser evidence`，确认 cursor dedupe、closeout reason、failure anchor 与 replay packet 一致。因此这条 runtime publish / replay evidence contract 现在可按 `Pass` 收口。
+
+## TC-050 Multi-Agent Routing SLA / Response Aggregation Hardening
+
+- 业务目标: 确认多 Agent 协作不只存在 team topology 和 handoff ledger，还具备正式 routing policy、escalation SLA、notification policy 与 final-response aggregation contract。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 team topology、Agent Mailbox、human override、blocked escalation 与 final response 基线。
+- 测试步骤:
+  1. 以 `开发团队` 或等价多 Agent 模板起一条需要 reviewer / tester 接力的 issue。
+  2. 检查 handoff routing、blocked escalation、notification fanout 与 human override 是否遵守同一条 policy。
+  3. 观察 final response aggregation 是否保留参与 Agent、decision path、override trace 与 closeout explanation。
+- 预期结果: 多 Agent 协作具备正式 routing / SLA / aggregation 语义；人类能知道“为什么发给谁、谁超时、最后答案由谁聚合”。
+- 业务结论: 2026 年 4 月 10 日 `TKT-61` 已把 routing matrix、escalation SLA、notification policy、response aggregation audit 与 human override trace 补进同一份 `workspace.governance` 快照；同日 Windows Chrome 有头报告已串起 `/setup -> /mailbox -> /agents`，验证 blocked escalation、notification targets、routing rules 和 aggregated final response 同页前滚。因此这条治理硬化用例现在可按 `Pass` 收口。

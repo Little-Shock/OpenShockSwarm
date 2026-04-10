@@ -205,6 +205,16 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeRuntimeLease(item)
 		}
 		return items
+	case store.RuntimePublishRecord:
+		return sanitizeRuntimePublishRecord(typed)
+	case []store.RuntimePublishRecord:
+		items := make([]store.RuntimePublishRecord, len(typed))
+		for index, item := range typed {
+			items[index] = sanitizeRuntimePublishRecord(item)
+		}
+		return items
+	case store.RuntimeReplayEvidencePacket:
+		return sanitizeRuntimeReplayEvidencePacket(typed)
 	case store.RuntimeScheduler:
 		return sanitizeRuntimeScheduler(typed)
 	case store.PullRequest:
@@ -324,6 +334,8 @@ func sanitizeLiveState(snapshot store.State) store.State {
 	snapshot.Sessions = sanitizeLivePayload(snapshot.Sessions).([]store.Session)
 	snapshot.RuntimeLeases = sanitizeLivePayload(snapshot.RuntimeLeases).([]store.RuntimeLease)
 	snapshot.RuntimeScheduler = sanitizeLivePayload(snapshot.RuntimeScheduler).(store.RuntimeScheduler)
+	snapshot.ControlPlane = sanitizeControlPlaneState(snapshot.ControlPlane)
+	snapshot.RuntimePublish = sanitizeRuntimePublishState(snapshot.RuntimePublish)
 	snapshot.Guards = sanitizeLivePayload(snapshot.Guards).([]store.DestructiveGuard)
 	snapshot.Auth = sanitizeLivePayload(snapshot.Auth).(store.AuthSnapshot)
 	snapshot.Memory = sanitizeLivePayload(snapshot.Memory).([]store.MemoryArtifact)
@@ -359,6 +371,9 @@ func sanitizeWorkspaceGovernance(governance store.WorkspaceGovernanceSnapshot) s
 	governance.Summary = sanitizeDisplayText(governance.Summary, "当前多 Agent 治理摘要正在整理中。")
 	governance.TeamTopology = sanitizeLivePayload(governance.TeamTopology).([]store.WorkspaceGovernanceLane)
 	governance.HandoffRules = sanitizeLivePayload(governance.HandoffRules).([]store.WorkspaceGovernanceRule)
+	governance.RoutingPolicy = sanitizeWorkspaceRoutingPolicy(governance.RoutingPolicy)
+	governance.EscalationSLA = sanitizeWorkspaceEscalationSLA(governance.EscalationSLA)
+	governance.NotificationPolicy = sanitizeWorkspaceNotificationPolicy(governance.NotificationPolicy)
 	governance.ResponseAggregation = sanitizeWorkspaceResponseAggregation(governance.ResponseAggregation)
 	governance.HumanOverride = sanitizeWorkspaceHumanOverride(governance.HumanOverride)
 	governance.Walkthrough = sanitizeLivePayload(governance.Walkthrough).([]store.WorkspaceGovernanceWalkthrough)
@@ -381,10 +396,46 @@ func sanitizeWorkspaceGovernanceRule(item store.WorkspaceGovernanceRule) store.W
 	return item
 }
 
+func sanitizeWorkspaceRoutingPolicy(item store.WorkspaceGovernanceRoutingPolicy) store.WorkspaceGovernanceRoutingPolicy {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 routing policy 正在整理中。")
+	item.DefaultRoute = sanitizeDisplayText(item.DefaultRoute, "")
+	for index := range item.Rules {
+		item.Rules[index].Trigger = sanitizeDisplayText(item.Rules[index].Trigger, "trigger")
+		item.Rules[index].FromLane = sanitizeDisplayText(item.Rules[index].FromLane, "未命名来源")
+		item.Rules[index].ToLane = sanitizeDisplayText(item.Rules[index].ToLane, "未命名目标")
+		item.Rules[index].Policy = sanitizeDisplayText(item.Rules[index].Policy, "当前路由策略正在整理中。")
+		item.Rules[index].Summary = sanitizeDisplayText(item.Rules[index].Summary, "当前 routing rule 正在整理中。")
+	}
+	return item
+}
+
+func sanitizeWorkspaceEscalationSLA(item store.WorkspaceGovernanceEscalationSLA) store.WorkspaceGovernanceEscalationSLA {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 escalation SLA 正在整理中。")
+	item.NextEscalation = sanitizeDisplayText(item.NextEscalation, "")
+	return item
+}
+
+func sanitizeWorkspaceNotificationPolicy(item store.WorkspaceGovernanceNotificationPolicy) store.WorkspaceGovernanceNotificationPolicy {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 notification policy 正在整理中。")
+	item.BrowserPush = sanitizeDisplayText(item.BrowserPush, "")
+	item.EscalationChannel = sanitizeDisplayText(item.EscalationChannel, "")
+	item.Targets = sanitizeTextLines(item.Targets, "target")
+	return item
+}
+
 func sanitizeWorkspaceResponseAggregation(item store.WorkspaceResponseAggregation) store.WorkspaceResponseAggregation {
 	item.Summary = sanitizeDisplayText(item.Summary, "当前 response aggregation 正在整理中。")
 	item.Sources = sanitizeTextLines(item.Sources, "live source")
 	item.FinalResponse = sanitizeDisplayText(item.FinalResponse, "等待当前治理链收口。")
+	item.Aggregator = sanitizeDisplayText(item.Aggregator, "")
+	item.DecisionPath = sanitizeTextLines(item.DecisionPath, "live step")
+	item.OverrideTrace = sanitizeTextLines(item.OverrideTrace, "override trace")
+	for index := range item.AuditTrail {
+		item.AuditTrail[index].Label = sanitizeDisplayText(item.AuditTrail[index].Label, "未命名聚合审计")
+		item.AuditTrail[index].Actor = sanitizeDisplayText(item.AuditTrail[index].Actor, "")
+		item.AuditTrail[index].Summary = sanitizeDisplayText(item.AuditTrail[index].Summary, "当前 aggregation audit 正在整理中。")
+		item.AuditTrail[index].OccurredAt = sanitizeDisplayText(item.AuditTrail[index].OccurredAt, "")
+	}
 	return item
 }
 
@@ -399,6 +450,52 @@ func sanitizeWorkspaceGovernanceWalkthrough(item store.WorkspaceGovernanceWalkth
 	item.Summary = sanitizeDisplayText(item.Summary, "当前治理步骤正在整理中。")
 	item.Detail = sanitizeDisplayText(item.Detail, "")
 	item.Href = sanitizeDisplayText(item.Href, "")
+	return item
+}
+
+func sanitizeControlPlaneState(state store.ControlPlaneState) store.ControlPlaneState {
+	for index := range state.Commands {
+		state.Commands[index].Summary = sanitizeDisplayText(state.Commands[index].Summary, "当前 control-plane command 正在整理中。")
+		state.Commands[index].AggregateHref = sanitizeDisplayText(state.Commands[index].AggregateHref, "")
+		state.Commands[index].ReplayAnchor = sanitizeDisplayText(state.Commands[index].ReplayAnchor, "")
+		state.Commands[index].ErrorMessage = sanitizeDisplayText(state.Commands[index].ErrorMessage, "")
+		for debugIndex := range state.Commands[index].Debug {
+			state.Commands[index].Debug[debugIndex].Summary = sanitizeDisplayText(state.Commands[index].Debug[debugIndex].Summary, "当前 control-plane debug 正在整理中。")
+		}
+	}
+	for index := range state.Events {
+		state.Events[index].Summary = sanitizeDisplayText(state.Events[index].Summary, "当前 control-plane event 正在整理中。")
+		state.Events[index].ReplayAnchor = sanitizeDisplayText(state.Events[index].ReplayAnchor, "")
+	}
+	for index := range state.Rejections {
+		state.Rejections[index].Summary = sanitizeDisplayText(state.Rejections[index].Summary, "当前 control-plane rejection 正在整理中。")
+		state.Rejections[index].Reason = sanitizeDisplayText(state.Rejections[index].Reason, "当前 control-plane rejection reason 正在整理中。")
+		state.Rejections[index].ReplayAnchor = sanitizeDisplayText(state.Rejections[index].ReplayAnchor, "")
+	}
+	return state
+}
+
+func sanitizeRuntimePublishState(state store.RuntimePublishState) store.RuntimePublishState {
+	for index := range state.Records {
+		state.Records[index] = sanitizeRuntimePublishRecord(state.Records[index])
+	}
+	return state
+}
+
+func sanitizeRuntimePublishRecord(item store.RuntimePublishRecord) store.RuntimePublishRecord {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 runtime publish record 正在整理中。")
+	item.FailureAnchor = sanitizeDisplayText(item.FailureAnchor, "")
+	item.CloseoutReason = sanitizeDisplayText(item.CloseoutReason, "")
+	item.EvidenceLines = sanitizeTextLines(item.EvidenceLines, "evidence")
+	return item
+}
+
+func sanitizeRuntimeReplayEvidencePacket(item store.RuntimeReplayEvidencePacket) store.RuntimeReplayEvidencePacket {
+	item.Summary = sanitizeDisplayText(item.Summary, "当前 runtime replay evidence 正在整理中。")
+	item.FailureAnchor = sanitizeDisplayText(item.FailureAnchor, "")
+	item.CloseoutReason = sanitizeDisplayText(item.CloseoutReason, "")
+	item.ReplayAnchor = sanitizeDisplayText(item.ReplayAnchor, "")
+	item.Events = sanitizeLivePayload(item.Events).([]store.RuntimePublishRecord)
 	return item
 }
 

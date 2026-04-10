@@ -10,6 +10,18 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	result, err := s.createIssueLocked(req)
+	if err != nil {
+		return IssueCreationResult{}, err
+	}
+	if err := s.persistLocked(); err != nil {
+		return IssueCreationResult{}, err
+	}
+	result.State = cloneState(s.state)
+	return result, nil
+}
+
+func (s *Store) createIssueLocked(req CreateIssueInput) (IssueCreationResult, error) {
 	title := defaultString(req.Title, "")
 	if title == "" {
 		return IssueCreationResult{}, fmt.Errorf("title is required")
@@ -179,9 +191,6 @@ func (s *Store) CreateIssue(req CreateIssueInput) (IssueCreationResult, error) {
 		return IssueCreationResult{}, err
 	}
 	s.recordMemoryArtifactWriteLocked(decisionArtifactPath(issueKey), "Decision status queued", "issue-create", owner)
-	if err := s.persistLocked(); err != nil {
-		return IssueCreationResult{}, err
-	}
 
 	return IssueCreationResult{
 		State:        cloneState(s.state),
@@ -434,6 +443,16 @@ func (s *Store) SelectRuntime(machine string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if _, err := s.selectRuntimeLocked(machine); err != nil {
+		return State{}, err
+	}
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
+func (s *Store) selectRuntimeLocked(machine string) (State, error) {
 	s.ensureRuntimeRegistryStateLocked()
 	applyRuntimeDerivedTruth(&s.state, time.Now())
 
@@ -467,9 +486,6 @@ func (s *Store) SelectRuntime(machine string) (State, error) {
 		}
 	}
 
-	if err := s.persistLocked(); err != nil {
-		return State{}, err
-	}
 	return cloneState(s.state), nil
 }
 

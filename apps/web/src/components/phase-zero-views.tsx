@@ -24,6 +24,7 @@ import type {
   Run,
   RunHistoryEntry,
   RunStatus,
+  RuntimeReplayEvidencePacket,
   Session,
   SettingsSection,
   SetupStep,
@@ -413,12 +414,14 @@ export function RunDetailView({
   session,
   history = [],
   guards = [],
+  runtimeReplay,
 }: {
   run: Run;
   statusTestId?: string;
   session?: Session;
   history?: RunHistoryEntry[];
   guards?: DestructiveGuard[];
+  runtimeReplay?: RuntimeReplayEvidencePacket | null;
 }) {
   const resumeSession = session ?? {
     id: `session-${run.id}`,
@@ -613,6 +616,70 @@ export function RunDetailView({
           </div>
         </Panel>
       </div>
+
+      {runtimeReplay ? (
+        <Panel tone={runtimeReplay.failureAnchor ? "pink" : runtimeReplay.status === "done" ? "lime" : "paper"}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Runtime Publish Replay</p>
+              <h3 className="mt-2 font-display text-2xl font-bold">daemon publish / closeout evidence</h3>
+            </div>
+            <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+              cursor {runtimeReplay.lastCursor}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Metric label="Runtime" value={runtimeReplay.runtimeId} />
+            <Metric label="Status" value={runtimeReplay.status} />
+            <Metric label="Events" value={String(runtimeReplay.events.length)} />
+            <Metric label="Replay Anchor" value={runtimeReplay.replayAnchor || "待整理"} />
+          </div>
+          <p className="mt-4 text-sm leading-6">{runtimeReplay.summary}</p>
+          {runtimeReplay.closeoutReason ? (
+            <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
+              closeout: {runtimeReplay.closeoutReason}
+            </p>
+          ) : null}
+          {runtimeReplay.failureAnchor ? (
+            <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
+              failure anchor: {runtimeReplay.failureAnchor}
+            </p>
+          ) : null}
+          <div className="mt-4 space-y-3">
+            {runtimeReplay.events.map((event) => (
+              <div key={event.id} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-display text-lg font-semibold">
+                    publish#{event.cursor} / {event.phase}
+                  </p>
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
+                    seq {event.sequence}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6">{event.summary}</p>
+                {(event.closeoutReason || event.failureAnchor || (event.evidenceLines ?? []).length > 0) ? (
+                  <div className="mt-3 space-y-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                    {event.closeoutReason ? <p>closeout: {event.closeoutReason}</p> : null}
+                    {event.failureAnchor ? <p>failure: {event.failureAnchor}</p> : null}
+                    {(event.evidenceLines ?? []).length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {(event.evidenceLines ?? []).map((line) => (
+                          <span
+                            key={line}
+                            className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+                          >
+                            {line}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel tone="white">

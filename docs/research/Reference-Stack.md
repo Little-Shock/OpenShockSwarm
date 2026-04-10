@@ -88,6 +88,26 @@ OpenShock 后续实现的默认参考顺序固定为：
 - `notes/channels.md`、`notes/operating-rules.md`、`notes/skills.md` 这类结构值得保留
 - 后续 Memory Center 和 Agent 配置页，要支持把这些文件级记忆显式展示出来
 
+### 5. Historical Upstream Branches
+
+适合作为内部知识来源：
+
+- `eng01/pr1-head-regression-fix`
+  - 最值得参考 `/v1`、command/event split、debug/replay/read-model
+- `feat/initial-implementation`
+  - 最值得参考 no-shadow-truth、staged backlog、release-gate/runbook discipline
+- `eng01/batch6-83`
+  - 最值得参考 runtime readiness、publish cursor、evidence packet
+- `feat/tff`
+  - 只参考局部组件拆分，不参考视觉和 repo 结构
+
+对 OpenShock 的要求：
+
+- Go server 的公开 contract 要继续向 versioned `/v1`、cursor replay、rejection explainability 收口
+- shell 只能 fan-in stable truth，不能把 adapter 或局部 mock 长成第二套正式真相
+- runtime replay / closeout / evidence packet 要能被外部 consumer 和 release gate 复核
+- 前端允许借鉴 `tff` 的组件拆法，但视觉仍以 `app.slock.ai + 当前 OpenShock 字体/密度约束` 为准
+
 ## OpenShock Mapping
 
 | OpenShock 层 | 主要参考 | 我们当前应该做什么 |
@@ -96,6 +116,7 @@ OpenShock 后续实现的默认参考顺序固定为：
 | 控制骨架 | Multica | 补强 `issue / inbox / runtime / daemon / session continuity` |
 | 执行隔离 | Lody | 继续坚持 `topic/run/worktree/branch/pr` 闭环 |
 | 记忆与规则 | Local Slock | 文件级记忆、频道规则、团队规则、技能规则 |
+| API / 适配层纪律 | Historical Upstream Branches | 收紧 `/v1`、no-shadow-truth、runtime replay evidence |
 
 ## Mandatory Rule
 
@@ -107,3 +128,4 @@ OpenShock 后续实现的默认参考顺序固定为：
 - daemon / runtime / CLI 接入
 - worktree / session / run
 - 记忆、技能、agent 规则
+- `/v1` contract、shell adapter、runtime replay / evidence packet

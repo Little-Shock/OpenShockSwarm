@@ -32,6 +32,7 @@ import type {
   Room,
   Run,
   RunHistoryPage,
+  RuntimeReplayEvidencePacket,
   Session,
 } from "@/lib/phase-zero-types";
 
@@ -162,6 +163,20 @@ async function readPlannerQueue() {
     throw new Error(message || `request failed: ${response.status}`);
   }
   return sanitizePlannerQueue(Array.isArray(payload) ? payload : []);
+}
+
+async function readRuntimeReplayEvidence(runId: string) {
+  const response = await fetch(`${CONTROL_API_BASE}/v1/runtime/publish/replay?runId=${encodeURIComponent(runId)}`, {
+    cache: "no-store",
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  const payload = (await response.json()) as RuntimeReplayEvidencePacket & { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error || `request failed: ${response.status}`);
+  }
+  return payload;
 }
 
 function readRuntimeRegistry(state: unknown): RuntimeRegistryRecord[] {
@@ -1410,6 +1425,37 @@ export function LiveRunPageContent({
   runId: string;
 }) {
   const { state, loading, error, controlRun, updateRunCredentialBindings } = usePhaseZeroState();
+  const [runtimeReplay, setRuntimeReplay] = useState<RuntimeReplayEvidencePacket | null>(null);
+
+  useEffect(() => {
+    if (loading || error) {
+      return;
+    }
+    let cancelled = false;
+    startTransition(() => {
+      setRuntimeReplay(null);
+    });
+    readRuntimeReplayEvidence(runId)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        startTransition(() => {
+          setRuntimeReplay(payload);
+        });
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        startTransition(() => {
+          setRuntimeReplay(null);
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [error, loading, runId]);
 
   if (loading) {
     return (
@@ -1545,6 +1591,7 @@ export function LiveRunPageContent({
           session={currentSession}
           history={roomHistory}
           guards={state.guards.filter((guard) => guard.runId === currentRun.id)}
+          runtimeReplay={runtimeReplay}
         />
       </div>
     </OpenShockShell>

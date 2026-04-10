@@ -44,6 +44,15 @@ const stateStringKeys = new Set([
   "pullRequest",
   "controlNote",
   "content",
+  "defaultRoute",
+  "fromLane",
+  "toLane",
+  "policy",
+  "errorMessage",
+  "replayAnchor",
+  "failureAnchor",
+  "closeoutReason",
+  "actor",
 ]);
 const stateLeakPatterns = [
   { label: "question-burst residue", test: (value) => /\?{2,}/.test(value) },

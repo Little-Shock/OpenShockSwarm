@@ -57,6 +57,10 @@ function resolveWindowsChromeUserDataDir() {
   return process.env.OPENSHOCK_WINDOWS_CHROME_USER_DATA_DIR?.trim() || "C:\\Users\\30477\\AppData\\Local\\Temp\\OpenShockCDP";
 }
 
+function escapePowerShellSingleQuoted(value) {
+  return String(value).replace(/'/g, "''");
+}
+
 async function waitForCdpReady(url, timeoutMs = 15_000) {
   const started = Date.now();
   let lastError = null;
@@ -80,15 +84,21 @@ async function waitForCdpReady(url, timeoutMs = 15_000) {
 }
 
 function startWindowsChrome(cdpUrl) {
-  const cmdPath = "/mnt/c/Windows/System32/cmd.exe";
-  accessSync(cmdPath, fsConstants.X_OK);
+  const powerShellPath = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+  accessSync(powerShellPath, fsConstants.X_OK);
 
   const port = new URL(cdpUrl).port || "9222";
   const chromePath = resolveWindowsChromeExecutable();
   const userDataDir = resolveWindowsChromeUserDataDir();
-  const command = `start "" "${chromePath}" --remote-debugging-port=${port} --user-data-dir="${userDataDir}" --new-window about:blank`;
+  const command = [
+    "Start-Process",
+    `-FilePath '${escapePowerShellSingleQuoted(chromePath)}'`,
+    `-ArgumentList '--remote-debugging-port=${port}','--user-data-dir=${escapePowerShellSingleQuoted(
+      userDataDir
+    )}','--new-window','about:blank'`,
+  ].join(" ");
 
-  const child = spawn(cmdPath, ["/c", command], {
+  const child = spawn(powerShellPath, ["-NoProfile", "-Command", command], {
     cwd: "/mnt/c/Windows/System32",
     detached: true,
     stdio: "ignore",

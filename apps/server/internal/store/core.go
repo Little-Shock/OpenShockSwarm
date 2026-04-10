@@ -223,6 +223,21 @@ func (s *Store) hydrateMissingDefaults() {
 	if s.state.Credentials == nil {
 		s.state.Credentials = []CredentialProfile{}
 	}
+	if s.state.ControlPlane.Commands == nil {
+		s.state.ControlPlane.Commands = []ControlPlaneCommand{}
+	}
+	if s.state.ControlPlane.Events == nil {
+		s.state.ControlPlane.Events = []ControlPlaneEvent{}
+	}
+	if s.state.ControlPlane.Rejections == nil {
+		s.state.ControlPlane.Rejections = []ControlPlaneRejection{}
+	}
+	if s.state.RuntimePublish.Records == nil {
+		s.state.RuntimePublish.Records = []RuntimePublishRecord{}
+	}
+	if s.state.RuntimePublish.NextSequence <= 0 {
+		s.state.RuntimePublish.NextSequence = 1
+	}
 	if s.state.ChannelMessages == nil {
 		s.state.ChannelMessages = defaults.ChannelMessages
 	}

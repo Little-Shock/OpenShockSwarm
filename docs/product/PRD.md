@@ -251,6 +251,7 @@ Agent 不能只是一个“被分配对象”，而必须同时拥有：
 - `Run` 是执行真相
 - `PR` 是交付真相
 - `Inbox` 是待决策真相
+- shell 只负责 fan-in 和呈现这些真相，不允许长期保留 shell-local shadow truth 作为正式状态源
 
 ### 5. 并发优先，但必须可追责
 
@@ -778,6 +779,10 @@ online -> busy -> offline
 - 先在 Go 服务里实现状态机与编排规则
 - 给未来的 Digital Twin / deliberation 预留抽离空间
 - 尽量继承 Codex / Claude Code 等本地 CLI 既有配置，而不是重复发明一套全新执行器
+- 公开 control-plane 默认走版本化 `/v1` contract
+- command write、event read、debug / replay read-model 要明确分层，而不是混成一个 messages 入口
+- debug history、rejection reason、closeout evidence 视为产品真相的一部分，不视为临时工程脚本
+- shell adapter 只能消费稳定真相做投影；不允许把 adapter 发展成第二套正式后端
 
 ### 3. 借鉴映射
 

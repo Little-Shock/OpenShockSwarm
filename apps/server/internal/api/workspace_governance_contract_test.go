@@ -31,6 +31,15 @@ func TestStateRouteExposesGovernanceSnapshot(t *testing.T) {
 	if state.Workspace.Governance.HumanOverride.Status != "required" {
 		t.Fatalf("human override = %#v, want required override gate", state.Workspace.Governance.HumanOverride)
 	}
+	if state.Workspace.Governance.RoutingPolicy.DefaultRoute == "" || len(state.Workspace.Governance.RoutingPolicy.Rules) == 0 {
+		t.Fatalf("routing policy = %#v, want routing matrix in governance snapshot", state.Workspace.Governance.RoutingPolicy)
+	}
+	if state.Workspace.Governance.EscalationSLA.TimeoutMinutes == 0 || state.Workspace.Governance.NotificationPolicy.BrowserPush == "" {
+		t.Fatalf("sla/notification = %#v / %#v, want governance SLA + notification truth", state.Workspace.Governance.EscalationSLA, state.Workspace.Governance.NotificationPolicy)
+	}
+	if state.Workspace.Governance.Stats.AggregationSources == 0 {
+		t.Fatalf("governance stats = %#v, want aggregation source count", state.Workspace.Governance.Stats)
+	}
 	if len(state.Workspace.Governance.Walkthrough) != 5 {
 		t.Fatalf("walkthrough = %#v, want issue->handoff->review->test->final-response chain", state.Workspace.Governance.Walkthrough)
 	}
@@ -85,6 +94,10 @@ func TestMailboxLifecycleUpdatesGovernanceSnapshot(t *testing.T) {
 	if afterComplete.Workspace.Governance.ResponseAggregation.Status != "ready" ||
 		!strings.Contains(afterComplete.Workspace.Governance.ResponseAggregation.FinalResponse, "最终响应") {
 		t.Fatalf("response aggregation after complete = %#v, want ready closeout note", afterComplete.Workspace.Governance.ResponseAggregation)
+	}
+	if afterComplete.Workspace.Governance.ResponseAggregation.Aggregator == "" ||
+		len(afterComplete.Workspace.Governance.ResponseAggregation.AuditTrail) == 0 {
+		t.Fatalf("response aggregation audit after complete = %#v, want aggregator + audit trail", afterComplete.Workspace.Governance.ResponseAggregation)
 	}
 	finalStep := findGovernanceWalkthroughStep(afterComplete.Workspace.Governance.Walkthrough, "final-response")
 	if finalStep == nil || finalStep.Status != "ready" {

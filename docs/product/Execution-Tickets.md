@@ -1,14 +1,14 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.6
-**更新日期:** 2026 年 4 月 9 日
+**版本:** 1.7
+**更新日期:** 2026 年 4 月 10 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
 
 ## 一、使用方式
 
-- 这份文档承接 **当前未完成功能** 的 canonical ticket backlog，并保留刚完成批次的简短归档。
+- 这份文档承接 **当前票面状态** 的 canonical backlog，并保留最近完成批次的状态和映射。
 - 已完成能力的详细证据继续以 [Checklist](./Checklist.md) 和记实测试报告为准，不在这里重复展开。
 - 每张票必须绑定对应 `Checklist` 和 `Test Case`，否则不能 claim。
 
@@ -23,12 +23,11 @@
 
 ## 二、当前批次优先级
 
-1. 前端继续向 `app.slock.ai` 学结构和密度，但保留 OpenShock 自己的字体、克制度和 room 语义。
-2. 聊天、Room、Inbox 永远先于 Board；Board 只做 planning mirror。
-3. 当前批次先收真实 quick search / DM / thread / workbench / interaction polish，再去补 profile 和 board 细节。
-4. Agent / Machine / Onboarding / Persistence 不能继续躲在 setup 注释或 README 里，必须变成正式产品面。
-5. 多 Agent 协作必须通过 mailbox / handoff / governance ledger 被人类看见，不能只停在“以后会编排”。
-6. GitHub live callback、设备授权、destructive guard、runtime hardening 作为并行后端批次推进。
+1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
+2. 当前主线已经吸收 `/v1` contract、no-shadow-truth、runtime replay evidence；下一批改收 PR conversation、usage/quota、identity recovery template 和 restricted sandbox。
+3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
+4. 多 Agent 协作接下来重点从基础 SLA / routing / aggregation，前滚到 configurable team topology、delivery handoff 和 workspace plan / retention。
+5. 记忆 provider、restricted sandbox、workspace plan、delivery gate 进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
 
@@ -49,11 +48,11 @@
 
 ---
 
-## 三、下一轮待收口票
+## 三、当前票面状态
 
 ## TKT-21 Real Quick Search / Search Result Surface
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P0`
 - 目标: 把当前静态 Quick Search 做成真正可切换 `channel / room / issue / run / agent` 的结果面。
 - 范围:
@@ -70,7 +69,7 @@
 
 ## TKT-22 DM / Followed Thread / Saved Later Surface
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P0`
 - 目标: 补齐 `DM / followed thread / saved later` 这条消息工作流。
 - 范围:
@@ -88,7 +87,7 @@
 
 ## TKT-23 Room Workbench Tabs / Topic Context
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P0`
 - 目标: 把 Room 收成默认工作台，让 `Chat / Topic / Run / PR / Context` 在同一页稳定切换。
 - 范围:
@@ -105,7 +104,7 @@
 
 ## TKT-24 Frontend Interaction Polish Sweep
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P0`
 - 目标: 系统化收前端的人机工学问题，不再靠零散截图驱动微调。
 - 范围:
@@ -124,7 +123,7 @@
 
 ## TKT-25 Agent / Machine / Human Profile + Presence
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 `Agent / Machine / Human` 做成可 drill-in 的 profile surface，而不是散落的 badge。
 - 范围:
@@ -141,7 +140,7 @@
 
 ## TKT-26 Board Light Planning Cleanup
 
-- 状态: `in_review`
+- 状态: `done`
 - 优先级: `P2`
 - 目标: 保留 Board 的次级位置，但把 planning card 和回跳关系做轻。
 - 范围:
@@ -158,7 +157,7 @@
 
 ## TKT-27 DM / Thread / Search Backend Contracts
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 给下一轮消息型前端补最小 server truth，不靠纯本地 mock 撑 DM / followed thread / search。
 - 范围:
@@ -176,7 +175,7 @@
 
 ## TKT-28 GitHub App Installation-Complete Callback / Repo Sync
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 补齐 GitHub App 安装完成后的 live callback、repo 持续同步与前台回流。
 - 范围:
@@ -193,7 +192,7 @@
 
 ## TKT-29 Device Authorization / Email Verification / Reset
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 invite / role / quick login 补成完整身份恢复链。
 - 范围:
@@ -209,7 +208,7 @@
 
 ## TKT-30 Destructive Guard / Secret Boundary
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 destructive action approval、secret boundary 和越界写保护做成产品化 guard。
 - 范围:
@@ -226,7 +225,7 @@
 
 ## TKT-31 Runtime Lease Conflict / Scheduler Hardening
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 在当前 failover 基线上继续补 lease conflict guard、scheduler observability 和恢复策略。
 - 范围:
@@ -238,10 +237,12 @@
   - 多 runtime 不会因为 lease 漂移或 stale state 做出错误调度
   - `/setup` 与 `/agents` 能稳定显示当前决策原因
   - 对应 release / browser verify 能稳定回放
+- Checklist: `CHK-14` `CHK-15`
+- Test Cases: `TC-020` `TC-021`
 
 ## TKT-57 GitHub Public Ingress Callback / Webhook Delivery Verification
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 GitHub installation callback / webhook delivery 从近实机 contract 推到 public ingress 级 exact evidence。
 - 范围:
@@ -255,12 +256,10 @@
   - `/v1/github/webhook` 的 signed delivery 与 bad-signature fail-closed 都有同一 public root 下的 exact artifact
 - Checklist: `CHK-07`
 - Test Cases: `TC-015` `TC-045`
-- Checklist: `CHK-14` `CHK-15`
-- Test Cases: `TC-020` `TC-021`
 
 ## TKT-32 Agent Profile Editor / Prompt Avatar Memory Binding
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 Agent 从只读对象补成真正可编辑的 profile surface。
 - 范围:
@@ -277,7 +276,7 @@
 
 ## TKT-33 Machine Profile / Local CLI Model Capability Binding
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 Runtime / Machine 的本地能力发现与 Agent 偏好绑定做成正式产品面。
 - 范围:
@@ -294,7 +293,7 @@
 
 ## TKT-34 Onboarding Studio / Dev Team + Research Team Templates
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把首次启动和团队模板做成真正可恢复的 onboarding 流。
 - 范围:
@@ -311,7 +310,7 @@
 
 ## TKT-35 Agent Mailbox / Handoff Contract
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 给 Agent-to-Agent 正式协作建立可观测、可追踪的消息与交接合同。
 - 范围:
@@ -328,7 +327,7 @@
 
 ## TKT-36 Multi-Agent Governance / Role Topology / Reviewer-Tester Loop
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把多 Agent 分工、审批和 response aggregation 变成可治理的团队拓扑，而不是口头约定。
 - 范围:
@@ -345,7 +344,7 @@
 
 ## TKT-37 Workspace / User / Agent Config Persistence + Database Truth
 
-- 状态: `in_review`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 workspace / member / agent profile 的配置读写与治理快照从临时前端状态补成 durable store truth。
 - 范围:
@@ -362,7 +361,7 @@
 
 ## TKT-38 Live Truth Hygiene / Placeholder Leak Guard
 
-- 状态: `active`
+- 状态: `done`
 - 优先级: `P0`
 - 目标: 把 live truth 面里的 placeholder、乱码、fixture / test residue 和内部路径泄漏收成 fail-closed contract，不再把脏 seed/fallback 直接送到用户面前。
 - 范围:
@@ -380,7 +379,7 @@
 
 ## TKT-40 Run History / Incremental Fetch / Resume Context
 
-- 状态: `in_review`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 `/runs` 收成可渐进展开的历史面，并让 run detail / room run tab 直接暴露当前可恢复的 session continuity。
 - 范围:
@@ -398,7 +397,7 @@
 
 ## TKT-47 Mobile Web Light Observation / Notification Triage
 
-- 状态: `review`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 mobile web 上的 `/inbox` 收成“能打开、能查看、能处理轻量通知”的 exact triage 面，而不是把桌面 workbench 整套硬塞进手机。
 - 范围:
@@ -417,7 +416,7 @@
 
 ## TKT-52 Topic Route / Edit Lifecycle / Resume Deep Link
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 Topic 从 room workbench 子 tab 补成可独立直达、可注入 guidance、可直接恢复 continuity 的一等 route。
 - 范围:
@@ -430,11 +429,11 @@
   - 人类能直接在 Topic route 注入 guidance，并沿同一条 room / run truth 继续
   - 至少有一条 walkthrough 覆盖 `open topic -> edit guidance -> reload -> resume`
 - Checklist: `CHK-06`
-- Test Cases: `TC-031` `TC-045`
+- Test Cases: `TC-031` `TC-046`
 
 ---
 
-## 四、交付后续预备票
+## 四、后续 Backlog / 延伸票
 
 ## TKT-39 Review Comment Sync / PR Conversation Backfill
 
@@ -452,23 +451,6 @@
   - 至少有一组 API + browser evidence 覆盖 `comment -> sync -> room/inbox back-link`
 - Checklist: `CHK-07` `CHK-08`
 - Test Cases: `TC-025` `TC-026`
-
-## TKT-40 Run History / Incremental Fetch / Resume Context
-
-- 状态: `todo`
-- 优先级: `P1`
-- 目标: 把 run timeline 从“当前页可见”补成可持续回看的历史与恢复上下文。
-- 范围:
-  - run history / incremental fetch contract
-  - prior internal session / work_dir resume context
-  - room / run history browse surface
-- 依赖: `TKT-13`
-- Done When:
-  - 用户能稳定回看历史 run，而不是只看到当前窗口
-  - resume 会继续读取 prior internal session / prior work_dir truth
-  - 至少有一条 walkthrough 覆盖 `browse history -> reopen -> resume`
-- Checklist: `CHK-06` `CHK-09`
-- Test Cases: `TC-018` `TC-031`
 
 ## TKT-41 Usage / Token / Quota Observability
 
@@ -489,7 +471,7 @@
 
 ## TKT-42 Memory Viewer / Correction / Forget Surface
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把记忆中心从“可浏览”补成“可纠正、可撤销、可追溯”的产品面。
 - 范围:
@@ -506,7 +488,7 @@
 
 ## TKT-43 Memory Cleanup / TTL / Promotion Worker
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 给 memory 增加去重、TTL、批量整理与 promote 队列，不让治理只停在单条人工操作。
 - 范围:
@@ -540,7 +522,7 @@
 
 ## TKT-45 Credential Profile / Encrypted Secret Scope
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把凭证从隐性环境依赖补成有边界、可审计的 Credential Profile。
 - 范围:
@@ -571,23 +553,6 @@
   - 至少有一条验证覆盖 `restricted profile -> denied action -> override/retry`
 - Checklist: `CHK-12` `CHK-15`
 - Test Cases: `TC-021` `TC-027`
-
-## TKT-47 Mobile Web Light Observation / Notification Triage
-
-- 状态: `todo`
-- 优先级: `P2`
-- 目标: 给 mobile web 补最小可观察与通知分诊能力，而不是只保证“能打开”。
-- 范围:
-  - mobile layout / safe actions
-  - inbox / notification triage
-  - room / run / PR lightweight read path
-- 依赖: `TKT-24` `TKT-11`
-- Done When:
-  - 手机窄屏下可查看 room / run / inbox / PR 关键真相
-  - 用户能完成轻量 triage，而不会因为布局或命中区失真被卡住
-  - 至少有一条 walkthrough 覆盖 `mobile open -> triage -> ack`
-- Checklist: `CHK-01` `CHK-11` `CHK-16`
-- Test Cases: `TC-017` `TC-028` `TC-034`
 
 ## TKT-48 Workspace Plan / Usage Limit / Retention Surface
 
@@ -622,6 +587,78 @@
   - 至少有一条验证覆盖 `prepare release -> verify gate -> publish handoff note`
 - Checklist: `CHK-15` `CHK-21`
 - Test Cases: `TC-026` `TC-041`
+
+## TKT-58 Control-Plane `/v1` Command / Event / Debug Read Model
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把公开 control-plane 收成稳定 `/v1` contract，明确 command write、event read 和 debug / replay read-model 的边界。
+- 范围:
+  - versioned `/v1` resource contract
+  - command write / event read split
+  - debug history / rejection reason / replay anchor
+  - stable error family / idempotency / cursor semantics
+- 依赖: 无
+- Done When:
+  - 外部 consumer 可不依赖前台私有逻辑直接写 command、读 event、读 debug history
+  - 错误返回能稳定区分 `not_found / conflict / boundary_rejection / internal`
+  - 至少有一条 API + browser evidence 覆盖 `write -> replay -> rejection/debug readback`
+- Checklist: `CHK-03` `CHK-15`
+- Test Cases: `TC-047`
+
+## TKT-59 Shell Adapter / No-Shadow-Truth Contract
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 收紧 shell adapter discipline，确保 projection 只 fan-in 稳定真相，不再留下 shadow truth。
+- 范围:
+  - adapter projection boundary
+  - fail-closed fallback contract
+  - stale / dirty projection adversarial probes
+  - release gate for no-shadow-truth regressions
+- 依赖: `TKT-38`
+- Done When:
+  - 新 surface 不会因为局部 projection 或 mock residue 显示与 `/v1` 冲突的状态
+  - adapter 缺字段或上游脏值时，前台统一 fail-closed 回退到产品级 fallback
+  - 至少有一条 verify / browser evidence 覆盖 dirty projection 对抗性场景
+- Checklist: `CHK-03` `CHK-15`
+- Test Cases: `TC-048`
+
+## TKT-60 Runtime Publish Cursor / Replay Evidence Packet
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 daemon -> server 的 publish、closeout 和 replay 收成可重放、可解释、可复核的 evidence packet。
+- 范围:
+  - publish cursor / sequence dedupe
+  - failure / closeout evidence packet
+  - replay / closeout read-model
+  - runtime readiness regression hooks
+- 依赖: `TKT-31`
+- Done When:
+  - daemon 重发事件不会破坏 sequence，也不会重复落账
+  - run closeout / replay 可读到 failure anchor、closeout reason 与 publish cursor truth
+  - 至少有一条 contract + headed evidence 覆盖 `publish -> retry -> replay/closeout readback`
+- Checklist: `CHK-14` `CHK-15`
+- Test Cases: `TC-049`
+
+## TKT-61 Multi-Agent Routing SLA / Response Aggregation Hardening
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 在现有 team topology / mailbox / human override 基线上，补齐正式 routing policy、escalation SLA、notification policy 与 final-response aggregation contract。
+- 范围:
+  - handoff routing matrix
+  - escalation SLA / timeout / retry policy
+  - multi-agent notification policy
+  - final-response aggregation audit + human override trace
+- 依赖: `TKT-36` `TKT-44`
+- Done When:
+  - 多 Agent 协作不再只显示 topology，而能解释为什么发给谁、谁超时、谁聚合最终回复
+  - blocked / review / test / escalation 都走同一份 routing + notification policy
+  - 至少有一条端到端证据覆盖 `issue -> handoff -> escalation -> aggregated final response`
+- Checklist: `CHK-21`
+- Test Cases: `TC-050`
 
 ---
 

@@ -176,11 +176,37 @@ function sanitizeWorkspaceGovernance(
     summary: "",
     teamTopology: [],
     handoffRules: [],
+    routingPolicy: {
+      status: "",
+      summary: "",
+      defaultRoute: "",
+      rules: [],
+    },
+    escalationSla: {
+      status: "",
+      summary: "",
+      timeoutMinutes: 0,
+      retryBudget: 0,
+      activeEscalations: 0,
+      breachedEscalations: 0,
+      nextEscalation: "",
+    },
+    notificationPolicy: {
+      status: "",
+      summary: "",
+      browserPush: "",
+      targets: [],
+      escalationChannel: "",
+    },
     responseAggregation: {
       status: "",
       summary: "",
       sources: [],
       finalResponse: "",
+      aggregator: "",
+      decisionPath: [],
+      overrideTrace: [],
+      auditTrail: [],
     },
     humanOverride: {
       status: "",
@@ -193,6 +219,8 @@ function sanitizeWorkspaceGovernance(
       blockedEscalations: 0,
       reviewGates: 0,
       humanOverrideGates: 0,
+      slaBreaches: 0,
+      aggregationSources: 0,
     },
   };
 
@@ -234,11 +262,67 @@ function sanitizeWorkspaceGovernance(
         href: sanitizeDisplayText(safeRule.href ?? "", ""),
       };
     }),
+    routingPolicy: {
+      ...safeGovernance.routingPolicy,
+      summary: sanitizeDisplayText(safeGovernance.routingPolicy?.summary, "当前 routing policy 正在整理中。"),
+      defaultRoute: sanitizeDisplayText(safeGovernance.routingPolicy?.defaultRoute ?? "", ""),
+      rules: (safeGovernance.routingPolicy?.rules ?? []).map((rule) => {
+        const safeRoute = rule ?? {
+          id: "",
+          trigger: "",
+          fromLane: "",
+          toLane: "",
+          policy: "",
+          summary: "",
+          status: "",
+        };
+        return {
+          ...safeRoute,
+          trigger: sanitizeDisplayText(safeRoute.trigger, "trigger"),
+          fromLane: sanitizeDisplayText(safeRoute.fromLane, "未命名来源"),
+          toLane: sanitizeDisplayText(safeRoute.toLane, "未命名目标"),
+          policy: sanitizeDisplayText(safeRoute.policy, "当前路由策略正在整理中。"),
+          summary: sanitizeDisplayText(safeRoute.summary, "当前 routing rule 正在整理中。"),
+        };
+      }),
+    },
+    escalationSla: {
+      ...safeGovernance.escalationSla,
+      summary: sanitizeDisplayText(safeGovernance.escalationSla?.summary, "当前 escalation SLA 正在整理中。"),
+      nextEscalation: sanitizeDisplayText(safeGovernance.escalationSla?.nextEscalation ?? "", ""),
+    },
+    notificationPolicy: {
+      ...safeGovernance.notificationPolicy,
+      summary: sanitizeDisplayText(safeGovernance.notificationPolicy?.summary, "当前 notification policy 正在整理中。"),
+      browserPush: sanitizeDisplayText(safeGovernance.notificationPolicy?.browserPush ?? "", ""),
+      escalationChannel: sanitizeDisplayText(safeGovernance.notificationPolicy?.escalationChannel ?? "", ""),
+      targets: (safeGovernance.notificationPolicy?.targets ?? []).map((target) => sanitizeDisplayText(target, "target")),
+    },
     responseAggregation: {
       ...safeGovernance.responseAggregation,
       summary: sanitizeDisplayText(safeGovernance.responseAggregation?.summary, "当前 response aggregation 正在整理中。"),
       finalResponse: sanitizeDisplayText(safeGovernance.responseAggregation?.finalResponse ?? "", "等待当前治理链收口。"),
+      aggregator: sanitizeDisplayText(safeGovernance.responseAggregation?.aggregator ?? "", ""),
       sources: (safeGovernance.responseAggregation?.sources ?? []).map((source) => sanitizeDisplayText(source, "live source")),
+      decisionPath: (safeGovernance.responseAggregation?.decisionPath ?? []).map((item) => sanitizeDisplayText(item, "live step")),
+      overrideTrace: (safeGovernance.responseAggregation?.overrideTrace ?? []).map((item) => sanitizeDisplayText(item, "override trace")),
+      auditTrail: (safeGovernance.responseAggregation?.auditTrail ?? []).map((entry) => {
+        const safeEntry = entry ?? {
+          id: "",
+          label: "",
+          status: "",
+          actor: "",
+          summary: "",
+          occurredAt: "",
+        };
+        return {
+          ...safeEntry,
+          label: sanitizeDisplayText(safeEntry.label, "未命名聚合审计"),
+          actor: sanitizeDisplayText(safeEntry.actor ?? "", ""),
+          summary: sanitizeDisplayText(safeEntry.summary, "当前 aggregation audit 正在整理中。"),
+          occurredAt: sanitizeDisplayText(safeEntry.occurredAt ?? "", ""),
+        };
+      }),
     },
     humanOverride: {
       ...safeGovernance.humanOverride,
@@ -267,6 +351,8 @@ function sanitizeWorkspaceGovernance(
       blockedEscalations: safeGovernance.stats?.blockedEscalations ?? 0,
       reviewGates: safeGovernance.stats?.reviewGates ?? 0,
       humanOverrideGates: safeGovernance.stats?.humanOverrideGates ?? 0,
+      slaBreaches: safeGovernance.stats?.slaBreaches ?? 0,
+      aggregationSources: safeGovernance.stats?.aggregationSources ?? 0,
     },
   };
 }

@@ -1,7 +1,7 @@
 # OpenShock To Do List
 
-**版本:** 0.7
-**更新日期:** 2026 年 4 月 9 日
+**版本:** 0.8
+**更新日期:** 2026 年 4 月 10 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -25,214 +25,133 @@
 - 统一 workspace shell 已站住:
   - `chat / inbox / board / setup / issues / runs / agents / memory / access / settings` 已共享同一套壳体
   - `Chat / Work` 顶部切换、同源 `/api/control/*` proxy、work surface 去白缝与密度收紧已完成当天有头走查
+- 消息工作面已站住:
+  - real quick search、DM / followed / saved、room workbench、topic route、mobile inbox triage 都已有 headed evidence
+- profile / onboarding / mailbox 已站住:
+  - Agent profile editor、machine capability binding、scenario onboarding、Agent Mailbox、多 Agent governance、config persistence 都已有当前主线验证
 - Setup 主链、runtime pairing 冷启动一致性、release smoke gate 已站住
 - 真实远端 PR browser loop、signed webhook replay 已站住
 - login / session / invite / member role / action-level authz matrix 已站住
-- approval center、notification delivery、memory governance、stop/resume/follow-thread 已站住
+- approval center、notification delivery、memory governance、memory correction / cleanup、credential profile、stop/resume/follow-thread 已站住
 - multi-runtime scheduler / active lease / offline failover 已站住
 
 这些能力的详细验收见 [Product Checklist](./Checklist.md) 和 [Testing Index](../testing/README.md)。
 
 ---
 
-## 三、当前必须先收的 GAP
+## 三、本轮已收口 / 当前必须先收的 GAP
 
-### GAP-07 Quick Search / Search Results
+### 2026-04-10 已收口
 
-- 现状:
-  - 左栏已经有 `Quick Search` 入口，但还只是静态按钮
-  - 没有真正的结果面、跳转动作、键盘导航
-- 影响:
-  - 用户仍要靠翻左栏和人工记路径切页面
-- 相关合同:
-  - `CHK-01`
-  - `CHK-16`
-- 优先级: P0
+- `GAP-24 / TKT-61`
+  - routing policy、escalation SLA、notification policy、response aggregation audit 已落到同一份 workspace governance truth，并有 Windows Chrome 有头证据。
+- `GAP-28 / TKT-58`
+  - 版本化 `/v1/control-plane/commands`、`/events`、`/debug/commands/:id`、`/debug/rejections` contract 已站住，并覆盖 idempotency / stable error family / browser readback。
+- `GAP-29 / TKT-59`
+  - live truth hygiene、dirty projection fail-closed 与 `verify:web` regression gate 已形成 no-shadow-truth 主线约束。
+- `GAP-30 / TKT-60`
+  - `/v1/runtime/publish`、cursor dedupe、replay evidence packet、run detail replay panel 已形成可回放 contract。
 
-### GAP-08 DM / Followed Thread / Saved Later
+### 当前必须先收的 GAP
 
-- 现状:
-  - thread rail 和回复子区已经存在
-  - 但 `DM / followed thread / saved later` 还没形成完整消息工作流
-- 影响:
-  - OpenShock 还不像 `app.slock.ai` 那样以消息和回访驱动协作
-- 相关合同:
-  - `CHK-16`
-  - `CHK-17`
-- 优先级: P0
-
-### GAP-09 Room Workbench / Profile / Presence
+### GAP-21 PR Review Conversation / Thread Backfill
 
 - 现状:
-  - room / run / PR truth 已有
-  - `Chat / Topic / Run / PR / Context` 已能在同一 room workbench 内稳定切换
-  - `Agent / Machine / Human` 已可从 shell / room drill-in 到统一 profile surface
-  - 剩余的 editor / capability binding / durable config 继续留在后续 profile/config 票
-- 影响:
-  - 前台主工作面已收平，后续主要是 profile 配置与持久化真相
+  - webhook replay 和 PR 主链已站住
+  - 但 review comment / thread resolution / reopen consistency 还没形成完整产品真相
+- 对应票:
+  - `TKT-39`
 - 相关合同:
-  - `CHK-02`
-  - `CHK-06`
-  - `CHK-17`
-- 优先级: P0/P1
-
-### GAP-10 Frontend Interaction Polish
-
-- 现状:
-  - 这轮已经收掉共享壳体白缝、Work 页过大卡片和部分密度问题
-  - 但滚动回看、下拉位置、字号、输入框、侧栏高亮、窄屏抽查还没有系统化验收
-- 影响:
-  - 产品容易在高频使用时暴露“能用但不顺手”的问题
-- 相关合同:
-  - `CHK-01`
-  - `CHK-16`
-  - `CHK-17`
-- 优先级: P0
-
-### GAP-11 Agent / Machine Profile / Local CLI Preferences
-
-- 现状:
-  - Agent / Machine 现在已有统一 profile surface；`/setup`、machine profile、`/agents` 与 Agent profile editor 已共享 machine shell / daemon / provider-model catalog truth
-  - Agent 已能编辑并持久化 `prompt / avatar / role / operating instructions / memory binding / recall policy / provider / model / runtime affinity`
-  - 当前剩余尾项只剩把这组偏好继续下沉成 onboarding 默认值和更重的 durable config truth
-- 影响:
-  - surface 侧能力已经收平，但长期恢复和模板默认值仍依赖 `CHK-22 / TKT-37`
-- 相关合同:
-  - `CHK-19`
+  - `CHK-07`
+  - `CHK-08`
 - 优先级: P1
 
-### GAP-12 Onboarding / 场景模板 / 团队启动
+### GAP-22 Usage / Token / Quota Observability
 
 - 现状:
-  - Setup 和 Access 已提供最基础的启动骨架
-  - 但还没有真正的 onboarding wizard、`开发团队 / 研究团队 / 空白自定义` 模板、默认 channels / roles / agents 物化
+  - 当前已有基础 release / experience metrics
+  - 但 run / room / workspace 的 token、quota、context cost 还没有稳定产品面
+- 对应票:
+  - `TKT-41`
 - 相关合同:
+  - `CHK-06`
+  - `CHK-15`
+- 优先级: P1
+
+### GAP-23 Invite / Verify / Reset Notification Template Delivery
+
+- 现状:
+  - device auth、verify、reset、identity binding 已进入产品
+  - 但通知模板、恢复触点和首次启动旅程还没完全并成一条链
+- 对应票:
+  - `TKT-44`
+- 相关合同:
+  - `CHK-11`
+  - `CHK-13`
   - `CHK-20`
 - 优先级: P1
 
-### GAP-13 Agent Mailbox / Multi-Agent Governance
+### GAP-25 Restricted Local Sandbox / Network / Tool Policy
 
 - 现状:
-  - 单 Agent 的 issue -> room -> run 基线已站住
-  - 但 Agent-to-Agent 正式通信、handoff、ack、escalation、response aggregation 还没进入产品
-- 相关合同:
-  - `CHK-21`
-- 优先级: P1
-
-### GAP-14 Config Persistence / Database Truth
-
-- 现状:
-  - `TKT-37` 已把 workspace / member durable config、onboarding progress、repo-binding / GitHub installation snapshot 收成同一份 state/store truth，agent profile edit 也已回到同一条持久化链
-  - machine profile / local CLI inventory，以及 mailbox state / handoff ledger 还没有统一 durable truth
-- 相关合同:
-  - `CHK-22`
-  - `TKT-33`
-  - `TKT-35`
-- 优先级: P1
-
-### GAP-15 Board Light Planning Cleanup
-
-- 现状:
-  - Board 已退到左下角次级入口
-  - 但 card 语言和 room / issue / board 回跳还不够轻
-- 相关合同:
-  - `CHK-05`
-  - `CHK-18`
-- 优先级: P2
-
-### GAP-16 GitHub App Installation-Complete Live Callback
-
-- 现状:
-  - onboarding、webhook replay、远端 PR merge 已站住
-  - installation-complete 后的 live callback / repo 持续同步仍缺实机闭环
-- 相关合同:
-  - `CHK-07`
-- 优先级: P1
-
-### GAP-17 Device Authorization / Email Verification
-
-- 现状:
-  - invite / role / status / authz matrix 已站住
-  - device authorization、verify / reset、external identity binding 已在 `/access` 产品化
-  - 但它还没和 onboarding template bootstrap 收成同一条首次启动旅程
-- 相关合同:
-  - `CHK-13` `CHK-20`
-- 优先级: P1
-
-### GAP-18 Destructive Guard / Secret Boundary
-
-- 现状:
-  - 权限矩阵、run control 与 destructive guard truth 已站住
-  - destructive action approval、secret boundary、越界写保护现在都能在 room / inbox / run 被看见并被人工决策收口
-  - 剩余缺口主要是更严格的 runtime sandbox capability，而不是 guard truth 本身缺席
+  - destructive guard、secret boundary、credential profile 已站住
+  - 但 restricted sandbox profile、network/tool allowlist 还没有正式产品面
+- 对应票:
+  - `TKT-46`
 - 相关合同:
   - `CHK-12`
-- 优先级: P1
-
-### GAP-19 Runtime Lease Conflict / Scheduler Hardening
-
-- 现状:
-  - failover 基线已经站住
-  - 更细的 lease conflict、scheduler policy 与恢复策略还没有继续收紧
-- 相关合同:
-  - `CHK-14`
   - `CHK-15`
 - 优先级: P1
 
-### GAP-20 Live Truth Hygiene / Placeholder Leak Guard
+### GAP-26 Workspace Plan / Usage Limit / Retention Surface
 
 - 现状:
-  - 当前 live state 已不再只漏一两条 copy，而是会把 placeholder、E2E residue、内部 worktree path 和 seed fallback 直接带进用户面
-  - 这不是单页 polish，而是 truth layer / release hygiene 问题
-- 影响:
-  - 在继续对外讲“产品真相可信”之前，这条必须收平
+  - 当前 workspace limits 仍主要藏在默认值和内部 truth 里
+  - 用户还看不到 plan、usage、retention 的正式汇总面
+- 对应票:
+  - `TKT-48`
 - 相关合同:
-  - `CHK-03`
   - `CHK-15`
-- 优先级: P0
+  - `CHK-22`
+- 优先级: P2
+
+### GAP-27 Delivery Entry / Release Gate / Handoff Contract
+
+- 现状:
+  - headed suite、Windows Chrome 全量报告、runbook 都已存在
+  - 但 release-ready、handoff note、customer-facing evidence 还没收成单一合同
+- 对应票:
+  - `TKT-49`
+- 相关合同:
+  - `CHK-15`
+  - `CHK-21`
+- 优先级: P2
 
 ---
 
 ## 四、推荐推进顺序
 
-1. 先做 `TKT-21` 与 `TKT-24`，把 `Quick Search / Search Results` 和 interaction polish 立住。
-2. 再做 `TKT-22` 与 `TKT-23`，把 DM / followed thread / room workbench 接成主工作面。
-3. 然后做 `TKT-25`，补齐 `Agent / Machine / Human profile + presence` 的可钻取入口。
-4. 并行启动 `TKT-32` `TKT-33` `TKT-37`，先把 Agent / Machine 配置与 durable truth 补起来。
-5. 再做 `TKT-34`，把 onboarding、模板和首次启动路径产品化。
-6. 然后做 `TKT-35` `TKT-36`，把 Agent Mailbox、多 Agent 治理和角色拓扑跑通。
-7. 最后做 `TKT-26`，把 Board 的 planning 语言和回跳关系再收轻。
-8. `TKT-28/29/30/31` 作为并行后端 backlog 推进，但不抢当前前端主线优先级。
-9. 当前批次后立刻补起 `TKT-27`，把 DM / thread / search backend contract 补成后续 mailbox / governance 的底座。
-10. 然后开 `TKT-39` `TKT-40` `TKT-41`，把 PR review conversation、run history 与 usage/quota 可观测性补齐。
-11. 再开 `TKT-42` `TKT-43` `TKT-44`，把 memory viewer / cleanup 与 invite-verify-reset 恢复链补成正式产品面。
-12. 最后开 `TKT-45` `TKT-46` `TKT-47` `TKT-48` `TKT-49`，把 secret/sandbox、mobile 轻观察、workspace plan 和 delivery contract 收到交付闭环。
+1. 先做 `TKT-39` `TKT-41`，把 PR conversation 和 usage / quota observability 补成用户可感知的真相。
+2. 然后做 `TKT-44`，把恢复通知链、invite / verify / reset 和 template bootstrap 收成同一条首次启动旅程。
+3. 接着做 `TKT-46`，把 restricted sandbox、network / tool policy 收成正式配置面。
+4. 再做 `TKT-48`，把 workspace plan / usage limit / retention 拉到正式产品面。
+5. 最后做 `TKT-49`，把 release-ready / handoff contract 收成交付闭环。
 
 ---
 
-## 五、交付前预备票
+## 五、这轮知识回收带来的新增要求
 
-- 这组票不是要越过当前 active wave 抢跑，而是为了避免 `#125/#126/#144` 一收口就重新出现 board 空窗。
-- 当前推荐一次性落板、按依赖排队的后续票：
-  - `TKT-27` DM / Thread / Search Backend Contracts
-  - `TKT-34` Onboarding Studio / Dev Team + Research Team Templates
-  - `TKT-35` Agent Mailbox / Handoff Contract
-  - `TKT-36` Multi-Agent Governance / Role Topology / Reviewer-Tester Loop
-  - `TKT-26` Board Light Planning Cleanup
-  - `TKT-31` Runtime Lease Conflict / Scheduler Hardening
-  - `TKT-39` Review Comment Sync / PR Conversation Backfill
-  - `TKT-40` Run History / Incremental Fetch / Resume Context
-  - `TKT-41` Usage / Token / Quota Observability
-  - `TKT-42` Memory Viewer / Correction / Forget Surface
-  - `TKT-43` Memory Cleanup / TTL / Promotion Worker
-  - `TKT-44` Invite / Verify / Reset Notification Template Delivery
-  - `TKT-45` Credential Profile / Encrypted Secret Scope
-  - `TKT-46` Restricted Local Sandbox / Network / Tool Policy
-  - `TKT-47` Mobile Web Light Observation / Notification Triage
-  - `TKT-48` Workspace Plan / Usage Limit / Retention Surface
-  - `TKT-49` Delivery Entry / Release Gate / Handoff Note Contract
-
-这组票的目的不是把 scope 散掉，而是把“做到可交付还剩什么”显式落成 queue。
+- 以后再看历史平行分支，默认顺序是:
+  - `eng01/pr1-head-regression-fix`
+  - `feat/initial-implementation`
+  - `eng01/batch6-83`
+  - `feat/tff`
+- 允许吸收的是:
+  - `/v1` contract、debug / replay read-model、runtime publish cursor、staged backlog 拆法、局部组件拆分
+- 不允许吸收的是:
+  - 旧 JS `apps/server / apps/shell` 主体代码
+  - `tff` 的 dashboard 气质
+  - 提前把 hosted billing / subscription 拖回当前主线
 
 ---
 

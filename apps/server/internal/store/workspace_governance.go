@@ -3,13 +3,17 @@ package store
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 type governanceTemplateDefinition struct {
-	TemplateID string
-	Label      string
-	Summary    string
-	Topology   []governanceTemplateLaneDefinition
+	TemplateID        string
+	Label             string
+	Summary           string
+	Topology          []governanceTemplateLaneDefinition
+	TimeoutMinutes    int
+	RetryBudget       int
+	EscalationChannel string
 }
 
 type governanceTemplateLaneDefinition struct {
@@ -37,9 +41,12 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 	switch canonicalWorkspaceOnboardingTemplateID(templateID) {
 	case "research-team":
 		return governanceTemplateDefinition{
-			TemplateID: "research-team",
-			Label:      "研究团队治理链",
-			Summary:    "研究模板把 intake、evidence、synthesis 和 reviewer 收成同一条多 Agent 治理链，不再只有静态 bootstrap 说明。",
+			TemplateID:        "research-team",
+			Label:             "研究团队治理链",
+			Summary:           "研究模板把 intake、evidence、synthesis 和 reviewer 收成同一条多 Agent 治理链，不再只有静态 bootstrap 说明。",
+			TimeoutMinutes:    30,
+			RetryBudget:       2,
+			EscalationChannel: "mailbox -> inbox -> lead",
 			Topology: []governanceTemplateLaneDefinition{
 				{ID: "lead", Label: "Research Lead", Role: "方向与验收", DefaultAgent: "Lead Operator", Lane: "scope / final synthesis"},
 				{ID: "collector", Label: "Collector", Role: "证据收集", DefaultAgent: "Collector", Lane: "intake -> evidence"},
@@ -49,9 +56,12 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 		}
 	case "blank-custom":
 		return governanceTemplateDefinition{
-			TemplateID: "blank-custom",
-			Label:      "自定义治理骨架",
-			Summary:    "空白模板仍给出最小 handoff / review / override 骨架，避免团队只能靠口头约定推进。",
+			TemplateID:        "blank-custom",
+			Label:             "自定义治理骨架",
+			Summary:           "空白模板仍给出最小 handoff / review / override 骨架，避免团队只能靠口头约定推进。",
+			TimeoutMinutes:    45,
+			RetryBudget:       1,
+			EscalationChannel: "mailbox -> inbox -> owner",
 			Topology: []governanceTemplateLaneDefinition{
 				{ID: "owner", Label: "Owner", Role: "目标与验收", DefaultAgent: "Starter Agent", Lane: "scope / final response"},
 				{ID: "member", Label: "Member", Role: "执行与上下文整理", DefaultAgent: "Starter Agent", Lane: "build / collect"},
@@ -60,9 +70,12 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 		}
 	default:
 		return governanceTemplateDefinition{
-			TemplateID: "dev-team",
-			Label:      "开发团队治理链",
-			Summary:    "开发模板现在把 PM / Architect / Developer / Reviewer / QA 与 human override、response aggregation 压成同一份治理快照。",
+			TemplateID:        "dev-team",
+			Label:             "开发团队治理链",
+			Summary:           "开发模板现在把 PM / Architect / Developer / Reviewer / QA 与 human override、response aggregation 压成同一份治理快照。",
+			TimeoutMinutes:    20,
+			RetryBudget:       2,
+			EscalationChannel: "mailbox -> inbox -> human override",
 			Topology: []governanceTemplateLaneDefinition{
 				{ID: "pm", Label: "PM", Role: "目标与验收", DefaultAgent: "Spec Captain", Lane: "scope / final response"},
 				{ID: "architect", Label: "Architect", Role: "拆解与边界", DefaultAgent: "Spec Captain", Lane: "shape / split"},
@@ -79,7 +92,12 @@ func hydrateWorkspaceGovernance(workspace *WorkspaceSnapshot, state *State) {
 	focus := resolveGovernanceFocus(*state)
 	stats := buildGovernanceStats(*state)
 	humanOverride := buildHumanOverride(focus)
-	responseAggregation := buildResponseAggregation(focus)
+	routingPolicy := buildGovernanceRoutingPolicy(template, focus, humanOverride)
+	escalationSLA := buildGovernanceEscalationSLA(template, focus)
+	notificationPolicy := buildGovernanceNotificationPolicy(*workspace, template, focus)
+	responseAggregation := buildResponseAggregation(focus, humanOverride)
+	stats.SLABreaches = escalationSLA.BreachedEscalations
+	stats.AggregationSources = len(responseAggregation.Sources)
 
 	summary := template.Summary
 	if focus.Issue != nil {
@@ -92,6 +110,9 @@ func hydrateWorkspaceGovernance(workspace *WorkspaceSnapshot, state *State) {
 		Summary:             summary,
 		TeamTopology:        buildGovernanceTeamTopology(template, focus, humanOverride),
 		HandoffRules:        buildGovernanceRules(focus, stats, humanOverride),
+		RoutingPolicy:       routingPolicy,
+		EscalationSLA:       escalationSLA,
+		NotificationPolicy:  notificationPolicy,
 		ResponseAggregation: responseAggregation,
 		HumanOverride:       humanOverride,
 		Walkthrough:         buildGovernanceWalkthrough(focus, responseAggregation),
@@ -208,6 +229,138 @@ func buildGovernanceStats(state State) WorkspaceGovernanceStats {
 	return stats
 }
 
+func buildGovernanceRoutingPolicy(template governanceTemplateDefinition, focus governanceFocus, humanOverride WorkspaceHumanOverride) WorkspaceGovernanceRoutingPolicy {
+	defaultRouteParts := make([]string, 0, len(template.Topology))
+	rules := make([]WorkspaceGovernanceRouteRule, 0, len(template.Topology))
+
+	for index, lane := range template.Topology {
+		defaultRouteParts = append(defaultRouteParts, lane.Label)
+		if index == len(template.Topology)-1 {
+			continue
+		}
+		nextLane := template.Topology[index+1]
+		status := "pending"
+		summary := fmt.Sprintf("%s 默认把交接发往 %s，并沿 %s 推进。", lane.Label, nextLane.Label, nextLane.Lane)
+		if focus.LatestHandoff != nil && governanceRouteMatches(*focus.LatestHandoff, lane, nextLane) {
+			status = governanceStatusFromHandoff(focus.LatestHandoff.Status)
+			summary = fmt.Sprintf("最新 handoff 已按 %s -> %s 落账。", lane.Label, nextLane.Label)
+		} else if index == 0 && focus.Issue != nil {
+			status = "ready"
+			summary = fmt.Sprintf("%s 当前把 %s 正式路由到后续 lanes。", lane.Label, focus.Issue.Key)
+		} else if nextLane.ID == "reviewer" && (focus.PullRequest != nil || len(focus.ReviewInbox) > 0) {
+			status = "active"
+			summary = fmt.Sprintf("review gate 已显式出现，%s 将接住下一棒。", nextLane.Label)
+		}
+		rules = append(rules, WorkspaceGovernanceRouteRule{
+			ID:       fmt.Sprintf("%s-to-%s", lane.ID, nextLane.ID),
+			Trigger:  fmt.Sprintf("%s_handoff", lane.ID),
+			FromLane: lane.Label,
+			ToLane:   nextLane.Label,
+			Policy:   nextLane.Lane,
+			Summary:  summary,
+			Status:   status,
+		})
+	}
+
+	overrideStatus := humanOverride.Status
+	overrideSummary := "所有 blocked / approval 会沿 mailbox -> inbox -> human override 同一条 escalation chain 收口。"
+	if humanOverride.Status == "required" || humanOverride.Status == "watch" {
+		overrideSummary = humanOverride.Summary
+	}
+	rules = append(rules, WorkspaceGovernanceRouteRule{
+		ID:       "escalate-to-human",
+		Trigger:  "blocked_or_approval",
+		FromLane: "Any Lane",
+		ToLane:   "Human Override",
+		Policy:   "mailbox -> inbox -> human",
+		Summary:  overrideSummary,
+		Status:   overrideStatus,
+	})
+
+	status := "ready"
+	summary := fmt.Sprintf("默认 routing matrix = %s。", strings.Join(defaultRouteParts, " -> "))
+	for _, rule := range rules {
+		switch rule.Status {
+		case "blocked":
+			status = "blocked"
+			summary = fmt.Sprintf("routing 当前被 %s 挡住：%s。", rule.ID, rule.Summary)
+			return WorkspaceGovernanceRoutingPolicy{
+				Status:       status,
+				Summary:      summary,
+				DefaultRoute: strings.Join(defaultRouteParts, " -> "),
+				Rules:        rules,
+			}
+		case "active":
+			status = "active"
+			summary = fmt.Sprintf("当前正在执行 %s。", rule.Summary)
+		}
+	}
+
+	return WorkspaceGovernanceRoutingPolicy{
+		Status:       status,
+		Summary:      summary,
+		DefaultRoute: strings.Join(defaultRouteParts, " -> "),
+		Rules:        rules,
+	}
+}
+
+func buildGovernanceEscalationSLA(template governanceTemplateDefinition, focus governanceFocus) WorkspaceGovernanceEscalationSLA {
+	timeoutMinutes := template.TimeoutMinutes
+	retryBudget := template.RetryBudget
+	activeEscalations := len(focus.BlockedInbox)
+	breachedEscalations := 0
+	nextEscalation := template.EscalationChannel
+
+	if focus.LatestHandoff != nil && focus.LatestHandoff.Status != "completed" {
+		activeEscalations++
+		if governanceMinutesSince(focus.LatestHandoff.UpdatedAt) > timeoutMinutes {
+			breachedEscalations++
+			nextEscalation = fmt.Sprintf("%s overdue; escalate via %s", focus.LatestHandoff.ID, template.EscalationChannel)
+		}
+	}
+
+	status := "ready"
+	summary := fmt.Sprintf("当前 SLA = %d 分钟响应 / %d 次重试预算。", timeoutMinutes, retryBudget)
+	switch {
+	case breachedEscalations > 0:
+		status = "blocked"
+		summary = fmt.Sprintf("已有 %d 条 governance escalation 超时，需要立即升级到 %s。", breachedEscalations, template.EscalationChannel)
+	case activeEscalations > 0:
+		status = "active"
+		summary = fmt.Sprintf("当前有 %d 条 active escalation；下一跳 = %s。", activeEscalations, template.EscalationChannel)
+	}
+
+	return WorkspaceGovernanceEscalationSLA{
+		Status:              status,
+		Summary:             summary,
+		TimeoutMinutes:      timeoutMinutes,
+		RetryBudget:         retryBudget,
+		ActiveEscalations:   activeEscalations,
+		BreachedEscalations: breachedEscalations,
+		NextEscalation:      nextEscalation,
+	}
+}
+
+func buildGovernanceNotificationPolicy(workspace WorkspaceSnapshot, template governanceTemplateDefinition, focus governanceFocus) WorkspaceGovernanceNotificationPolicy {
+	targets := []string{"mailbox", "inbox"}
+	if strings.TrimSpace(workspace.BrowserPush) != "" {
+		targets = append(targets, "browser_push")
+	}
+	status := "ready"
+	summary := fmt.Sprintf("blocked / review / verify 默认沿 %s fanout。browser push 当前 = %s。", template.EscalationChannel, workspace.BrowserPush)
+	if len(focus.BlockedInbox)+len(focus.ReviewInbox)+len(focus.ApprovalInbox) > 0 {
+		status = "active"
+		summary = fmt.Sprintf("当前已有 live governance signal；通知策略继续沿 %s 回放到 mailbox / inbox / browser。", template.EscalationChannel)
+	}
+	return WorkspaceGovernanceNotificationPolicy{
+		Status:            status,
+		Summary:           summary,
+		BrowserPush:       workspace.BrowserPush,
+		Targets:           targets,
+		EscalationChannel: template.EscalationChannel,
+	}
+}
+
 func buildHumanOverride(focus governanceFocus) WorkspaceHumanOverride {
 	if len(focus.ApprovalInbox) > 0 {
 		item := focus.ApprovalInbox[0]
@@ -232,7 +385,7 @@ func buildHumanOverride(focus governanceFocus) WorkspaceHumanOverride {
 	}
 }
 
-func buildResponseAggregation(focus governanceFocus) WorkspaceResponseAggregation {
+func buildResponseAggregation(focus governanceFocus, humanOverride WorkspaceHumanOverride) WorkspaceResponseAggregation {
 	sources := []string{}
 	if focus.Issue != nil {
 		sources = append(sources, fmt.Sprintf("%s issue", focus.Issue.Key))
@@ -249,31 +402,99 @@ func buildResponseAggregation(focus governanceFocus) WorkspaceResponseAggregatio
 	if len(focus.RelatedInbox) > 0 {
 		sources = append(sources, fmt.Sprintf("%d inbox signals", len(focus.RelatedInbox)))
 	}
+	decisionPath := []string{}
+	if focus.Issue != nil {
+		decisionPath = append(decisionPath, fmt.Sprintf("issue:%s", focus.Issue.Key))
+	}
+	if focus.LatestHandoff != nil {
+		decisionPath = append(decisionPath, fmt.Sprintf("handoff:%s->%s", focus.LatestHandoff.FromAgent, focus.LatestHandoff.ToAgent))
+	}
+	if focus.PullRequest != nil {
+		decisionPath = append(decisionPath, fmt.Sprintf("review:%s", focus.PullRequest.Label))
+	}
+	if len(focus.RelatedInbox) > 0 {
+		decisionPath = append(decisionPath, fmt.Sprintf("inbox:%d", len(focus.RelatedInbox)))
+	}
+	overrideTrace := []string{}
+	if humanOverride.Status == "required" || humanOverride.Status == "watch" {
+		overrideTrace = append(overrideTrace, humanOverride.Summary)
+	}
+	auditTrail := make([]WorkspaceResponseAggregationAuditEntry, 0, 5)
+	if focus.Issue != nil {
+		occurredAt := ""
+		if focus.Run != nil {
+			occurredAt = focus.Run.StartedAt
+		}
+		auditTrail = append(auditTrail, WorkspaceResponseAggregationAuditEntry{
+			ID:         "audit-issue",
+			Label:      "Issue Truth",
+			Status:     "ready",
+			Actor:      focus.Issue.Owner,
+			Summary:    fmt.Sprintf("%s anchors the target truth.", focus.Issue.Key),
+			OccurredAt: occurredAt,
+		})
+	}
+	if focus.LatestHandoff != nil {
+		auditTrail = append(auditTrail, WorkspaceResponseAggregationAuditEntry{
+			ID:         "audit-handoff",
+			Label:      "Handoff",
+			Status:     governanceStatusFromHandoff(focus.LatestHandoff.Status),
+			Actor:      focus.LatestHandoff.ToAgent,
+			Summary:    fmt.Sprintf("%s -> %s", focus.LatestHandoff.FromAgent, focus.LatestHandoff.ToAgent),
+			OccurredAt: focus.LatestHandoff.UpdatedAt,
+		})
+	}
+	if focus.PullRequest != nil {
+		auditTrail = append(auditTrail, WorkspaceResponseAggregationAuditEntry{
+			ID:         "audit-review",
+			Label:      "Review",
+			Status:     governanceStatusFromPullRequest(focus.PullRequest.Status),
+			Actor:      focus.PullRequest.Author,
+			Summary:    defaultString(focus.PullRequest.ReviewSummary, focus.PullRequest.Label),
+			OccurredAt: focus.PullRequest.UpdatedAt,
+		})
+	}
 
 	finalResponse := "等待当前 reviewer / tester loop 收口后再聚合最终响应。"
 	status := "draft"
 	summary := "最终响应会把 issue、room、handoff、review 和 inbox signal 聚合到同一条 human-readable closeout。"
+	aggregator := "workspace governance"
 
 	switch {
 	case focus.LatestCompletion != nil && strings.TrimSpace(focus.LatestCompletion.LastNote) != "":
 		status = "ready"
 		finalResponse = focus.LatestCompletion.LastNote
 		summary = fmt.Sprintf("最新 closeout note 已从 mailbox 回写：%s。", focus.LatestCompletion.LastNote)
+		aggregator = focus.LatestCompletion.ToAgent
 	case focus.PullRequest != nil && strings.TrimSpace(focus.PullRequest.ReviewSummary) != "":
 		status = governanceStatusFromPullRequest(focus.PullRequest.Status)
 		finalResponse = focus.PullRequest.ReviewSummary
 		summary = fmt.Sprintf("%s 当前把 reviewer verdict 留在同一条 aggregation surface 上。", focus.PullRequest.Label)
+		aggregator = focus.PullRequest.Author
 	case focus.Run != nil && strings.TrimSpace(focus.Run.NextAction) != "":
 		status = governanceStatusFromRun(focus.Run.Status)
 		finalResponse = focus.Run.NextAction
 		summary = "当前 final response 继续围同一条 run next-action truth 聚合，不需要再靠口头总结。"
+		aggregator = focus.Run.Owner
 	}
+	auditTrail = append(auditTrail, WorkspaceResponseAggregationAuditEntry{
+		ID:         "audit-final-response",
+		Label:      "Final Response",
+		Status:     status,
+		Actor:      aggregator,
+		Summary:    finalResponse,
+		OccurredAt: time.Now().UTC().Format(time.RFC3339),
+	})
 
 	return WorkspaceResponseAggregation{
 		Status:        status,
 		Summary:       summary,
 		Sources:       sources,
 		FinalResponse: finalResponse,
+		Aggregator:    aggregator,
+		DecisionPath:  decisionPath,
+		OverrideTrace: overrideTrace,
+		AuditTrail:    auditTrail,
 	}
 }
 
@@ -441,6 +662,20 @@ func buildGovernanceWalkthrough(focus governanceFocus, responseAggregation Works
 		{ID: "test", Label: "Test", Status: testStatus, Summary: testSummary, Detail: testDetail, Href: "/mailbox"},
 		{ID: "final-response", Label: "Final Response", Status: responseAggregation.Status, Summary: responseAggregation.FinalResponse, Detail: responseAggregation.Summary, Href: "/mailbox"},
 	}
+}
+
+func governanceRouteMatches(handoff AgentHandoff, fromLane, toLane governanceTemplateLaneDefinition) bool {
+	fromMatches := handoff.FromAgent == fromLane.DefaultAgent || strings.EqualFold(handoff.FromAgent, fromLane.Label)
+	toMatches := handoff.ToAgent == toLane.DefaultAgent || strings.EqualFold(handoff.ToAgent, toLane.Label)
+	return fromMatches && toMatches
+}
+
+func governanceMinutesSince(value string) int {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return 0
+	}
+	return int(time.Since(parsed).Minutes())
 }
 
 func governanceStatusFromRun(status string) string {

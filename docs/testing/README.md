@@ -2,6 +2,8 @@
 
 - [Test Report 2026-04-09 Windows Chrome Full Suite](./Test-Report-2026-04-09-windows-chrome-full-suite.md)
   - 当前主线最新的全量有头自动化回归基线，覆盖 chat / room / setup / onboarding / authz / multi-agent / memory / runtime recovery 等 33 条链路
+- [Test Report 2026-04-10 Windows Chrome Control-Plane / Runtime Replay / Governance](./Test-Report-2026-04-10-windows-chrome-control-plane-runtime-governance.md)
+  - `TKT-58` `TKT-59` `TKT-60` `TKT-61` 的 Windows Chrome 有头报告，覆盖 `/v1` control-plane、runtime replay evidence、routing SLA / aggregation 与 dirty projection fail-closed
 - [Test Report 2026-04-09 Windows Chrome Remaining Suite](./Test-Report-2026-04-09-windows-chrome-remaining-suite.md)
   - 2026-04-09 当天补跑的 setup / onboarding / session / authz / notification / runtime / CJK 字体链路汇总
 - [Test Cases](./Test-Cases.md)
@@ -76,6 +78,10 @@
   - `TKT-31` 的 lease conflict recovery、scheduler failover continuity 与 `/setup` `/agents` live decision-reason evidence
 - [Test Report 2026-04-09 Memory Viewer / Correction / Forget Surface](./Test-Report-2026-04-09-memory-viewer-correction-forget.md)
   - `TKT-42` 的 memory detail audit、human correction/forget 写回与 recall preview removal headed evidence
+- [Test Report 2026-04-09 Memory Cleanup / TTL / Promotion Worker](./Test-Report-2026-04-09-memory-cleanup-ttl-worker.md)
+  - `TKT-43` 的 cleanup ledger、TTL prune、promotion queue hardening 与 release-gate evidence
+- [Test Report 2026-04-09 Credential Profile / Encrypted Secret Scope](./Test-Report-2026-04-09-credential-profile-scope-refresh.md)
+  - `TKT-45` 的 settings -> agent profile -> run guard truth、vault ciphertext persistence 与 no-plaintext evidence
 - [Test Report 2026-04-09 Run History / Resume Context](./Test-Report-2026-04-09-run-history-resume-context.md)
   - `TKT-40` 的 paginated `/runs` history、prior-run reopen、resume context 与 room-current continuity evidence
 - [Test Report 2026-04-09 Topic Route / Resume Lifecycle](./Test-Report-2026-04-09-topic-route-resume-lifecycle.md)
@@ -129,6 +135,8 @@
   - 验证 Agent profile edit、memory binding / recall policy、next-run preview 与 audit persistence
 - `pnpm test:headed-machine-profile-capability-binding`
   - 验证 `/setup`、machine profile、`/agents` 与 Agent profile editor 是否共享同一份 machine capability / provider-model catalog truth，并允许写回 provider+model+runtime affinity
+- `pnpm test:headed-control-plane-runtime-governance`
+  - 用 Windows Chrome 串起 `/v1/control-plane/*`、`/v1/runtime/publish*`、`/agents` 治理面和 dirty projection fail-closed browser evidence
 - `pnpm test:headed-multi-runtime-scheduler-failover`
   - 验证 multi-runtime scheduler、active lease、offline failover
 - `pnpm test:headed-runtime-lease-conflict-recovery`

@@ -621,7 +621,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
           {governance.label}
         </span>
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <MetricTile
           label="Open Handoffs"
           value={`${governance.stats.openHandoffs}`}
@@ -641,6 +641,16 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
           label="Human Override"
           value={`${governance.stats.humanOverrideGates}`}
           detail="人工 override 数量会和当前 loop 的 escalation / approval truth 一起前滚。"
+        />
+        <MetricTile
+          label="SLA Breaches"
+          value={`${governance.stats.slaBreaches}`}
+          detail="超时或 overdue 的多 Agent escalation 会直接抬到治理快照里。"
+        />
+        <MetricTile
+          label="Aggregation Sources"
+          value={`${governance.stats.aggregationSources}`}
+          detail="最终响应当前到底吃了多少条 live source，不再只停在一段总结文案。"
         />
       </div>
       <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -720,6 +730,67 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
               ))}
             </div>
           </Panel>
+
+          <Panel tone="white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                  routing / escalation / notification
+                </p>
+                <h4 className="mt-2 font-display text-2xl font-bold">多 Agent policy 不再只存在脑补里</h4>
+              </div>
+              <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                {governance.routingPolicy.defaultRoute || "route pending"}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="space-y-3">
+                {(governance.routingPolicy.rules ?? []).map((rule) => (
+                  <div key={rule.id} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-display text-lg font-semibold">
+                        {rule.fromLane} {"->"} {rule.toLane}
+                      </p>
+                      <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
+                        {governanceStatusLabel(rule.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6">{rule.summary}</p>
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">{rule.policy}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <Panel tone={governanceTone(governance.escalationSla.status)} className="!p-3.5">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">escalation sla</p>
+                  <p className="mt-2 font-display text-[22px] font-bold leading-7">{governance.escalationSla.timeoutMinutes} min / {governance.escalationSla.retryBudget} retry</p>
+                  <p className="mt-2 text-sm leading-6">{governance.escalationSla.summary}</p>
+                  {governance.escalationSla.nextEscalation ? (
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
+                      next: {governance.escalationSla.nextEscalation}
+                    </p>
+                  ) : null}
+                </Panel>
+                <Panel tone={governanceTone(governance.notificationPolicy.status)} className="!p-3.5">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">notification policy</p>
+                  <p className="mt-2 font-display text-[22px] font-bold leading-7">
+                    {governance.notificationPolicy.browserPush || "browser push pending"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6">{governance.notificationPolicy.summary}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(governance.notificationPolicy.targets ?? []).map((target) => (
+                      <span
+                        key={target}
+                        className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+                      >
+                        {target}
+                      </span>
+                    ))}
+                  </div>
+                </Panel>
+              </div>
+            </div>
+          </Panel>
         </div>
 
         <div className="space-y-4">
@@ -755,6 +826,11 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
               {governance.responseAggregation.finalResponse || "等待 closeout"}
             </p>
             <p className="mt-3 text-sm leading-6">{governance.responseAggregation.summary}</p>
+            {governance.responseAggregation.aggregator ? (
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
+                aggregator: {governance.responseAggregation.aggregator}
+              </p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               {(governance.responseAggregation.sources ?? []).map((source, index) => (
                 <span
@@ -765,6 +841,53 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                 </span>
               ))}
             </div>
+            {(governance.responseAggregation.decisionPath ?? []).length > 0 ? (
+              <div className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">decision path</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(governance.responseAggregation.decisionPath ?? []).map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {(governance.responseAggregation.overrideTrace ?? []).length > 0 ? (
+              <div className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">override trace</p>
+                <div className="mt-2 space-y-2">
+                  {(governance.responseAggregation.overrideTrace ?? []).map((item, index) => (
+                    <p key={`${item}-${index}`} className="text-sm leading-6">
+                      {item}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {(governance.responseAggregation.auditTrail ?? []).length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {(governance.responseAggregation.auditTrail ?? []).map((entry) => (
+                  <div key={entry.id} className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-display text-base font-semibold">{entry.label}</p>
+                      <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+                        {governanceStatusLabel(entry.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6">{entry.summary}</p>
+                    {(entry.actor || entry.occurredAt) ? (
+                      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
+                        {[entry.actor, entry.occurredAt].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </Panel>
 
           <Panel tone="white">

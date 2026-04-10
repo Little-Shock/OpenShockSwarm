@@ -120,15 +120,18 @@ type CredentialProfileAuditEntry struct {
 }
 
 type WorkspaceGovernanceSnapshot struct {
-	TemplateID          string                           `json:"templateId,omitempty"`
-	Label               string                           `json:"label,omitempty"`
-	Summary             string                           `json:"summary,omitempty"`
-	TeamTopology        []WorkspaceGovernanceLane        `json:"teamTopology,omitempty"`
-	HandoffRules        []WorkspaceGovernanceRule        `json:"handoffRules,omitempty"`
-	ResponseAggregation WorkspaceResponseAggregation     `json:"responseAggregation"`
-	HumanOverride       WorkspaceHumanOverride           `json:"humanOverride"`
-	Walkthrough         []WorkspaceGovernanceWalkthrough `json:"walkthrough,omitempty"`
-	Stats               WorkspaceGovernanceStats         `json:"stats"`
+	TemplateID          string                                `json:"templateId,omitempty"`
+	Label               string                                `json:"label,omitempty"`
+	Summary             string                                `json:"summary,omitempty"`
+	TeamTopology        []WorkspaceGovernanceLane             `json:"teamTopology,omitempty"`
+	HandoffRules        []WorkspaceGovernanceRule             `json:"handoffRules,omitempty"`
+	RoutingPolicy       WorkspaceGovernanceRoutingPolicy      `json:"routingPolicy"`
+	EscalationSLA       WorkspaceGovernanceEscalationSLA      `json:"escalationSla"`
+	NotificationPolicy  WorkspaceGovernanceNotificationPolicy `json:"notificationPolicy"`
+	ResponseAggregation WorkspaceResponseAggregation          `json:"responseAggregation"`
+	HumanOverride       WorkspaceHumanOverride                `json:"humanOverride"`
+	Walkthrough         []WorkspaceGovernanceWalkthrough      `json:"walkthrough,omitempty"`
+	Stats               WorkspaceGovernanceStats              `json:"stats"`
 }
 
 type WorkspaceGovernanceLane struct {
@@ -149,11 +152,59 @@ type WorkspaceGovernanceRule struct {
 	Href    string `json:"href,omitempty"`
 }
 
+type WorkspaceGovernanceRoutingPolicy struct {
+	Status       string                         `json:"status"`
+	Summary      string                         `json:"summary"`
+	DefaultRoute string                         `json:"defaultRoute,omitempty"`
+	Rules        []WorkspaceGovernanceRouteRule `json:"rules,omitempty"`
+}
+
+type WorkspaceGovernanceRouteRule struct {
+	ID       string `json:"id"`
+	Trigger  string `json:"trigger"`
+	FromLane string `json:"fromLane"`
+	ToLane   string `json:"toLane"`
+	Policy   string `json:"policy"`
+	Summary  string `json:"summary"`
+	Status   string `json:"status"`
+}
+
+type WorkspaceGovernanceEscalationSLA struct {
+	Status              string `json:"status"`
+	Summary             string `json:"summary"`
+	TimeoutMinutes      int    `json:"timeoutMinutes"`
+	RetryBudget         int    `json:"retryBudget"`
+	ActiveEscalations   int    `json:"activeEscalations"`
+	BreachedEscalations int    `json:"breachedEscalations"`
+	NextEscalation      string `json:"nextEscalation,omitempty"`
+}
+
+type WorkspaceGovernanceNotificationPolicy struct {
+	Status            string   `json:"status"`
+	Summary           string   `json:"summary"`
+	BrowserPush       string   `json:"browserPush,omitempty"`
+	Targets           []string `json:"targets,omitempty"`
+	EscalationChannel string   `json:"escalationChannel,omitempty"`
+}
+
+type WorkspaceResponseAggregationAuditEntry struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	Status     string `json:"status"`
+	Actor      string `json:"actor,omitempty"`
+	Summary    string `json:"summary"`
+	OccurredAt string `json:"occurredAt,omitempty"`
+}
+
 type WorkspaceResponseAggregation struct {
-	Status        string   `json:"status"`
-	Summary       string   `json:"summary"`
-	Sources       []string `json:"sources,omitempty"`
-	FinalResponse string   `json:"finalResponse,omitempty"`
+	Status        string                                   `json:"status"`
+	Summary       string                                   `json:"summary"`
+	Sources       []string                                 `json:"sources,omitempty"`
+	FinalResponse string                                   `json:"finalResponse,omitempty"`
+	Aggregator    string                                   `json:"aggregator,omitempty"`
+	DecisionPath  []string                                 `json:"decisionPath,omitempty"`
+	OverrideTrace []string                                 `json:"overrideTrace,omitempty"`
+	AuditTrail    []WorkspaceResponseAggregationAuditEntry `json:"auditTrail,omitempty"`
 }
 
 type WorkspaceHumanOverride struct {
@@ -176,6 +227,8 @@ type WorkspaceGovernanceStats struct {
 	BlockedEscalations int `json:"blockedEscalations"`
 	ReviewGates        int `json:"reviewGates"`
 	HumanOverrideGates int `json:"humanOverrideGates"`
+	SLABreaches        int `json:"slaBreaches"`
+	AggregationSources int `json:"aggregationSources"`
 }
 
 type SandboxPolicy struct {
@@ -485,6 +538,102 @@ type RuntimeScheduler struct {
 	Candidates       []RuntimeSchedulerCandidate `json:"candidates"`
 }
 
+type ControlPlaneState struct {
+	Commands        []ControlPlaneCommand   `json:"commands,omitempty"`
+	Events          []ControlPlaneEvent     `json:"events,omitempty"`
+	Rejections      []ControlPlaneRejection `json:"rejections,omitempty"`
+	NextEventCursor int                     `json:"nextEventCursor,omitempty"`
+}
+
+type ControlPlaneCommand struct {
+	ID               string                   `json:"id"`
+	Kind             string                   `json:"kind"`
+	Status           string                   `json:"status"`
+	IdempotencyKey   string                   `json:"idempotencyKey,omitempty"`
+	Actor            string                   `json:"actor,omitempty"`
+	Payload          map[string]any           `json:"payload,omitempty"`
+	Summary          string                   `json:"summary,omitempty"`
+	AggregateKind    string                   `json:"aggregateKind,omitempty"`
+	AggregateID      string                   `json:"aggregateId,omitempty"`
+	AggregateHref    string                   `json:"aggregateHref,omitempty"`
+	ReplayAnchor     string                   `json:"replayAnchor,omitempty"`
+	ErrorFamily      string                   `json:"errorFamily,omitempty"`
+	ErrorMessage     string                   `json:"errorMessage,omitempty"`
+	RequestedAt      string                   `json:"requestedAt"`
+	AppliedAt        string                   `json:"appliedAt,omitempty"`
+	EventCursorStart int                      `json:"eventCursorStart,omitempty"`
+	EventCursorEnd   int                      `json:"eventCursorEnd,omitempty"`
+	Debug            []ControlPlaneDebugEntry `json:"debug,omitempty"`
+}
+
+type ControlPlaneDebugEntry struct {
+	ID         string `json:"id"`
+	Stage      string `json:"stage"`
+	Summary    string `json:"summary"`
+	OccurredAt string `json:"occurredAt"`
+}
+
+type ControlPlaneEvent struct {
+	Cursor        int    `json:"cursor"`
+	CommandID     string `json:"commandId"`
+	Kind          string `json:"kind"`
+	Status        string `json:"status"`
+	AggregateKind string `json:"aggregateKind,omitempty"`
+	AggregateID   string `json:"aggregateId,omitempty"`
+	Summary       string `json:"summary"`
+	ReplayAnchor  string `json:"replayAnchor,omitempty"`
+	ErrorFamily   string `json:"errorFamily,omitempty"`
+	OccurredAt    string `json:"occurredAt"`
+}
+
+type ControlPlaneRejection struct {
+	ID           string `json:"id"`
+	CommandID    string `json:"commandId"`
+	Family       string `json:"family"`
+	Summary      string `json:"summary"`
+	Reason       string `json:"reason"`
+	ReplayAnchor string `json:"replayAnchor,omitempty"`
+	OccurredAt   string `json:"occurredAt"`
+}
+
+type RuntimePublishState struct {
+	Records      []RuntimePublishRecord `json:"records,omitempty"`
+	NextSequence int                    `json:"nextSequence,omitempty"`
+}
+
+type RuntimePublishRecord struct {
+	ID             string         `json:"id"`
+	RuntimeID      string         `json:"runtimeId"`
+	RunID          string         `json:"runId"`
+	SessionID      string         `json:"sessionId,omitempty"`
+	RoomID         string         `json:"roomId,omitempty"`
+	Sequence       int            `json:"sequence"`
+	Cursor         int            `json:"cursor"`
+	Phase          string         `json:"phase"`
+	Status         string         `json:"status"`
+	Summary        string         `json:"summary"`
+	IdempotencyKey string         `json:"idempotencyKey,omitempty"`
+	FailureAnchor  string         `json:"failureAnchor,omitempty"`
+	CloseoutReason string         `json:"closeoutReason,omitempty"`
+	EvidenceLines  []string       `json:"evidenceLines,omitempty"`
+	Payload        map[string]any `json:"payload,omitempty"`
+	OccurredAt     string         `json:"occurredAt"`
+}
+
+type RuntimeReplayEvidencePacket struct {
+	RunID          string                 `json:"runId"`
+	SessionID      string                 `json:"sessionId,omitempty"`
+	RoomID         string                 `json:"roomId,omitempty"`
+	RuntimeID      string                 `json:"runtimeId"`
+	LastCursor     int                    `json:"lastCursor"`
+	Status         string                 `json:"status"`
+	Summary        string                 `json:"summary"`
+	FailureAnchor  string                 `json:"failureAnchor,omitempty"`
+	CloseoutReason string                 `json:"closeoutReason,omitempty"`
+	ReplayAnchor   string                 `json:"replayAnchor,omitempty"`
+	Events         []RuntimePublishRecord `json:"events"`
+}
+
 type InboxItem struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
@@ -756,6 +905,8 @@ type State struct {
 	Sessions              []Session                          `json:"sessions"`
 	RuntimeLeases         []RuntimeLease                     `json:"runtimeLeases,omitempty"`
 	RuntimeScheduler      RuntimeScheduler                   `json:"runtimeScheduler"`
+	ControlPlane          ControlPlaneState                  `json:"controlPlane,omitempty"`
+	RuntimePublish        RuntimePublishState                `json:"runtimePublish,omitempty"`
 	Guards                []DestructiveGuard                 `json:"guards,omitempty"`
 	Auth                  AuthSnapshot                       `json:"auth"`
 	Memory                []MemoryArtifact                   `json:"memory"`

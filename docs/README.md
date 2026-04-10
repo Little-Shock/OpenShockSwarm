@@ -51,6 +51,7 @@
 - [Research Index](./research/README.md)
 - [Reference Stack](./research/Reference-Stack.md)
 - [Slock Local Notes](./research/Slock-Local-Notes.md)
+- [Upstream Branch Harvest 2026-04-10](./research/Upstream-Branch-Harvest-2026-04-10.md)
 
 ## 当前仓库真值应该怎么读
 
@@ -63,20 +64,20 @@
 - memory：artifact detail / version / governance contract 已有后端与测试基线
 - 审批与通知：approval center lifecycle、browser push / email delivery 已有浏览器级证据
 - 执行控制：stop / resume / follow-thread、多 runtime scheduler / failover 已有浏览器级证据
+- 前端壳：real quick search、DM / followed / saved、room workbench、profile drill-in、board planning mirror 都已有 headed evidence
+- onboarding / mailbox / multi-agent：模板 onboarding、Agent Mailbox、governance topology、config persistence 都已有当前主线验证证据
+- control-plane / runtime replay：版本化 `/v1/control-plane/*`、`/v1/runtime/publish*`、runtime replay evidence packet 与 Windows Chrome 有头证据已经补齐
+- no-shadow-truth：visible truth hygiene、dirty projection fail-closed 与 `verify:web` regression gate 已进入主线
+- profile / secrets：Agent profile editor、machine capability binding、credential profile / encrypted secret scope 已接到同一份 live truth
 
 ### 还不能在文档里写成“已完成”的能力
 
-- `app.slock.ai` 式真实 quick search / search result、DM、thread、saved/later、profile surface
-- Room workbench tabs 与 Board 的轻量 planning 语言
-- Agent profile editor 已落地，但 machine affinity、本地 CLI / model capability 绑定与 durable config 仍未收平
-- Runtime / Machine profile、本地 CLI / model capability 绑定
-- 场景化 onboarding：开发团队 / 研究团队 / 空白模板
-- Agent Mailbox、多 Agent handoff、角色治理与 response aggregation
-- user / workspace / agent / machine 配置持久化与数据库真相
-- GitHub App installation-complete 后的 live callback / repo 持续同步
-- 设备授权 / 完整邮箱验证 / 更完整外部身份绑定
-- destructive action approval、secret boundary、越界写保护
-- 真正的多 Agent 自治编排与更重的长期记忆整理
+- `app.slock.ai` 式 profile-grade 入口和更细的主壳气质仍能继续抠细
+- onboarding 的 identity chain 还没和模板 bootstrap 完全并成一条首次启动旅程
+- PM / Architect / Splitter / Developer / Reviewer / QA 等 team topology 还没做成正式可配置团队模板
+- 外部 memory provider、cleanup orchestration、workspace plan / retention 仍在后续 backlog
+- restricted sandbox profile / network / tool policy 还没全部完成
+- delivery entry / release-ready contract / handoff note 还没完全收成单一标准
 
 如果某份文档把这些写成“已经做完”，那份文档就是漂了。
 

@@ -33,6 +33,16 @@ func (s *Store) ControlRun(runID string, input RunControlInput) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if _, err := s.controlRunLocked(runID, input); err != nil {
+		return State{}, err
+	}
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
+func (s *Store) controlRunLocked(runID string, input RunControlInput) (State, error) {
 	roomIndex, runIndex, issueIndex, sessionIndex, err := s.findRunControlTargetsLocked(runID)
 	if err != nil {
 		return State{}, err
@@ -172,9 +182,6 @@ func (s *Store) ControlRun(runID string, input RunControlInput) (State, error) {
 		return State{}, err
 	}
 	s.recordMemoryArtifactWriteLocked(decisionArtifactPath(issueItem.Key), fmt.Sprintf("Decision status %s", decisionState), "run-control", actor)
-	if err := s.persistLocked(); err != nil {
-		return State{}, err
-	}
 
 	return cloneState(s.state), nil
 }

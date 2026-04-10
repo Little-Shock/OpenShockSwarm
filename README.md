@@ -41,8 +41,9 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - `Chat / Work` 切换、同源 `/api/control/*` proxy、message-centric thread rail 和 room/run/inbox 控制面已经站住
 - room-first `Chat / Topic / Run / PR / Context` workbench、DM、followed thread、saved later 和 quick search 都已经接上真实前台表面
 - server 有文件持久化状态、Issue 创建、Room/Run/Session 读取、PR 状态回写、runtime pairing、repo binding、GitHub readiness probe，以及 `gh CLI / GitHub App` 双 auth path 的 PR contract
+- server 已补齐版本化 `/v1/control-plane/*` command / event / debug read-model，以及 `/v1/runtime/publish*` replay evidence contract
 - daemon 可以探测本地 `codex` / `claude`，支持同步执行、流式执行，以及 `git worktree` lane 创建
-- 当前 `main` 已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread、agent mailbox / handoff、profile editor、machine capability binding、workspace durable config，以及 multi-runtime scheduler / failover 的第一轮闭环
+- 当前 `main` 已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread、agent mailbox / handoff、routing SLA / aggregation、profile editor、machine capability binding、workspace durable config，以及 multi-runtime scheduler / failover 的第一轮闭环
 
 ## 当前仓库真值
 
@@ -85,8 +86,14 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - `GET /v1/memory`
   - `GET /v1/pull-requests`
   - `GET/POST /v1/pull-requests/:id`
+  - `POST /v1/control-plane/commands`
+  - `GET /v1/control-plane/events`
+  - `GET /v1/control-plane/debug/commands/:id`
+  - `GET /v1/control-plane/debug/rejections`
   - `GET/POST/DELETE /v1/runtime/pairing`
   - `GET /v1/runtime`
+  - `GET/POST /v1/runtime/publish`
+  - `GET /v1/runtime/publish/replay`
   - `GET/POST /v1/repo/binding`
   - `GET /v1/github/connection`
   - `POST /v1/exec`
@@ -104,6 +111,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - memory artifact 已有 version / governance / detail contract
   - workspace durable config 已能把 onboarding / browser push / memory mode / sandbox baseline 写回同一份状态快照
   - profile / mailbox / runtime / approval 等前台都已经读同一份 live state，而不是各自 shadow state
+  - `pnpm verify:web` 已自带 live truth hygiene gate；dirty projection 会在前台 fail-closed，而不是继续漂成 shadow truth
 
 ### 插件状态
 
@@ -122,7 +130,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - GitHub App / webhook / remote PR 的生产级稳态，还有更多真实环境异常要收
 - 更完整的 workspace 组织模型、成员治理、邀请与权限运维
 - onboarding 场景包、agent 预置团队模板、机器初始化和 CLI 安装助手仍需继续产品化
-- 更深的多 Agent response aggregation、agent-to-agent 通信、记忆治理和长期自治
+- 更深的 agent-to-agent 通信、可配置 team topology、记忆治理和长期自治
 - Board 虽已降级为 planning mirror，但视觉密度和信息层级仍有继续收口空间
 
 换句话说：现在已经是“可运行基线”，但还不是“完整产品闭环”。
