@@ -38,6 +38,7 @@
     "test:headed-memory-viewer-correction-forget": "node ./scripts/headed-memory-viewer-correction-forget.mjs",
     "test:headed-mobile-notification-triage": "node ./scripts/headed-mobile-notification-triage.mjs",
     "test:headed-notification-preference-delivery": "node ./scripts/headed-notification-preference-delivery.mjs",
+    "test:headed-identity-template-recovery-journey": "node ./scripts/headed-identity-template-recovery-journey.mjs",
     "test:headed-dm-followed-thread-saved-later": "node ./scripts/headed-dm-followed-thread-saved-later.mjs",
     "test:headed-device-auth-email-recovery": "node ./scripts/headed-device-auth-email-recovery.mjs",
     "test:headed-config-persistence-recovery": "node ./scripts/headed-config-persistence-recovery.mjs",

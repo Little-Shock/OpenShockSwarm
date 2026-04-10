@@ -58,21 +58,10 @@
   - review comment / review thread / changes requested 现在会稳定回写到 PR conversation ledger，并且 Inbox、Room PR tab、PR Detail 已统一深链到同一条 review 上下文。
 - `GAP-22 / TKT-41`
   - run / room / workspace 三层 usage、quota、retention 与 warning 已进入正式产品面，并已有 Windows Chrome 有头证据，不再只停在 smoke / logs / setup 边栏。
+- `GAP-23 / TKT-44`
+  - invite / verify / reset / blocked recovery 已通过 Windows Chrome 有头链路收成同一条 identity template journey；`/settings` identity template chain 与 `/access` recovery flow 已走同一份 delivery truth。
 
 ### 当前必须先收的 GAP
-
-### GAP-23 Invite / Verify / Reset Notification Template Delivery
-
-- 现状:
-  - device auth、verify、reset、identity binding 已进入产品
-  - 但通知模板、恢复触点和首次启动旅程还没完全并成一条链
-- 对应票:
-  - `TKT-44`
-- 相关合同:
-  - `CHK-11`
-  - `CHK-13`
-  - `CHK-20`
-- 优先级: P1
 
 ### GAP-25 Restricted Local Sandbox / Network / Tool Policy
 
@@ -114,10 +103,9 @@
 
 ## 四、推荐推进顺序
 
-1. `TKT-39` `TKT-41` 已收口；下一批先做 `TKT-44`，把恢复通知链、invite / verify / reset 和 template bootstrap 收成同一条首次启动旅程。
-2. 接着做 `TKT-46`，把 restricted sandbox、network / tool policy 收成正式配置面。
-3. 再做 `TKT-48`，把 workspace plan / usage limit / retention 拉到正式产品面。
-4. 最后做 `TKT-49`，把 release-ready / handoff contract 收成交付闭环。
+1. 先做 `TKT-46`，把 restricted sandbox、network / tool policy 收成正式配置面。
+2. 再做 `TKT-48`，把 workspace plan / usage limit / retention 拉到正式产品面。
+3. 最后做 `TKT-49`，把 release-ready / handoff contract 收成交付闭环。
 
 ---
 

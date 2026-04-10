@@ -511,7 +511,7 @@
 
 ## TKT-44 Invite / Verify / Reset Notification Template Delivery
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把 invite / verify / reset / blocked escalation 收成同一条恢复与通知模板链。
 - 范围:

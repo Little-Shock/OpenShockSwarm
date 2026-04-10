@@ -1,7 +1,7 @@
 # OpenShock Product Checklist
 
-**版本:** 1.7
-**更新日期:** 2026 年 4 月 10 日
+**版本:** 1.8
+**更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -226,8 +226,8 @@
   - [x] `/settings` 现在直接消费 `/v1/notifications`，可写 workspace browser/email policy、current browser subscriber、email subscriber，并展示 latest worker receipts
   - [x] browser push / email fanout 已能把 blocked / review / approval 信号主动推出去，失败 / retry 也有 explicit `lastError` / receipt truth
   - [x] `/inbox` 在 mobile web 下现在收成轻量通知处理面：首屏只保留 open / unread / blocked / recent 摘要、直接 decision 与可折叠 backlinks / guard，重策略继续回 `/settings`
+  - [x] `invite / verify / reset / blocked recovery` 已通过 `/settings` identity template chain 与 `/access` 恢复链收成同一条 delivery truth，并已有 2026-04-11 Windows Chrome 有头证据
 - 当前 GAP:
-  - [ ] 邀请、邮箱验证、密码重置仍未接到同一 notification template / delivery chain
   - [ ] @提及、mailbox 新消息、跨设备恢复触达等更细粒度通知策略仍未补齐
 - 对应 Test Cases: `TC-017` `TC-044`
 
@@ -380,8 +380,8 @@
   - [x] `/setup` 现在提供 `开发团队 / 研究团队 / 空白自定义` 模板选择，并把 channels / roles / agents / notification policy / onboarding notes 收成同一份 workspace onboarding truth
   - [x] onboarding progress、current step、resume route 会跟随 repo binding / GitHub readiness / runtime pairing 的 live truth 前滚，而不是只停在本地步骤卡
   - [x] 完成首次启动后，reload、server restart 与 second browser context 继续从同一份 durable workspace snapshot 读回 template bootstrap 与 onboarding status
+  - [x] `/access` 身份恢复链与 `/settings` identity template delivery 现在会围同一份 onboarding / first-start truth 前滚，不再把 invite / verify / reset 留成脱节旁路
 - 当前 GAP:
-  - [ ] device auth / verify 已进入 `/access` 的 live identity chain，但还没和 template bootstrap 收成同一条首次启动旅程
   - [ ] `开发团队 / 研究团队` 当前先收成 bootstrap package，不包含正式多 Agent role topology / mailbox / reviewer-tester loop；这部分继续留给 `TC-041` / `TKT-36`
 - 对应 Test Cases: `TC-035` `TC-038` `TC-041`
 

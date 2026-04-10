@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
-**版本:** 1.5
-**更新日期:** 2026 年 4 月 10 日
+**版本:** 1.6
+**更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -476,7 +476,7 @@
   2. 在另一设备上恢复登录并验证权限链。
   3. 触发邮箱重置并确认 session / member state 同步更新。
 - 预期结果: 身份链不再只停留在 invite / role / quick login，而是具备完整恢复和验证能力。
-- 业务结论: 2026 年 4 月 8 日 `TKT-29` 已新增 `pnpm test:headed-device-auth-email-recovery`，在 headed Chromium 下把 invited member 登录、email verify、current-device authorization、password reset on another device、external identity binding 串成同一条 exact replay。当前 `docs/testing/Test-Report-2026-04-08-device-auth-email-recovery.md` 已记录 recovery badge、authorized device、reset recovery 与 identity chip 证据，因此这条用例当前转为 `Pass`。
+- 业务结论: 2026 年 4 月 8 日 `TKT-29` 已新增 `pnpm test:headed-device-auth-email-recovery`，在 headed Chromium 下把 invited member 登录、email verify、current-device authorization、password reset on another device、external identity binding 串成同一条 exact replay。2026 年 4 月 11 日 `TKT-44` 又新增 `pnpm test:headed-identity-template-recovery-journey`，把 `/settings` identity template chain 与 `/access` invite / verify / reset / blocked recovery 合成同一条 Windows Chrome delivery journey。当前 `docs/testing/Test-Report-2026-04-08-device-auth-email-recovery.md` 与 `docs/testing/Test-Report-2026-04-11-windows-chrome-identity-template-recovery-journey.md` 已共同覆盖恢复状态与模板投递证据，因此这条用例继续保持 `Pass`。
 
 ## TC-036 Agent Profile / Prompt / Avatar / Memory Binding Edit
 
