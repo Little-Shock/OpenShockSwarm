@@ -26,12 +26,19 @@ var (
 	ErrMailboxCommentAgentForbidden = errors.New("only the source or target agent can comment on this handoff")
 )
 
+const (
+	handoffKindManual           = "manual"
+	handoffKindGoverned         = "governed"
+	handoffKindDeliveryCloseout = "delivery-closeout"
+)
+
 type MailboxCreateInput struct {
 	RoomID      string
 	FromAgentID string
 	ToAgentID   string
 	Title       string
 	Summary     string
+	Kind        string
 }
 
 type MailboxUpdateInput struct {
@@ -150,7 +157,7 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 		Body:       defaultString(note, presentation.Summary),
 		CreatedAt:  updatedAt,
 	})
-	if action == "acknowledged" {
+	if action == "acknowledged" && handoff.Kind != handoffKindDeliveryCloseout {
 		s.state.Rooms[roomIndex].Topic.Owner = handoff.ToAgent
 		s.state.Runs[runIndex].Owner = handoff.ToAgent
 		s.state.Issues[issueIndex].Owner = handoff.ToAgent
@@ -176,6 +183,9 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 		}
 	}
 	if action == "completed" {
+		if err := s.ensureDeliveryDelegationHandoffLocked(handoff.RoomID); err != nil {
+			return State{}, AgentHandoff{}, err
+		}
 		s.syncDeliveryDelegationInboxLocked(handoff.RoomID)
 	}
 
@@ -226,6 +236,7 @@ func (s *Store) createHandoffLocked(input MailboxCreateInput) (AgentHandoff, err
 	createdAt := now.UTC().Format(time.RFC3339)
 	handoffID := fmt.Sprintf("handoff-%d", now.UnixNano())
 	inboxItemID := fmt.Sprintf("inbox-handoff-%d", now.UnixNano())
+	handoffKind := normalizeHandoffKind(input.Kind)
 	message := MailboxMessage{
 		ID:         fmt.Sprintf("%s-msg-1", handoffID),
 		HandoffID:  handoffID,
@@ -237,6 +248,7 @@ func (s *Store) createHandoffLocked(input MailboxCreateInput) (AgentHandoff, err
 	}
 	handoff := AgentHandoff{
 		ID:          handoffID,
+		Kind:        handoffKind,
 		Title:       title,
 		Summary:     summary,
 		Status:      "requested",
@@ -302,6 +314,59 @@ func (s *Store) continueGovernedRouteLocked(completed AgentHandoff) error {
 		ToAgentID:   suggestion.ToAgentID,
 		Title:       suggestion.DraftTitle,
 		Summary:     defaultString(suggestion.DraftSummary, "按当前治理链继续推进下一棒。"),
+		Kind:        handoffKindGoverned,
+	})
+	return err
+}
+
+func (s *Store) ensureDeliveryDelegationHandoffLocked(roomID string) error {
+	prIndex := s.findPullRequestByRoomLocked(strings.TrimSpace(roomID))
+	if prIndex == -1 {
+		return nil
+	}
+
+	snapshot := cloneState(s.state)
+	hydrateWorkspaceGovernance(&snapshot.Workspace, &snapshot)
+	pr := snapshot.PullRequests[prIndex]
+	governedCloseout := snapshot.Workspace.Governance.RoutingPolicy.SuggestedHandoff
+	delegation := buildPullRequestDeliveryDelegation(snapshot, pr, governedCloseout)
+	if delegation.Status != "ready" || strings.TrimSpace(delegation.HandoffID) != "" {
+		return nil
+	}
+
+	lane, targetAgentName, laneFound, targetFound := resolvePullRequestDeliveryDelegationTarget(snapshot)
+	if !laneFound || !targetFound {
+		return nil
+	}
+
+	fromAgentName := strings.TrimSpace(governedCloseout.FromAgent)
+	if fromAgentName == "" {
+		fromAgentName = strings.TrimSpace(pr.Author)
+	}
+	fromAgent, ok := governanceAgentByName(s.state.Agents, fromAgentName)
+	if !ok {
+		return nil
+	}
+	targetAgent, err := s.ensureGovernanceLaneAgentLocked(lane, targetAgentName)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(fromAgent.ID, targetAgent.ID) {
+		return nil
+	}
+
+	title := pullRequestDeliveryDelegationTitle(pr, targetAgent.Name)
+	if existing := findPullRequestDeliveryDelegationHandoff(s.state.Mailbox, pr, targetAgent.Name); existing != nil {
+		return nil
+	}
+
+	_, err = s.createHandoffLocked(MailboxCreateInput{
+		RoomID:      pr.RoomID,
+		FromAgentID: fromAgent.ID,
+		ToAgentID:   targetAgent.ID,
+		Title:       title,
+		Summary:     pullRequestDeliveryDelegationSummary(governedCloseout, pr, lane, targetAgent.Name),
+		Kind:        handoffKindDeliveryCloseout,
 	})
 	return err
 }
@@ -327,7 +392,7 @@ func (s *Store) syncDeliveryDelegationInboxLocked(roomID string) {
 	}
 	s.state.Inbox = filtered
 
-	if delegation.Status != "ready" && delegation.Status != "blocked" {
+	if delegation.Status != "ready" && delegation.Status != "blocked" && delegation.Status != "done" {
 		return
 	}
 
@@ -340,6 +405,10 @@ func (s *Store) syncDeliveryDelegationInboxLocked(roomID string) {
 	kind := "blocked"
 	if delegation.Status == "ready" {
 		title = fmt.Sprintf("%s 交付委托已准备 -> %s", labelPrefix, delegation.TargetAgent)
+		kind = "status"
+	}
+	if delegation.Status == "done" {
+		title = fmt.Sprintf("%s 交付委托已完成 -> %s", labelPrefix, delegation.TargetAgent)
 		kind = "status"
 	}
 	s.state.Inbox = append([]InboxItem{{
@@ -382,6 +451,95 @@ func mailboxInboxHref(handoffID, roomID string) string {
 	values.Set("handoffId", handoffID)
 	values.Set("roomId", roomID)
 	return "/inbox?" + values.Encode()
+}
+
+func normalizeHandoffKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case handoffKindGoverned:
+		return handoffKindGoverned
+	case handoffKindDeliveryCloseout:
+		return handoffKindDeliveryCloseout
+	default:
+		return handoffKindManual
+	}
+}
+
+func (s *Store) ensureGovernanceLaneAgentLocked(
+	lane governanceTemplateLaneDefinition,
+	targetAgentName string,
+) (Agent, error) {
+	if agent, ok := governanceAgentByName(s.state.Agents, targetAgentName); ok {
+		return agent, nil
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	agentID := uniqueAgentID(s.state.Agents, "agent-"+slugify(targetAgentName))
+	providerPreference := "Codex CLI"
+	modelPreference := "gpt-5.3-codex"
+	runtimePreference := strings.TrimSpace(s.state.Workspace.PairedRuntime)
+	sandbox := s.state.Workspace.Sandbox
+	if len(s.state.Agents) > 0 {
+		templateAgent := s.state.Agents[0]
+		providerPreference = defaultString(strings.TrimSpace(templateAgent.ProviderPreference), providerPreference)
+		modelPreference = defaultString(strings.TrimSpace(templateAgent.ModelPreference), modelPreference)
+		runtimePreference = defaultString(strings.TrimSpace(templateAgent.RuntimePreference), runtimePreference)
+		sandbox = templateAgent.Sandbox
+	}
+	if runtimePreference == "" && len(s.state.Runtimes) > 0 {
+		runtimePreference = s.state.Runtimes[0].ID
+	}
+
+	agent := Agent{
+		ID:                    agentID,
+		Name:                  targetAgentName,
+		Description:           fmt.Sprintf("自动从 %s lane 物化的 closeout delegate。", defaultString(strings.TrimSpace(lane.Label), "治理拓扑")),
+		Mood:                  "等待 final delivery closeout",
+		State:                 "idle",
+		Lane:                  defaultString(strings.TrimSpace(lane.Label), "delivery closeout"),
+		Role:                  defaultString(strings.TrimSpace(lane.Role), defaultString(strings.TrimSpace(lane.Label), "Delivery Delegate")),
+		Avatar:                "delivery-anchor",
+		Prompt:                "围 release gate、operator handoff note 和 delivery evidence 做最后收口。",
+		OperatingInstructions: "当前 Agent 由治理拓扑自动物化，用来接 final delivery closeout formal handoff。",
+		Provider:              providerPreference,
+		ProviderPreference:    providerPreference,
+		ModelPreference:       modelPreference,
+		RecallPolicy:          "governed-first",
+		RuntimePreference:     defaultString(runtimePreference, "shock-main"),
+		MemorySpaces:          []string{"workspace", "issue-room", "topic"},
+		CredentialProfileIDs:  []string{},
+		Sandbox:               sandbox,
+		RecentRunIDs:          []string{},
+		ProfileAudit: []AgentProfileAuditEntry{{
+			ID:        fmt.Sprintf("%s-audit-1", agentID),
+			UpdatedAt: now,
+			UpdatedBy: "governance-auto-materialize",
+			Summary:   fmt.Sprintf("从 %s lane 自动物化 delivery closeout delegate。", defaultString(strings.TrimSpace(lane.Label), "治理拓扑")),
+			Changes:   []AgentProfileAuditChange{},
+		}},
+	}
+	s.state.Agents = append([]Agent{agent}, s.state.Agents...)
+	if artifacts, err := ensureWorkspaceScaffold(s.workspaceRoot, s.state.Agents, s.state.Memory); err == nil {
+		s.state.Memory = artifacts
+	} else {
+		return Agent{}, err
+	}
+	return agent, nil
+}
+
+func uniqueAgentID(existing []Agent, base string) string {
+	candidate := strings.TrimSpace(base)
+	if candidate == "" {
+		candidate = fmt.Sprintf("agent-%d", time.Now().UnixNano())
+	}
+	for index := 0; ; index += 1 {
+		id := candidate
+		if index > 0 {
+			id = fmt.Sprintf("%s-%d", candidate, index+1)
+		}
+		if _, ok := findAgentByID(existing, id); !ok {
+			return id
+		}
+	}
 }
 
 func normalizeHandoffAction(action string) string {

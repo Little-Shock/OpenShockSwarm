@@ -190,9 +190,15 @@ func resolveGovernanceFocus(state State) governanceFocus {
 	roomID := ""
 
 	if len(state.Mailbox) > 0 {
-		handoff := state.Mailbox[0]
-		focus.LatestHandoff = &handoff
-		roomID = handoff.RoomID
+		for _, candidate := range state.Mailbox {
+			if candidate.Kind == handoffKindDeliveryCloseout {
+				continue
+			}
+			handoff := candidate
+			focus.LatestHandoff = &handoff
+			roomID = handoff.RoomID
+			break
+		}
 	}
 	if roomID == "" {
 		for _, run := range state.Runs {
@@ -244,6 +250,9 @@ func resolveGovernanceFocus(state State) governanceFocus {
 	}
 
 	for _, handoff := range state.Mailbox {
+		if handoff.Kind == handoffKindDeliveryCloseout {
+			continue
+		}
 		if roomID != "" && handoff.RoomID != roomID {
 			continue
 		}

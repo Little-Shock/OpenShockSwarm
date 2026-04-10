@@ -25,6 +25,8 @@ const runMode =
       ? "closeout"
       : parsedArgs.mode === "delegation"
         ? "delegation"
+        : parsedArgs.mode === "delegate-handoff"
+          ? "delegate-handoff"
     : requestedReportPath.includes("autocreate")
       ? "auto-create"
       : "route";
@@ -35,6 +37,8 @@ const evidencePrefix =
       ? "openshock-tkt67-governed-route-"
       : runMode === "delegation"
         ? "openshock-tkt68-governed-route-"
+        : runMode === "delegate-handoff"
+          ? "openshock-tkt69-governed-route-"
     : runMode === "auto-create"
       ? "openshock-tkt65-governed-route-"
       : "openshock-tkt64-governed-route-";
@@ -333,7 +337,12 @@ let page = null;
 try {
   const { webURL, serverURL } = await startServices();
   resolveChromiumExecutable();
-  if (runMode === "auto-advance" || runMode === "closeout" || runMode === "delegation") {
+  if (
+    runMode === "auto-advance" ||
+    runMode === "closeout" ||
+    runMode === "delegation" ||
+    runMode === "delegate-handoff"
+  ) {
     await patchGovernedQATopology(serverURL);
   }
   const initialState = await readState(serverURL);
@@ -408,7 +417,12 @@ try {
   await page.getByTestId(`mailbox-action-acknowledged-${handoff.id}`).click();
   await page.getByTestId(`mailbox-note-${handoff.id}`).fill("review 已完成，继续看下一条治理建议。");
 
-  if (runMode === "auto-advance" || runMode === "closeout" || runMode === "delegation") {
+  if (
+    runMode === "auto-advance" ||
+    runMode === "closeout" ||
+    runMode === "delegation" ||
+    runMode === "delegate-handoff"
+  ) {
     await page.getByTestId(`mailbox-action-completed-continue-${handoff.id}`).click();
     const followup = await waitForMailboxWhere(
       serverURL,
@@ -444,7 +458,7 @@ try {
     await page.getByTestId(`mailbox-card-${followup.id}`).waitFor({ state: "visible" });
     await capture(page, "governed-compose-auto-advanced");
 
-    if (runMode === "closeout" || runMode === "delegation") {
+    if (runMode === "closeout" || runMode === "delegation" || runMode === "delegate-handoff") {
       const qaCloseoutNote = "QA 验证完成，可以进入 PR delivery closeout。";
 
       await page.goto(`${webURL}/mailbox?roomId=room-runtime&handoffId=${followup.id}`, { waitUntil: "load" });
@@ -473,7 +487,7 @@ try {
       );
       await capture(page, "pull-request-delivery-closeout");
 
-      if (runMode === "delegation") {
+      if (runMode === "delegation" || runMode === "delegate-handoff") {
         assert(
           (await readText(page, "delivery-delegation-status")) === "delegate ready",
           "delivery delegation should become ready after final QA closeout"
@@ -496,6 +510,36 @@ try {
           return node?.textContent?.includes("Spec Captain") ?? false;
         });
         await capture(page, "pull-request-delivery-delegation");
+
+        if (runMode === "delegate-handoff") {
+          assert(
+            (await readText(page, "delivery-delegation-handoff-status")) === "handoff requested",
+            "delivery delegation should auto-create a requested formal closeout handoff"
+          );
+          const delegatedHandoffHref = await page.getByTestId("delivery-delegation-open").getAttribute("href");
+          assert(
+            delegatedHandoffHref && delegatedHandoffHref.includes("handoffId="),
+            "delivery delegation open link should point at the delegated handoff"
+          );
+          const delegatedHandoffURL = new URL(delegatedHandoffHref, webURL);
+          const delegatedHandoffID = delegatedHandoffURL.searchParams.get("handoffId");
+          assert(delegatedHandoffID, "delegated handoff href should include handoffId");
+
+          await page.getByTestId("delivery-delegation-open").click();
+          await page.getByTestId(`mailbox-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
+          await page.waitForFunction(
+            (handoffId) => {
+              const card = document.querySelector(`[data-testid="mailbox-card-${handoffId}"]`);
+              return (
+                card?.textContent?.includes("Memory Clerk") &&
+                card?.textContent?.includes("Spec Captain") &&
+                card?.textContent?.includes("requested")
+              );
+            },
+            delegatedHandoffID
+          );
+          await capture(page, "delivery-delegated-handoff");
+        }
       }
 
       await page.goto(`${webURL}/inbox?roomId=room-runtime`, { waitUntil: "load" });
@@ -505,7 +549,18 @@ try {
       await page.getByTestId("mailbox-compose-governed-route-closeout").waitFor({ state: "visible" });
       await capture(page, "governed-compose-closeout-ready");
 
-      if (runMode === "delegation") {
+      if (runMode === "delegate-handoff") {
+        reportTitle = "# 2026-04-11 Governed Mailbox Delegated Closeout Handoff Report";
+        reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-governed-mailbox-delegate-handoff -- --report ${path.relative(projectRoot, reportPath)}`;
+        reportTicket = "TKT-69";
+        reportTestCase = "TC-058";
+        reportScope = "governed final closeout auto-create、delegated mailbox handoff、PR detail handoff backlink";
+        resultLines = [
+          "- QA final lane closeout 后，系统不会只停在 `delegate ready` 提示，而是会继续自动创建 `Memory Clerk -> Spec Captain` 的 formal delivery closeout handoff -> PASS",
+          "- PR delivery entry 的 `Delivery Delegation` card 会保留 `PM · Spec Captain` 目标，同时新增 `handoff requested` 状态与 handoff deep link，说明 delegate signal 已经升级为可执行 contract -> PASS",
+          "- 点击 delegation card 的 handoff link 后，Inbox / Mailbox 会直接聚焦到新创建的 closeout handoff，证明 post-QA orchestration 已经进入正式 mailbox ledger，而没有把治理 done-state 冲回 active governed route -> PASS",
+        ];
+      } else if (runMode === "delegation") {
         reportTitle = "# 2026-04-11 Governed Mailbox Delivery Delegation Report";
         reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-governed-mailbox-delegation -- --report ${path.relative(projectRoot, reportPath)}`;
         reportTicket = "TKT-68";

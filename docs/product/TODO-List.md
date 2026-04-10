@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.4
+**版本:** 1.5
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -80,10 +80,12 @@
   - final lane closeout 现在已显式接回 PR delivery entry；`/mailbox` 与 Inbox compose 在 `done` 时都会给出 closeout 回链，PR detail 的 handoff note / evidence 也会直接带上最新 governed closeout note。
 - `GAP-37 / TKT-68`
   - final lane closeout 现在还会显式派生 delivery delegate；PR detail 已出现 `Delivery Delegation` card，且 related inbox 会写入 deterministic delegation signal，默认 dev-team 会回到 `PM / Spec Captain`。
+- `GAP-38 / TKT-69`
+  - final lane closeout 现在还会自动创建 delegated closeout handoff；PR detail delegation card 已能显示 `handoff requested` 并一跳回到 Mailbox / Inbox 的对应 ledger。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”或“能不能显式给出 delivery delegate”，而是 topology 之后更重的 auto-closeout 策略、agent-to-agent orchestration、delegate automation policy 和跨 Agent closeout 编排。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”或“能不能自动创建 delegated closeout handoff”，而是 topology 之后更重的 auto-closeout 策略、agent-to-agent orchestration、delegate automation policy 和跨 Agent closeout 编排。
 
 ---
 

@@ -128,6 +128,36 @@ function delegationStatusTone(status: PullRequestDeliveryDelegation["status"]) {
   }
 }
 
+function delegationHandoffStatusLabel(status?: PullRequestDeliveryDelegation["handoffStatus"]) {
+  switch (status) {
+    case "acknowledged":
+      return "handoff acknowledged";
+    case "blocked":
+      return "handoff blocked";
+    case "completed":
+      return "handoff completed";
+    case "requested":
+      return "handoff requested";
+    default:
+      return "";
+  }
+}
+
+function delegationHandoffStatusTone(status?: PullRequestDeliveryDelegation["handoffStatus"]) {
+  switch (status) {
+    case "acknowledged":
+      return "bg-[var(--shock-lime)]";
+    case "blocked":
+      return "bg-[var(--shock-pink)] text-white";
+    case "completed":
+      return "bg-[var(--shock-yellow)]";
+    case "requested":
+      return "bg-white";
+    default:
+      return "bg-white";
+  }
+}
+
 function conversationKindLabel(kind: PullRequestConversationEntry["kind"]) {
   switch (kind) {
     case "review":
@@ -490,13 +520,24 @@ export function PullRequestDetailView({
                         {detail.delivery.delegation.targetLane} · {detail.delivery.delegation.targetAgent || "unmapped"}
                       </span>
                     ) : null}
-                    {detail.delivery.delegation.href ? (
+                    {detail.delivery.delegation.handoffStatus ? (
+                      <span
+                        data-testid="delivery-delegation-handoff-status"
+                        className={cn(
+                          "border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                          delegationHandoffStatusTone(detail.delivery.delegation.handoffStatus)
+                        )}
+                      >
+                        {delegationHandoffStatusLabel(detail.delivery.delegation.handoffStatus)}
+                      </span>
+                    ) : null}
+                    {(detail.delivery.delegation.handoffHref || detail.delivery.delegation.href) ? (
                       <Link
-                        href={detail.delivery.delegation.href}
+                        href={detail.delivery.delegation.handoffHref || detail.delivery.delegation.href || "#"}
                         data-testid="delivery-delegation-open"
                         className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
                       >
-                        Open Delivery Context
+                        {detail.delivery.delegation.handoffHref ? "Open Delegated Handoff" : "Open Delivery Context"}
                       </Link>
                     ) : null}
                   </div>

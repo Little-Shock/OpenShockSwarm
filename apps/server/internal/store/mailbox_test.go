@@ -602,6 +602,9 @@ func TestGovernedFinalLaneCompletionBridgesDeliveryCloseout(t *testing.T) {
 		detail.Delivery.Delegation.TargetLane != "PM" {
 		t.Fatalf("delivery delegation = %#v, want ready Spec Captain / PM delegate", detail.Delivery.Delegation)
 	}
+	if detail.Delivery.Delegation.HandoffID == "" || detail.Delivery.Delegation.HandoffStatus != "requested" {
+		t.Fatalf("delivery delegation = %#v, want auto-created requested delivery closeout handoff", detail.Delivery.Delegation)
+	}
 	joinedLines := strings.Join(detail.Delivery.HandoffNote.Lines, "\n")
 	if !strings.Contains(joinedLines, closeoutNote) || !strings.Contains(joinedLines, "governed route 已到 done") {
 		t.Fatalf("handoff note lines = %#v, want closeout note + governed done guidance", detail.Delivery.HandoffNote.Lines)
@@ -619,6 +622,14 @@ func TestGovernedFinalLaneCompletionBridgesDeliveryCloseout(t *testing.T) {
 	if delegationInbox == nil || delegationInbox.Href != "/pull-requests/pr-runtime-18" || !strings.Contains(delegationInbox.Summary, "Spec Captain") {
 		t.Fatalf("delegation inbox = %#v, want PR delivery delegation inbox signal", finalState.Inbox)
 	}
+	closeoutHandoff := findHandoffByID(finalState.Mailbox, detail.Delivery.Delegation.HandoffID)
+	if closeoutHandoff == nil ||
+		closeoutHandoff.Kind != handoffKindDeliveryCloseout ||
+		closeoutHandoff.FromAgent != "Memory Clerk" ||
+		closeoutHandoff.ToAgent != "Spec Captain" ||
+		closeoutHandoff.Status != "requested" {
+		t.Fatalf("delivery closeout handoff = %#v, want requested Memory Clerk -> Spec Captain delivery-closeout handoff", finalState.Mailbox)
+	}
 }
 
 func findInboxItemByHandoffID(items []InboxItem, handoffID string) *InboxItem {
@@ -633,6 +644,15 @@ func findInboxItemByHandoffID(items []InboxItem, handoffID string) *InboxItem {
 func findInboxItemByID(items []InboxItem, inboxID string) *InboxItem {
 	for index := range items {
 		if items[index].ID == inboxID {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func findHandoffByID(items []AgentHandoff, handoffID string) *AgentHandoff {
+	for index := range items {
+		if items[index].ID == handoffID {
 			return &items[index]
 		}
 	}

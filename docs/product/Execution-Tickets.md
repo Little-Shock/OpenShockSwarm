@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.12
+**版本:** 1.13
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -26,7 +26,7 @@
 1. 已经站住的前端壳、onboarding、mailbox、profile、persistence 不再反复假装“未完成”；后续票只围剩余 GAP 开。
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
-4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink 与 delivery delegation signal；下一批继续前滚到更重的 auto-closeout、automation policy 与更深自动协作策略。
+4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal 与 delegated closeout handoff auto-create；下一批继续前滚到更重的 auto-closeout、automation policy 与更深自动协作策略。
 5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
 
 ### Frontend Batch Merge Gate
@@ -818,6 +818,28 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegation -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegation.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-057`
+
+## TKT-69 Delegated Closeout Handoff Auto-Create
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 让 final QA closeout 后的 delivery delegate 不只停在 signal，而是自动生成一条独立的 formal closeout handoff，并从 PR detail 直接回链到这条 handoff。
+- 范围:
+  - delivery-closeout handoff kind
+  - final closeout -> delegated handoff auto-create
+  - missing delegate agent auto-materialization
+  - PR detail delegation handoff status / deep link
+- 依赖: `TKT-68` `TKT-35`
+- Done When:
+  - final QA closeout 后，系统会自动创建 `final verifier -> delivery delegate` 的 formal closeout handoff，而不是只停在 `delegate ready`
+  - delegated handoff 不会把 governed route 的 done-state closeout 回链冲回 active；governance truth 与 closeout orchestration 保持解耦
+  - PR detail 的 `Delivery Delegation` card 会显式显示 handoff status，并能深链到对应 Inbox / Mailbox handoff
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store ./internal/api'`
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-handoff -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-handoff.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-058`
 
 ---
 

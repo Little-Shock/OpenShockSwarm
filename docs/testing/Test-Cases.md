@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.10
+**版本:** 1.11
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -758,3 +758,17 @@
   4. 检查 PR detail 的 related inbox 是否出现 `inbox-delivery-delegation-pr-runtime-18`，并确认它回链到同一条 PR detail。
 - 预期结果: final lane closeout 后，delivery delegate 会从治理拓扑中被正式派生出来；人类既能在 delivery card 看到委派目标，也能在 related inbox 看到同一条 deterministic signal，不再需要靠隐式约定记住“最后谁来收口”。
 - 业务结论: 2026 年 4 月 11 日 `TKT-68` 已把 `PullRequestDeliveryEntry.delegation`、final-closeout delegation fallback 与 related inbox signal 接进同一条 delivery truth。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegation.md` 已记录 `QA closeout -> delivery delegate ready -> related inbox signal` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 已锁住 `PM / Spec Captain` fallback、`delivery-delegate` evidence 与 deterministic inbox item，因此这条交付委派用例当前转为 `Pass`。
+
+## TC-058 Delegated Closeout Handoff Auto-Create
+
+- 业务目标: 确认 final QA closeout 后，系统会把 delivery delegate 继续升级成 formal handoff，而不是只给一条信号让人类自己再起单。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 governed auto-advance、done-state delivery backlink、delivery delegation signal，以及可解析的 owner/final-response delegate lane。
+- 测试步骤:
+  1. 通过 governed route 创建 `Developer -> Reviewer` handoff，并用 `Complete + Auto-Advance` 自动生成 `Reviewer -> QA` followup。
+  2. 由 QA acknowledge 并完成 final lane handoff，写入 closeout note。
+  3. 打开 `/pull-requests/pr-runtime-18`，检查 `Delivery Delegation` card 是否新增 `handoff requested` 状态与 handoff deep link。
+  4. 点击 handoff deep link，确认 Inbox / Mailbox 会直接聚焦到自动创建的 `Memory Clerk -> Spec Captain` formal closeout handoff，且 governed route 仍维持 done-state closeout backlink。
+- 预期结果: delegate signal 会继续升级成 formal mailbox contract；人类既能在 PR detail 看到 delegated handoff 状态，也能一跳进入对应 ledger，不需要再手工重新 compose 一条 closeout handoff。
+- 业务结论: 2026 年 4 月 11 日 `TKT-69` 已把 `delivery-closeout` handoff kind、delegate agent auto-materialization 与 PR detail handoff deep-link 接进同一条 closeout orchestration。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-handoff.md` 已记录 `QA closeout -> auto-created delegated handoff -> Inbox/Mailbox focus` 的 Windows Chrome 有头 walkthrough，同时 `go test ./internal/store ./internal/api` 已锁住 `Memory Clerk -> Spec Captain` requested handoff、delegation handoff status 与 governance done-state 不回退，因此这条 delegated closeout contract 用例当前转为 `Pass`。

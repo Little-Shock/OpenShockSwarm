@@ -688,6 +688,7 @@ type MailboxMessage struct {
 
 type AgentHandoff struct {
 	ID          string           `json:"id"`
+	Kind        string           `json:"kind,omitempty"`
 	Title       string           `json:"title"`
 	Summary     string           `json:"summary"`
 	Status      string           `json:"status"`
@@ -1011,12 +1012,15 @@ type PullRequestDeliveryTemplate struct {
 }
 
 type PullRequestDeliveryDelegation struct {
-	Status      string `json:"status"`
-	TargetLane  string `json:"targetLane,omitempty"`
-	TargetAgent string `json:"targetAgent,omitempty"`
-	Summary     string `json:"summary"`
-	Href        string `json:"href,omitempty"`
-	InboxItemID string `json:"inboxItemId,omitempty"`
+	Status        string `json:"status"`
+	TargetLane    string `json:"targetLane,omitempty"`
+	TargetAgent   string `json:"targetAgent,omitempty"`
+	Summary       string `json:"summary"`
+	Href          string `json:"href,omitempty"`
+	InboxItemID   string `json:"inboxItemId,omitempty"`
+	HandoffID     string `json:"handoffId,omitempty"`
+	HandoffHref   string `json:"handoffHref,omitempty"`
+	HandoffStatus string `json:"handoffStatus,omitempty"`
 }
 
 type PullRequestDeliveryHandoffNote struct {

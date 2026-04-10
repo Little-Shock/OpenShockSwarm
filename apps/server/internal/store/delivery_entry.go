@@ -104,6 +104,35 @@ func buildPullRequestDeliveryDelegation(
 
 	result.Status = "ready"
 	result.TargetAgent = targetAgent
+	if handoff := findPullRequestDeliveryDelegationHandoff(snapshot.Mailbox, pr, targetAgent); handoff != nil {
+		result.HandoffID = handoff.ID
+		result.HandoffHref = mailboxInboxHref(handoff.ID, handoff.RoomID)
+		result.HandoffStatus = handoff.Status
+		switch handoff.Status {
+		case "blocked":
+			result.Status = "blocked"
+			result.Summary = fmt.Sprintf(
+				"%s 的 delivery closeout handoff 当前 blocked：%s",
+				targetAgent,
+				defaultString(strings.TrimSpace(handoff.LastNote), handoff.LastAction),
+			)
+			return result
+		case "completed":
+			result.Status = "done"
+			result.Summary = fmt.Sprintf(
+				"%s 已完成 formal delivery closeout handoff；当前等待最终 merge / release receipt 收口。",
+				targetAgent,
+			)
+			return result
+		default:
+			result.Summary = fmt.Sprintf(
+				"%s 已完成 governed closeout；系统已为 %s 自动创建 formal delivery closeout handoff，可直接进入最后一棒收口。",
+				defaultString(governedCloseout.FromAgent, "当前治理链"),
+				targetAgent,
+			)
+			return result
+		}
+	}
 	result.Summary = fmt.Sprintf(
 		"%s 已完成 governed closeout；下一步交给 %s（%s）复核 release gate、operator handoff note 与最终交付收口。",
 		defaultString(governedCloseout.FromAgent, "当前治理链"),
@@ -161,6 +190,58 @@ func deliveryDelegationTopology(snapshot State) []governanceTemplateLaneDefiniti
 		})
 	}
 	return fallback
+}
+
+func findPullRequestDeliveryDelegationHandoff(
+	mailbox []AgentHandoff,
+	pr PullRequest,
+	targetAgent string,
+) *AgentHandoff {
+	for index := range mailbox {
+		handoff := &mailbox[index]
+		if handoff.Kind != handoffKindDeliveryCloseout {
+			continue
+		}
+		if handoff.RoomID != pr.RoomID || handoff.IssueKey != pr.IssueKey {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(handoff.ToAgent), strings.TrimSpace(targetAgent)) {
+			continue
+		}
+		return handoff
+	}
+	return nil
+}
+
+func pullRequestDeliveryDelegationTitle(pr PullRequest, targetAgent string) string {
+	return fmt.Sprintf(
+		"%s 最终交付收口 -> %s",
+		defaultString(strings.TrimSpace(pr.Label), strings.TrimSpace(pr.ID)),
+		targetAgent,
+	)
+}
+
+func pullRequestDeliveryDelegationSummary(
+	governedCloseout WorkspaceGovernanceSuggestedHandoff,
+	pr PullRequest,
+	lane governanceTemplateLaneDefinition,
+	targetAgent string,
+) string {
+	lines := []string{
+		fmt.Sprintf(
+			"%s 已完成最终 governed closeout；请你接住 %s 的 delivery entry、release gate 和最终 closeout。",
+			defaultString(strings.TrimSpace(governedCloseout.FromAgent), "当前治理链"),
+			defaultString(strings.TrimSpace(pr.Label), strings.TrimSpace(pr.ID)),
+		),
+	}
+	if note := strings.TrimSpace(governedCloseout.Reason); note != "" {
+		lines = append(lines, "当前 closeout 摘要："+note)
+	}
+	if laneLabel := strings.TrimSpace(lane.Label); laneLabel != "" {
+		lines = append(lines, fmt.Sprintf("目标治理 lane：%s（%s）。", laneLabel, defaultString(strings.TrimSpace(lane.Lane), "final closeout")))
+	}
+	lines = append(lines, fmt.Sprintf("请 %s 复核 operator handoff note、delivery evidence，并完成最后一棒交付收口。", targetAgent))
+	return strings.Join(lines, " ")
 }
 
 func buildPullRequestDeliveryReviewGate(snapshot State, pr PullRequest) PullRequestDeliveryGate {
@@ -433,8 +514,13 @@ func buildPullRequestDeliveryHandoffNote(
 	}
 	if delegation.Status == "ready" {
 		lines = append(lines, fmt.Sprintf("当前 delivery delegation：交给 %s（%s）。", delegation.TargetAgent, delegation.TargetLane))
+		if strings.TrimSpace(delegation.HandoffStatus) != "" {
+			lines = append(lines, fmt.Sprintf("系统已自动创建 formal delivery closeout handoff，当前状态：%s。", delegation.HandoffStatus))
+		}
 	} else if delegation.Status == "blocked" {
 		lines = append(lines, fmt.Sprintf("当前 delivery delegation blocked：%s", delegation.Summary))
+	} else if delegation.Status == "done" && strings.TrimSpace(delegation.HandoffStatus) != "" {
+		lines = append(lines, fmt.Sprintf("delivery delegation handoff 已完成：%s。", delegation.TargetAgent))
 	}
 
 	summary := "当前 closeout 仍需围着 blocked gate 修复后再交付。"
@@ -523,6 +609,15 @@ func buildPullRequestDeliveryEvidence(
 			Value:   delegation.TargetAgent,
 			Summary: delegation.Summary,
 			Href:    delegation.Href,
+		})
+	}
+	if strings.TrimSpace(delegation.HandoffID) != "" {
+		items = append(items, PullRequestDeliveryEvidence{
+			ID:      "delivery-delegate-handoff",
+			Label:   "Delegated Closeout Handoff",
+			Value:   defaultString(strings.TrimSpace(delegation.HandoffStatus), "requested"),
+			Summary: delegation.Summary,
+			Href:    delegation.HandoffHref,
 		})
 	}
 

@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.13
+**版本:** 1.14
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -44,7 +44,7 @@
   - `app.slock.ai` 式 profile-grade 入口、壳层密度和主视觉细节仍可继续收平
   - token / quota / usage / retention 的正式产品面已站住，但更细的时间维度 rollup 仍待补齐
   - onboarding 的首次启动主链已站住，但更细的模板运营与团队默认治理仍可继续增强
-  - delivery delegation signal 已站住，但更深的自动协作策略、delegate automation policy 与 cross-agent closeout 仍待继续前滚
+  - delegated closeout handoff 已能自动起链，但更深的自动协作策略、delegate automation policy 与 cross-agent closeout 仍待继续前滚
   - 更重的长期记忆整理与外部 provider 编排仍未完成
 
 ---
@@ -402,11 +402,12 @@
   - [x] governed handoff 在 `acknowledged` 后现在可直接 `Complete + Auto-Advance`；若下一条 lane 已有合法 default agent，就会自动创建 followup handoff，并让 `/mailbox` 与 Inbox compose 一起切到新 ledger 的 `active`
   - [x] final lane 收口后，governed surface 现在会显式给出 PR delivery entry / closeout 回链；PR detail 的 operator handoff note 与 evidence 也会直接带上最新 governed closeout note
   - [x] final lane closeout 后，PR detail 现在还会显式派生 `Delivery Delegation` card，并把 delivery delegate 以 deterministic inbox signal 接回 related inbox / PR detail
+  - [x] final lane closeout 后，系统现在还会自动创建 `delivery-closeout` formal handoff；这条 handoff 会进入 Mailbox / Inbox ledger，并从 PR detail delegation card 直接 deep-link 回去
   - [x] PR detail 现在也已升级成 single delivery contract：release gate、operator handoff note、delivery template 与 evidence bundle 可在同页复核
   - [x] `/settings` 现在可直接编辑 team topology，并把 lane / role / default agent / handoff path 写回 durable workspace truth；`/setup` `/mailbox` `/agents` 会继续读取同一份配置，且已补 Windows Chrome 有头证据
 - 当前 GAP:
   - [ ] 更深的 agent-to-agent communication、更重的 auto-closeout 策略、delegate automation policy 与跨 Agent closeout orchestration 仍留后续
-- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057`
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -452,7 +453,7 @@
 - `CHK-14` `CHK-15` -> `TKT-31`
 - `CHK-19` -> `TKT-25` `TKT-32` `TKT-33`
 - `CHK-20` -> `TKT-29` `TKT-34`
-- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68`
+- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69`
 - `CHK-22` -> `TKT-37`
 - `CHK-07` `CHK-08` -> `TKT-39`
 - `CHK-06` -> `TKT-40` `TKT-52`

@@ -750,6 +750,7 @@ export type HandoffStatus = "requested" | "acknowledged" | "blocked" | "complete
 
 export type AgentHandoff = {
   id: string;
+  kind?: string;
   title: string;
   summary: string;
   status: HandoffStatus;
@@ -899,6 +900,9 @@ export type PullRequestDeliveryDelegation = {
   summary: string;
   href?: string;
   inboxItemId?: string;
+  handoffId?: string;
+  handoffHref?: string;
+  handoffStatus?: HandoffStatus;
 };
 
 export type PullRequestDeliveryHandoffNote = {

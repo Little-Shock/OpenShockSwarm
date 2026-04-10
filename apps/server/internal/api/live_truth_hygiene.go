@@ -580,6 +580,9 @@ func sanitizePullRequestDeliveryDelegation(item store.PullRequestDeliveryDelegat
 	item.Summary = sanitizeDisplayText(item.Summary, "当前 delivery delegation 正在整理中。")
 	item.Href = sanitizeDisplayText(item.Href, "")
 	item.InboxItemID = sanitizeDisplayText(item.InboxItemID, "")
+	item.HandoffID = sanitizeDisplayText(item.HandoffID, "")
+	item.HandoffHref = sanitizeDisplayText(item.HandoffHref, "")
+	item.HandoffStatus = sanitizeDisplayText(item.HandoffStatus, "")
 	return item
 }
 
@@ -744,6 +747,7 @@ func sanitizeInboxItem(item store.InboxItem) store.InboxItem {
 func sanitizeAgentHandoff(item store.AgentHandoff) store.AgentHandoff {
 	item.Title = sanitizeDisplayText(item.Title, "待整理交接")
 	item.Summary = sanitizeDisplayText(item.Summary, "当前 handoff 摘要正在整理中。")
+	item.Kind = sanitizeDisplayText(item.Kind, "manual")
 	item.FromAgent = sanitizeDisplayText(item.FromAgent, "来源 Agent")
 	item.ToAgent = sanitizeDisplayText(item.ToAgent, "目标 Agent")
 	item.LastAction = sanitizeDisplayText(item.LastAction, "等待 handoff 同步。")

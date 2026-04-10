@@ -1403,6 +1403,9 @@ func TestPullRequestDetailRouteReflectsGovernedCloseout(t *testing.T) {
 		detail.Delivery.Delegation.InboxItemID != "inbox-delivery-delegation-pr-runtime-18" {
 		t.Fatalf("detail delegation = %#v, want ready Spec Captain delivery delegate", detail.Delivery.Delegation)
 	}
+	if detail.Delivery.Delegation.HandoffID == "" || detail.Delivery.Delegation.HandoffStatus != "requested" {
+		t.Fatalf("detail delegation = %#v, want auto-created requested closeout handoff", detail.Delivery.Delegation)
+	}
 	noteLines := strings.Join(detail.Delivery.HandoffNote.Lines, "\n")
 	if !strings.Contains(noteLines, closeoutNote) || !strings.Contains(noteLines, "governed route 已到 done") {
 		t.Fatalf("detail handoff note lines = %#v, want closeout note + done hint", detail.Delivery.HandoffNote.Lines)
@@ -1432,6 +1435,23 @@ func TestPullRequestDetailRouteReflectsGovernedCloseout(t *testing.T) {
 	}
 	if !relatedDelegation {
 		t.Fatalf("detail related inbox = %#v, want delivery delegation inbox signal", detail.RelatedInbox)
+	}
+	handoffResp, err := http.Get(server.URL + "/v1/mailbox/" + detail.Delivery.Delegation.HandoffID)
+	if err != nil {
+		t.Fatalf("GET delegated closeout handoff error = %v", err)
+	}
+	defer handoffResp.Body.Close()
+	if handoffResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET delegated closeout handoff status = %d, want %d", handoffResp.StatusCode, http.StatusOK)
+	}
+
+	var closeoutHandoff store.AgentHandoff
+	decodeJSON(t, handoffResp, &closeoutHandoff)
+	if closeoutHandoff.Kind != "delivery-closeout" ||
+		closeoutHandoff.FromAgent != "Memory Clerk" ||
+		closeoutHandoff.ToAgent != "Spec Captain" ||
+		closeoutHandoff.Status != "requested" {
+		t.Fatalf("closeout handoff = %#v, want requested delivery-closeout handoff", closeoutHandoff)
 	}
 }
 
