@@ -1082,6 +1082,27 @@
 - Checklist: `CHK-21`
 - Test Cases: `TC-069`
 
+## TKT-81 Delivery Reply Parent Status Visibility
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 child `delivery-reply` 从“能回跳 parent”继续升级成“能直接看见 parent 现在到底 blocked / acknowledged / completed”，避免 source agent 每次都要离开 child ledger 才知道主 closeout 有没有真的被接住。
+- 范围:
+  - child response parent-status chip
+  - parent blocked/acknowledged/completed visibility inside child ledger
+  - live mailbox + inbox mailbox surface alignment
+  - headed browser walkthrough for parent status replay
+- 依赖: `TKT-79` `TKT-80`
+- Done When:
+  - child `delivery-reply` card 会直接显示 `parent blocked / parent acknowledged / parent completed`
+  - parent closeout 被重新接住或最终完成后，child card 的 parent-status chip 会一起前滚
+  - source agent 不需要离开 child ledger 也能读懂主 closeout 当前所处状态
+- 最新证据:
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-parent-status -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-status.md`
+- Checklist: `CHK-21`
+- Test Cases: `TC-070`
+
 ---
 
 ## 五、已完成批次归档

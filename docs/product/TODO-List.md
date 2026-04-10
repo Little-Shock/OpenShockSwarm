@@ -104,10 +104,12 @@
   - child `delivery-reply` 完成后，Mailbox 现在还可以直接 `Resume Parent Closeout`；blocker agent 可从 child ledger 一键把父级 delegated closeout 重新接住，而不是手动回找 parent card。
 - `GAP-49 / TKT-80`
   - parent delegated closeout 被重新接住乃至最终收口后，PR detail `Delivery Delegation` summary 与 related inbox signal 现在也会继续保留 `reply xN / 第 N 轮 unblock response` 历史，不会只在 Mailbox parent card 里看得到。
+- `GAP-50 / TKT-81`
+  - child `delivery-reply` card 现在也会直接显示 parent 当前是 `blocked / acknowledged / completed`，source agent 不必离开 child ledger，也能知道主 closeout 后续到底有没有被接住并最终收口。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”或“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”，而是更深的 agent-to-agent communication 与跨 Agent closeout 编排。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”或“能不能让 child ledger 直接看见 parent 最终有没有被接住”，而是更深的 agent-to-agent communication 与跨 Agent closeout 编排。
 
 ---
 

@@ -947,3 +947,17 @@
   6. 完成 parent delegated closeout，再次检查 PR detail 与 related inbox，确认这段 reply 历史会随着 closeout 一起收口，而不是被 done-state 覆盖掉。
 - 预期结果: response handoff 不应只在 blocked 阶段短暂可见。即使 parent 已恢复或完成，PR detail 和 related inbox 也必须继续保留这段 `reply xN / 第 N 轮 unblock response` 历史，保证 single delivery contract 能完整回放跨 Agent closeout 尾链。
 - 业务结论: 2026 年 4 月 11 日 `TKT-80` 已把 parent resume / complete 之后的 response history preservation 收进统一交付合同。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-history-sync.md` 已记录 `reply completed -> parent resumed -> PR detail preserved -> parent completed -> related inbox preserved` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web` 与 `go test ./internal/store ./internal/api -count=1` 已锁住 PR detail summary、related inbox summary 与 done-state closeout 后的 response history retention，因此这条跨 Agent history preservation 用例当前转为 `Pass`。
+
+## TC-070 Delivery Reply Parent Status Visibility
+
+- 业务目标: 确认 child `delivery-reply` 卡片自己就能显示 parent closeout 当前是 `blocked / acknowledged / completed`，让 source agent 不必离开 child ledger 才知道主 closeout 的真实进度。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: 已存在 delegated closeout formal handoff、blocked 后自动创建的 `delivery-reply` response handoff，以及 child card 的 parent chip / parent deep-link。
+- 测试步骤:
+  1. 让 delegated closeout 进入 `blocked`，并自动生成 child `delivery-reply`。
+  2. 完成 child `delivery-reply` 后，打开 child card，确认它显示 `parent blocked`。
+  3. 让 parent delegated closeout 重新进入 `acknowledged`，刷新 child card，确认它切到 `parent acknowledged`。
+  4. 让 parent delegated closeout 最终进入 `completed`，再次刷新 child card，确认它切到 `parent completed`。
+- 预期结果: child `delivery-reply` 不应只告诉用户“这是谁的 parent”。它还必须直接展示 parent 当前真实状态，让 source agent 能在 child ledger 内读懂整条跨 Agent closeout 尾链。
+- 业务结论: 2026 年 4 月 11 日 `TKT-81` 已把 child-ledger parent-status visibility 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-parent-status.md` 已记录 `parent blocked -> parent acknowledged -> parent completed` 在同一张 child `delivery-reply` card 上的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web` 已锁住 live mailbox / inbox mailbox 两个 surface 上的 parent-status chip，因此这条 child-ledger parent progress visibility 用例当前转为 `Pass`。

@@ -43,6 +43,7 @@
     "test:headed-governed-mailbox-delegate-visibility": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-visibility",
     "test:headed-governed-mailbox-delegate-resume-parent": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-resume-parent",
     "test:headed-governed-mailbox-delegate-history-sync": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-history-sync",
+    "test:headed-governed-mailbox-delegate-parent-status": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-parent-status",
     "test:headed-governed-mailbox-delegate-policy": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-policy",
     "test:headed-governed-mailbox-delegate-auto-complete": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-auto-complete",
     "test:headed-governed-mailbox-delegate-comment-sync": "node ./scripts/headed-governed-mailbox-route.mjs --mode delegate-comment-sync",

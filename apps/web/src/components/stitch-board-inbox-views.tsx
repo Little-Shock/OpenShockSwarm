@@ -74,6 +74,10 @@ function mailboxReplyStatusTone(status: AgentHandoff["status"]) {
   }
 }
 
+function mailboxParentStatusLabel(status: AgentHandoff["status"]) {
+  return `parent ${handoffStatusLabel(status)}`;
+}
+
 function findMailboxParent(mailbox: AgentHandoff[], handoff: AgentHandoff) {
   if (!handoff.parentHandoffId) {
     return null;
@@ -1554,6 +1558,17 @@ export function StitchInboxView() {
                                     className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1"
                                   >
                                     parent {parentHandoff.title}
+                                  </span>
+                                ) : null}
+                                {parentHandoff ? (
+                                  <span
+                                    data-testid={`mailbox-parent-status-${handoff.id}`}
+                                    className={cn(
+                                      "rounded-full border border-[var(--shock-ink)] px-2 py-1 uppercase tracking-[0.18em]",
+                                      handoffStatusTone(parentHandoff.status)
+                                    )}
+                                  >
+                                    {mailboxParentStatusLabel(parentHandoff.status)}
                                   </span>
                                 ) : null}
                                 {responseHandoff ? (
