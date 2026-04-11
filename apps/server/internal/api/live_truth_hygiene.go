@@ -69,6 +69,8 @@ func sanitizeLivePayload(payload any) any {
 			items[index] = sanitizeWorkspaceGovernanceRule(item)
 		}
 		return items
+	case store.WorkspaceGovernanceSuggestedHandoff:
+		return sanitizeWorkspaceSuggestedHandoff(typed)
 	case store.WorkspaceGovernanceWalkthrough:
 		return sanitizeWorkspaceGovernanceWalkthrough(typed)
 	case []store.WorkspaceGovernanceWalkthrough:
@@ -461,9 +463,15 @@ func sanitizeWorkspaceEscalationSLA(item store.WorkspaceGovernanceEscalationSLA)
 		item.Rollup[index].RoomID = sanitizeDisplayText(item.Rollup[index].RoomID, "")
 		item.Rollup[index].RoomTitle = sanitizeDisplayText(item.Rollup[index].RoomTitle, "未命名讨论间")
 		item.Rollup[index].Status = sanitizeDisplayText(item.Rollup[index].Status, "pending")
+		item.Rollup[index].CurrentOwner = sanitizeDisplayText(item.Rollup[index].CurrentOwner, "")
+		item.Rollup[index].CurrentLane = sanitizeDisplayText(item.Rollup[index].CurrentLane, "")
 		item.Rollup[index].LatestSource = sanitizeDisplayText(item.Rollup[index].LatestSource, "governance")
 		item.Rollup[index].LatestLabel = sanitizeDisplayText(item.Rollup[index].LatestLabel, "未命名 escalation")
 		item.Rollup[index].LatestSummary = sanitizeDisplayText(item.Rollup[index].LatestSummary, "当前 room escalation 正在整理中。")
+		item.Rollup[index].NextRouteStatus = sanitizeDisplayText(item.Rollup[index].NextRouteStatus, "pending")
+		item.Rollup[index].NextRouteLabel = sanitizeDisplayText(item.Rollup[index].NextRouteLabel, "")
+		item.Rollup[index].NextRouteSummary = sanitizeDisplayText(item.Rollup[index].NextRouteSummary, "当前 governed route 正在整理中。")
+		item.Rollup[index].NextRouteHref = sanitizeDisplayText(item.Rollup[index].NextRouteHref, "")
 		item.Rollup[index].Href = sanitizeDisplayText(item.Rollup[index].Href, "")
 	}
 	return item

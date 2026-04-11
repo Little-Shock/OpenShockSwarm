@@ -226,15 +226,21 @@ type WorkspaceGovernanceEscalationQueueEntry struct {
 }
 
 type WorkspaceGovernanceEscalationRoomRollup struct {
-	RoomID          string `json:"roomId"`
-	RoomTitle       string `json:"roomTitle"`
-	Status          string `json:"status"`
-	EscalationCount int    `json:"escalationCount"`
-	BlockedCount    int    `json:"blockedCount"`
-	LatestSource    string `json:"latestSource,omitempty"`
-	LatestLabel     string `json:"latestLabel,omitempty"`
-	LatestSummary   string `json:"latestSummary,omitempty"`
-	Href            string `json:"href,omitempty"`
+	RoomID           string `json:"roomId"`
+	RoomTitle        string `json:"roomTitle"`
+	Status           string `json:"status"`
+	EscalationCount  int    `json:"escalationCount"`
+	BlockedCount     int    `json:"blockedCount"`
+	CurrentOwner     string `json:"currentOwner,omitempty"`
+	CurrentLane      string `json:"currentLane,omitempty"`
+	LatestSource     string `json:"latestSource,omitempty"`
+	LatestLabel      string `json:"latestLabel,omitempty"`
+	LatestSummary    string `json:"latestSummary,omitempty"`
+	NextRouteStatus  string `json:"nextRouteStatus,omitempty"`
+	NextRouteLabel   string `json:"nextRouteLabel,omitempty"`
+	NextRouteSummary string `json:"nextRouteSummary,omitempty"`
+	NextRouteHref    string `json:"nextRouteHref,omitempty"`
+	Href             string `json:"href,omitempty"`
 }
 
 type WorkspaceGovernanceNotificationPolicy struct {

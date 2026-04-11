@@ -146,6 +146,10 @@ type UpdateHandoffInput = {
   continueGovernedRoute?: boolean;
 };
 
+type CreateGovernedHandoffForRoomInput = {
+  roomId: string;
+};
+
 type PhaseZeroStreamPresence = {
   onlineMachines: number;
   busyMachines: number;
@@ -221,6 +225,7 @@ type PhaseZeroContextValue = {
   controlRun: (runId: string, input: RunControlInput) => Promise<StateMutationResponse>;
   applyInboxDecision: (inboxItemId: string, decision: InboxDecision) => Promise<StateMutationResponse>;
   createHandoff: (input: CreateHandoffInput) => Promise<StateMutationResponse>;
+  createGovernedHandoffForRoom: (input: CreateGovernedHandoffForRoomInput) => Promise<StateMutationResponse>;
   updateHandoff: (handoffId: string, input: UpdateHandoffInput) => Promise<StateMutationResponse>;
 };
 
@@ -1073,6 +1078,18 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     return payload;
   }
 
+  async function createGovernedHandoffForRoom(input: CreateGovernedHandoffForRoomInput) {
+    const payload = await readJSON<StateMutationResponse>("/v1/mailbox/governed", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+
+    if (payload.state) {
+      commitStateAndRefreshApprovalCenter(payload.state);
+    }
+    return payload;
+  }
+
   async function updateHandoff(handoffId: string, input: UpdateHandoffInput) {
     const payload = await readJSON<StateMutationResponse>(`/v1/mailbox/${handoffId}`, {
       method: "POST",
@@ -1123,6 +1140,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     controlRun,
     applyInboxDecision,
     createHandoff,
+    createGovernedHandoffForRoom,
     updateHandoff,
   };
 }

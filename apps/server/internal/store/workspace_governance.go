@@ -194,10 +194,14 @@ func hydrateWorkspaceGovernance(workspace *WorkspaceSnapshot, state *State) {
 }
 
 func resolveGovernanceFocus(state State) governanceFocus {
-	focus := governanceFocus{}
-	roomID := ""
+	return resolveGovernanceFocusForRoom(state, "")
+}
 
-	if len(state.Mailbox) > 0 {
+func resolveGovernanceFocusForRoom(state State, preferredRoomID string) governanceFocus {
+	focus := governanceFocus{}
+	roomID := strings.TrimSpace(preferredRoomID)
+
+	if roomID == "" && len(state.Mailbox) > 0 {
 		for _, candidate := range state.Mailbox {
 			if isGovernanceSidecarHandoff(candidate.Kind) {
 				continue
@@ -519,6 +523,43 @@ func buildGovernanceSuggestedHandoff(state State, template governanceTemplateDef
 	suggested.ToAgentID = toAgent.ID
 	suggested.ToAgent = toAgent.Name
 	return suggested
+}
+
+func governanceSuggestedHandoffLabel(item WorkspaceGovernanceSuggestedHandoff) string {
+	switch strings.TrimSpace(item.Status) {
+	case "active", "ready":
+		switch {
+		case strings.TrimSpace(item.FromAgent) != "" && strings.TrimSpace(item.ToAgent) != "":
+			return fmt.Sprintf("%s -> %s", item.FromAgent, item.ToAgent)
+		case strings.TrimSpace(item.FromLaneLabel) != "" && strings.TrimSpace(item.ToLaneLabel) != "":
+			return fmt.Sprintf("%s -> %s", item.FromLaneLabel, item.ToLaneLabel)
+		case strings.TrimSpace(item.ToLaneLabel) != "":
+			return item.ToLaneLabel
+		default:
+			return "next governed handoff"
+		}
+	case "blocked":
+		switch {
+		case strings.TrimSpace(item.FromLaneLabel) != "" && strings.TrimSpace(item.ToLaneLabel) != "":
+			return fmt.Sprintf("%s -> %s", item.FromLaneLabel, item.ToLaneLabel)
+		case strings.TrimSpace(item.ToLaneLabel) != "":
+			return item.ToLaneLabel
+		default:
+			return "next lane blocked"
+		}
+	case "done":
+		return "delivery closeout"
+	default:
+		return ""
+	}
+}
+
+func governanceSuggestedHandoffHref(item WorkspaceGovernanceSuggestedHandoff, roomID string) string {
+	href := strings.TrimSpace(item.Href)
+	if href != "" {
+		return href
+	}
+	return governanceMailboxRoomHref(roomID)
 }
 
 func governanceCurrentOwnerName(focus governanceFocus) string {
@@ -855,16 +896,29 @@ func buildGovernanceEscalationRoomRollup(
 		if accumulator.BlockedCount > 0 {
 			status = "blocked"
 		}
+		roomFocus := resolveGovernanceFocusForRoom(state, accumulator.RoomID)
+		currentOwner := governanceCurrentOwnerName(roomFocus)
+		currentLane := ""
+		if lane := governanceLaneByAgentName(template.Topology, state.Agents, currentOwner); lane != nil {
+			currentLane = lane.Label
+		}
+		suggested := buildGovernanceSuggestedHandoff(state, template, roomFocus)
 		items = append(items, WorkspaceGovernanceEscalationRoomRollup{
-			RoomID:          accumulator.RoomID,
-			RoomTitle:       accumulator.RoomTitle,
-			Status:          status,
-			EscalationCount: accumulator.EscalationCount,
-			BlockedCount:    accumulator.BlockedCount,
-			LatestSource:    accumulator.LatestSource,
-			LatestLabel:     accumulator.LatestLabel,
-			LatestSummary:   accumulator.LatestSummary,
-			Href:            accumulator.Href,
+			RoomID:           accumulator.RoomID,
+			RoomTitle:        accumulator.RoomTitle,
+			Status:           status,
+			EscalationCount:  accumulator.EscalationCount,
+			BlockedCount:     accumulator.BlockedCount,
+			CurrentOwner:     currentOwner,
+			CurrentLane:      currentLane,
+			LatestSource:     accumulator.LatestSource,
+			LatestLabel:      accumulator.LatestLabel,
+			LatestSummary:    accumulator.LatestSummary,
+			NextRouteStatus:  suggested.Status,
+			NextRouteLabel:   governanceSuggestedHandoffLabel(suggested),
+			NextRouteSummary: suggested.Reason,
+			NextRouteHref:    governanceSuggestedHandoffHref(suggested, accumulator.RoomID),
+			Href:             accumulator.Href,
 		})
 	}
 

@@ -875,6 +875,20 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                                   {escalationRoomRollupSummary(entry)}
                                   {entry.latestSource ? ` · latest ${entry.latestSource}` : ""}
                                 </p>
+                                {(entry.currentOwner || entry.currentLane) ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {entry.currentOwner ? (
+                                      <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+                                        owner {entry.currentOwner}
+                                      </span>
+                                    ) : null}
+                                    {entry.currentLane ? (
+                                      <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+                                        lane {entry.currentLane}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </div>
                               <span
                                 data-testid={`orchestration-governance-escalation-rollup-status-${entry.roomId}`}
@@ -894,6 +908,40 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                             </div>
                             {entry.latestLabel ? <p className="mt-2 font-display text-base font-semibold">{entry.latestLabel}</p> : null}
                             {entry.latestSummary ? <p className="mt-2 text-sm leading-6 opacity-70">{entry.latestSummary}</p> : null}
+                            {(entry.nextRouteLabel || entry.nextRouteSummary) ? (
+                              <div className="mt-3 rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">next governed route</p>
+                                    {entry.nextRouteLabel ? <p className="mt-2 font-display text-base font-semibold">{entry.nextRouteLabel}</p> : null}
+                                  </div>
+                                  <span
+                                    data-testid={`orchestration-governance-escalation-rollup-route-status-${entry.roomId}`}
+                                    className={cn(
+                                      "rounded-full border-2 border-[var(--shock-ink)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]",
+                                      governanceTone(entry.nextRouteStatus ?? "pending") === "pink"
+                                        ? "bg-[var(--shock-pink)] text-white"
+                                        : governanceTone(entry.nextRouteStatus ?? "pending") === "lime"
+                                          ? "bg-[var(--shock-lime)]"
+                                          : governanceTone(entry.nextRouteStatus ?? "pending") === "yellow"
+                                            ? "bg-[var(--shock-yellow)]"
+                                            : "bg-white"
+                                    )}
+                                  >
+                                    {governanceStatusLabel(entry.nextRouteStatus ?? "pending")}
+                                  </span>
+                                </div>
+                                {entry.nextRouteSummary ? <p className="mt-2 text-sm leading-6 opacity-70">{entry.nextRouteSummary}</p> : null}
+                                {entry.nextRouteHref ? (
+                                  <Link
+                                    href={entry.nextRouteHref}
+                                    className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                                  >
+                                    Open Next Route
+                                  </Link>
+                                ) : null}
+                              </div>
+                            ) : null}
                             {entry.href ? (
                               <Link
                                 href={entry.href}

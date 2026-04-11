@@ -87,6 +87,67 @@ func TestMailboxRoutesCreateAndListLiveTruth(t *testing.T) {
 	}
 }
 
+func TestMailboxRoutesCreateGovernedHandoffForRoom(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	mustPatchGovernedQATopology(t, server.URL)
+
+	createResp, handoff := mustCreateMailboxHandoff(t, server.URL)
+	defer createResp.Body.Close()
+	ackResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+handoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	defer ackResp.Body.Close()
+	completeResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+handoff.ID, map[string]any{
+		"action":                "completed",
+		"actingAgentId":         "agent-claude-review-runner",
+		"note":                  "review 已完成，改由 cross-room governed route 直接起 QA 一棒。",
+		"continueGovernedRoute": false,
+	})
+	defer completeResp.Body.Close()
+
+	governedReq, err := http.NewRequest(http.MethodPost, server.URL+"/v1/mailbox/governed", bytes.NewReader([]byte(`{"roomId":"room-runtime"}`)))
+	if err != nil {
+		t.Fatalf("new POST /v1/mailbox/governed request error = %v", err)
+	}
+	governedReq.Header.Set("Content-Type", "application/json")
+
+	governedResp, err := http.DefaultClient.Do(governedReq)
+	if err != nil {
+		t.Fatalf("POST /v1/mailbox/governed error = %v", err)
+	}
+	defer governedResp.Body.Close()
+	if governedResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/mailbox/governed status = %d, want %d", governedResp.StatusCode, http.StatusCreated)
+	}
+
+	var governedPayload struct {
+		Handoff    store.AgentHandoff                        `json:"handoff"`
+		Suggestion store.WorkspaceGovernanceSuggestedHandoff `json:"suggestion"`
+		State      store.State                               `json:"state"`
+	}
+	decodeJSON(t, governedResp, &governedPayload)
+
+	if governedPayload.Suggestion.Status != "ready" || governedPayload.Suggestion.ToAgent != "Memory Clerk" {
+		t.Fatalf("governed suggestion payload = %#v, want ready reviewer -> Memory Clerk route", governedPayload.Suggestion)
+	}
+	if governedPayload.Handoff.Kind != "governed" || governedPayload.Handoff.ToAgent != "Memory Clerk" || governedPayload.Handoff.Status != "requested" {
+		t.Fatalf("governed handoff payload = %#v, want requested governed handoff to Memory Clerk", governedPayload.Handoff)
+	}
+	if governedPayload.State.Workspace.Governance.RoutingPolicy.SuggestedHandoff.HandoffID != governedPayload.Handoff.ID {
+		t.Fatalf("workspace suggested handoff = %#v, want active followup handoff after governed create", governedPayload.State.Workspace.Governance.RoutingPolicy.SuggestedHandoff)
+	}
+
+	conflictResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/governed", map[string]string{"roomId": "room-runtime"})
+	defer conflictResp.Body.Close()
+	if conflictResp.StatusCode != http.StatusConflict {
+		t.Fatalf("repeat POST /v1/mailbox/governed status = %d, want %d", conflictResp.StatusCode, http.StatusConflict)
+	}
+}
+
 func TestMailboxRoutesAdvanceLifecycleAndGuardrails(t *testing.T) {
 	root := t.TempDir()
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")

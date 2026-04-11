@@ -237,9 +237,15 @@ export type WorkspaceGovernanceEscalationRoomRollup = {
   status: string;
   escalationCount: number;
   blockedCount: number;
+  currentOwner?: string;
+  currentLane?: string;
   latestSource?: string;
   latestLabel?: string;
   latestSummary?: string;
+  nextRouteStatus?: string;
+  nextRouteLabel?: string;
+  nextRouteSummary?: string;
+  nextRouteHref?: string;
   href?: string;
 };
 

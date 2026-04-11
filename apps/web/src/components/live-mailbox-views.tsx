@@ -311,6 +311,7 @@ export function LiveMailboxPageContent() {
     loading,
     error,
     createHandoff,
+    createGovernedHandoffForRoom,
     updateHandoff,
   } = usePhaseZeroState();
   const [roomId, setRoomId] = useState("");
@@ -548,6 +549,25 @@ export function LiveMailboxPageContent() {
     }
     applyGovernedRouteSuggestion();
     await submitCreate(input, "governed-create");
+  }
+
+  async function handleCreateGovernedRouteForRoom(targetRoomId: string) {
+    if (mailboxMutationBusy || !canMutate) {
+      return;
+    }
+    const actionKey = `governed-rollup:${targetRoomId}`;
+    setBusyKey(actionKey);
+    setActionError(null);
+    try {
+      await createGovernedHandoffForRoom({ roomId: targetRoomId });
+    } catch (mutationError) {
+      setActionError({
+        id: actionKey,
+        message: mutationError instanceof Error ? mutationError.message : "governed room handoff create failed",
+      });
+    } finally {
+      setBusyKey("");
+    }
   }
 
   async function handleAdvance(
@@ -947,6 +967,20 @@ export function LiveMailboxPageContent() {
                                 {escalationRoomRollupSummary(entry)}
                                 {entry.latestSource ? ` · latest ${entry.latestSource}` : ""}
                               </p>
+                              {(entry.currentOwner || entry.currentLane) ? (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {entry.currentOwner ? (
+                                    <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+                                      owner {entry.currentOwner}
+                                    </span>
+                                  ) : null}
+                                  {entry.currentLane ? (
+                                    <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+                                      lane {entry.currentLane}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
                             <span
                               data-testid={`mailbox-governance-escalation-rollup-status-${entry.roomId}`}
@@ -968,7 +1002,68 @@ export function LiveMailboxPageContent() {
                           {entry.latestSummary ? (
                             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{entry.latestSummary}</p>
                           ) : null}
-                          {entry.href ? (
+                          {(entry.nextRouteLabel || entry.nextRouteSummary) ? (
+                            <div className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                                    next governed route
+                                  </p>
+                                  {entry.nextRouteLabel ? <p className="mt-2 font-display text-base font-semibold">{entry.nextRouteLabel}</p> : null}
+                                </div>
+                                <span
+                                  data-testid={`mailbox-governance-escalation-rollup-route-status-${entry.roomId}`}
+                                  className={cn(
+                                    "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+                                    governanceTone(entry.nextRouteStatus ?? "pending") === "pink"
+                                      ? "bg-[var(--shock-pink)] text-white"
+                                      : governanceTone(entry.nextRouteStatus ?? "pending") === "lime"
+                                        ? "bg-[var(--shock-lime)]"
+                                        : governanceTone(entry.nextRouteStatus ?? "pending") === "yellow"
+                                          ? "bg-[var(--shock-yellow)]"
+                                          : "bg-[var(--shock-paper)]"
+                                  )}
+                                >
+                                  {governanceStatusLabel(entry.nextRouteStatus ?? "pending")}
+                                </span>
+                              </div>
+                              {entry.nextRouteSummary ? (
+                                <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{entry.nextRouteSummary}</p>
+                              ) : null}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {entry.nextRouteStatus === "ready" ? (
+                                  <button
+                                    type="button"
+                                    data-testid={`mailbox-governance-escalation-rollup-route-create-${entry.roomId}`}
+                                    disabled={!canMutate || mailboxMutationBusy}
+                                    onClick={() => void handleCreateGovernedRouteForRoom(entry.roomId)}
+                                    className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white disabled:opacity-60"
+                                  >
+                                    {busyKey === `governed-rollup:${entry.roomId}` ? "Working..." : "Create Governed Handoff"}
+                                  </button>
+                                ) : null}
+                                {entry.nextRouteHref ? (
+                                  <Link
+                                    href={entry.nextRouteHref}
+                                    className="inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                                  >
+                                    Open Next Route
+                                  </Link>
+                                ) : null}
+                                {entry.href ? (
+                                  <Link
+                                    href={entry.href}
+                                    className="inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                                  >
+                                    Open Room Escalations
+                                  </Link>
+                                ) : null}
+                              </div>
+                              {actionError?.id === `governed-rollup:${entry.roomId}` ? (
+                                <p className="mt-3 text-sm leading-6 text-[var(--shock-pink)]">{actionError.message}</p>
+                              ) : null}
+                            </div>
+                          ) : entry.href ? (
                             <Link
                               href={entry.href}
                               className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"

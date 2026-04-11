@@ -12,11 +12,13 @@ var (
 	ErrMailboxTitleRequired         = errors.New("handoff title is required")
 	ErrMailboxSummaryRequired       = errors.New("handoff summary is required")
 	ErrMailboxRoomNotFound          = errors.New("handoff room not found")
+	ErrMailboxGovernedRoomRequired  = errors.New("governed handoff roomId is required")
 	ErrMailboxFromAgentRequired     = errors.New("fromAgentId is required")
 	ErrMailboxToAgentRequired       = errors.New("toAgentId is required")
 	ErrMailboxAgentNotFound         = errors.New("handoff agent not found")
 	ErrMailboxSameAgent             = errors.New("handoff target must differ from source agent")
 	ErrMailboxHandoffNotFound       = errors.New("handoff not found")
+	ErrMailboxGovernedRouteNotReady = errors.New("governed handoff suggestion is not ready")
 	ErrMailboxActionInvalid         = errors.New("handoff action is invalid")
 	ErrMailboxTransitionInvalid     = errors.New("handoff transition is invalid")
 	ErrMailboxBlockedNoteRequired   = errors.New("blocked handoff requires a note")
@@ -91,6 +93,21 @@ func (s *Store) CreateHandoff(input MailboxCreateInput) (State, AgentHandoff, er
 		return State{}, AgentHandoff{}, err
 	}
 	return cloneState(s.state), handoff, nil
+}
+
+func (s *Store) CreateGovernedHandoffForRoom(roomID string) (State, AgentHandoff, WorkspaceGovernanceSuggestedHandoff, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	handoff, suggestion, err := s.createGovernedHandoffForRoomLocked(roomID)
+	if err != nil {
+		return State{}, AgentHandoff{}, WorkspaceGovernanceSuggestedHandoff{}, err
+	}
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, AgentHandoff{}, WorkspaceGovernanceSuggestedHandoff{}, err
+	}
+	return cloneState(s.state), handoff, suggestion, nil
 }
 
 func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (State, AgentHandoff, error) {
@@ -314,6 +331,43 @@ func (s *Store) createHandoffLocked(input MailboxCreateInput) (AgentHandoff, err
 		Time:    nowClock,
 	})
 	return handoff, nil
+}
+
+func (s *Store) createGovernedHandoffForRoomLocked(roomID string) (AgentHandoff, WorkspaceGovernanceSuggestedHandoff, error) {
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
+		return AgentHandoff{}, WorkspaceGovernanceSuggestedHandoff{}, ErrMailboxGovernedRoomRequired
+	}
+	if _, _, _, ok := s.findRoomRunIssueLocked(roomID); !ok {
+		return AgentHandoff{}, WorkspaceGovernanceSuggestedHandoff{}, ErrMailboxRoomNotFound
+	}
+
+	snapshot := cloneState(s.state)
+	template := governanceTemplateFor(snapshot.Workspace.Onboarding.TemplateID)
+	configuredTopology := append([]WorkspaceGovernanceLaneConfig{}, snapshot.Workspace.Governance.ConfiguredTopology...)
+	if len(configuredTopology) == 0 {
+		configuredTopology = defaultWorkspaceGovernanceTopology(template.TemplateID)
+	}
+	effectiveTemplate := configuredGovernanceTemplate(template, configuredTopology)
+	focus := resolveGovernanceFocusForRoom(snapshot, roomID)
+	suggestion := buildGovernanceSuggestedHandoff(snapshot, effectiveTemplate, focus)
+	if suggestion.Status != "ready" ||
+		strings.TrimSpace(suggestion.RoomID) != roomID ||
+		strings.TrimSpace(suggestion.FromAgentID) == "" ||
+		strings.TrimSpace(suggestion.ToAgentID) == "" ||
+		strings.TrimSpace(suggestion.DraftTitle) == "" {
+		return AgentHandoff{}, suggestion, fmt.Errorf("%w: %s", ErrMailboxGovernedRouteNotReady, defaultString(suggestion.Reason, "当前 governed route 尚未 ready"))
+	}
+
+	handoff, err := s.createHandoffLocked(MailboxCreateInput{
+		RoomID:      suggestion.RoomID,
+		FromAgentID: suggestion.FromAgentID,
+		ToAgentID:   suggestion.ToAgentID,
+		Title:       suggestion.DraftTitle,
+		Summary:     defaultString(suggestion.DraftSummary, "按当前治理链继续推进下一棒。"),
+		Kind:        handoffKindGoverned,
+	})
+	return handoff, suggestion, err
 }
 
 func (s *Store) continueGovernedRouteLocked(completed AgentHandoff) error {

@@ -48,6 +48,9 @@ func TestStateRouteExposesGovernanceSnapshot(t *testing.T) {
 	if baselineRollup.RoomID == "" || baselineRollup.Status != "blocked" {
 		t.Fatalf("baseline escalation rollup = %#v, want blocked room-level rollup", state.Workspace.Governance.EscalationSLA.Rollup)
 	}
+	if baselineRollup.NextRouteSummary == "" || baselineRollup.NextRouteHref == "" {
+		t.Fatalf("baseline escalation rollup routing = %#v, want next-route metadata for hot room", baselineRollup)
+	}
 	if state.Workspace.Governance.Stats.AggregationSources == 0 {
 		t.Fatalf("governance stats = %#v, want aggregation source count", state.Workspace.Governance.Stats)
 	}
@@ -152,6 +155,9 @@ func TestMailboxLifecycleUpdatesGovernanceSnapshot(t *testing.T) {
 	secondaryRollup := findEscalationRoomRollupByRoomID(afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
 	if secondaryRollup == nil || secondaryRollup.Status != "active" || secondaryRollup.EscalationCount != 1 || secondaryRollup.BlockedCount != 0 {
 		t.Fatalf("second room escalation rollup = %#v, want active second-room rollup", afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if secondaryRollup.CurrentOwner == "" || secondaryRollup.NextRouteStatus == "" || secondaryRollup.NextRouteSummary == "" {
+		t.Fatalf("second room rollup routing = %#v, want room-level governance routing metadata", secondaryRollup)
 	}
 }
 

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -541,6 +542,70 @@ func TestAdvanceHandoffCanAutoAdvanceGovernedRoute(t *testing.T) {
 	suggested := nextState.Workspace.Governance.RoutingPolicy.SuggestedHandoff
 	if suggested.Status != "active" || suggested.HandoffID != followup.ID || suggested.ToAgent != "Memory Clerk" {
 		t.Fatalf("suggested handoff = %#v, want active followup pointing at Memory Clerk", suggested)
+	}
+}
+
+func TestCreateGovernedHandoffForRoomUsesRoomSpecificSuggestion(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[len(topology)-1].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			TeamTopology: topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 developer lane 正式交给 reviewer",
+		Summary:     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+		Kind:        handoffKindGoverned,
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff() error = %v", err)
+	}
+
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-claude-review-runner",
+		Note:          "review 已完成，等待跨 room orchestration 直接起 QA 一棒。",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(completed) error = %v", err)
+	}
+
+	nextState, created, suggestion, err := s.CreateGovernedHandoffForRoom("room-runtime")
+	if err != nil {
+		t.Fatalf("CreateGovernedHandoffForRoom() error = %v", err)
+	}
+	if suggestion.Status != "ready" || suggestion.ToAgent != "Memory Clerk" {
+		t.Fatalf("suggestion = %#v, want ready reviewer -> Memory Clerk route", suggestion)
+	}
+	if created.Kind != handoffKindGoverned || created.Status != "requested" || created.FromAgent != "Claude Review Runner" || created.ToAgent != "Memory Clerk" {
+		t.Fatalf("created governed handoff = %#v, want requested reviewer -> Memory Clerk governed handoff", created)
+	}
+	if nextState.Workspace.Governance.RoutingPolicy.SuggestedHandoff.HandoffID != created.ID {
+		t.Fatalf("workspace suggested handoff = %#v, want active created handoff", nextState.Workspace.Governance.RoutingPolicy.SuggestedHandoff)
+	}
+
+	if _, _, _, err := s.CreateGovernedHandoffForRoom("room-runtime"); !errors.Is(err, ErrMailboxGovernedRouteNotReady) {
+		t.Fatalf("repeat CreateGovernedHandoffForRoom error = %v, want ErrMailboxGovernedRouteNotReady", err)
 	}
 }
 
