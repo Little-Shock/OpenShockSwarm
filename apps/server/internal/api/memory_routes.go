@@ -19,6 +19,7 @@ func registerMemoryRoutes(s *Server, mux *http.ServeMux) {
 	mux.HandleFunc("/v1/memory-center", s.handleMemoryCenter)
 	mux.HandleFunc("/v1/memory-center/cleanup", s.handleMemoryCenterCleanup)
 	mux.HandleFunc("/v1/memory-center/policy", s.handleMemoryCenterPolicy)
+	mux.HandleFunc("/v1/memory-center/providers", s.handleMemoryCenterProviders)
 	mux.HandleFunc("/v1/memory-center/promotions", s.handleMemoryCenterPromotions)
 	mux.HandleFunc("/v1/memory-center/promotions/", s.handleMemoryCenterPromotionRoutes)
 }
@@ -131,6 +132,10 @@ type MemoryPolicyRequest struct {
 	MaxItems                 int    `json:"maxItems"`
 }
 
+type MemoryProviderBindingsRequest struct {
+	Providers []store.MemoryProviderBinding `json:"providers"`
+}
+
 type MemoryPromotionRequest struct {
 	MemoryID      string `json:"memoryId"`
 	SourceVersion int    `json:"sourceVersion"`
@@ -182,6 +187,38 @@ func (s *Server) handleMemoryCenterCleanup(w http.ResponseWriter, r *http.Reques
 		"center":  center,
 		"state":   nextState,
 	})
+}
+
+func (s *Server) handleMemoryCenterProviders(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, s.store.MemoryCenter().Providers)
+	case http.MethodPost:
+		if !s.requireSessionPermission(w, "memory.write") {
+			return
+		}
+
+		var req MemoryProviderBindingsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+
+		snapshot := s.store.Snapshot()
+		nextState, providers, center, err := s.store.UpdateMemoryProviders(req.Providers, currentAuthActor(snapshot.Auth.Session))
+		if err != nil {
+			writeMemoryError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"providers": providers,
+			"center":    center,
+			"state":     nextState,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }
 
 func (s *Server) handleMemoryCenterPolicy(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +360,10 @@ func writeMemoryError(w http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrMemoryPromotionKindInvalid),
 		errors.Is(err, store.ErrMemoryPromotionTitleRequired),
 		errors.Is(err, store.ErrMemoryPromotionReviewInvalid),
+		errors.Is(err, store.ErrMemoryProviderBindingsRequired),
+		errors.Is(err, store.ErrMemoryProviderKindInvalid),
+		errors.Is(err, store.ErrMemoryProviderScopeInvalid),
+		errors.Is(err, store.ErrMemoryProviderWorkspaceRequired),
 		errors.Is(err, store.ErrMemoryFeedbackNoteRequired),
 		errors.Is(err, store.ErrMemoryForgetReasonRequired),
 		errors.Is(err, store.ErrMemoryArtifactImmutable),

@@ -64,6 +64,7 @@
     "test:headed-control-plane-runtime-governance": "node ./scripts/headed-control-plane-runtime-governance.mjs",
     "test:headed-planner-dispatch-replay": "node ./scripts/headed-planner-dispatch-replay.mjs",
     "test:headed-memory-governance": "node ./scripts/headed-memory-governance.mjs",
+    "test:headed-memory-provider-orchestration": "node ./scripts/headed-memory-provider-orchestration.mjs",
     "test:headed-memory-viewer-correction-forget": "node ./scripts/headed-memory-viewer-correction-forget.mjs",
     "test:headed-mobile-notification-triage": "node ./scripts/headed-mobile-notification-triage.mjs",
     "test:headed-notification-preference-delivery": "node ./scripts/headed-notification-preference-delivery.mjs",

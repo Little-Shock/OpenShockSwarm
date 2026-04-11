@@ -46,6 +46,7 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		{name: "mailbox create", method: http.MethodPost, path: "/v1/mailbox", body: `{"roomId":"room-runtime","fromAgentId":"agent-codex-dockmaster","toAgentId":"agent-claude-review-runner","title":"接住 reviewer lane","summary":"请你正式接住 reviewer lane。"}`, permission: "run.execute"},
 		{name: "mailbox advance", method: http.MethodPost, path: "/v1/mailbox/handoff-demo", body: `{"action":"acknowledged","actingAgentId":"agent-claude-review-runner"}`, permission: "run.execute"},
 		{name: "memory policy", method: http.MethodPost, path: "/v1/memory-center/policy", body: `{"mode":"governed-first","includeRoomNotes":true,"includeDecisionLedger":true,"includeAgentMemory":true,"includePromotedArtifacts":true,"maxItems":8}`, permission: "memory.write"},
+		{name: "memory providers", method: http.MethodPost, path: "/v1/memory-center/providers", body: `{"providers":[{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."}]}`, permission: "memory.write"},
 		{name: "memory cleanup", method: http.MethodPost, path: "/v1/memory-center/cleanup", body: "", permission: "memory.write"},
 		{name: "memory feedback", method: http.MethodPost, path: "/v1/memory/memory-demo/feedback", body: `{"summary":"Human Correction","note":"纠正旧记忆"}`, permission: "memory.write"},
 		{name: "memory forget", method: http.MethodPost, path: "/v1/memory/memory-demo/forget", body: `{"reason":"撤销这条过期记忆"}`, permission: "memory.write"},
@@ -345,6 +346,7 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
 		{name: "memory policy", method: http.MethodPost, path: "/v1/memory-center/policy", body: `{"mode":"governed-first","includeRoomNotes":true,"includeDecisionLedger":true,"includeAgentMemory":true,"includePromotedArtifacts":true,"maxItems":8}`, permission: "memory.write"},
+		{name: "memory providers", method: http.MethodPost, path: "/v1/memory-center/providers", body: `{"providers":[{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."}]}`, permission: "memory.write"},
 		{name: "memory cleanup", method: http.MethodPost, path: "/v1/memory-center/cleanup", body: "", permission: "memory.write"},
 		{name: "memory feedback", method: http.MethodPost, path: "/v1/memory/memory-demo/feedback", body: `{"summary":"Human Correction","note":"纠正旧记忆"}`, permission: "memory.write"},
 		{name: "memory forget", method: http.MethodPost, path: "/v1/memory/memory-demo/forget", body: `{"reason":"撤销这条过期记忆"}`, permission: "memory.write"},
@@ -499,6 +501,7 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 		{name: "mailbox create", method: http.MethodPost, path: "/v1/mailbox", body: `{"roomId":"room-runtime","fromAgentId":"agent-codex-dockmaster","toAgentId":"agent-claude-review-runner","title":"接住 reviewer lane","summary":"请你正式接住 reviewer lane。"}`, permission: "run.execute"},
 		{name: "mailbox advance", method: http.MethodPost, path: "/v1/mailbox/handoff-demo", body: `{"action":"acknowledged","actingAgentId":"agent-claude-review-runner"}`, permission: "run.execute"},
 		{name: "memory policy", method: http.MethodPost, path: "/v1/memory-center/policy", body: `{"mode":"governed-first","includeRoomNotes":true,"includeDecisionLedger":true,"includeAgentMemory":true,"includePromotedArtifacts":true,"maxItems":8}`, permission: "memory.write"},
+		{name: "memory providers", method: http.MethodPost, path: "/v1/memory-center/providers", body: `{"providers":[{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."}]}`, permission: "memory.write"},
 		{name: "memory cleanup", method: http.MethodPost, path: "/v1/memory-center/cleanup", body: "", permission: "memory.write"},
 		{name: "memory feedback", method: http.MethodPost, path: "/v1/memory/memory-demo/feedback", body: `{"summary":"Human Correction","note":"纠正旧记忆"}`, permission: "memory.write"},
 		{name: "memory forget", method: http.MethodPost, path: "/v1/memory/memory-demo/forget", body: `{"reason":"撤销这条过期记忆"}`, permission: "memory.write"},
@@ -669,6 +672,13 @@ func doJSONRequest(t *testing.T, client *http.Client, method, url, body string) 
 }
 
 func normalizeAuthGuardState(state store.State) store.State {
+	body, err := json.Marshal(state)
+	if err == nil {
+		var normalized store.State
+		if unmarshalErr := json.Unmarshal(body, &normalized); unmarshalErr == nil {
+			state = normalized
+		}
+	}
 	state.Workspace.PairingStatus = ""
 	for index := range state.Machines {
 		state.Machines[index].State = ""

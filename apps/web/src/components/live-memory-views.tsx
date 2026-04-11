@@ -9,6 +9,7 @@ import {
   type MemoryCleanupRun,
   type MemoryInjectionPolicy,
   type MemoryInjectionPreview,
+  type MemoryProviderBinding,
   type MemoryPromotion,
   type MemoryPromotionKind,
   type MemoryPromotionStatus,
@@ -18,6 +19,17 @@ import type { AuthSession, MemoryGovernance } from "@/lib/phase-zero-types";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 const POLICY_MAX_ITEM_OPTIONS = [4, 6, 8, 10, 12] as const;
+const MEMORY_PROVIDER_SCOPE_OPTIONS = [
+  "workspace",
+  "issue-room",
+  "room-notes",
+  "decision-ledger",
+  "promoted-ledger",
+  "agent",
+  "user",
+  "run",
+  "session",
+] as const;
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -180,6 +192,36 @@ function cleanupTone(status?: MemoryCleanupRun["status"]) {
   return status === "cleaned" ? "yellow" : "white";
 }
 
+function providerKindLabel(kind: MemoryProviderBinding["kind"]) {
+  switch (kind) {
+    case "workspace-file":
+      return "Workspace File";
+    case "search-sidecar":
+      return "Search Sidecar";
+    default:
+      return "External Persistent";
+  }
+}
+
+function providerStatusTone(status: MemoryProviderBinding["status"]) {
+  switch (status) {
+    case "healthy":
+      return "lime";
+    case "degraded":
+      return "pink";
+    default:
+      return "white";
+  }
+}
+
+function providerScopeLabel(scope: string) {
+  return scope.replace(/-/g, " ");
+}
+
+function providerScopeSummary(provider: MemoryProviderBinding) {
+  return `read ${provider.readScopes.join(", ")} / write ${provider.writeScopes.length > 0 ? provider.writeScopes.join(", ") : "read-only"}`;
+}
+
 function cleanupStatsSummary(stats: MemoryCleanupRun["stats"]) {
   if (!stats.totalRemoved) {
     return "queue already aligned";
@@ -326,6 +368,8 @@ function LiveMemoryRailBody() {
   const { center, loading: centerLoading, error: centerError } = useLiveMemoryCenter();
   const memory = state.memory;
   const governed = loading || error ? 0 : memory.filter((item) => item.governance?.mode).length;
+  const activeProviders = center.providers.filter((provider) => provider.enabled).length;
+  const degradedProviders = center.providers.filter((provider) => provider.status === "degraded").length;
 
   return (
     <DetailRail
@@ -347,6 +391,10 @@ function LiveMemoryRailBody() {
           label: "Policy",
           value: centerLoading ? "同步中" : centerError ? "读取失败" : policyModeLabel(center.policy.mode),
         },
+        {
+          label: "Providers",
+          value: centerLoading ? "同步中" : centerError ? "读取失败" : `${activeProviders} active / ${degradedProviders} degraded`,
+        },
       ]}
     />
   );
@@ -358,7 +406,18 @@ export function LiveMemoryContextRail() {
 
 export function LiveMemoryView() {
   const { state, loading, error, refresh } = usePhaseZeroState();
-  const { center, loading: centerLoading, error: centerError, updatePolicy, createPromotion, reviewPromotion, runCleanup, submitFeedback, forgetMemory } = useLiveMemoryCenter();
+  const {
+    center,
+    loading: centerLoading,
+    error: centerError,
+    updatePolicy,
+    updateProviders,
+    createPromotion,
+    reviewPromotion,
+    runCleanup,
+    submitFeedback,
+    forgetMemory,
+  } = useLiveMemoryCenter();
   const memory = state.memory;
   const session = state.auth.session;
   const canMutate = hasPermission(session, "memory.write");
@@ -385,6 +444,8 @@ export function LiveMemoryView() {
   const [includePromotedArtifactsDraft, setIncludePromotedArtifactsDraft] = useState(true);
   const [maxItemsDraft, setMaxItemsDraft] = useState(6);
   const [policyDirty, setPolicyDirty] = useState(false);
+  const [providerDrafts, setProviderDrafts] = useState<MemoryProviderBinding[]>([]);
+  const [providerDirty, setProviderDirty] = useState(false);
 
   const [promotionKind, setPromotionKind] = useState<MemoryPromotionKind>("skill");
   const [promotionTitle, setPromotionTitle] = useState("");
@@ -446,6 +507,12 @@ export function LiveMemoryView() {
     }
   }, [center.policy, policyDirty]);
 
+  useEffect(() => {
+    if (!providerDirty) {
+      setProviderDrafts(center.providers);
+    }
+  }, [center.providers, providerDirty]);
+
   const selectedArtifact = memory.find((item) => item.id === resolvedArtifactId) ?? memory[0];
   const resolvedDetail = detail && detail.artifact.id === deferredArtifactId ? detail : null;
   const versions = resolvedDetail?.versions ?? [];
@@ -456,6 +523,8 @@ export function LiveMemoryView() {
   const decisionArtifacts = memory.filter((item) => item.kind === "decision").length;
   const governedArtifacts = memory.filter((item) => item.governance?.mode).length;
   const promotedLedgers = memory.filter((item) => item.kind === "skill-ledger" || item.kind === "policy-ledger").length;
+  const activeProviders = center.providers.filter((provider) => provider.enabled).length;
+  const degradedProviders = center.providers.filter((provider) => provider.status === "degraded").length;
   const artifactSupportsMutation = Boolean(selectedArtifact && selectedArtifact.path !== "repo-binding");
 
   async function runAction(action: string, task: () => Promise<void>) {
@@ -571,6 +640,41 @@ export function LiveMemoryView() {
     setPolicyDirty(true);
   }
 
+  function updateProviderDraft(providerId: string, recipe: (current: MemoryProviderBinding) => MemoryProviderBinding) {
+    setProviderDrafts((current) =>
+      current.map((provider) => {
+        if (provider.id !== providerId) {
+          return provider;
+        }
+        return recipe(provider);
+      })
+    );
+    setProviderDirty(true);
+  }
+
+  function toggleProviderScope(providerId: string, field: "readScopes" | "writeScopes", scope: string) {
+    updateProviderDraft(providerId, (provider) => {
+      const current = provider[field];
+      const hasScope = current.includes(scope);
+      const next = hasScope ? current.filter((item) => item !== scope) : [...current, scope];
+      return {
+        ...provider,
+        [field]: next,
+      };
+    });
+  }
+
+  async function handleSaveProviders() {
+    await runAction("save-providers", async () => {
+      const payload = await updateProviders(providerDrafts);
+      setProviderDirty(false);
+      await refresh();
+      const nextActive = payload.providers.filter((provider) => provider.enabled).length;
+      const nextDegraded = payload.providers.filter((provider) => provider.status === "degraded").length;
+      setMutationSuccess(`memory providers updated: ${nextActive} active / ${nextDegraded} degraded`);
+    });
+  }
+
   return (
     <div className="space-y-4">
       {error ? (
@@ -587,13 +691,18 @@ export function LiveMemoryView() {
         </Panel>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <ArtifactFact label="Artifacts" value={loading ? "同步中" : `${memory.length} items`} testID="memory-artifact-count" />
         <ArtifactFact label="Governed" value={loading ? "同步中" : `${governedArtifacts} governed`} testID="memory-governed-count" />
         <ArtifactFact
           label="Promotion Queue"
           value={centerLoading ? "同步中" : `${center.pendingCount} pending / ${center.approvedCount} approved`}
           testID="memory-pending-count"
+        />
+        <ArtifactFact
+          label="Providers"
+          value={centerLoading ? "同步中" : `${activeProviders} active / ${degradedProviders} degraded`}
+          testID="memory-provider-count"
         />
         <ArtifactFact
           label="Injection Pack"
@@ -621,6 +730,7 @@ export function LiveMemoryView() {
             <StatusRow label="Governed Artifacts" value={`${governedArtifacts} artifacts`} tone="white" />
             <StatusRow label="Decision Ledgers" value={`${decisionArtifacts} ledgers`} tone="yellow" />
             <StatusRow label="Promoted Ledgers" value={`${promotedLedgers} ledgers`} tone="lime" />
+            <StatusRow label="Provider Health" value={`${activeProviders} active / ${degradedProviders} degraded`} tone="white" />
             <StatusRow label="Current Policy" value={centerLoading ? "同步中" : policyModeLabel(center.policy.mode)} tone="white" />
           </div>
 
@@ -850,6 +960,214 @@ export function LiveMemoryView() {
             </div>
           </Panel>
 
+          <Panel tone={canMutate ? "paper" : "white"} className="!p-3.5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Provider Orchestration</p>
+                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">把记忆 provider 变成正式配置真相</h2>
+              </div>
+              <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                {centerLoading ? "syncing" : `${activeProviders} active / ${degradedProviders} degraded`}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+              这里收 workspace file memory、search sidecar 和 external durable memory 的 binding truth。保存后，next-run preview 会立刻暴露 active provider、scope、retention 和 degraded fallback。
+            </p>
+
+            <div className="mt-5 space-y-4">
+              {providerDrafts.map((provider) => {
+                const readOnlyWriteScopes = provider.kind === "search-sidecar";
+                return (
+                  <div
+                    key={provider.id}
+                    data-testid={`memory-provider-card-${provider.id}`}
+                    className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+                          {providerKindLabel(provider.kind)}
+                        </p>
+                        <h3 className="mt-2 font-display text-2xl font-bold">{provider.label}</h3>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          data-testid={`memory-provider-status-${provider.id}`}
+                          className={cn(
+                            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
+                            providerStatusTone(provider.status) === "lime" && "bg-[var(--shock-lime)]",
+                            providerStatusTone(provider.status) === "pink" && "bg-[var(--shock-pink)] text-white",
+                            providerStatusTone(provider.status) === "white" && "bg-[var(--shock-paper)]"
+                          )}
+                        >
+                          {provider.status}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`memory-provider-toggle-${provider.id}`}
+                          disabled={!canMutate || busyAction !== null || provider.kind === "workspace-file"}
+                          onClick={() =>
+                            updateProviderDraft(provider.id, (current) => ({
+                              ...current,
+                              enabled: !current.enabled,
+                            }))
+                          }
+                          className={cn(
+                            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] disabled:opacity-60",
+                            provider.enabled ? "bg-[var(--shock-yellow)]" : "bg-white"
+                          )}
+                        >
+                          {provider.enabled ? "enabled" : "disabled"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      <StatusRow label="Scopes" value={providerScopeSummary(provider)} tone="white" />
+                      <StatusRow label="Recall" value={provider.recallPolicy} tone="yellow" />
+                      <StatusRow label="Retention" value={provider.retentionPolicy} tone="white" />
+                      <StatusRow
+                        label="Last Check"
+                        value={`${formatTimestamp(provider.lastCheckedAt)} / ${valueOrFallback(provider.updatedBy, "System")}`}
+                        tone={provider.status === "degraded" ? "pink" : "white"}
+                      />
+                    </div>
+
+                    {provider.lastError ? (
+                      <p className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-4 text-sm leading-6 text-white">
+                        {provider.lastError}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                      <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Read Scopes</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {MEMORY_PROVIDER_SCOPE_OPTIONS.map((scope) => {
+                            const active = provider.readScopes.includes(scope);
+                            return (
+                              <button
+                                key={`${provider.id}-read-${scope}`}
+                                type="button"
+                                disabled={!canMutate || busyAction !== null}
+                                onClick={() => toggleProviderScope(provider.id, "readScopes", scope)}
+                                className={cn(
+                                  "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-60",
+                                  active ? "bg-[var(--shock-lime)]" : "bg-white"
+                                )}
+                              >
+                                {providerScopeLabel(scope)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Write Scopes</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {MEMORY_PROVIDER_SCOPE_OPTIONS.map((scope) => {
+                            const active = provider.writeScopes.includes(scope);
+                            return (
+                              <button
+                                key={`${provider.id}-write-${scope}`}
+                                type="button"
+                                disabled={!canMutate || busyAction !== null || readOnlyWriteScopes}
+                                onClick={() => toggleProviderScope(provider.id, "writeScopes", scope)}
+                                className={cn(
+                                  "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-60",
+                                  active ? "bg-[var(--shock-yellow)]" : "bg-[var(--shock-paper)]"
+                                )}
+                              >
+                                {providerScopeLabel(scope)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {readOnlyWriteScopes ? (
+                          <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                            Search Sidecar 只负责 recall，不做外部 durable write。
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[repeat(3,minmax(0,1fr))]">
+                      <input
+                        type="text"
+                        value={provider.recallPolicy}
+                        disabled={!canMutate || busyAction !== null}
+                        onChange={(event) =>
+                          updateProviderDraft(provider.id, (current) => ({
+                            ...current,
+                            recallPolicy: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+                        placeholder="Recall Policy"
+                      />
+                      <input
+                        type="text"
+                        value={provider.retentionPolicy}
+                        disabled={!canMutate || busyAction !== null}
+                        onChange={(event) =>
+                          updateProviderDraft(provider.id, (current) => ({
+                            ...current,
+                            retentionPolicy: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+                        placeholder="Retention Policy"
+                      />
+                      <input
+                        type="text"
+                        value={provider.sharingPolicy}
+                        disabled={!canMutate || busyAction !== null}
+                        onChange={(event) =>
+                          updateProviderDraft(provider.id, (current) => ({
+                            ...current,
+                            sharingPolicy: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
+                        placeholder="Sharing Policy"
+                      />
+                    </div>
+
+                    <textarea
+                      data-testid={`memory-provider-summary-${provider.id}`}
+                      value={provider.summary}
+                      disabled={!canMutate || busyAction !== null}
+                      onChange={(event) =>
+                        updateProviderDraft(provider.id, (current) => ({
+                          ...current,
+                          summary: event.target.value,
+                        }))
+                      }
+                      className="mt-4 min-h-[110px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
+                      placeholder="Provider Summary"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                data-testid="memory-providers-save"
+                disabled={!canMutate || busyAction !== null || !providerDirty}
+                onClick={() => void handleSaveProviders()}
+                className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+              >
+                {busyAction === "save-providers" ? "saving..." : "save provider bindings"}
+              </button>
+              <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                {providerDirty ? "provider draft 有未保存修改。" : "provider binding 已与 durable memory-center truth 对齐。"}
+              </p>
+            </div>
+          </Panel>
+
           <Panel tone={canMutate ? "yellow" : "paper"} className="!p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1054,6 +1372,52 @@ export function LiveMemoryView() {
                             </span>
                           ))}
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Provider Orchestration</p>
+                        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                          {preview.providers.length} providers
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-3 xl:grid-cols-3">
+                        {preview.providers.map((provider) => (
+                          <div
+                            key={provider.id}
+                            data-testid={`memory-preview-provider-${provider.id}`}
+                            className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+                                  {providerKindLabel(provider.kind)}
+                                </p>
+                                <p className="mt-2 font-display text-xl font-bold leading-6">{provider.label}</p>
+                              </div>
+                              <span
+                                className={cn(
+                                  "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
+                                  providerStatusTone(provider.status) === "lime" && "bg-[var(--shock-lime)]",
+                                  providerStatusTone(provider.status) === "pink" && "bg-[var(--shock-pink)] text-white",
+                                  providerStatusTone(provider.status) === "white" && "bg-white"
+                                )}
+                              >
+                                {provider.status}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-sm leading-6">{provider.summary}</p>
+                            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
+                              {providerScopeSummary(provider)}
+                            </p>
+                            {provider.lastError ? (
+                              <p className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-3 text-sm leading-6 text-white">
+                                {provider.lastError}
+                              </p>
+                            ) : null}
+                          </div>
+                        ))}
                       </div>
                     </div>
 

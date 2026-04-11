@@ -318,6 +318,98 @@ func TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive(t *testing.T) {
 	}
 }
 
+func TestMemoryProviderBindingsPersistAndAnnotatePromptSummary(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	initial := s.MemoryCenter()
+	if got := findMemoryProviderByKind(initial.Providers, memoryProviderKindWorkspaceFile); got == nil || !got.Enabled || got.Status != memoryProviderStatusHealthy {
+		t.Fatalf("workspace-file provider = %#v, want enabled healthy", got)
+	}
+	if got := findMemoryProviderByKind(initial.Providers, memoryProviderKindSearchSidecar); got == nil || got.Enabled || got.Status != memoryProviderStatusStandby {
+		t.Fatalf("search-sidecar provider = %#v, want disabled standby", got)
+	}
+
+	_, providers, center, err := s.UpdateMemoryProviders([]MemoryProviderBinding{
+		{
+			ID:              memoryProviderKindWorkspaceFile,
+			Kind:            memoryProviderKindWorkspaceFile,
+			Label:           "Workspace File Memory",
+			Enabled:         true,
+			ReadScopes:      []string{"workspace", "issue-room", "room-notes", "decision-ledger", "agent", "promoted-ledger"},
+			WriteScopes:     []string{"workspace", "issue-room", "room-notes", "decision-ledger", "agent"},
+			RecallPolicy:    "governed-first",
+			RetentionPolicy: "保留版本、人工纠偏和提升 ledger。",
+			SharingPolicy:   "workspace-governed",
+			Summary:         "Primary file-backed memory.",
+		},
+		{
+			ID:              memoryProviderKindSearchSidecar,
+			Kind:            memoryProviderKindSearchSidecar,
+			Label:           "Search Sidecar",
+			Enabled:         true,
+			ReadScopes:      []string{"workspace", "issue-room", "decision-ledger", "promoted-ledger"},
+			WriteScopes:     []string{},
+			RecallPolicy:    "search-on-demand",
+			RetentionPolicy: "短期 query cache。",
+			SharingPolicy:   "workspace-query-only",
+			Summary:         "Use local recall index before falling back to full ledger scan.",
+		},
+		{
+			ID:              memoryProviderKindExternalPersistent,
+			Kind:            memoryProviderKindExternalPersistent,
+			Label:           "External Persistent Memory",
+			Enabled:         true,
+			ReadScopes:      []string{"workspace", "agent", "user"},
+			WriteScopes:     []string{"agent", "user"},
+			RecallPolicy:    "promote-approved-only",
+			RetentionPolicy: "长期保留审核通过的 durable memory。",
+			SharingPolicy:   "explicit-share-only",
+			Summary:         "Forward approved memories to an external durable sink.",
+		},
+	}, "Larkspur")
+	if err != nil {
+		t.Fatalf("UpdateMemoryProviders() error = %v", err)
+	}
+
+	searchProvider := findMemoryProviderByKind(providers, memoryProviderKindSearchSidecar)
+	if searchProvider == nil || !searchProvider.Enabled || searchProvider.Status != memoryProviderStatusHealthy {
+		t.Fatalf("search provider = %#v, want enabled healthy", searchProvider)
+	}
+	externalProvider := findMemoryProviderByKind(providers, memoryProviderKindExternalPersistent)
+	if externalProvider == nil || !externalProvider.Enabled || externalProvider.Status != memoryProviderStatusDegraded || externalProvider.LastError == "" {
+		t.Fatalf("external provider = %#v, want enabled degraded with error", externalProvider)
+	}
+
+	preview := findMemoryPreviewBySession(center.Previews, "session-memory")
+	if preview == nil {
+		t.Fatalf("session-memory preview missing")
+	}
+	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusHealthy {
+		t.Fatalf("preview search provider = %#v, want healthy", got)
+	}
+	if !strings.Contains(preview.PromptSummary, "Memory providers active for this run:") ||
+		!strings.Contains(preview.PromptSummary, "Search Sidecar") ||
+		!strings.Contains(preview.PromptSummary, "External Persistent Memory") ||
+		!strings.Contains(preview.PromptSummary, "External durable adapter is not configured yet") {
+		t.Fatalf("prompt summary missing provider orchestration details:\n%s", preview.PromptSummary)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload) error = %v", err)
+	}
+	reloadedCenter := reloaded.MemoryCenter()
+	if got := findMemoryProviderByKind(reloadedCenter.Providers, memoryProviderKindExternalPersistent); got == nil || !got.Enabled || got.Status != memoryProviderStatusDegraded {
+		t.Fatalf("reloaded external provider = %#v, want persisted degraded binding", got)
+	}
+}
+
 func findMemoryPreviewBySession(previews []MemoryInjectionPreview, sessionID string) *MemoryInjectionPreview {
 	for index := range previews {
 		if previews[index].SessionID == sessionID {
@@ -340,6 +432,15 @@ func findPromotionByID(promotions []MemoryPromotion, promotionID string) *Memory
 	for index := range promotions {
 		if promotions[index].ID == promotionID {
 			return &promotions[index]
+		}
+	}
+	return nil
+}
+
+func findMemoryProviderByKind(providers []MemoryProviderBinding, kind string) *MemoryProviderBinding {
+	for index := range providers {
+		if providers[index].Kind == kind {
+			return &providers[index]
 		}
 	}
 	return nil

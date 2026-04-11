@@ -18,6 +18,14 @@ const (
 	memoryPromotionKindSkill  = "skill"
 	memoryPromotionKindPolicy = "policy"
 
+	memoryProviderKindWorkspaceFile      = "workspace-file"
+	memoryProviderKindSearchSidecar      = "search-sidecar"
+	memoryProviderKindExternalPersistent = "external-persistent"
+
+	memoryProviderStatusHealthy  = "healthy"
+	memoryProviderStatusStandby  = "standby"
+	memoryProviderStatusDegraded = "degraded"
+
 	memoryPromotionStatusPending  = "pending_review"
 	memoryPromotionStatusApproved = "approved"
 	memoryPromotionStatusRejected = "rejected"
@@ -34,13 +42,17 @@ const (
 )
 
 var (
-	ErrMemoryPolicyModeInvalid      = errors.New("memory policy mode is invalid")
-	ErrMemoryPolicyMaxItemsInvalid  = errors.New("memory policy maxItems is invalid")
-	ErrMemoryArtifactNotFound       = errors.New("memory artifact not found")
-	ErrMemoryPromotionKindInvalid   = errors.New("memory promotion kind is invalid")
-	ErrMemoryPromotionTitleRequired = errors.New("memory promotion title is required")
-	ErrMemoryPromotionNotFound      = errors.New("memory promotion not found")
-	ErrMemoryPromotionReviewInvalid = errors.New("memory promotion review decision is invalid")
+	ErrMemoryPolicyModeInvalid         = errors.New("memory policy mode is invalid")
+	ErrMemoryPolicyMaxItemsInvalid     = errors.New("memory policy maxItems is invalid")
+	ErrMemoryArtifactNotFound          = errors.New("memory artifact not found")
+	ErrMemoryPromotionKindInvalid      = errors.New("memory promotion kind is invalid")
+	ErrMemoryPromotionTitleRequired    = errors.New("memory promotion title is required")
+	ErrMemoryPromotionNotFound         = errors.New("memory promotion not found")
+	ErrMemoryPromotionReviewInvalid    = errors.New("memory promotion review decision is invalid")
+	ErrMemoryProviderBindingsRequired  = errors.New("memory provider bindings are required")
+	ErrMemoryProviderKindInvalid       = errors.New("memory provider kind is invalid")
+	ErrMemoryProviderScopeInvalid      = errors.New("memory provider scope is invalid")
+	ErrMemoryProviderWorkspaceRequired = errors.New("workspace-file provider must stay enabled")
 )
 
 type MemoryInjectionPolicy struct {
@@ -79,6 +91,7 @@ type MemoryInjectionPreview struct {
 	PromptSummary string                       `json:"promptSummary"`
 	Files         []string                     `json:"files"`
 	Tools         []string                     `json:"tools"`
+	Providers     []MemoryProviderBinding      `json:"providers"`
 	Items         []MemoryInjectionPreviewItem `json:"items"`
 }
 
@@ -133,9 +146,28 @@ type MemoryCleanupState struct {
 	Ledger       []MemoryCleanupRun `json:"ledger"`
 }
 
+type MemoryProviderBinding struct {
+	ID              string   `json:"id"`
+	Label           string   `json:"label"`
+	Kind            string   `json:"kind"`
+	Status          string   `json:"status"`
+	Enabled         bool     `json:"enabled"`
+	ReadScopes      []string `json:"readScopes"`
+	WriteScopes     []string `json:"writeScopes"`
+	RecallPolicy    string   `json:"recallPolicy"`
+	RetentionPolicy string   `json:"retentionPolicy"`
+	SharingPolicy   string   `json:"sharingPolicy"`
+	Summary         string   `json:"summary"`
+	LastCheckedAt   string   `json:"lastCheckedAt,omitempty"`
+	LastError       string   `json:"lastError,omitempty"`
+	UpdatedAt       string   `json:"updatedAt,omitempty"`
+	UpdatedBy       string   `json:"updatedBy,omitempty"`
+}
+
 type MemoryCenter struct {
 	Policy        MemoryInjectionPolicy    `json:"policy"`
 	Previews      []MemoryInjectionPreview `json:"previews"`
+	Providers     []MemoryProviderBinding  `json:"providers"`
 	Promotions    []MemoryPromotion        `json:"promotions"`
 	Cleanup       MemoryCleanupState       `json:"cleanup"`
 	PendingCount  int                      `json:"pendingCount"`
@@ -169,9 +201,10 @@ type MemoryPromotionReviewInput struct {
 }
 
 type memoryCenterStateFile struct {
-	Policy     MemoryInjectionPolicy `json:"policy"`
-	Promotions []MemoryPromotion     `json:"promotions"`
-	Cleanup    MemoryCleanupState    `json:"cleanup"`
+	Policy     MemoryInjectionPolicy   `json:"policy"`
+	Providers  []MemoryProviderBinding `json:"providers"`
+	Promotions []MemoryPromotion       `json:"promotions"`
+	Cleanup    MemoryCleanupState      `json:"cleanup"`
 }
 
 func defaultMemoryCenterState(now string) memoryCenterStateFile {
@@ -186,6 +219,7 @@ func defaultMemoryCenterState(now string) memoryCenterStateFile {
 			UpdatedAt:                now,
 			UpdatedBy:                "System",
 		},
+		Providers:  defaultMemoryProviderBindings(now),
 		Promotions: []MemoryPromotion{},
 		Cleanup: MemoryCleanupState{
 			Ledger: []MemoryCleanupRun{},
@@ -209,6 +243,121 @@ func normalizeMemoryPolicyMaxItems(value int) (int, error) {
 		return 0, ErrMemoryPolicyMaxItemsInvalid
 	}
 	return value, nil
+}
+
+func defaultMemoryProviderBindings(now string) []MemoryProviderBinding {
+	return []MemoryProviderBinding{
+		defaultMemoryProviderBinding(memoryProviderKindWorkspaceFile, now),
+		defaultMemoryProviderBinding(memoryProviderKindSearchSidecar, now),
+		defaultMemoryProviderBinding(memoryProviderKindExternalPersistent, now),
+	}
+}
+
+func defaultMemoryProviderBinding(kind string, now string) MemoryProviderBinding {
+	switch kind {
+	case memoryProviderKindWorkspaceFile:
+		return MemoryProviderBinding{
+			ID:              memoryProviderKindWorkspaceFile,
+			Label:           "Workspace File Memory",
+			Kind:            memoryProviderKindWorkspaceFile,
+			Status:          memoryProviderStatusHealthy,
+			Enabled:         true,
+			ReadScopes:      []string{"workspace", "issue-room", "room-notes", "decision-ledger", "agent", "promoted-ledger"},
+			WriteScopes:     []string{"workspace", "issue-room", "room-notes", "decision-ledger", "agent"},
+			RecallPolicy:    "governed-first",
+			RetentionPolicy: "保留版本、人工纠偏和提升 ledger。",
+			SharingPolicy:   "workspace-governed",
+			Summary:         "Primary file-backed memory via MEMORY.md、notes/、decisions/ 和 .openshock/agents。",
+			LastCheckedAt:   now,
+			UpdatedAt:       now,
+			UpdatedBy:       "System",
+		}
+	case memoryProviderKindSearchSidecar:
+		return MemoryProviderBinding{
+			ID:              memoryProviderKindSearchSidecar,
+			Label:           "Search Sidecar",
+			Kind:            memoryProviderKindSearchSidecar,
+			Status:          memoryProviderStatusStandby,
+			Enabled:         false,
+			ReadScopes:      []string{"workspace", "issue-room", "room-notes", "decision-ledger", "promoted-ledger"},
+			WriteScopes:     []string{},
+			RecallPolicy:    "search-on-demand",
+			RetentionPolicy: "只保留本地 recall index 与短期 query cache。",
+			SharingPolicy:   "workspace-query-only",
+			Summary:         "Optional local search sidecar over governed file memory; 不向外部持久化写入。",
+			LastCheckedAt:   now,
+			UpdatedAt:       now,
+			UpdatedBy:       "System",
+		}
+	case memoryProviderKindExternalPersistent:
+		return MemoryProviderBinding{
+			ID:              memoryProviderKindExternalPersistent,
+			Label:           "External Persistent Memory",
+			Kind:            memoryProviderKindExternalPersistent,
+			Status:          memoryProviderStatusStandby,
+			Enabled:         false,
+			ReadScopes:      []string{"workspace", "issue-room", "agent", "user"},
+			WriteScopes:     []string{"workspace", "agent", "user"},
+			RecallPolicy:    "promote-approved-only",
+			RetentionPolicy: "长期保留经治理批准的 durable memory。",
+			SharingPolicy:   "explicit-share-only",
+			Summary:         "Optional external durable memory binding for cross-run recall and replay exports.",
+			LastCheckedAt:   now,
+			UpdatedAt:       now,
+			UpdatedBy:       "System",
+		}
+	default:
+		return MemoryProviderBinding{}
+	}
+}
+
+func normalizeMemoryProviderKind(value string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case memoryProviderKindWorkspaceFile:
+		return memoryProviderKindWorkspaceFile, nil
+	case memoryProviderKindSearchSidecar:
+		return memoryProviderKindSearchSidecar, nil
+	case memoryProviderKindExternalPersistent:
+		return memoryProviderKindExternalPersistent, nil
+	default:
+		return "", ErrMemoryProviderKindInvalid
+	}
+}
+
+func normalizeMemoryProviderScopes(values []string, allowEmpty bool) ([]string, error) {
+	allowed := map[string]bool{
+		"workspace":       true,
+		"issue-room":      true,
+		"room-notes":      true,
+		"decision-ledger": true,
+		"promoted-ledger": true,
+		"topic":           true,
+		"agent":           true,
+		"user":            true,
+		"run":             true,
+		"session":         true,
+	}
+
+	seen := map[string]bool{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		item := strings.TrimSpace(strings.ToLower(value))
+		if item == "" {
+			continue
+		}
+		if !allowed[item] {
+			return nil, fmt.Errorf("%w: %s", ErrMemoryProviderScopeInvalid, item)
+		}
+		if seen[item] {
+			continue
+		}
+		seen[item] = true
+		normalized = append(normalized, item)
+	}
+	if len(normalized) == 0 && !allowEmpty {
+		return nil, ErrMemoryProviderScopeInvalid
+	}
+	return normalized, nil
 }
 
 func normalizeMemoryPromotionKind(value string) (string, error) {
@@ -303,6 +452,7 @@ func (s *Store) normalizeMemoryCenterStateLocked(state memoryCenterStateFile) me
 	state.Policy.MaxItems = maxItems
 	state.Policy.UpdatedAt = defaultString(strings.TrimSpace(state.Policy.UpdatedAt), defaults.Policy.UpdatedAt)
 	state.Policy.UpdatedBy = defaultString(strings.TrimSpace(state.Policy.UpdatedBy), defaults.Policy.UpdatedBy)
+	state.Providers = normalizeMemoryProviderBindings(state.Providers, defaults.Providers, now)
 
 	normalizedPromotions := make([]MemoryPromotion, 0, len(state.Promotions))
 	for _, item := range state.Promotions {
@@ -354,6 +504,97 @@ func (s *Store) normalizeMemoryCenterStateLocked(state memoryCenterStateFile) me
 	state.Promotions = normalizedPromotions
 	state.Cleanup = normalizeMemoryCleanupState(state.Cleanup, now)
 	return state
+}
+
+func normalizeMemoryProviderBindings(items []MemoryProviderBinding, defaults []MemoryProviderBinding, now string) []MemoryProviderBinding {
+	index := map[string]MemoryProviderBinding{}
+	for _, item := range items {
+		kind, err := normalizeMemoryProviderKind(defaultString(strings.TrimSpace(item.Kind), strings.TrimSpace(item.ID)))
+		if err != nil {
+			continue
+		}
+		index[kind] = item
+	}
+
+	normalized := make([]MemoryProviderBinding, 0, len(defaults))
+	for _, fallback := range defaults {
+		current, ok := index[fallback.Kind]
+		if !ok {
+			current = fallback
+		}
+		normalized = append(normalized, materializeMemoryProviderBinding(current, fallback, now))
+	}
+	return normalized
+}
+
+func materializeMemoryProviderBinding(current, fallback MemoryProviderBinding, now string) MemoryProviderBinding {
+	provider := fallback
+	provider.ID = fallback.ID
+	provider.Kind = fallback.Kind
+
+	if label := strings.TrimSpace(current.Label); label != "" {
+		provider.Label = label
+	}
+	provider.Enabled = current.Enabled
+	if current.Kind == "" && current.ID == "" {
+		provider.Enabled = fallback.Enabled
+	}
+
+	if current.ReadScopes != nil {
+		if scopes, err := normalizeMemoryProviderScopes(current.ReadScopes, false); err == nil {
+			provider.ReadScopes = scopes
+		}
+	}
+	if current.WriteScopes != nil {
+		if scopes, err := normalizeMemoryProviderScopes(current.WriteScopes, true); err == nil {
+			provider.WriteScopes = scopes
+		}
+	}
+
+	if recallPolicy := strings.TrimSpace(current.RecallPolicy); recallPolicy != "" {
+		provider.RecallPolicy = recallPolicy
+	}
+	if retentionPolicy := strings.TrimSpace(current.RetentionPolicy); retentionPolicy != "" {
+		provider.RetentionPolicy = retentionPolicy
+	}
+	if sharingPolicy := strings.TrimSpace(current.SharingPolicy); sharingPolicy != "" {
+		provider.SharingPolicy = sharingPolicy
+	}
+	if summary := strings.TrimSpace(current.Summary); summary != "" {
+		provider.Summary = summary
+	}
+	provider.LastCheckedAt = defaultString(strings.TrimSpace(current.LastCheckedAt), fallback.LastCheckedAt)
+	provider.UpdatedAt = defaultString(strings.TrimSpace(current.UpdatedAt), fallback.UpdatedAt)
+	provider.UpdatedBy = defaultString(strings.TrimSpace(current.UpdatedBy), fallback.UpdatedBy)
+	provider.LastError = strings.TrimSpace(current.LastError)
+
+	switch provider.Kind {
+	case memoryProviderKindWorkspaceFile:
+		provider.Enabled = true
+		provider.Status = memoryProviderStatusHealthy
+		provider.LastError = ""
+	case memoryProviderKindSearchSidecar:
+		if provider.Enabled {
+			provider.Status = memoryProviderStatusHealthy
+			provider.LastError = ""
+		} else {
+			provider.Status = memoryProviderStatusStandby
+			provider.LastError = ""
+		}
+	case memoryProviderKindExternalPersistent:
+		if provider.Enabled {
+			provider.Status = memoryProviderStatusDegraded
+			provider.LastError = defaultString(provider.LastError, "External durable adapter is not configured yet; recall falls back to workspace file memory.")
+		} else {
+			provider.Status = memoryProviderStatusStandby
+			provider.LastError = ""
+		}
+	}
+
+	provider.LastCheckedAt = defaultString(strings.TrimSpace(provider.LastCheckedAt), now)
+	provider.UpdatedAt = defaultString(strings.TrimSpace(provider.UpdatedAt), now)
+	provider.UpdatedBy = defaultString(strings.TrimSpace(provider.UpdatedBy), "System")
+	return provider
 }
 
 func normalizeMemoryCleanupState(state MemoryCleanupState, now string) MemoryCleanupState {
@@ -441,7 +682,7 @@ func memoryPromotionStatusRank(status string) int {
 	}
 }
 
-func memoryModeLabel(policy MemoryInjectionPolicy) string {
+func memoryModeLabel(policy MemoryInjectionPolicy, providers []MemoryProviderBinding) string {
 	mode := "balanced"
 	if policy.Mode == memoryPolicyModeGovernedFirst {
 		mode = "governed-first"
@@ -453,6 +694,20 @@ func memoryModeLabel(policy MemoryInjectionPolicy) string {
 	}
 	if policy.IncludePromotedArtifacts {
 		parts = append(parts, "promoted-ledgers")
+	}
+	activeProviders := []string{}
+	for _, provider := range providers {
+		if !provider.Enabled {
+			continue
+		}
+		label := provider.Kind
+		if provider.Kind == memoryProviderKindExternalPersistent && provider.Status == memoryProviderStatusDegraded {
+			label += "(degraded)"
+		}
+		activeProviders = append(activeProviders, label)
+	}
+	if len(activeProviders) > 0 {
+		parts = append(parts, strings.Join(activeProviders, " + "))
 	}
 	return strings.Join(parts, " / ")
 }
@@ -473,7 +728,8 @@ func (s *Store) MemoryCenter() MemoryCenter {
 func buildMemoryCenter(snapshot State, state memoryCenterStateFile) MemoryCenter {
 	center := MemoryCenter{
 		Policy:     state.Policy,
-		Previews:   buildMemoryInjectionPreviews(snapshot, state.Policy),
+		Previews:   buildMemoryInjectionPreviews(snapshot, state.Policy, state.Providers),
+		Providers:  append([]MemoryProviderBinding{}, state.Providers...),
 		Promotions: append([]MemoryPromotion{}, state.Promotions...),
 		Cleanup:    state.Cleanup,
 	}
@@ -492,15 +748,15 @@ func buildMemoryCenter(snapshot State, state memoryCenterStateFile) MemoryCenter
 	return center
 }
 
-func buildMemoryInjectionPreviews(snapshot State, policy MemoryInjectionPolicy) []MemoryInjectionPreview {
+func buildMemoryInjectionPreviews(snapshot State, policy MemoryInjectionPolicy, providers []MemoryProviderBinding) []MemoryInjectionPreview {
 	previews := make([]MemoryInjectionPreview, 0, len(snapshot.Sessions))
 	for _, session := range snapshot.Sessions {
-		previews = append(previews, buildMemoryInjectionPreview(snapshot, policy, session))
+		previews = append(previews, buildMemoryInjectionPreview(snapshot, policy, providers, session))
 	}
 	return previews
 }
 
-func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, session Session) MemoryInjectionPreview {
+func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, providers []MemoryProviderBinding, session Session) MemoryInjectionPreview {
 	type candidate struct {
 		path     string
 		reason   string
@@ -514,6 +770,7 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 			agent = &found
 		}
 	}
+	previewProviders := selectMemoryProvidersForSession(providers, session, agent)
 
 	candidates := []candidate{}
 	seen := map[string]bool{}
@@ -607,9 +864,10 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, s
 		IssueKey:      session.IssueKey,
 		Title:         title,
 		RecallPolicy:  fmt.Sprintf("%s / max %d items / room:%t / decision:%t / agent:%t / promoted:%t", policy.Mode, policy.MaxItems, policy.IncludeRoomNotes, policy.IncludeDecisionLedger, policy.IncludeAgentMemory, policy.IncludePromotedArtifacts),
-		PromptSummary: buildMemoryPromptSummary(policy, session, items, agent),
+		PromptSummary: buildMemoryPromptSummary(policy, session, items, agent, previewProviders),
 		Files:         files,
 		Tools:         tools,
+		Providers:     previewProviders,
 		Items:         items,
 	}
 }
@@ -691,7 +949,46 @@ func trimMemoryPreviewItems(items []MemoryInjectionPreviewItem, maxItems int) []
 	return trimmed
 }
 
-func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem, agent *Agent) string {
+func selectMemoryProvidersForSession(providers []MemoryProviderBinding, session Session, agent *Agent) []MemoryProviderBinding {
+	sessionScopes := map[string]bool{
+		"workspace": true,
+	}
+	if strings.TrimSpace(session.RoomID) != "" {
+		sessionScopes["issue-room"] = true
+		sessionScopes["room-notes"] = true
+		sessionScopes["decision-ledger"] = true
+	}
+	if agent != nil {
+		sessionScopes["agent"] = true
+	}
+	if strings.TrimSpace(session.ActiveRunID) != "" {
+		sessionScopes["run"] = true
+		sessionScopes["session"] = true
+	}
+
+	selected := make([]MemoryProviderBinding, 0, len(providers))
+	for _, provider := range providers {
+		if !provider.Enabled {
+			continue
+		}
+		if !memoryProviderAppliesToSession(provider, sessionScopes) {
+			continue
+		}
+		selected = append(selected, provider)
+	}
+	return selected
+}
+
+func memoryProviderAppliesToSession(provider MemoryProviderBinding, sessionScopes map[string]bool) bool {
+	for _, scope := range provider.ReadScopes {
+		if sessionScopes[strings.TrimSpace(strings.ToLower(scope))] {
+			return true
+		}
+	}
+	return false
+}
+
+func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem, agent *Agent, providers []MemoryProviderBinding) string {
 	lines := []string{}
 	if agent != nil {
 		lines = append(lines,
@@ -712,6 +1009,26 @@ func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, ite
 		}
 		if instructions := strings.TrimSpace(agent.OperatingInstructions); instructions != "" {
 			lines = append(lines, fmt.Sprintf("Operating instructions: %s", summarizeMemoryPromptLine(instructions)))
+		}
+	}
+
+	if len(providers) > 0 {
+		lines = append(lines, "Memory providers active for this run:")
+		for _, provider := range providers {
+			line := fmt.Sprintf(
+				"- %s (%s) / status:%s / read:%s / write:%s / recall:%s / retention:%s",
+				defaultString(strings.TrimSpace(provider.Label), provider.Kind),
+				provider.Kind,
+				defaultString(strings.TrimSpace(provider.Status), memoryProviderStatusStandby),
+				strings.Join(provider.ReadScopes, ", "),
+				defaultString(strings.Join(provider.WriteScopes, ", "), "read-only"),
+				defaultString(strings.TrimSpace(provider.RecallPolicy), "unset"),
+				defaultString(strings.TrimSpace(provider.RetentionPolicy), "unset"),
+			)
+			if provider.LastError != "" {
+				line += fmt.Sprintf(" / note:%s", summarizeMemoryPromptLine(provider.LastError))
+			}
+			lines = append(lines, line)
 		}
 	}
 
@@ -1008,7 +1325,7 @@ func (s *Store) UpdateMemoryPolicy(input MemoryPolicyInput) (State, MemoryInject
 		UpdatedBy:                defaultString(strings.TrimSpace(input.UpdatedBy), "System"),
 	}
 	state = s.normalizeMemoryCenterStateLocked(state)
-	s.state.Workspace.MemoryMode = memoryModeLabel(state.Policy)
+	s.state.Workspace.MemoryMode = memoryModeLabel(state.Policy, state.Providers)
 
 	if err := s.saveMemoryCenterStateLocked(state); err != nil {
 		return State{}, MemoryInjectionPolicy{}, MemoryCenter{}, err
@@ -1019,6 +1336,89 @@ func (s *Store) UpdateMemoryPolicy(input MemoryPolicyInput) (State, MemoryInject
 
 	snapshot := cloneState(s.state)
 	return snapshot, state.Policy, buildMemoryCenter(snapshot, state), nil
+}
+
+func (s *Store) UpdateMemoryProviders(bindings []MemoryProviderBinding, updatedBy string) (State, []MemoryProviderBinding, MemoryCenter, error) {
+	if len(bindings) == 0 {
+		return State{}, nil, MemoryCenter{}, ErrMemoryProviderBindingsRequired
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, nil, MemoryCenter{}, err
+	}
+	state = s.normalizeMemoryCenterStateLocked(state)
+
+	merged := map[string]MemoryProviderBinding{}
+	for _, provider := range state.Providers {
+		merged[provider.Kind] = provider
+	}
+
+	for _, provider := range bindings {
+		kind, err := normalizeMemoryProviderKind(defaultString(strings.TrimSpace(provider.Kind), strings.TrimSpace(provider.ID)))
+		if err != nil {
+			return State{}, nil, MemoryCenter{}, err
+		}
+
+		fallback := defaultMemoryProviderBinding(kind, now)
+		readScopes, err := normalizeMemoryProviderScopes(provider.ReadScopes, false)
+		if err != nil {
+			return State{}, nil, MemoryCenter{}, err
+		}
+		writeScopes, err := normalizeMemoryProviderScopes(provider.WriteScopes, true)
+		if err != nil {
+			return State{}, nil, MemoryCenter{}, err
+		}
+		if kind == memoryProviderKindWorkspaceFile && !provider.Enabled {
+			return State{}, nil, MemoryCenter{}, ErrMemoryProviderWorkspaceRequired
+		}
+
+		next := merged[kind]
+		next.ID = fallback.ID
+		next.Kind = kind
+		next.Label = defaultString(strings.TrimSpace(provider.Label), fallback.Label)
+		next.Enabled = provider.Enabled
+		if kind == memoryProviderKindWorkspaceFile {
+			next.Enabled = true
+		}
+		next.ReadScopes = readScopes
+		next.WriteScopes = writeScopes
+		next.RecallPolicy = defaultString(strings.TrimSpace(provider.RecallPolicy), fallback.RecallPolicy)
+		next.RetentionPolicy = defaultString(strings.TrimSpace(provider.RetentionPolicy), fallback.RetentionPolicy)
+		next.SharingPolicy = defaultString(strings.TrimSpace(provider.SharingPolicy), fallback.SharingPolicy)
+		next.Summary = defaultString(strings.TrimSpace(provider.Summary), fallback.Summary)
+		next.LastCheckedAt = now
+		next.UpdatedAt = now
+		next.UpdatedBy = defaultString(strings.TrimSpace(updatedBy), "System")
+		next.LastError = strings.TrimSpace(provider.LastError)
+		merged[kind] = materializeMemoryProviderBinding(next, fallback, now)
+	}
+
+	state.Providers = normalizeMemoryProviderBindings(
+		[]MemoryProviderBinding{
+			merged[memoryProviderKindWorkspaceFile],
+			merged[memoryProviderKindSearchSidecar],
+			merged[memoryProviderKindExternalPersistent],
+		},
+		defaultMemoryProviderBindings(now),
+		now,
+	)
+	s.state.Workspace.MemoryMode = memoryModeLabel(state.Policy, state.Providers)
+
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, nil, MemoryCenter{}, err
+	}
+	if err := s.persistLocked(); err != nil {
+		return State{}, nil, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, append([]MemoryProviderBinding{}, state.Providers...), buildMemoryCenter(snapshot, state), nil
 }
 
 func (s *Store) RequestMemoryPromotion(input MemoryPromotionRequestInput) (State, MemoryPromotion, MemoryCenter, error) {

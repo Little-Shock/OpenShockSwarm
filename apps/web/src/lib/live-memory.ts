@@ -48,21 +48,41 @@ export type MemoryArtifactDetail = {
 export type MemoryPolicyMode = "balanced" | "governed-first";
 export type MemoryPromotionKind = "skill" | "policy";
 export type MemoryPromotionStatus = "pending_review" | "approved" | "rejected";
+export type MemoryProviderKind = "workspace-file" | "search-sidecar" | "external-persistent";
+export type MemoryProviderStatus = "healthy" | "standby" | "degraded";
 
 export type MemoryInjectionPolicy = {
-  mode: MemoryPolicyMode;
+	mode: MemoryPolicyMode;
   includeRoomNotes: boolean;
   includeDecisionLedger: boolean;
   includeAgentMemory: boolean;
   includePromotedArtifacts: boolean;
   maxItems: number;
-  updatedAt: string;
-  updatedBy: string;
+	updatedAt: string;
+	updatedBy: string;
+};
+
+export type MemoryProviderBinding = {
+  id: string;
+  label: string;
+  kind: MemoryProviderKind;
+  status: MemoryProviderStatus;
+  enabled: boolean;
+  readScopes: string[];
+  writeScopes: string[];
+  recallPolicy: string;
+  retentionPolicy: string;
+  sharingPolicy: string;
+  summary: string;
+  lastCheckedAt?: string;
+  lastError?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 };
 
 export type MemoryInjectionPreviewItem = {
-  artifactId: string;
-  path: string;
+	artifactId: string;
+	path: string;
   scope: string;
   kind: string;
   version: number;
@@ -81,11 +101,12 @@ export type MemoryInjectionPreview = {
   roomId: string;
   issueKey: string;
   title: string;
-  recallPolicy: string;
-  promptSummary: string;
-  files: string[];
-  tools: string[];
-  items: MemoryInjectionPreviewItem[];
+	recallPolicy: string;
+	promptSummary: string;
+	files: string[];
+	tools: string[];
+	providers: MemoryProviderBinding[];
+	items: MemoryInjectionPreviewItem[];
 };
 
 export type MemoryPromotion = {
@@ -140,11 +161,12 @@ export type MemoryCleanupState = {
 };
 
 export type MemoryCenter = {
-  policy: MemoryInjectionPolicy;
-  previews: MemoryInjectionPreview[];
-  promotions: MemoryPromotion[];
-  cleanup: MemoryCleanupState;
-  pendingCount: number;
+	policy: MemoryInjectionPolicy;
+	previews: MemoryInjectionPreview[];
+	providers: MemoryProviderBinding[];
+	promotions: MemoryPromotion[];
+	cleanup: MemoryCleanupState;
+	pendingCount: number;
   approvedCount: number;
   rejectedCount: number;
 };
@@ -183,13 +205,18 @@ export type MemoryForgetInput = {
 };
 
 type MemoryPolicyResponse = {
-  policy: MemoryInjectionPolicy;
+	policy: MemoryInjectionPolicy;
+	center: MemoryCenter;
+};
+
+type MemoryProvidersResponse = {
+  providers: MemoryProviderBinding[];
   center: MemoryCenter;
 };
 
 type MemoryPromotionResponse = {
-  promotion: MemoryPromotion;
-  center: MemoryCenter;
+	promotion: MemoryPromotion;
+	center: MemoryCenter;
 };
 
 type MemoryCleanupResponse = {
@@ -218,6 +245,7 @@ const EMPTY_MEMORY_CENTER: MemoryCenter = {
     updatedBy: "",
   },
   previews: [],
+  providers: [],
   promotions: [],
   cleanup: {
     lastStats: {
@@ -313,6 +341,18 @@ export function useLiveMemoryCenter() {
     [commitCenter]
   );
 
+  const updateProviders = useCallback(
+    async (providers: MemoryProviderBinding[]) => {
+      const payload = await requestJSON<MemoryProvidersResponse>("/v1/memory-center/providers", {
+        method: "POST",
+        body: JSON.stringify({ providers }),
+      });
+      commitCenter(payload.center);
+      return payload;
+    },
+    [commitCenter]
+  );
+
   const createPromotion = useCallback(
     async (input: MemoryPromotionInput) => {
       const payload = await requestJSON<MemoryPromotionResponse>("/v1/memory-center/promotions", {
@@ -375,6 +415,7 @@ export function useLiveMemoryCenter() {
     error,
     refresh,
     updatePolicy,
+    updateProviders,
     createPromotion,
     reviewPromotion,
     runCleanup,
