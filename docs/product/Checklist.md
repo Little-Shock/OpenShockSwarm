@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.24
+**版本:** 1.25
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -425,11 +425,12 @@
   - [x] PR detail 里的当前 delegated closeout / `delivery-reply` 现在也能直接变成正式 action surface；用户可同页做 `acknowledged / blocked / comment / completed`，child reply 完成后还能直接 `Resume Parent Closeout`，并以 live mailbox truth 刷新同页状态
   - [x] `/mailbox` 现在支持在当前可见 room ledger 中多选 open handoff，并顺序执行 batch `acknowledged / comment / completed`；selection、closeout note 与 inbox summary 会沿同一份正式 handoff truth 前滚
   - [x] `workspace.governance.escalationSla` 现在已补正式 queue entry；active handoff 与 blocked inbox signal 会带着 `label / source / owner / next-step / deep-link` 同时进入 `/mailbox` 与 `/agents` 的治理面，不再只剩 aggregate SLA 计数
+  - [x] `workspace.governance.escalationSla.rollup` 现在还会把整个 workspace 里仍在冒烟的 room 收成同一份 cross-room rollup；`/mailbox` 与 `/agents` 会同时显示 `room / status / count / latest escalation / deep-link`，不再只盯当前 room
   - [x] PR detail 现在也已升级成 single delivery contract：release gate、operator handoff note、delivery template 与 evidence bundle 可在同页复核
   - [x] `/settings` 现在可直接编辑 team topology，并把 lane / role / default agent / handoff path 写回 durable workspace truth；`/setup` `/mailbox` `/agents` 会继续读取同一份配置，且已补 Windows Chrome 有头证据
 - 当前 GAP:
-  - [ ] 跨 room escalation rollup、policy-based batch orchestration 与更深的跨 room 治理编排仍留后续；当前已不再缺“当前 room ledger 的 bulk closeout”和“显式 escalation queue”
-- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081`
+  - [ ] policy-based batch orchestration 与更深的跨 room 治理编排仍留后续；当前已不再缺“当前 room ledger 的 bulk closeout”“显式 escalation queue”和“跨 room escalation rollup”
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081` `TC-082`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -450,7 +451,7 @@
 
 ## 四、近期收口顺序
 
-1. 继续推进 `CHK-21` 的跨 room escalation rollup、policy-based batch orchestration 与跨 Agent closeout orchestration。
+1. 继续推进 `CHK-21` 的 policy-based batch orchestration 与跨 Agent closeout orchestration。
 2. 继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
 3. 持续做跨页面前端细节回扫，但不再把 `CHK-16` 回写成未完成。
 
@@ -475,7 +476,7 @@
 - `CHK-14` `CHK-15` -> `TKT-31`
 - `CHK-19` -> `TKT-25` `TKT-32` `TKT-33`
 - `CHK-20` -> `TKT-29` `TKT-34`
-- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69` `TKT-70` `TKT-71` `TKT-72` `TKT-73` `TKT-74` `TKT-75` `TKT-76` `TKT-77` `TKT-78` `TKT-79` `TKT-80` `TKT-81` `TKT-82` `TKT-83` `TKT-84` `TKT-85` `TKT-86` `TKT-87` `TKT-89` `TKT-90` `TKT-91` `TKT-92`
+- `CHK-21` -> `TKT-35` `TKT-36` `TKT-61` `TKT-62` `TKT-63` `TKT-64` `TKT-65` `TKT-66` `TKT-67` `TKT-68` `TKT-69` `TKT-70` `TKT-71` `TKT-72` `TKT-73` `TKT-74` `TKT-75` `TKT-76` `TKT-77` `TKT-78` `TKT-79` `TKT-80` `TKT-81` `TKT-82` `TKT-83` `TKT-84` `TKT-85` `TKT-86` `TKT-87` `TKT-89` `TKT-90` `TKT-91` `TKT-92` `TKT-93`
 - `CHK-22` -> `TKT-37`
 - `CHK-07` `CHK-08` -> `TKT-39`
 - `CHK-06` -> `TKT-40` `TKT-52`

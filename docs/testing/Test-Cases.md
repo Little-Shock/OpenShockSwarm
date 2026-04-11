@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.21
+**版本:** 1.22
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1135,3 +1135,18 @@
   5. 将 handoff 重新 `acknowledged -> completed`，确认 `/mailbox` 与 `/agents` 的 escalation queue 一起清空，state snapshot 的 queue truth 同步归零。
 - 预期结果: escalation queue 必须成为正式治理对象，而不是 aggregate SLA 的装饰性解释。queue entry 应持续引用既有 handoff / inbox 真相，并在 closeout 后自动消退。
 - 业务结论: 2026 年 4 月 11 日 `TKT-92` 已把 governance escalation queue 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governance-escalation-queue.md` 已记录 `requested -> blocked -> cleared` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMailboxLifecycleHydratesWorkspaceGovernance" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestStateRouteExposesGovernanceSnapshot|TestMailboxLifecycleUpdatesGovernanceSnapshot" -count=1'`、`pnpm --dir apps/web typecheck`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-mailbox-views.tsx src/components/live-orchestration-views.tsx src/lib/phase-zero-helpers.ts src/lib/live-phase0.ts src/lib/phase-zero-types.ts'` 与 `node --check scripts/headed-governance-escalation-queue.mjs` 已锁住 store/API contract、前端类型、lint 与脚本合法性，因此这条 escalation queue 用例当前转为 `Pass`。
+
+## TC-082 Governance Escalation Rollup
+
+- 业务目标: 确认 governance escalation 不只围当前焦点 queue，而是会把整个 workspace 里仍在冒烟的 room 收成正式 rollup，并在 `/mailbox` 与 `/agents` 同源展示。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21`
+- 前置条件: workspace baseline 已存在治理快照；至少有两个不同 room 可用于制造 blocked + active 的 cross-room hot path；当前会话具备 `run.execute` 权限。
+- 测试步骤:
+  1. 读取 baseline governance rollup，确认当前 workspace 的既有 hot-room 数量。
+  2. 在 primary room 创建 formal handoff 并标记为 `blocked`，确认 primary room 会作为 blocked room 进入 rollup。
+  3. 在另一个未出现在 baseline rollup 的 room 创建 active handoff，确认 secondary room 也会进入同一条 rollup，而不是只认 blocker。
+  4. 打开 `/mailbox` 与 `/agents`，确认两处都显示 `room / status / count / latest escalation / deep-link` 的同源 rollup。
+  5. 先收口 primary room，再收口 secondary room，确认 rollup 会先减一，再回退到 baseline hot-room 数量。
+- 预期结果: cross-room escalation rollup 必须成为正式治理对象，而不是当前 queue 的附注。用户应该能从任一治理面立刻发现“别的 room 也在冒烟”，同时 closeout 后 rollup 要沿同一份 handoff truth 自动清退。
+- 业务结论: 2026 年 4 月 11 日 `TKT-93` 已把 governance escalation room rollup 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governance-escalation-rollup.md` 已记录 `baseline -> primary blocked + secondary active -> primary cleared -> baseline restored` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMailboxLifecycleHydratesWorkspaceGovernance" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestStateRouteExposesGovernanceSnapshot|TestMailboxLifecycleUpdatesGovernanceSnapshot" -count=1'`、`pnpm verify:web`、`node --check scripts/headed-governance-escalation-rollup.mjs` 与 `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governance-escalation-queue -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governance-escalation-queue.md` 已锁住 store/API contract、前端构建与相邻 queue 回归，因此这条 cross-room governance rollup 用例当前转为 `Pass`。

@@ -5,7 +5,7 @@
 - Test Case: `TC-081`
 - Scope: workspace governance escalation queue, mailbox + orchestration mirror, blocked inbox escalation, queue clear-down
 - Command: `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governance-escalation-queue -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governance-escalation-queue.md`
-- Artifacts Dir: `/tmp/openshock-tkt92-escalation-queue-ofnOpN`
+- Artifacts Dir: `/tmp/openshock-tkt92-escalation-queue-3AXvV4`
 
 ## Results
 
@@ -16,9 +16,9 @@
 
 ## Screenshots
 
-- mailbox-escalation-baseline: /tmp/openshock-tkt92-escalation-queue-ofnOpN/screenshots/01-mailbox-escalation-baseline.png
-- mailbox-escalation-requested: /tmp/openshock-tkt92-escalation-queue-ofnOpN/screenshots/02-mailbox-escalation-requested.png
-- orchestration-escalation-requested: /tmp/openshock-tkt92-escalation-queue-ofnOpN/screenshots/03-orchestration-escalation-requested.png
-- mailbox-escalation-blocked: /tmp/openshock-tkt92-escalation-queue-ofnOpN/screenshots/04-mailbox-escalation-blocked.png
-- orchestration-escalation-blocked: /tmp/openshock-tkt92-escalation-queue-ofnOpN/screenshots/05-orchestration-escalation-blocked.png
-- mailbox-escalation-cleared: /tmp/openshock-tkt92-escalation-queue-ofnOpN/screenshots/06-mailbox-escalation-cleared.png
+- mailbox-escalation-baseline: /tmp/openshock-tkt92-escalation-queue-3AXvV4/screenshots/01-mailbox-escalation-baseline.png
+- mailbox-escalation-requested: /tmp/openshock-tkt92-escalation-queue-3AXvV4/screenshots/02-mailbox-escalation-requested.png
+- orchestration-escalation-requested: /tmp/openshock-tkt92-escalation-queue-3AXvV4/screenshots/03-orchestration-escalation-requested.png
+- mailbox-escalation-blocked: /tmp/openshock-tkt92-escalation-queue-3AXvV4/screenshots/04-mailbox-escalation-blocked.png
+- orchestration-escalation-blocked: /tmp/openshock-tkt92-escalation-queue-3AXvV4/screenshots/05-orchestration-escalation-blocked.png
+- mailbox-escalation-cleared: /tmp/openshock-tkt92-escalation-queue-3AXvV4/screenshots/06-mailbox-escalation-cleared.png

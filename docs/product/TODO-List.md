@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.15
+**版本:** 1.16
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -128,16 +128,18 @@
   - `/mailbox` 现在已补当前 room ledger 的 multi-select `Batch Queue`；open handoff 可统一 `acknowledged / comment / completed`，selection 会在 closeout 后自动清空，closeout note 与 inbox summary 继续沿正式 handoff truth 前滚。
 - `GAP-61 / TKT-92`
   - workspace governance 的 escalation 现在已补正式 queue truth；active handoff 与 blocked inbox signal 会带着 `label / source / owner / next-step / deep-link` 同时进入 `/mailbox` 与 `/agents`，handoff closeout 后 queue 也会自动清空。
+- `GAP-62 / TKT-93`
+  - governance escalation 现在还补了跨 room rollup；整个 workspace 里仍在冒烟的 room 会带着 `room / status / count / latest escalation / deep-link` 同时进入 `/mailbox` 与 `/agents`，closeout 后会回退到 baseline hot-room 视角。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”，而是更深的跨 room escalation rollup、policy-based batch orchestration 与跨 Agent closeout 编排。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”“能不能把 workspace 级 hot room 收成跨 room rollup”，而是 policy-based batch orchestration 与更深跨 room 治理编排。
 
 ---
 
 ## 四、推荐推进顺序
 
-1. 先围 `CHK-21` 的跨 room escalation rollup、policy-based batch orchestration 与更深 agent-to-agent communication / delegate execution 开票。
+1. 先围 `CHK-21` 的 policy-based batch orchestration 与更深 agent-to-agent communication / delegate execution / cross-room governance orchestration 开票。
 2. 再补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
 3. 前端继续做跨页面细节回扫，但不再把 `CHK-16` 回写成主阻塞 GAP。
 
