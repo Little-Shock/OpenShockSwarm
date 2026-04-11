@@ -209,11 +209,12 @@
   - [x] `/memory` 现在直接消费 `/v1/memory-center`，可展示 injection policy、next-run preview、promotion queue 与 governed ledgers
   - [x] 高价值 memory item 已可经人工 review 提升为 `Skill` / `Policy`，并回写 `notes/skills.md`、`notes/policies.md`
   - [x] memory center 现在还会暴露 `workspace-file / search-sidecar / external-persistent` provider binding truth，并把 `read/write scopes / recall / retention / sharing / last-check / degraded fallback` 同步进 `/memory` 与 next-run preview
+  - [x] `/memory` 现在还支持逐 provider health check / recovery，把 failure count、next action、activity timeline 与 reload persistence 收成正式产品真相
 - 当前 GAP:
   - [ ] 更重的后台整理任务（去重、压缩、打标签、TTL）仍未完成
-  - [ ] 真实 external durable adapter、provider health worker 与失败恢复自动化仍未完成；当前 external provider 会显式 degraded，但不会假装已经接上真实外部数据面
+  - [ ] 真实 remote external durable adapter 仍未完成；当前 external provider 虽可恢复到 local relay stub，但不会假装已经接上真实外部数据面
   - [ ] Agent 级 memory binding / recall policy / next-run preview 已可编辑，但跨 Agent 的更重治理、批量策略和后台编排仍留后续
-- 对应 Test Cases: `TC-019` `TC-023` `TC-036` `TC-085`
+- 对应 Test Cases: `TC-019` `TC-023` `TC-036` `TC-085` `TC-086`
 
 ### CHK-11 工作流 H: 邀请、通知与恢复触达
 
@@ -445,17 +446,18 @@
   - [x] auth session persistence 已成立
   - [x] memory artifact 已有 version / governance / external edit sync contract
   - [x] memory provider binding 现在也会回到同一份 durable `memory-center.json`，reload 后仍能恢复 `enabled / status / degraded fallback`
+  - [x] provider health/recovery 的 `failure count / last-check source / activity timeline / last recovery` 现在也会回到同一份 durable `memory-center.json`
   - [x] workspace / member preference、GitHub identity 与既有 agent profile edit 现在可回到统一 durable store / database schema
   - [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
   - [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
   - [x] workspace plan / usage / retention 现在也直接从同一份 durable snapshot 投影到 `/settings`、room workbench 与 run detail
-- 对应 Test Cases: `TC-040` `TC-085`
+- 对应 Test Cases: `TC-040` `TC-085` `TC-086`
 
 ---
 
 ## 四、近期收口顺序
 
-1. 继续补 `CHK-10` 的后台记忆整理、真实 external provider adapter、provider health worker 与失败恢复自动化。
+1. 继续补 `CHK-10` 的后台记忆整理、真实 remote external provider adapter，以及更深的 memory compaction / retention automation。
 2. 再推进 `CHK-21` 更重的 multi-room dependency graph、cross-room auto-closeout 与跨 Agent closeout orchestration。
 3. 持续做跨页面前端细节回扫，但不再把 `CHK-16` 回写成未完成。
 

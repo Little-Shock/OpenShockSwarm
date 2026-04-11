@@ -75,7 +75,7 @@
 - `app.slock.ai` 式 profile-grade 入口和更细的主壳气质仍能继续抠细
 - onboarding 的 identity chain 还没和模板 bootstrap 完全并成一条首次启动旅程
 - PM / Architect / Splitter / Developer / Reviewer / QA 等 team topology 还没做成正式可配置团队模板
-- 外部 memory provider、cleanup orchestration、workspace plan / retention 仍在后续 backlog
+- memory provider health / recovery 已有正式产品面和 Windows Chrome 证据，但真实 remote external provider、cleanup orchestration、workspace plan / retention 仍在后续 backlog
 - restricted sandbox profile / network / tool policy 还没全部完成
 - delivery entry / release-ready contract / handoff note 还没完全收成单一标准
 

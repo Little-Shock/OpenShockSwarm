@@ -136,6 +136,8 @@
   - cross-room governance 现在还补了 room-level orchestration metadata 与正式 create action；hot room rollup 会显式显示 `current owner / current lane / next governed route`，并允许在 `/mailbox` 上对 `ready` room 直接 `Create Governed Handoff`，同时把 `/agents` 镜像到同一条 active route truth。
 - `GAP-65 / TKT-96`
   - memory center 现在还补了正式 provider orchestration；`workspace-file / search-sidecar / external-persistent` 的 `enabled / scope / retention / degraded fallback` 会写回 durable truth，并直接进入 `/memory` 和 next-run preview。
+- `GAP-66 / TKT-97`
+  - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
 
 ### 当前必须先收的 GAP
 
@@ -145,7 +147,7 @@
 
 ## 四、推荐推进顺序
 
-1. 先补 `CHK-10` 的后台记忆整理、真实 external durable adapter、provider health worker 与失败恢复自动化。
+1. 先补 `CHK-10` 的后台记忆整理、真实 remote external durable adapter，以及更重的 retention / compaction / tagging automation。
 2. 再围 `CHK-21` 的 multi-room dependency graph / auto-closeout / cross-room dependency orchestration 开票。
 3. 前端继续做跨页面细节回扫，但不再把 `CHK-16` 回写成主阻塞 GAP。
 

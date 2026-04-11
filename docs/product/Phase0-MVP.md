@@ -1,6 +1,6 @@
 # OpenShock Phase 0 MVP
 
-**版本:** 0.8
+**版本:** 0.9
 **版本日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -38,7 +38,7 @@
 - PR 状态对象和 Inbox 卡片
 - `gh CLI / GitHub App` 双 auth path 的 PR contract
 - 文件级记忆与 version/governance contract
-- memory center provider orchestration truth：`workspace-file / search-sidecar / external-persistent`
+- memory center provider orchestration + health/recovery truth：`workspace-file / search-sidecar / external-persistent`
 
 ### 2. 当前还不是 Phase 0 真值的部分
 
@@ -46,7 +46,7 @@
 - 外部插件注册表与插件数据面
 - 生产级通知与更完整外部身份体系
 - GitHub App / webhook / remote PR 的更重生产闭环
-- 真实外部 durable memory adapter 与 provider health worker
+- 真实 remote external durable memory adapter
 - 更深的多 Agent 自治编排、agent-to-agent 通信与长期治理
 - 更完整的 onboarding 场景包、机器初始化与团队模板运营
 

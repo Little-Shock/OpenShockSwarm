@@ -1190,7 +1190,23 @@
 - 测试步骤:
   1. 打开 `/memory`，检查 `workspace-file / search-sidecar / external-persistent` provider cards。
   2. 启用 Search Sidecar 与 External Persistent，并保存 provider bindings。
-  3. 切到 `session-memory` preview，检查 active providers、scope、retention 和 degraded fallback note。
+  3. 切到 `session-memory` preview，检查 active providers、scope、retention 和 degraded health note。
   4. reload 页面，确认 provider enabled/status 保持。
-- 预期结果: provider binding 会写回 durable truth，next-run preview 会读到 active provider 编排，而 external durable adapter 未接入时必须显式 degraded，不允许假装健康。
-- 业务结论: 2026 年 4 月 11 日 `TKT-96` 新增 `/v1/memory-center/providers`、`/memory` provider orchestration editor 和 `pnpm test:headed-memory-provider-orchestration`。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md` 已记录 `enable search-sidecar + external-persistent -> save -> preview provider projection -> reload persistence` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle|TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive|TestMemoryProviderBindingsPersistAndAnnotatePromptSummary" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterRoutesExposePolicyPreviewAndPromotionLifecycle|TestMemoryCenterCleanupRoutePrunesQueueAndKeepsPromotionFlowLive|TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-memory-provider-orchestration.mjs` 已锁住 store/API contract、前端构建和 headed script 合法性，因此这条 provider orchestration 用例当前转为 `Pass`。
+- 预期结果: provider binding 会写回 durable truth，next-run preview 会读到 active provider 编排，而缺少 index / adapter stub 时必须显式 degraded，不允许假装健康。
+- 业务结论: 2026 年 4 月 11 日 `TKT-96` 新增 `/v1/memory-center/providers`、`/memory` provider orchestration editor 和 `pnpm test:headed-memory-provider-orchestration`，把 provider binding 收成正式产品真相。当前 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle|TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive|TestMemoryProviderBindingsPersistAndAnnotatePromptSummary" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterRoutesExposePolicyPreviewAndPromotionLifecycle|TestMemoryCenterCleanupRoutePrunesQueueAndKeepsPromotionFlowLive|TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-memory-provider-orchestration.mjs` 继续锁住 binding / preview / persistence contract，因此这条 provider orchestration 用例继续保持 `Pass`。
+
+## TC-086 Memory Provider Health Recovery
+
+- 业务目标: 确认 memory provider 不只记录 binding，还拥有真实的 health check / recovery 生命周期，并能把失败、恢复、依赖降级和 reload persistence 收成正式产品真相。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-10` `CHK-22`
+- 前置条件: `/memory` 已消费 provider orchestration truth，且 store 能把 provider health timeline 写回 durable `memory-center.json`。
+- 测试步骤:
+  1. 打开 `/memory`，启用 Search Sidecar 与 External Persistent。
+  2. 检查 provider 初始 health 是否因缺少 local index / adapter stub 显式进入 `degraded`，并出现 next action。
+  3. 对 Search Sidecar 先执行 `run health check`，再执行 `attempt recovery`，确认其从 `degraded` 拉回 `healthy`。
+  4. 对 External Persistent 执行 `attempt recovery`，确认其生成 local relay stub，并提示真实 remote sink 仍待后续接入。
+  5. 人为移除 `MEMORY.md` 后，对 Workspace File 执行 `run health check` 和 `attempt recovery`，确认 workspace scaffold 可自愈，且 Search Sidecar 会同步反映依赖降级。
+  6. 切到 `session-memory` preview，并 reload 页面，确认 provider health summary / next action / activity timeline 保持。
+- 预期结果: provider 缺少依赖时必须 fail loud；恢复后必须回到同一份 durable truth，并被 preview / prompt summary / reload 后的页面继续读到。
+- 业务结论: 2026 年 4 月 11 日 `TKT-97` 新增 `POST /v1/memory-center/providers/check`、`POST /v1/memory-center/providers/:id/recover`、`/memory` provider health timeline 与 `pnpm test:headed-memory-provider-health-recovery`。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-health-recovery.md` 已记录 `degraded -> check -> recover -> workspace drift -> dependent degrade -> recover -> preview -> reload` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryProviderBindingsPersistAndAnnotatePromptSummary|TestMemoryProviderHealthCheckAndRecoveryLifecycle" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMemoryCenterProviderHealthRoutesRecoverDurableBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-memory-provider-health-recovery.mjs` 已锁住 health/recovery contract、前端构建和 headed script 合法性，因此这条 provider health/recovery 用例当前转为 `Pass`。

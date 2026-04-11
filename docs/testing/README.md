@@ -24,6 +24,8 @@
   - `TKT-95` 的 Windows Chrome 有头报告，覆盖 hot room rollup 的 `current owner / current lane / next governed route`、`Create Governed Handoff`、`/agents` mirror 与 Inbox deep-link
 - [Test Report 2026-04-11 Windows Chrome Memory Provider Orchestration](./Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md)
   - `TKT-96` 的 Windows Chrome 有头报告，覆盖 `/memory` 上的 provider binding 保存、next-run preview provider projection 与 reload persistence
+- [Test Report 2026-04-11 Windows Chrome Memory Provider Health Recovery](./Test-Report-2026-04-11-windows-chrome-memory-provider-health-recovery.md)
+  - `TKT-97` 的 Windows Chrome 有头报告，覆盖 provider `degraded -> check -> recover -> workspace drift -> dependent degrade -> reload persistence`
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Route](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md)
   - `TKT-64` 的 Windows Chrome 有头报告，覆盖 `/mailbox` 与 Inbox compose 的 governed next-handoff 默认路由、active focus 与 missing-target blocked fallback
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Auto-Create](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md)
@@ -193,6 +195,8 @@
   - 验证 memory center 的 injection preview、promotion queue、governed ledger
 - `pnpm test:headed-memory-provider-orchestration`
   - 验证 `/memory` 的 provider binding、degraded fallback note、next-run preview provider projection 与 reload persistence
+- `pnpm test:headed-memory-provider-health-recovery`
+  - 验证 provider 的 health check、manual recovery、dependency degrade propagation、preview projection 与 reload persistence
 - `pnpm test:headed-memory-viewer-correction-forget`
   - 验证 memory detail 的 correction / forget mutation、version audit 与 recall preview removal
 - `pnpm test:headed-stop-resume-follow-thread`

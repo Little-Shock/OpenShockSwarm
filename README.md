@@ -42,7 +42,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - room-first `Chat / Topic / Run / PR / Context` workbench、DM、followed thread、saved later 和 quick search 都已经接上真实前台表面
 - server 有文件持久化状态、Issue 创建、Room/Run/Session 读取、PR 状态回写、runtime pairing、repo binding、GitHub readiness probe，以及 `gh CLI / GitHub App` 双 auth path 的 PR contract
 - server 已补齐版本化 `/v1/control-plane/*` command / event / debug read-model，以及 `/v1/runtime/publish*` replay evidence contract
-- memory center 已把 `workspace-file / search-sidecar / external-persistent` provider binding、next-run preview 和 degraded fallback 收进同一份 durable truth
+- memory center 已把 `workspace-file / search-sidecar / external-persistent` provider binding、health/recovery timeline、next-run preview 和 degraded fallback 收进同一份 durable truth
 - daemon 可以探测本地 `codex` / `claude`，支持同步执行、流式执行，以及 `git worktree` lane 创建
 - 当前 `main` 已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread、agent mailbox / handoff、routing SLA / aggregation、profile editor、machine capability binding、workspace durable config，以及 multi-runtime scheduler / failover 的第一轮闭环
 
@@ -121,7 +121,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - runtime provider catalog
   - agent provider/model/runtime affinity
   - 文件级记忆模式：`MEMORY.md / notes/ / decisions/`
-- memory center provider orchestration 已落地 `workspace-file / search-sidecar / external-persistent` binding truth，但真实外部 durable adapter 和插件数据面仍未接上
+- memory center provider orchestration 已落地 `workspace-file / search-sidecar / external-persistent` binding truth；provider health/recovery 现已进入正式产品面，但真实 remote external durable adapter 和插件数据面仍未接上
 - 如果你在设置页里看到“插件”相关表达，那是旧文案，不代表当前已经有可用插件数据面
 
 ### 还没有做成“完整产品闭环”的部分

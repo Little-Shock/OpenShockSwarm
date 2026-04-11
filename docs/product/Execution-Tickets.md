@@ -27,7 +27,7 @@
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
 4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration、retry attempt truth、parent surface context preservation、child response context sync、child response timeline sync、parent response timeline sync、room main-trace sync（含 blocked response trace）、PR detail collaboration thread + inline thread actions、mailbox 当前 room ledger 的 multi-select batch queue、governed batch policy auto-advance、workspace governance escalation queue mirror、cross-room escalation rollup，以及 room-level governed create action；下一批继续前滚到更重的 multi-room dependency graph / auto-closeout。
-5. memory provider orchestration 已补到正式产品面；下一批继续围后台整理、真实 external durable adapter、provider health worker 和更重的多 Agent 自治策略。
+5. memory provider orchestration 与 health/recovery 已补到正式产品面；下一批继续围后台整理、真实 remote external durable adapter 和更重的多 Agent 自治策略。
 
 ### Frontend Batch Merge Gate
 
@@ -1459,6 +1459,32 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-memory-provider-orchestration -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md`
 - Checklist: `CHK-10` `CHK-22`
 - Test Cases: `TC-085`
+
+## TKT-97 Memory Provider Health Recovery
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 memory provider 从“静态 binding”推进成有真实 health / recovery 生命周期的产品面，让 `workspace-file / search-sidecar / external-persistent` 都能显式检查、恢复、记账并持久化。
+- 范围:
+  - provider health observation / next-action truth
+  - `POST /v1/memory-center/providers/check`
+  - `POST /v1/memory-center/providers/:id/recover`
+  - `/memory` provider health summary、failure count、activity timeline、manual recovery actions
+  - Windows Chrome walkthrough + report
+- 依赖: `TKT-96`
+- Done When:
+  - provider 不再在缺少 index / adapter stub / workspace scaffold 时假装健康
+  - `/memory` 能逐 provider 执行 health check 和 recovery，并把结果写回 durable `memory-center.json`
+  - next-run preview / prompt summary 会显示恢复后的 provider health truth
+  - store / API tests、`verify:web`、script syntax 和 Windows Chrome evidence 全部通过
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryProviderBindingsPersistAndAnnotatePromptSummary|TestMemoryProviderHealthCheckAndRecoveryLifecycle" -count=1'`
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMemoryCenterProviderHealthRoutesRecoverDurableBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`
+  - `pnpm verify:web`
+  - `node --check scripts/headed-memory-provider-health-recovery.mjs`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-memory-provider-health-recovery -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-health-recovery.md`
+- Checklist: `CHK-10` `CHK-22`
+- Test Cases: `TC-086`
 
 ---
 
