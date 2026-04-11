@@ -22,6 +22,8 @@
   - `TKT-93` 的 Windows Chrome 有头报告，覆盖 cross-room escalation rollup 在 `/mailbox` 与 `/agents` 的同源镜像、blocked+active hot rooms 与 baseline restore
 - [Test Report 2026-04-11 Windows Chrome Cross-Room Governance Orchestration](./Test-Report-2026-04-11-windows-chrome-cross-room-governance-orchestration.md)
   - `TKT-95` 的 Windows Chrome 有头报告，覆盖 hot room rollup 的 `current owner / current lane / next governed route`、`Create Governed Handoff`、`/agents` mirror 与 Inbox deep-link
+- [Test Report 2026-04-11 Windows Chrome Memory Provider Orchestration](./Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md)
+  - `TKT-96` 的 Windows Chrome 有头报告，覆盖 `/memory` 上的 provider binding 保存、next-run preview provider projection 与 reload persistence
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Route](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md)
   - `TKT-64` 的 Windows Chrome 有头报告，覆盖 `/mailbox` 与 Inbox compose 的 governed next-handoff 默认路由、active focus 与 missing-target blocked fallback
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Auto-Create](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md)
@@ -189,6 +191,8 @@
   - 验证 `/pull-requests/:id` 的 release gate、handoff note、delivery template、evidence bundle 与 gate/back-link drill-in
 - `pnpm test:headed-memory-governance`
   - 验证 memory center 的 injection preview、promotion queue、governed ledger
+- `pnpm test:headed-memory-provider-orchestration`
+  - 验证 `/memory` 的 provider binding、degraded fallback note、next-run preview provider projection 与 reload persistence
 - `pnpm test:headed-memory-viewer-correction-forget`
   - 验证 memory detail 的 correction / forget mutation、version audit 与 recall preview removal
 - `pnpm test:headed-stop-resume-follow-thread`

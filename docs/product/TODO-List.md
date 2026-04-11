@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.18
+**版本:** 1.19
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -134,6 +134,8 @@
   - batch queue 现在还补了 governed batch policy；`Create Governed Handoff` 会保留 `kind=governed`，pure governed selection 可直接 `Batch Complete + Auto-Advance`，并把 next-lane followup 收成同一条正式治理链。
 - `GAP-64 / TKT-95`
   - cross-room governance 现在还补了 room-level orchestration metadata 与正式 create action；hot room rollup 会显式显示 `current owner / current lane / next governed route`，并允许在 `/mailbox` 上对 `ready` room 直接 `Create Governed Handoff`，同时把 `/agents` 镜像到同一条 active route truth。
+- `GAP-65 / TKT-96`
+  - memory center 现在还补了正式 provider orchestration；`workspace-file / search-sidecar / external-persistent` 的 `enabled / scope / retention / degraded fallback` 会写回 durable truth，并直接进入 `/memory` 和 next-run preview。
 
 ### 当前必须先收的 GAP
 
@@ -143,7 +145,7 @@
 
 ## 四、推荐推进顺序
 
-1. 先补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
+1. 先补 `CHK-10` 的后台记忆整理、真实 external durable adapter、provider health worker 与失败恢复自动化。
 2. 再围 `CHK-21` 的 multi-room dependency graph / auto-closeout / cross-room dependency orchestration 开票。
 3. 前端继续做跨页面细节回扫，但不再把 `CHK-16` 回写成主阻塞 GAP。
 

@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.24
+**版本:** 1.25
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1180,3 +1180,17 @@
   5. 检查目标 room 的 rollup route status 是否从 `ready` 切到 `active`，`Open Next Route` 是否 deep-link 到新 handoff，并确认 `/agents` 与 Inbox deep-link 同步读取同一份 active truth。
 - 预期结果: cross-room rollup 必须成为可执行治理面，而不是只读摘要。用户应能在不切回 compose 的前提下，直接从 hot room 发起下一棒 governed handoff，并看到 `/mailbox`、`/agents`、Inbox deep-link 围同一条新 handoff truth 前滚。
 - 业务结论: 2026 年 4 月 11 日 `TKT-95` 已把 cross-room governance orchestration 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-cross-room-governance-orchestration.md` 已记录 `blocked hot room -> route ready -> create governed handoff -> route active -> inbox deep-link` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestCreateGovernedHandoffForRoomUsesRoomSpecificSuggestion|TestAdvanceHandoffCanAutoAdvanceGovernedRoute|TestMailboxLifecycleHydratesWorkspaceGovernance" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMailboxRoutesCreateGovernedHandoffForRoom|TestMailboxRoutesCreateAndListLiveTruth|TestStateRouteExposesGovernanceSnapshot|TestMailboxLifecycleUpdatesGovernanceSnapshot" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-cross-room-governance-orchestration.mjs` 已锁住 store/API contract、前端构建和 headed script 合法性，因此这条 room-level cross-room orchestration 用例当前转为 `Pass`。
+
+## TC-085 Memory Provider Orchestration
+
+- 业务目标: 确认 memory provider 不只停在 PRD 字段，而是能成为可编辑、可持久化、可进入 next-run preview 的正式产品真相。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-10` `CHK-22`
+- 前置条件: `/memory` 已消费 `/v1/memory-center` 与 `/v1/memory-center/providers`，且 store 具备 durable `memory-center.json`。
+- 测试步骤:
+  1. 打开 `/memory`，检查 `workspace-file / search-sidecar / external-persistent` provider cards。
+  2. 启用 Search Sidecar 与 External Persistent，并保存 provider bindings。
+  3. 切到 `session-memory` preview，检查 active providers、scope、retention 和 degraded fallback note。
+  4. reload 页面，确认 provider enabled/status 保持。
+- 预期结果: provider binding 会写回 durable truth，next-run preview 会读到 active provider 编排，而 external durable adapter 未接入时必须显式 degraded，不允许假装健康。
+- 业务结论: 2026 年 4 月 11 日 `TKT-96` 新增 `/v1/memory-center/providers`、`/memory` provider orchestration editor 和 `pnpm test:headed-memory-provider-orchestration`。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md` 已记录 `enable search-sidecar + external-persistent -> save -> preview provider projection -> reload persistence` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle|TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive|TestMemoryProviderBindingsPersistAndAnnotatePromptSummary" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterRoutesExposePolicyPreviewAndPromotionLifecycle|TestMemoryCenterCleanupRoutePrunesQueueAndKeepsPromotionFlowLive|TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-memory-provider-orchestration.mjs` 已锁住 store/API contract、前端构建和 headed script 合法性，因此这条 provider orchestration 用例当前转为 `Pass`。

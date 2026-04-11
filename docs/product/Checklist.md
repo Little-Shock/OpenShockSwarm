@@ -37,7 +37,7 @@
   - Agent 一等公民模型
   - Blocked / approval 决策面
   - 通知与恢复触达
-  - 记忆治理与 skill/policy 提升
+  - 记忆治理、skill/policy 提升与 provider orchestration
   - 多 runtime 调度与 failover
   - 执行隔离与权限控制
 - 主要 GAP:
@@ -208,11 +208,12 @@
   - [x] memory artifact 已有 version / governance / detail contract，并有 store/api tests
   - [x] `/memory` 现在直接消费 `/v1/memory-center`，可展示 injection policy、next-run preview、promotion queue 与 governed ledgers
   - [x] 高价值 memory item 已可经人工 review 提升为 `Skill` / `Policy`，并回写 `notes/skills.md`、`notes/policies.md`
+  - [x] memory center 现在还会暴露 `workspace-file / search-sidecar / external-persistent` provider binding truth，并把 `read/write scopes / recall / retention / sharing / last-check / degraded fallback` 同步进 `/memory` 与 next-run preview
 - 当前 GAP:
   - [ ] 更重的后台整理任务（去重、压缩、打标签、TTL）仍未完成
-  - [ ] 长期记忆引擎与外部 provider 编排仍停留在设计层
-  - [ ] Agent 级 memory binding / recall policy / next-run preview 已可编辑，但跨 Agent 的更重治理与后台编排仍留后续
-- 对应 Test Cases: `TC-019` `TC-023` `TC-036`
+  - [ ] 真实 external durable adapter、provider health worker 与失败恢复自动化仍未完成；当前 external provider 会显式 degraded，但不会假装已经接上真实外部数据面
+  - [ ] Agent 级 memory binding / recall policy / next-run preview 已可编辑，但跨 Agent 的更重治理、批量策略和后台编排仍留后续
+- 对应 Test Cases: `TC-019` `TC-023` `TC-036` `TC-085`
 
 ### CHK-11 工作流 H: 邀请、通知与恢复触达
 
@@ -443,17 +444,18 @@
   - [x] server 已有文件状态存储
   - [x] auth session persistence 已成立
   - [x] memory artifact 已有 version / governance / external edit sync contract
+  - [x] memory provider binding 现在也会回到同一份 durable `memory-center.json`，reload 后仍能恢复 `enabled / status / degraded fallback`
   - [x] workspace / member preference、GitHub identity 与既有 agent profile edit 现在可回到统一 durable store / database schema
   - [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
   - [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
   - [x] workspace plan / usage / retention 现在也直接从同一份 durable snapshot 投影到 `/settings`、room workbench 与 run detail
-- 对应 Test Cases: `TC-040`
+- 对应 Test Cases: `TC-040` `TC-085`
 
 ---
 
 ## 四、近期收口顺序
 
-1. 继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
+1. 继续补 `CHK-10` 的后台记忆整理、真实 external provider adapter、provider health worker 与失败恢复自动化。
 2. 再推进 `CHK-21` 更重的 multi-room dependency graph、cross-room auto-closeout 与跨 Agent closeout orchestration。
 3. 持续做跨页面前端细节回扫，但不再把 `CHK-16` 回写成未完成。
 
@@ -482,7 +484,7 @@
 - `CHK-22` -> `TKT-37`
 - `CHK-07` `CHK-08` -> `TKT-39`
 - `CHK-06` -> `TKT-40` `TKT-52`
-- `CHK-10` `CHK-22` -> `TKT-42` `TKT-43`
+- `CHK-10` `CHK-22` -> `TKT-42` `TKT-43` `TKT-96`
 - `CHK-11` `CHK-13` `CHK-20` -> `TKT-44`
 - `CHK-12` `CHK-13` -> `TKT-45`
 - `CHK-12` `CHK-15` -> `TKT-46`

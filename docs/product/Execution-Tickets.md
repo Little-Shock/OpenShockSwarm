@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.26
+**版本:** 1.27
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -27,7 +27,7 @@
 2. 当前主线已经吸收 PR conversation、usage/quota、identity recovery、restricted sandbox、delivery gate 和 configurable topology；下一批不再重复补旧口，而是继续往更深治理和体验收尾推进。
 3. 聊天、Room、Inbox、Topic、Run 的真相仍高于 Board；Board 继续只做 planning mirror。
 4. 多 Agent 协作当前已经收进 SLA / routing / aggregation、formal comment、governed next-route default、one-click auto-create、governed auto-advance、delivery closeout backlink、delivery delegation signal、delegated closeout handoff auto-create、delegated closeout lifecycle sync、delivery delegation automation / auto-complete policy、delegated closeout response orchestration、retry attempt truth、parent surface context preservation、child response context sync、child response timeline sync、parent response timeline sync、room main-trace sync（含 blocked response trace）、PR detail collaboration thread + inline thread actions、mailbox 当前 room ledger 的 multi-select batch queue、governed batch policy auto-advance、workspace governance escalation queue mirror、cross-room escalation rollup，以及 room-level governed create action；下一批继续前滚到更重的 multi-room dependency graph / auto-closeout。
-5. 长期记忆 provider、后台整理、外部编排和更重的多 Agent 自治策略进入下一批长期 backlog。
+5. memory provider orchestration 已补到正式产品面；下一批继续围后台整理、真实 external durable adapter、provider health worker 和更重的多 Agent 自治策略。
 
 ### Frontend Batch Merge Gate
 
@@ -1434,6 +1434,31 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-cross-room-governance-orchestration -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-cross-room-governance-orchestration.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-084`
+
+## TKT-96 Memory Provider Orchestration
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把 memory provider 从 PRD 概念推进成正式产品真相，让 `workspace-file / search-sidecar / external-persistent` 的 binding、scope、retention 和 degraded fallback 能被同页编辑并进入 next-run preview。
+- 范围:
+  - `memory-center.json` provider binding durable state
+  - `GET/POST /v1/memory-center/providers`
+  - `/memory` provider orchestration editor
+  - next-run preview / prompt summary provider projection
+  - Windows Chrome walkthrough + report
+- 依赖: `TKT-12` `TKT-37` `TKT-42` `TKT-43`
+- Done When:
+  - `/memory` 能读写 `workspace-file / search-sidecar / external-persistent` provider binding truth，而不是只在文档里提及 provider
+  - next-run preview 不只显示 mounted files / tools，还要显式显示 active providers、scope、retention 和 degraded fallback
+  - provider enabled/status 在 reload 后保持一致，并有 store / API tests + Windows Chrome evidence
+- 最新证据:
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle|TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive|TestMemoryProviderBindingsPersistAndAnnotatePromptSummary" -count=1'`
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterRoutesExposePolicyPreviewAndPromotionLifecycle|TestMemoryCenterCleanupRoutePrunesQueueAndKeepsPromotionFlowLive|TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`
+  - `pnpm verify:web`
+  - `node --check scripts/headed-memory-provider-orchestration.mjs`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-memory-provider-orchestration -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md`
+- Checklist: `CHK-10` `CHK-22`
+- Test Cases: `TC-085`
 
 ---
 
