@@ -23,17 +23,17 @@ import type {
 import { buildProfileHref, isProfileKind, type ProfileKind } from "@/lib/profile-surface";
 
 const PROFILE_MEMORY_SPACE_OPTIONS = [
-  { value: "workspace", label: "Workspace", summary: "MEMORY.md / work-log" },
-  { value: "issue-room", label: "Issue Room", summary: "当前 issue 的房间上下文" },
-  { value: "room-notes", label: "Room Notes", summary: "notes/rooms/* ledger" },
-  { value: "topic", label: "Topic", summary: "decision / topic context" },
-  { value: "user", label: "Agent Memory", summary: ".openshock/agents/*/MEMORY.md" },
+  { value: "workspace", label: "工作区", summary: "MEMORY.md / work-log" },
+  { value: "issue-room", label: "事项房间", summary: "当前事项的房间上下文" },
+  { value: "room-notes", label: "房间笔记", summary: "notes/rooms/* 记录" },
+  { value: "topic", label: "话题", summary: "决策 / 话题上下文" },
+  { value: "user", label: "智能体记忆", summary: ".openshock/agents/*/MEMORY.md" },
 ] as const;
 
 const AGENT_RECALL_POLICY_OPTIONS = [
-  { value: "governed-first", label: "Governed First" },
-  { value: "balanced", label: "Balanced" },
-  { value: "agent-first", label: "Agent First" },
+  { value: "governed-first", label: "治理优先" },
+  { value: "balanced", label: "平衡" },
+  { value: "agent-first", label: "智能体优先" },
 ] as const;
 
 function valueOrPlaceholder(value: string | undefined | null, fallback: string) {
@@ -83,6 +83,77 @@ function humanPresenceLabel(member: WorkspaceMember, session?: PhaseZeroState["a
       return "已停用";
     default:
       return member.status || "未知";
+  }
+}
+
+function workspaceRoleLabel(role: string | undefined) {
+  switch (role) {
+    case "owner":
+      return "所有者";
+    case "member":
+      return "成员";
+    case "viewer":
+      return "访客";
+    default:
+      return role || "未设置";
+  }
+}
+
+function runStateLabel(status?: string) {
+  switch (status) {
+    case "running":
+      return "执行中";
+    case "blocked":
+      return "阻塞";
+    case "review":
+      return "评审中";
+    case "done":
+      return "已完成";
+    case "paused":
+      return "已暂停";
+    default:
+      return status || "待同步";
+  }
+}
+
+function topicStateLabel(status?: string) {
+  switch (status) {
+    case "active":
+      return "进行中";
+    case "planned":
+      return "计划中";
+    case "blocked":
+      return "阻塞";
+    case "done":
+      return "已完成";
+    case "review":
+      return "评审中";
+    default:
+      return status || "待同步";
+  }
+}
+
+function recallPolicyLabel(policy?: string) {
+  switch (policy) {
+    case "governed-first":
+      return "治理优先";
+    case "balanced":
+      return "平衡";
+    case "agent-first":
+      return "智能体优先";
+    default:
+      return policy || "未设置";
+  }
+}
+
+function sandboxProfileText(profile?: string) {
+  switch (profile) {
+    case "trusted":
+      return "可信";
+    case "restricted":
+      return "受限";
+    default:
+      return sandboxProfileLabel(profile);
   }
 }
 
@@ -240,7 +311,7 @@ function findPreviewForAgent(center: ReturnType<typeof useLiveMemoryCenter>["cen
 function AgentProfileAuditPanel({ audit = [] }: { audit?: AgentStatus["profileAudit"] }) {
   return (
     <Panel tone="white">
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Profile Audit</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">档案审计</p>
       <div className="mt-4 space-y-3">
         {audit.length > 0 ? (
           audit.map((entry, index) => (
@@ -260,10 +331,10 @@ function AgentProfileAuditPanel({ audit = [] }: { audit?: AgentStatus["profileAu
                   <div key={`${entry.id}-${change.field}`} className="rounded-[14px] border border-[var(--shock-ink)] bg-white px-3 py-2">
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">{change.field}</p>
                     <p className="mt-1 text-sm leading-6">
-                      <span className="font-semibold">Before:</span> {valueOrPlaceholder(change.previous, "empty")}
+                      <span className="font-semibold">变更前：</span> {valueOrPlaceholder(change.previous, "空")}
                     </p>
                     <p className="text-sm leading-6">
-                      <span className="font-semibold">After:</span> {valueOrPlaceholder(change.current, "empty")}
+                      <span className="font-semibold">变更后：</span> {valueOrPlaceholder(change.current, "空")}
                     </p>
                   </div>
                 ))}
@@ -272,7 +343,7 @@ function AgentProfileAuditPanel({ audit = [] }: { audit?: AgentStatus["profileAu
           ))
         ) : (
           <p className="rounded-[18px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-            这条 agent 还没有 profile audit 记录。
+            这位智能体还没有档案审计记录。
           </p>
         )}
       </div>
@@ -415,7 +486,7 @@ function AgentProfileSurface({
       id: session.id,
       label: session.id,
       href: linkedRun ? runLink(linkedRun) : buildProfileHref("machine", session.machine),
-      meta: `${session.status} · ${session.machine} · ${session.worktree}`,
+      meta: `${runStateLabel(session.status)} · ${session.machine} · ${session.worktree}`,
     };
   });
   const previewSessionId = activeSessions[0]?.id;
@@ -551,6 +622,7 @@ function AgentProfileSurface({
 
     try {
       await updateAgentProfile(agent.id, {
+        name: agent.name,
         role: roleDraft,
         avatar: avatarDraft,
         prompt: promptDraft,
@@ -568,9 +640,9 @@ function AgentProfileSurface({
         }),
       });
       await refreshMemoryCenter();
-      setSaveStatus("Agent profile 已写回后端 truth，next-run preview 已同步刷新。");
+      setSaveStatus("智能体档案已写回后端真值，下一次执行预览已同步刷新。");
     } catch (mutationError) {
-      setSaveError(mutationError instanceof Error ? mutationError.message : "保存 Agent profile 失败。");
+      setSaveError(mutationError instanceof Error ? mutationError.message : "保存智能体档案失败。");
     } finally {
       setSaving(false);
     }
@@ -579,21 +651,21 @@ function AgentProfileSurface({
   return (
     <OpenShockShell
       view="profiles"
-      eyebrow="Agent Profile"
+      eyebrow="智能体档案"
       title={agent.name}
       description={agent.description}
-      contextTitle="Profile Presence"
-      contextDescription="Agent profile 现在把 role / prompt / memory binding 和 runtime affinity contract 放在同一页：provider、model、runtime 直接对齐 machine provider truth 与 model catalog suggestion，不再长第二套 shadow state。"
+      contextTitle="档案状态"
+      contextDescription="智能体档案把角色、提示词、记忆绑定和运行环境偏好放在同一页：供应商、模型和运行环境直接对齐机器真值与模型目录建议，不再长出第二套影子状态。"
       contextBody={
         <DetailRail
-          label="Agent Truth"
+          label="智能体真值"
           items={[
-            { label: "Presence", value: agentStateLabel(agent.state) },
-            { label: "Role", value: agent.role },
-            { label: "Provider Pref", value: agent.providerPreference },
-            { label: "Model", value: valueOrPlaceholder(agent.modelPreference, "未设置") },
-            { label: "Runtime", value: agent.runtimePreference },
-            { label: "Recall", value: agent.recallPolicy },
+            { label: "状态", value: agentStateLabel(agent.state) },
+            { label: "角色", value: agent.role },
+            { label: "供应商偏好", value: agent.providerPreference },
+            { label: "模型", value: valueOrPlaceholder(agent.modelPreference, "未设置") },
+            { label: "运行环境", value: agent.runtimePreference },
+            { label: "召回策略", value: recallPolicyLabel(agent.recallPolicy) },
           ]}
         />
       }
@@ -616,42 +688,42 @@ function AgentProfileSurface({
             </div>
             <p className="mt-3 text-sm leading-6">{agent.description}</p>
             <div className="mt-4 grid gap-2 md:grid-cols-4">
-              <ProfileMetric label="lane" value={agent.lane} />
-              <ProfileMetric label="provider" value={agent.providerPreference} />
-              <ProfileMetric label="model" value={valueOrPlaceholder(agent.modelPreference, "未设置")} />
-              <ProfileMetric label="runtime" value={agent.runtimePreference} />
+              <ProfileMetric label="职责线" value={agent.lane} />
+              <ProfileMetric label="供应商" value={agent.providerPreference} />
+              <ProfileMetric label="模型" value={valueOrPlaceholder(agent.modelPreference, "未设置")} />
+              <ProfileMetric label="运行环境" value={agent.runtimePreference} />
             </div>
             <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-              <span className="font-semibold">Prompt:</span> {agent.prompt}
+              <span className="font-semibold">提示词：</span> {agent.prompt}
             </p>
             <p className="mt-2 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-              <span className="font-semibold">Operating Instructions:</span> {valueOrPlaceholder(agent.operatingInstructions, "尚未写 operating instructions")}
+              <span className="font-semibold">操作说明：</span> {valueOrPlaceholder(agent.operatingInstructions, "尚未填写操作说明")}
             </p>
           </Panel>
 
           <Panel tone="white">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Capability</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">能力</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              当前 capability 直接从 runtime registry provider truth 组装，不再只剩一条 provider badge。
+              当前能力直接从运行环境注册表的供应商真值组装，不再只剩一条供应商角标。
             </p>
             <CapabilityChips items={capabilityTruth} />
           </Panel>
 
           <Panel tone="paper">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Bound Runtime Catalog</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">已绑定运行目录</p>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
-                {selectedRuntimeRecord ? selectedRuntimeRecord.id : "未命中 runtime"}
+                {selectedRuntimeRecord ? selectedRuntimeRecord.id : "未命中运行环境"}
               </span>
             </div>
             {selectedRuntimeRecord ? (
               <div className="mt-3 space-y-3" data-testid="profile-binding-runtime-card">
                 <div className="grid gap-2 md:grid-cols-4">
-                  <ProfileMetric label="machine" value={selectedRuntimeRecord.machine} />
-                  <ProfileMetric label="shell" value={valueOrPlaceholder(selectedRuntimeRecord.shell, "未返回")} testId="profile-binding-shell" />
-                  <ProfileMetric label="daemon" value={valueOrPlaceholder(selectedRuntimeRecord.daemonUrl, "未配对")} />
+                  <ProfileMetric label="机器" value={selectedRuntimeRecord.machine} />
+                  <ProfileMetric label="Shell" value={valueOrPlaceholder(selectedRuntimeRecord.shell, "未返回")} testId="profile-binding-shell" />
+                  <ProfileMetric label="连接地址" value={valueOrPlaceholder(selectedRuntimeRecord.daemonUrl, "未配对")} />
                   <ProfileMetric
-                    label="cli"
+                    label="CLI"
                     value={valueOrPlaceholder(selectedRuntimeRecord.detectedCli.join(" + "), "未返回")}
                     testId="profile-binding-cli"
                   />
@@ -660,34 +732,34 @@ function AgentProfileSurface({
               </div>
             ) : (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                当前 draft 还没命中任何 runtime provider/catalog；先从已注册 machine truth 里选一条 runtime affinity。
+                当前草稿还没命中任何运行环境供应商或目录；先从已注册的机器真值里选一条运行环境偏好。
               </p>
             )}
           </Panel>
 
           <Panel tone="paper">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Memory Spaces</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">记忆空间</p>
             <CapabilityChips items={agent.memorySpaces} />
           </Panel>
 
           <Panel tone="paper">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Credential Scope</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">凭据范围</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              Agent 侧只绑定 metadata truth；实际 secret payload 仍停在 encrypted vault。当前 agent 直绑的 profile 会在 run detail 上与 workspace default / run override 一起结算。
+              智能体侧只绑定元数据真值；实际密钥内容仍停在加密保险库。当前智能体直绑的档案会在执行详情里与工作区默认和执行覆盖一起结算。
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-4">
-              <ProfileMetric label="bound" value={String(agent.credentialProfileIds?.length ?? 0)} testId="profile-credential-bound-count" />
+              <ProfileMetric label="已绑定" value={String(agent.credentialProfileIds?.length ?? 0)} testId="profile-credential-bound-count" />
               <ProfileMetric
-                label="recent runs"
+                label="最近执行"
                 value={String(recentRuns.filter((run) => (run.credentialProfileIds ?? []).length > 0).length)}
                 testId="profile-credential-run-count"
               />
               <ProfileMetric
-                label="workspace defaults"
+                label="工作区默认"
                 value={String(state.credentials.filter((profile) => profile.workspaceDefault).length)}
               />
               <ProfileMetric
-                label="last used"
+                label="最近使用"
                 value={valueOrPlaceholder(
                   state.credentials.find((profile) => (agent.credentialProfileIds ?? []).includes(profile.id) && profile.lastUsedAt)?.lastUsedAt,
                   "尚未消费"
@@ -701,43 +773,43 @@ function AgentProfileSurface({
 
           <Panel tone="paper">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Local Sandbox Policy</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">本地沙箱策略</p>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
-                {sandboxProfileLabel(agent.sandbox.profile)}
+                {sandboxProfileText(agent.sandbox.profile)}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这层把 agent 默认 runtime sandbox profile 和 allowlist 写成可审核真值；新 run 会先继承 owner policy，再由 run 自己按 exact target 继续收口。
+              这层把智能体默认运行环境沙箱档位和白名单写成可审计真值；新执行会先继承所有者策略，再由执行自己按精确目标继续收口。
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <CapabilityChips items={[sandboxPolicySummary(agent.sandbox)]} />
               <div className="space-y-2 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                <p><span className="font-semibold">Hosts:</span> {valueOrPlaceholder(formatSandboxList(agent.sandbox.allowedHosts), "未声明")}</p>
-                <p><span className="font-semibold">Commands:</span> {valueOrPlaceholder(formatSandboxList(agent.sandbox.allowedCommands), "未声明")}</p>
-                <p><span className="font-semibold">Tools:</span> {valueOrPlaceholder(formatSandboxList(agent.sandbox.allowedTools), "未声明")}</p>
+                <p><span className="font-semibold">主机：</span> {valueOrPlaceholder(formatSandboxList(agent.sandbox.allowedHosts), "未声明")}</p>
+                <p><span className="font-semibold">命令：</span> {valueOrPlaceholder(formatSandboxList(agent.sandbox.allowedCommands), "未声明")}</p>
+                <p><span className="font-semibold">工具：</span> {valueOrPlaceholder(formatSandboxList(agent.sandbox.allowedTools), "未声明")}</p>
               </div>
             </div>
           </Panel>
 
           <Panel tone="white">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Agent Profile Editor</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">智能体档案编辑</p>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
-                {canEdit ? "workspace.manage" : "read only"}
+                {canEdit ? "可编辑" : "只读"}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这层把 `role / avatar / prompt / provider / model / runtime affinity / memory binding / recall policy / sandbox policy` 直接写回 live server truth；保存后同页会回读 next-run preview。
+              这层会把角色、头像、提示词、供应商、模型、运行环境偏好、记忆绑定、召回策略和沙箱策略直接写回实时服务端真值；保存后同页会回读下一次执行预览。
             </p>
             {!canEdit ? (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
-                当前 session 没有 `workspace.manage`。仍可检查 profile / preview / audit，但编辑保持只读。
+                当前会话没有 `workspace.manage`。仍可检查档案、预览和审计，但编辑保持只读。
               </p>
             ) : null}
             <form className="mt-4 space-y-4" onSubmit={handleSave}>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Role</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">角色</span>
                   <input
                     data-testid="profile-editor-role"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -747,7 +819,7 @@ function AgentProfileSurface({
                   />
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Avatar</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">头像</span>
                   <input
                     data-testid="profile-editor-avatar"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -759,7 +831,7 @@ function AgentProfileSurface({
               </div>
 
               <label className="block">
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Prompt</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">提示词</span>
                 <textarea
                   data-testid="profile-editor-prompt"
                   className="mt-1.5 min-h-[110px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6"
@@ -770,7 +842,7 @@ function AgentProfileSurface({
               </label>
 
               <label className="block">
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Operating Instructions</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">操作说明</span>
                 <textarea
                   data-testid="profile-editor-operating-instructions"
                   className="mt-1.5 min-h-[96px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm leading-6"
@@ -782,7 +854,7 @@ function AgentProfileSurface({
 
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Runtime Affinity</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">运行环境偏好</span>
                   <select
                     data-testid="profile-editor-runtime-preference"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -798,7 +870,7 @@ function AgentProfileSurface({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Provider Preference</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">供应商偏好</span>
                   <select
                     data-testid="profile-editor-provider-preference"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -814,7 +886,7 @@ function AgentProfileSurface({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Default Model</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">默认模型</span>
                   <input
                     data-testid="profile-editor-model-preference"
                     list={modelCatalogListId}
@@ -830,14 +902,14 @@ function AgentProfileSurface({
                     ))}
                   </datalist>
                   <p className="mt-1.5 text-xs leading-5 text-[color:rgba(24,20,14,0.64)]">
-                    runtime 侧这份 model catalog 只提供 suggestion；可直接输入本机配置里的 model id，不按静态目录做硬拒绝。
+                    运行环境侧这份模型目录只提供建议；可直接输入本机配置里的模型 ID，不按静态目录做硬拒绝。
                   </p>
                 </label>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Recall Policy</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">召回策略</span>
                   <select
                     data-testid="profile-editor-recall-policy"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -853,7 +925,7 @@ function AgentProfileSurface({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Sandbox Profile</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">沙箱档位</span>
                   <select
                     data-testid="profile-editor-sandbox-profile"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -861,15 +933,15 @@ function AgentProfileSurface({
                     onChange={(event) => setSandboxProfileDraft(event.target.value as SandboxProfile)}
                     disabled={!canEdit || saving}
                   >
-                    <option value="trusted">trusted</option>
-                    <option value="restricted">restricted</option>
+                    <option value="trusted">可信</option>
+                    <option value="restricted">受限</option>
                   </select>
                 </label>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Allowed Hosts</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">允许主机</span>
                   <input
                     data-testid="profile-editor-sandbox-allowed-hosts"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -880,7 +952,7 @@ function AgentProfileSurface({
                   />
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Allowed Tools</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">允许工具</span>
                   <input
                     data-testid="profile-editor-sandbox-allowed-tools"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -891,7 +963,7 @@ function AgentProfileSurface({
                   />
                 </label>
                 <label className="block md:col-span-2">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Allowed Commands</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">允许命令</span>
                   <input
                     data-testid="profile-editor-sandbox-allowed-commands"
                     className="mt-1.5 w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 text-sm"
@@ -904,7 +976,7 @@ function AgentProfileSurface({
               </div>
 
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Memory Binding</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">记忆绑定</p>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {PROFILE_MEMORY_SPACE_OPTIONS.map((option) => (
                     <label
@@ -928,11 +1000,11 @@ function AgentProfileSurface({
               </div>
 
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Credential Binding</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">凭据绑定</p>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {state.credentials.length === 0 ? (
                     <p className="rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
-                      先去 settings 创建 credential profile，这里只消费那份 metadata truth。
+                      先去设置页创建凭据档案，这里只消费那份元数据真值。
                     </p>
                   ) : (
                     state.credentials.map((profile) => (
@@ -950,7 +1022,7 @@ function AgentProfileSurface({
                         <span>
                           <span className="block font-semibold">{profile.label}</span>
                           <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-                            {profile.secretKind} · {profile.workspaceDefault ? "workspace default" : "agent scoped"}
+                            {profile.secretKind} · {profile.workspaceDefault ? "工作区默认" : "智能体专属"}
                           </span>
                         </span>
                       </label>
@@ -966,7 +1038,7 @@ function AgentProfileSurface({
                   disabled={!canEdit || saving}
                   className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:bg-[var(--shock-paper)]"
                 >
-                  {saving ? "Saving..." : "Save Profile"}
+                  {saving ? "保存中..." : "保存档案"}
                 </button>
                 {saveStatus ? (
                   <span data-testid="profile-editor-save-status" className="text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
@@ -983,19 +1055,19 @@ function AgentProfileSurface({
 
         <div className="space-y-4">
           <Panel tone="paper">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Next-Run Preview</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">下一次执行预览</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这块直接吃 `/v1/memory-center` 的 session-level preview；profile save 后这里应立刻反映新的 recall policy、memory binding 和 prompt skeleton。
+              这块直接读取 `/v1/memory-center` 的会话级预览；档案保存后，这里应立刻反映新的召回策略、记忆绑定和提示词骨架。
             </p>
             {centerLoading ? (
-              <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">正在同步 next-run preview…</p>
+              <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">正在同步下一次执行预览…</p>
             ) : centerError ? (
               <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">{centerError}</p>
             ) : preview ? (
               <div className="mt-3 space-y-3">
                 <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
-                    {preview.sessionId} · {preview.recallPolicy}
+                    {preview.sessionId} · {recallPolicyLabel(preview.recallPolicy)}
                   </p>
                   <pre
                     data-testid="profile-next-run-preview-summary"
@@ -1005,7 +1077,7 @@ function AgentProfileSurface({
                   </pre>
                 </div>
                 <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">Mounted Files</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">挂载文件</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {preview.files.map((path) => (
                       <span
@@ -1021,7 +1093,7 @@ function AgentProfileSurface({
               </div>
             ) : (
               <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                当前 agent 还没有可对齐的 session preview。
+                当前智能体还没有可对齐的会话预览。
               </p>
             )}
           </Panel>
@@ -1029,34 +1101,34 @@ function AgentProfileSurface({
           <AgentProfileAuditPanel audit={agent.profileAudit} />
 
           <RelationshipList
-            title="Recent Runs"
+            title="最近执行"
             items={recentRuns.map((run) => ({
               id: run.id,
               label: run.id,
               href: runLink(run),
-              meta: `${run.status} · ${run.roomId} · ${run.machine}`,
+              meta: `${runStateLabel(run.status)} · ${run.roomId} · ${run.machine}`,
             }))}
           />
           <RelationshipList
-            title="Recent Rooms"
+            title="最近房间"
             items={recentRooms.map((room) => ({
               id: room.id,
               label: room.title,
               href: roomLink(room),
-              meta: `${room.issueKey} · ${room.topic.status} · ${room.topic.owner}`,
+              meta: `${room.issueKey} · ${topicStateLabel(room.topic.status)} · ${room.topic.owner}`,
             }))}
           />
           <RelationshipList
-            title="Related Humans"
+            title="相关成员"
             items={relatedHumans.map((member) => ({
               id: member.id,
               label: member.name,
               href: buildProfileHref("human", member.id),
-              meta: `${member.role} · ${valueOrPlaceholder(member.lastSeenAt, "未返回 last seen")}`,
+              meta: `${workspaceRoleLabel(member.role)} · ${valueOrPlaceholder(member.lastSeenAt, "未返回最近在线时间")}`,
             }))}
           />
           <RelationshipList
-            title="Live Sessions"
+            title="实时会话"
             items={sessionItems}
           />
         </div>
@@ -1096,20 +1168,20 @@ function MachineProfileSurface({
   return (
     <OpenShockShell
       view="profiles"
-      eyebrow="Machine Profile"
+      eyebrow="机器档案"
       title={machine.name}
-      description="Machine profile 现在把 heartbeat、shell、daemon、provider-model catalog、最近 runs 和已绑定 agents 收成一张前台 surface。"
-      contextTitle="Machine Presence"
-      contextDescription="这页只读 live machine/runtime truth；binding editor 继续留在 Agent profile，但 `/setup`、`/agents` 和这里都读同一份 provider/model catalog。"
+      description="机器档案把心跳、Shell、连接地址、供应商模型目录、最近执行和已绑定智能体收成一张前台页面。"
+      contextTitle="机器状态"
+      contextDescription="这页只读取实时机器与运行环境真值；绑定编辑继续留在智能体档案，但 `/setup`、`/agents` 和这里都读同一份供应商与模型目录。"
       contextBody={
         <DetailRail
-          label="Machine Truth"
+          label="机器真值"
           items={[
-            { label: "Presence", value: machineStateLabel(machine.state) },
+            { label: "状态", value: machineStateLabel(machine.state) },
             { label: "CLI", value: machine.cli },
             { label: "Shell", value: valueOrPlaceholder(machine.shell, "未返回") },
-            { label: "Heartbeat", value: machine.lastHeartbeat },
-            { label: "Leases", value: `${leases.length} 条` },
+            { label: "心跳", value: machine.lastHeartbeat },
+            { label: "租约", value: `${leases.length} 条` },
           ]}
         />
       }
@@ -1129,15 +1201,15 @@ function MachineProfileSurface({
               </span>
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-4">
-              <ProfileMetric label="cli" value={machine.cli} />
-              <ProfileMetric label="shell" value={valueOrPlaceholder(machine.shell, "未返回")} testId="machine-profile-shell" />
-              <ProfileMetric label="os" value={machine.os} />
-              <ProfileMetric label="last heartbeat" value={machine.lastHeartbeat} />
+              <ProfileMetric label="CLI" value={machine.cli} />
+              <ProfileMetric label="Shell" value={valueOrPlaceholder(machine.shell, "未返回")} testId="machine-profile-shell" />
+              <ProfileMetric label="系统" value={machine.os} />
+              <ProfileMetric label="最近心跳" value={machine.lastHeartbeat} />
             </div>
           </Panel>
 
           <Panel tone="white">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Runtime Capability</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">运行能力</p>
             <CapabilityChips items={capabilityTruth} />
             <div className="mt-4 space-y-3">
               {runtimeRecords.map((runtime) => (
@@ -1158,9 +1230,9 @@ function MachineProfileSurface({
                     </span>
                   </div>
                   <div className="mt-3 grid gap-2 md:grid-cols-3">
-                    <ProfileMetric label="daemon" value={valueOrPlaceholder(runtime.daemonUrl, "未配对")} />
-                    <ProfileMetric label="cli" value={valueOrPlaceholder(runtime.detectedCli.join(" + "), machine.cli)} />
-                    <ProfileMetric label="models" value={`${runtime.providers.reduce((sum, provider) => sum + providerModelList(provider).length, 0)} 个`} />
+                    <ProfileMetric label="连接地址" value={valueOrPlaceholder(runtime.daemonUrl, "未配对")} />
+                    <ProfileMetric label="CLI" value={valueOrPlaceholder(runtime.detectedCli.join(" + "), machine.cli)} />
+                    <ProfileMetric label="模型数" value={`${runtime.providers.reduce((sum, provider) => sum + providerModelList(provider).length, 0)} 个`} />
                   </div>
                   <div className="mt-3">
                     <RuntimeProviderInventory runtime={runtime} testPrefix={`machine-runtime-${toTestID(runtime.id)}`} />
@@ -1173,30 +1245,30 @@ function MachineProfileSurface({
 
         <div className="space-y-4">
           <RelationshipList
-            title="Recent Runs"
+            title="最近执行"
             items={activeRuns.map((run) => ({
               id: run.id,
               label: run.id,
               href: runLink(run),
-              meta: `${run.status} · ${run.owner} · ${run.roomId}`,
+              meta: `${runStateLabel(run.status)} · ${run.owner} · ${run.roomId}`,
             }))}
           />
           <RelationshipList
-            title="Recent Rooms"
+            title="最近房间"
             items={recentRooms.map((room) => ({
               id: room.id,
               label: room.title,
               href: roomLink(room),
-              meta: `${room.issueKey} · ${room.topic.status}`,
+              meta: `${room.issueKey} · ${topicStateLabel(room.topic.status)}`,
             }))}
           />
           <RelationshipList
-            title="Bound Agents"
+            title="已绑定智能体"
             items={relatedAgents.map((agent) => ({
               id: agent.id,
               label: agent.name,
               href: buildProfileHref("agent", agent.id),
-              meta: `${agent.state} · ${agent.providerPreference} / ${valueOrPlaceholder(agent.modelPreference, "未设置")} · ${agent.lane}`,
+              meta: `${agentStateLabel(agent.state)} · ${agent.providerPreference} / ${valueOrPlaceholder(agent.modelPreference, "未设置")} · ${agent.lane}`,
             }))}
           />
         </div>
@@ -1220,19 +1292,19 @@ function HumanProfileSurface({
   return (
     <OpenShockShell
       view="profiles"
-      eyebrow="Human Profile"
+      eyebrow="成员档案"
       title={member.name}
-      description="Human profile 现在直接把 session、role/permission、最近 run/room 关系和成员 presence 收在同一条前台面里。"
-      contextTitle="Human Presence"
-      contextDescription="这张 profile 只读当前 workspace member truth，不提前混入更大的 onboarding / template / durable config 票。"
+      description="成员档案把会话、角色权限、最近执行与房间关系，以及成员在线状态收在同一条前台页面里。"
+      contextTitle="成员状态"
+      contextDescription="这张档案只读取当前工作区成员真值，不提前混入更大的引导、模板或持久化配置。"
       contextBody={
         <DetailRail
-          label="Human Truth"
+          label="成员真值"
           items={[
-            { label: "Presence", value: humanPresenceLabel(member, authSession) },
-            { label: "Role", value: member.role },
-            { label: "Permissions", value: `${member.permissions.length} 项` },
-            { label: "Last Seen", value: valueOrPlaceholder(member.lastSeenAt, "未返回") },
+            { label: "状态", value: humanPresenceLabel(member, authSession) },
+            { label: "角色", value: workspaceRoleLabel(member.role) },
+            { label: "权限", value: `${member.permissions.length} 项` },
+            { label: "最近在线", value: valueOrPlaceholder(member.lastSeenAt, "未返回") },
           ]}
         />
       }
@@ -1253,24 +1325,24 @@ function HumanProfileSurface({
               </span>
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-3">
-              <ProfileMetric label="role" value={member.role} />
-              <ProfileMetric label="status" value={member.status} />
-              <ProfileMetric label="source" value={valueOrPlaceholder(member.source, "seed")} />
+              <ProfileMetric label="角色" value={workspaceRoleLabel(member.role)} />
+              <ProfileMetric label="状态" value={humanPresenceLabel(member, authSession)} />
+              <ProfileMetric label="来源" value={valueOrPlaceholder(member.source, "初始数据")} />
             </div>
           </Panel>
 
           <Panel tone="white">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Capability / Permission</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">能力 / 权限</p>
             <CapabilityChips items={member.permissions} />
           </Panel>
 
           {authSession ? (
             <Panel tone="paper">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Current Session</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前会话</p>
               <div className="mt-4 grid gap-2 md:grid-cols-3">
-                <ProfileMetric label="auth method" value={valueOrPlaceholder(authSession.authMethod, "未返回")} />
-                <ProfileMetric label="signed in" value={valueOrPlaceholder(authSession.signedInAt, "未返回")} />
-                <ProfileMetric label="last seen" value={valueOrPlaceholder(authSession.lastSeenAt, "未返回")} />
+                <ProfileMetric label="登录方式" value={valueOrPlaceholder(authSession.authMethod, "未返回")} />
+                <ProfileMetric label="登录时间" value={valueOrPlaceholder(authSession.signedInAt, "未返回")} />
+                <ProfileMetric label="最近在线" value={valueOrPlaceholder(authSession.lastSeenAt, "未返回")} />
               </div>
             </Panel>
           ) : null}
@@ -1278,21 +1350,21 @@ function HumanProfileSurface({
 
         <div className="space-y-4">
           <RelationshipList
-            title="Recent Runs"
+            title="最近执行"
             items={recentRuns.map((run) => ({
               id: run.id,
               label: run.id,
               href: runLink(run),
-              meta: `${run.status} · ${run.machine} · ${run.roomId}`,
+              meta: `${runStateLabel(run.status)} · ${run.machine} · ${run.roomId}`,
             }))}
           />
           <RelationshipList
-            title="Recent Rooms"
+            title="最近房间"
             items={ownedRooms.map((room) => ({
               id: room.id,
               label: room.title,
               href: roomLink(room),
-              meta: `${room.issueKey} · ${room.topic.status}`,
+              meta: `${room.issueKey} · ${topicStateLabel(room.topic.status)}`,
             }))}
           />
         </div>
@@ -1314,13 +1386,13 @@ export function LiveProfilePageContent({
     return (
       <OpenShockShell
         view="profiles"
-        eyebrow="Profile"
-        title="未知 Profile"
-        description="当前 route kind 不在支持列表里。"
-        contextTitle="Profile Surface"
-        contextDescription="支持 `agent / machine / human` 三类。"
+        eyebrow="档案"
+        title="未知档案"
+        description="当前路由类型不在支持列表里。"
+        contextTitle="档案页面"
+        contextDescription="目前支持 `agent / machine / human` 三类。"
       >
-        <SurfaceNotice title="不支持的 profile kind" message={`当前不支持 \`${kind}\`。`} />
+        <SurfaceNotice title="不支持的档案类型" message={`当前不支持 \`${kind}\`。`} />
       </OpenShockShell>
     );
   }
@@ -1329,13 +1401,13 @@ export function LiveProfilePageContent({
     return (
       <OpenShockShell
         view="profiles"
-        eyebrow="Profile"
-        title="正在同步 Profile"
-        description="等待 server 返回当前 profile truth。"
-        contextTitle="Profile Surface"
-        contextDescription="这页现在只读 live truth。"
+        eyebrow="档案"
+        title="正在同步档案"
+        description="等待服务端返回当前档案真值。"
+        contextTitle="档案页面"
+        contextDescription="这页现在只读实时真值。"
       >
-        <SurfaceNotice title="同步中" message="正在拉取 Agent / Machine / Human profile truth。" />
+        <SurfaceNotice title="同步中" message="正在拉取智能体、机器和成员档案真值。" />
       </OpenShockShell>
     );
   }
@@ -1344,11 +1416,11 @@ export function LiveProfilePageContent({
     return (
       <OpenShockShell
         view="profiles"
-        eyebrow="Profile"
-        title="Profile 同步失败"
-        description="当前没拿到 server truth。"
-        contextTitle="Profile Surface"
-        contextDescription="先检查 server 是否在线，再重新打开这页。"
+        eyebrow="档案"
+        title="档案同步失败"
+        description="当前没拿到服务端真值。"
+        contextTitle="档案页面"
+        contextDescription="先检查服务端是否在线，再重新打开这页。"
       >
         <SurfaceNotice title="同步失败" message={error} />
       </OpenShockShell>
@@ -1361,13 +1433,13 @@ export function LiveProfilePageContent({
       return (
         <OpenShockShell
           view="profiles"
-          eyebrow="Agent Profile"
-          title="未找到 Agent"
-          description="这个 Agent 可能已经不在当前 server state 里。"
-          contextTitle="Profile Surface"
-          contextDescription="从 shell 或 room 重新进入通常就能拿到最新对象。"
+          eyebrow="智能体档案"
+          title="未找到智能体"
+          description="这个智能体可能已经不在当前服务端状态里。"
+          contextTitle="档案页面"
+          contextDescription="从主壳或讨论间重新进入，通常就能拿到最新对象。"
         >
-          <SurfaceNotice title="未找到 Agent" message={`当前找不到 \`${profileId}\` 对应的 agent truth。`} />
+          <SurfaceNotice title="未找到智能体" message={`当前找不到 \`${profileId}\` 对应的智能体真值。`} />
         </OpenShockShell>
       );
     }
@@ -1380,13 +1452,13 @@ export function LiveProfilePageContent({
       return (
         <OpenShockShell
           view="profiles"
-          eyebrow="Machine Profile"
-          title="未找到 Machine"
-          description="这个 Machine 可能已经不在当前 registry 里。"
-          contextTitle="Profile Surface"
-          contextDescription="从 shell 或 setup 重新进入通常就能拿到最新对象。"
+          eyebrow="机器档案"
+          title="未找到机器"
+          description="这台机器可能已经不在当前注册表里。"
+          contextTitle="档案页面"
+          contextDescription="从主壳或设置页重新进入，通常就能拿到最新对象。"
         >
-          <SurfaceNotice title="未找到 Machine" message={`当前找不到 \`${profileId}\` 对应的 machine truth。`} />
+          <SurfaceNotice title="未找到机器" message={`当前找不到 \`${profileId}\` 对应的机器真值。`} />
         </OpenShockShell>
       );
     }
@@ -1398,13 +1470,13 @@ export function LiveProfilePageContent({
     return (
       <OpenShockShell
         view="profiles"
-        eyebrow="Human Profile"
-        title="未找到 Human"
-        description="这个 workspace member 可能已经不在当前 roster 里。"
-        contextTitle="Profile Surface"
-        contextDescription="从 shell 重新进入通常就能拿到最新对象。"
+        eyebrow="成员档案"
+        title="未找到成员"
+        description="这个工作区成员可能已经不在当前名单里。"
+        contextTitle="档案页面"
+        contextDescription="从主壳重新进入通常就能拿到最新对象。"
       >
-        <SurfaceNotice title="未找到 Human" message={`当前找不到 \`${profileId}\` 对应的 member truth。`} />
+        <SurfaceNotice title="未找到成员" message={`当前找不到 \`${profileId}\` 对应的成员真值。`} />
       </OpenShockShell>
     );
   }

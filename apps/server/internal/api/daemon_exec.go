@@ -3,24 +3,27 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
 
 type ExecRequest struct {
-	Provider  string `json:"provider"`
-	Prompt    string `json:"prompt"`
-	Cwd       string `json:"cwd"`
-	LeaseID   string `json:"leaseId,omitempty"`
-	RunID     string `json:"runId,omitempty"`
-	SessionID string `json:"sessionId,omitempty"`
-	RoomID    string `json:"roomId,omitempty"`
+	Provider       string `json:"provider"`
+	Prompt         string `json:"prompt"`
+	Cwd            string `json:"cwd"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	LeaseID        string `json:"leaseId,omitempty"`
+	RunID          string `json:"runId,omitempty"`
+	SessionID      string `json:"sessionId,omitempty"`
+	RoomID         string `json:"roomId,omitempty"`
 }
 
 type DaemonExecResponse struct {
@@ -117,7 +120,13 @@ func (s *Server) runDaemonExecAgainst(daemonURL string, req ExecRequest) (Daemon
 		return DaemonExecResponse{}, fmt.Errorf("runtime daemon url is not configured")
 	}
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec", bytes.NewReader(body))
+	requestCtx := context.Background()
+	if timeout := execRequestTimeout(req); timeout > 0 {
+		var cancel context.CancelFunc
+		requestCtx, cancel = context.WithTimeout(context.Background(), timeout+(5*time.Second))
+		defer cancel()
+	}
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec", bytes.NewReader(body))
 	if err != nil {
 		return DaemonExecResponse{}, err
 	}
@@ -168,7 +177,13 @@ func (s *Server) streamDaemonExecAgainst(r *http.Request, daemonURL string, req 
 		return DaemonExecResponse{}, fmt.Errorf("runtime daemon url is not configured")
 	}
 	body, _ := json.Marshal(req)
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec/stream", bytes.NewReader(body))
+	requestCtx := r.Context()
+	if timeout := execRequestTimeout(req); timeout > 0 {
+		var cancel context.CancelFunc
+		requestCtx, cancel = context.WithTimeout(r.Context(), timeout+(5*time.Second))
+		defer cancel()
+	}
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(daemonURL, "/")+"/v1/exec/stream", bytes.NewReader(body))
 	if err != nil {
 		return DaemonExecResponse{}, err
 	}
@@ -227,4 +242,11 @@ func (s *Server) streamDaemonExecAgainst(r *http.Request, daemonURL string, req 
 		return resp, errors.New(resp.Error)
 	}
 	return resp, nil
+}
+
+func execRequestTimeout(req ExecRequest) time.Duration {
+	if req.TimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(req.TimeoutSeconds) * time.Second
 }

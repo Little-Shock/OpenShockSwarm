@@ -25,6 +25,21 @@ function roomStatusTone(status: Room["topic"]["status"]) {
   }
 }
 
+function roomStatusLabel(status: Room["topic"]["status"]) {
+  switch (status) {
+    case "running":
+      return "进行中";
+    case "review":
+      return "待评审";
+    case "blocked":
+      return "阻塞";
+    case "paused":
+      return "暂停";
+    default:
+      return "待开始";
+  }
+}
+
 function ChatModeIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
@@ -87,23 +102,23 @@ function SearchIcon() {
 function kindLabel(kind: QuickSearchEntryKind) {
   switch (kind) {
     case "channel":
-      return "Channel";
+      return "频道";
     case "dm":
-      return "DM";
+      return "私聊";
     case "room":
-      return "Room";
+      return "讨论间";
     case "topic":
-      return "Topic";
+      return "话题";
     case "issue":
-      return "Issue";
+      return "事项";
     case "run":
-      return "Run";
+      return "运行";
     case "agent":
-      return "Agent";
+      return "智能体";
     case "followed":
-      return "Followed";
+      return "关注中";
     case "saved":
-      return "Saved";
+      return "稍后看";
   }
 }
 
@@ -222,6 +237,17 @@ function profileEntryBadgeTone(id: SidebarProfileEntry["id"]) {
   }
 }
 
+function profileEntryTypeLabel(id: SidebarProfileEntry["id"]) {
+  switch (id) {
+    case "human":
+      return "成员";
+    case "machine":
+      return "机器";
+    case "agent":
+      return "智能体";
+  }
+}
+
 function SidebarSection({
   title,
   count,
@@ -278,13 +304,13 @@ export function WorkspaceStatusStrip({
           disconnected ? "bg-[var(--shock-pink)] text-white" : "bg-white"
         )}
       >
-        {disconnected ? "offline" : "live"}
+        {disconnected ? "离线" : "在线"}
       </span>
       <Link
         href="/setup"
         className="ml-auto inline-flex min-h-[30px] items-center rounded-[10px] border border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-status)]"
       >
-        {disconnected ? "Open Setup" : "Setup"}
+        {disconnected ? "打开设置" : "设置"}
       </Link>
     </div>
   );
@@ -328,7 +354,7 @@ export function StitchSidebar({
       title: dm.name,
       summary: dm.summary,
       unread: dm.unread,
-      badge: "DM",
+      badge: "聊",
       toneClassName:
         dm.presence === "running"
           ? "bg-[var(--shock-lime)]"
@@ -343,7 +369,7 @@ export function StitchSidebar({
       title: item.title,
       summary: item.summary,
       unread: item.unread,
-      badge: "TH",
+      badge: "追",
       toneClassName: "bg-white",
       selected: selectedFollowedThreadId === item.id,
     })),
@@ -353,14 +379,14 @@ export function StitchSidebar({
       title: item.title,
       summary: item.summary,
       unread: item.unread,
-      badge: "SV",
+      badge: "存",
       toneClassName: "bg-[var(--shock-paper)]",
       selected: selectedSavedLaterId === item.id,
     })),
   ];
   const selectedWorkspaceLabel = selectedRoom
-    ? `${selectedRoom.issueKey} · ${selectedRoom.topic.status}`
-    : workspaceSubtitle || "local-first command room";
+    ? `${selectedRoom.issueKey} · ${roomStatusLabel(selectedRoom.topic.status)}`
+    : workspaceSubtitle || "本地优先协作台";
 
   return (
     <aside className="hidden h-full min-w-0 w-full flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
@@ -373,7 +399,7 @@ export function StitchSidebar({
           <span className="font-mono text-[10px]">▾</span>
         </button>
         <p className="mt-2 truncate px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
-          {workspaceSubtitle || "local-first command room"}
+          {workspaceSubtitle || "本地优先协作台"}
         </p>
       </div>
 
@@ -388,7 +414,7 @@ export function StitchSidebar({
           )}
         >
           <ChatModeIcon />
-          Chat
+          聊天
         </Link>
         <Link
           href="/setup"
@@ -400,7 +426,7 @@ export function StitchSidebar({
           )}
         >
           <WorkspaceModeIcon />
-          Work
+          设置
         </Link>
       </div>
 
@@ -418,13 +444,13 @@ export function StitchSidebar({
             )}
           >
             <SearchIcon />
-            <span className="flex-1">Quick Search</span>
+            <span className="flex-1">快速搜索</span>
             <span className="font-mono text-[10px]">Ctrl+K</span>
           </button>
         </div>
 
         <SidebarSection
-          title="Channels"
+          title="频道"
           count={navChannels.length}
           defaultOpen={active === "channels" || Boolean(selectedChannelId)}
         >
@@ -457,7 +483,7 @@ export function StitchSidebar({
         </SidebarSection>
 
         <SidebarSection
-          title="Rooms"
+          title="讨论间"
           count={roomList.length}
           defaultOpen={active === "rooms" || active === "board" || active === "inbox" || Boolean(selectedRoomId)}
         >
@@ -476,7 +502,7 @@ export function StitchSidebar({
                 <RoomIcon />
                 <p className="min-w-0 flex-1 truncate font-medium">{room.title}</p>
                 <span className={cn("rounded-full border border-[var(--shock-ink)] px-1.5 py-0.5 font-mono text-[9px] uppercase", roomStatusTone(room.topic.status))}>
-                  {room.topic.status}
+                  {roomStatusLabel(room.topic.status)}
                 </span>
               </div>
               {selectedRoomId === room.id ? (
@@ -490,7 +516,7 @@ export function StitchSidebar({
 
         {deskEntries.length > 0 ? (
           <SidebarSection
-            title="Desk"
+            title="暂存区"
             count={deskEntries.length}
             defaultOpen={Boolean(selectedDirectMessageId || selectedFollowedThreadId || selectedSavedLaterId)}
           >
@@ -543,7 +569,7 @@ export function StitchSidebar({
         >
           <span className="flex items-center gap-2 font-medium">
             <InboxIcon />
-            Inbox
+            收件箱
           </span>
           <span className="font-mono text-[10px]">{openInboxCount}</span>
         </Link>
@@ -558,15 +584,15 @@ export function StitchSidebar({
           >
             <span className="flex items-center gap-2">
               <WorkspaceModeIcon />
-              Board
+              看板
             </span>
             <span>{roomList.length}</span>
           </Link>
           <span className="inline-flex min-h-[40px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]">
-            {runningAgents} live
+            {runningAgents} 在线
           </span>
           <span className="inline-flex min-h-[40px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]">
-            {blockedAgents} blocked
+            {blockedAgents} 阻塞
           </span>
         </div>
 
@@ -608,7 +634,7 @@ export function StitchSidebar({
                     profileEntryTone(entry.tone)
                   )}
                 >
-                  {entry.id}
+                  {profileEntryTypeLabel(entry.id)}
                 </span>
               </Link>
             ))}
@@ -650,11 +676,11 @@ export function StitchTopBar({
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null);
   const workspaceLinks = [
-    { href: "/issues", label: "Issues" },
-    { href: "/runs", label: "Runs" },
-    { href: "/agents", label: "Agents" },
-    { href: "/setup", label: "Setup" },
-    { href: "/memory", label: "Memory" },
+    { href: "/issues", label: "事项" },
+    { href: "/runs", label: "运行" },
+    { href: "/agents", label: "智能体" },
+    { href: "/setup", label: "设置" },
+    { href: "/memory", label: "记忆" },
   ];
   const activeWorkspaceLink = workspaceLinks.find((link) => currentHref === link.href) ?? null;
 
@@ -709,7 +735,7 @@ export function StitchTopBar({
           </span>
           <div className="min-w-0">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-              Quick Search
+              快速搜索
             </p>
             <p className="truncate font-medium text-[12px]">{searchPlaceholder}</p>
           </div>
@@ -727,9 +753,9 @@ export function StitchTopBar({
             aria-expanded={workspaceMenuOpen}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
-            <span className="text-[color:rgba(24,20,14,0.52)]">Open</span>
+            <span className="text-[color:rgba(24,20,14,0.52)]">打开</span>
             <span className="font-semibold text-[var(--shock-ink)]">
-              {activeWorkspaceLink?.label ?? "Workspace"}
+              {activeWorkspaceLink?.label ?? "工作区"}
             </span>
             <span>{workspaceMenuOpen ? "▴" : "▾"}</span>
           </button>
@@ -859,7 +885,7 @@ export function QuickSearchSurface({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-[color:rgba(24,20,14,0.56)] px-4 py-8 md:px-8 md:py-12">
-      <button type="button" aria-label="Close quick search" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <button type="button" aria-label="关闭快速搜索" className="absolute inset-0 cursor-default" onClick={onClose} />
       <div
         className="relative z-10 flex max-h-[min(720px,100%)] w-full max-w-4xl flex-col overflow-hidden border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] shadow-[var(--shock-shadow-lg)]"
         data-testid="quick-search-dialog"
@@ -870,14 +896,14 @@ export function QuickSearchSurface({
               <SearchIcon />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">Quick Search</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">快速搜索</p>
               <input
                 ref={inputRef}
                 data-testid="quick-search-input"
                 value={query}
                 onChange={(event) => handleQueryChange(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search channel / room / topic / issue / run / agent"
+                placeholder="搜索频道 / 讨论间 / 话题 / 事项 / 运行 / 智能体"
                 className="mt-1 w-full bg-transparent font-display text-[24px] font-bold leading-none outline-none placeholder:text-[color:rgba(24,20,14,0.36)]"
               />
             </div>
@@ -923,21 +949,21 @@ export function QuickSearchSurface({
               </div>
             ) : (
               <div className="border-2 border-dashed border-[var(--shock-ink)] bg-white px-4 py-5">
-                <p className="font-display text-[18px] font-bold">No matches yet</p>
+                <p className="font-display text-[18px] font-bold">还没有匹配结果</p>
                 <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-                  试试输入 channel、room、topic、issue、run 或 agent 关键字，直接跳到对应工作面。
+                  试试输入频道、讨论间、话题、事项、运行或智能体关键词，直接跳到对应页面。
                 </p>
               </div>
             )}
           </div>
 
           <aside className="border-t-2 border-[var(--shock-ink)] bg-white p-3 md:border-l-2 md:border-t-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">Command Hints</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.48)]">操作提示</p>
             <div className="mt-3 space-y-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.74)]">
-              <p><span className="font-mono">↑ ↓</span> move</p>
-              <p><span className="font-mono">Enter</span> open target</p>
-              <p><span className="font-mono">Esc</span> close palette</p>
-              <p><span className="font-mono">Ctrl/Cmd + K</span> reopen from anywhere in shell</p>
+              <p><span className="font-mono">↑ ↓</span> 上下选择</p>
+              <p><span className="font-mono">Enter</span> 打开当前结果</p>
+              <p><span className="font-mono">Esc</span> 关闭搜索层</p>
+              <p><span className="font-mono">Ctrl/Cmd + K</span> 在任意页面重新打开</p>
             </div>
           </aside>
         </div>

@@ -25,6 +25,39 @@ type CallbackResponse = {
 	syncedPullCount: number;
 };
 
+function authModeLabel(value: string | undefined) {
+	switch ((value ?? "").trim().toLowerCase()) {
+		case "github-app":
+			return "GitHub 应用";
+		case "gh-cli":
+			return "GitHub 命令行";
+		case "local":
+		case "local-only":
+			return "仅本地";
+		case "ssh":
+			return "SSH";
+		case "https":
+			return "HTTPS";
+		case "token":
+			return "访问令牌";
+		default:
+			return value || "未返回";
+	}
+}
+
+function bindingStatusLabel(value: string | undefined) {
+	switch ((value ?? "").trim().toLowerCase()) {
+		case "bound":
+			return "已绑定";
+		case "blocked":
+			return "已阻塞";
+		case "pending":
+			return "处理中";
+		default:
+			return value || "未返回";
+	}
+}
+
 export default function GitHubInstallationCallbackPage() {
 	return (
 		<Suspense fallback={<GitHubInstallationCallbackFallback />}>
@@ -38,9 +71,11 @@ function GitHubInstallationCallbackContent() {
 	const searchParams = useSearchParams();
 	const installationId = (searchParams.get("installation_id") || searchParams.get("installationId") || "").trim();
 	const setupAction = (searchParams.get("setup_action") || searchParams.get("setupAction") || "").trim();
+	const friendlyMessage = (message: string) =>
+		message.toLowerCase().includes("workspace member not found") ? "还没有找到当前账号，请先回到引导页完成创建。" : message;
 	const [phase, setPhase] = useState<"submitting" | "success" | "error">(installationId ? "submitting" : "error");
 	const [message, setMessage] = useState(
-		installationId ? "正在把 GitHub installation 回跳收进 OpenShock 当前 workspace 真值。" : "当前回跳链接缺少 installation id。"
+		installationId ? "正在同步 GitHub 连接结果。" : "当前链接缺少安装编号。"
 	);
 	const [payload, setPayload] = useState<CallbackResponse | null>(null);
 
@@ -66,14 +101,14 @@ function GitHubInstallationCallbackContent() {
 				});
 				const nextPayload = (await response.json()) as CallbackResponse & { error?: string };
 				if (!response.ok) {
-					throw new Error(nextPayload.error || `github installation callback failed: ${response.status}`);
+					throw new Error(nextPayload.error || `GitHub 安装回跳失败：${response.status}`);
 				}
 				if (cancelled) {
 					return;
 				}
 				setPayload(nextPayload);
 				setPhase("success");
-				setMessage("installation truth 已写回，正在把 repo binding 与当前 PR 状态前滚回 Setup。");
+				setMessage("GitHub 已连接，正在返回设置页。");
 				redirectTimer = window.setTimeout(() => {
 					router.replace("/setup?github_installation=connected");
 				}, 1800);
@@ -82,7 +117,7 @@ function GitHubInstallationCallbackContent() {
 					return;
 				}
 				setPhase("error");
-				setMessage(callbackError instanceof Error ? callbackError.message : "github installation callback failed");
+				setMessage(callbackError instanceof Error ? friendlyMessage(callbackError.message) : "GitHub 连接失败");
 			}
 		}
 
@@ -99,23 +134,23 @@ function GitHubInstallationCallbackContent() {
 	return (
 		<OpenShockShell
 			view="setup"
-			eyebrow="GitHub Callback"
-			title="收口 installation-complete 回跳"
-			description="这一步不再要求人手动回 Setup 再点两次同步，而是直接把 GitHub App installation 回跳前滚成 repo binding 与 PR truth。"
-			contextTitle="callback intake"
-			contextDescription="当前页面会把 installation id、setup action、repo binding 与 PR backfill 一次性写回控制面。"
+			eyebrow="GitHub 回跳"
+			title="同步 GitHub 连接结果"
+			description="页面会自动完成同步，然后返回设置页。"
+			contextTitle="当前回跳"
+			contextDescription="这里会显示本次回跳的安装编号和同步状态。"
 			contextBody={
 				<div className="space-y-2 rounded-[22px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
 					<p>
 						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
-							installation
+							安装编号
 						</span>
 						<br />
 						{installationId || "未返回"}
 					</p>
 					<p>
 						<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
-							setup_action
+							回跳动作
 						</span>
 						<br />
 						{setupAction || "未返回"}
@@ -125,7 +160,7 @@ function GitHubInstallationCallbackContent() {
 		>
 			<div className="space-y-4">
 				<section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-yellow)]">
-					<p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Finalize</p>
+					<p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">同步结果</p>
 					<h2 className="mt-2 font-display text-3xl font-bold">
 						{phase === "success" ? "GitHub 安装回跳已接住" : phase === "error" ? "GitHub 安装回跳失败" : "正在同步 GitHub 真值"}
 					</h2>
@@ -133,10 +168,10 @@ function GitHubInstallationCallbackContent() {
 
 					{payload ? (
 						<div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-							<CallbackMetric label="当前 auth path" value={payload.connection.authMode || "未返回"} />
-							<CallbackMetric label="binding mode" value={payload.binding.authMode || "未返回"} />
-							<CallbackMetric label="repo" value={payload.binding.repo || "未返回"} />
-							<CallbackMetric label="PR backfill" value={`${payload.syncedPullCount}`} />
+							<CallbackMetric label="当前认证路径" value={authModeLabel(payload.connection.authMode)} />
+							<CallbackMetric label="绑定方式" value={authModeLabel(payload.binding.authMode)} />
+							<CallbackMetric label="仓库" value={payload.binding.repo || "未返回"} />
+							<CallbackMetric label="回填条数" value={`${payload.syncedPullCount}`} />
 						</div>
 					) : null}
 
@@ -144,6 +179,7 @@ function GitHubInstallationCallbackContent() {
 						<div className="mt-4 rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 text-sm leading-6">
 							<p>{payload.connection.message}</p>
 							<p className="mt-2 text-[color:rgba(24,20,14,0.72)]">{payload.binding.connectionMessage}</p>
+							<p className="mt-2 text-[color:rgba(24,20,14,0.72)]">绑定状态：{bindingStatusLabel(payload.binding.bindingStatus)} · 分支：{payload.binding.branch || "未返回"}</p>
 						</div>
 					) : null}
 
@@ -152,10 +188,10 @@ function GitHubInstallationCallbackContent() {
 							href="/setup"
 							className="inline-flex rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
 						>
-							返回 Setup
+							返回设置
 						</Link>
 						{phase === "success" ? (
-							<p className="self-center text-sm text-[color:rgba(24,20,14,0.68)]">页面会自动跳回 Setup。</p>
+							<p className="self-center text-sm text-[color:rgba(24,20,14,0.68)]">页面会自动跳回设置页。</p>
 						) : null}
 					</div>
 				</section>
@@ -168,17 +204,17 @@ function GitHubInstallationCallbackFallback() {
 	return (
 		<OpenShockShell
 			view="setup"
-			eyebrow="GitHub Callback"
-			title="收口 installation-complete 回跳"
-			description="正在解析 GitHub callback 参数，并把 installation 真值前滚回当前 Setup 视图。"
-			contextTitle="callback intake"
-			contextDescription="页面会在拿到 query 参数后，提交 installation id 并刷新 repo binding / PR 回流。"
+			eyebrow="GitHub 回跳"
+			title="收下安装完成后的回流"
+			description="正在解析 GitHub 回跳参数，并把安装状态同步回当前设置视图。"
+			contextTitle="当前回跳"
+			contextDescription="页面会在拿到参数后提交安装编号，并刷新仓库绑定与拉取请求回流。"
 		>
 			<section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-yellow)]">
-				<p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Finalize</p>
+				<p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">同步结果</p>
 				<h2 className="mt-2 font-display text-3xl font-bold">正在同步 GitHub 真值</h2>
 				<p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-					OpenShock 正在等待 callback 参数并准备提交 installation-complete 回流。
+					正在等待回跳参数，并准备提交安装完成后的回流。
 				</p>
 			</section>
 		</OpenShockShell>

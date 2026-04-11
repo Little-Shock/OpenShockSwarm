@@ -12,7 +12,7 @@ import (
 )
 
 func New(path, workspaceRoot string) (*Store, error) {
-	s := &Store{path: path, workspaceRoot: workspaceRoot}
+	s := &Store{path: path, workspaceRoot: workspaceRoot, bootstrapMode: bootstrapModeFromEnv()}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -29,7 +29,11 @@ func New(path, workspaceRoot string) (*Store, error) {
 		return s, nil
 	}
 
-	s.state = seedState()
+	if s.freshBootstrap() {
+		s.state = freshState(workspaceRoot)
+	} else {
+		s.state = seedState()
+	}
 	s.hydrateMissingDefaults()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,22 +129,22 @@ func (s *Store) hydrateMissingDefaults() {
 	if strings.TrimSpace(s.state.Workspace.LastPairedAt) == "" {
 		s.state.Workspace.LastPairedAt = defaults.Workspace.LastPairedAt
 	}
-	if len(s.state.Machines) == 0 {
+	if len(s.state.Machines) == 0 && !s.freshBootstrap() {
 		s.state.Machines = defaults.Machines
 	}
-	if s.state.DirectMessages == nil {
+	if s.state.DirectMessages == nil && !s.freshBootstrap() {
 		s.state.DirectMessages = defaults.DirectMessages
 	}
-	if s.state.DirectMessageMessages == nil {
+	if s.state.DirectMessageMessages == nil && !s.freshBootstrap() {
 		s.state.DirectMessageMessages = defaults.DirectMessageMessages
 	}
-	if s.state.FollowedThreads == nil {
+	if s.state.FollowedThreads == nil && !s.freshBootstrap() {
 		s.state.FollowedThreads = defaults.FollowedThreads
 	}
-	if s.state.SavedLaterItems == nil {
+	if s.state.SavedLaterItems == nil && !s.freshBootstrap() {
 		s.state.SavedLaterItems = defaults.SavedLaterItems
 	}
-	if len(s.state.Agents) == 0 {
+	if len(s.state.Agents) == 0 && !s.freshBootstrap() {
 		s.state.Agents = defaults.Agents
 	}
 	for index := range s.state.Agents {
@@ -190,7 +194,7 @@ func (s *Store) hydrateMissingDefaults() {
 			s.state.Machines[index].Shell = defaultMachine.Shell
 		}
 	}
-	if len(s.state.PullRequests) == 0 {
+	if len(s.state.PullRequests) == 0 && !s.freshBootstrap() {
 		s.state.PullRequests = defaults.PullRequests
 	}
 	for index := range s.state.PullRequests {
@@ -198,7 +202,7 @@ func (s *Store) hydrateMissingDefaults() {
 			s.state.PullRequests[index].Conversation = []PullRequestConversationEntry{}
 		}
 	}
-	if s.state.Mailbox == nil {
+	if s.state.Mailbox == nil && !s.freshBootstrap() {
 		s.state.Mailbox = defaults.Mailbox
 	}
 	for index := range s.state.Mailbox {
@@ -206,7 +210,7 @@ func (s *Store) hydrateMissingDefaults() {
 			s.state.Mailbox[index].Messages = []MailboxMessage{}
 		}
 	}
-	if len(s.state.Sessions) == 0 {
+	if len(s.state.Sessions) == 0 && !s.freshBootstrap() {
 		s.state.Sessions = defaults.Sessions
 	}
 	for index := range s.state.Runs {
@@ -214,10 +218,10 @@ func (s *Store) hydrateMissingDefaults() {
 			s.state.Runs[index].CredentialProfileIDs = []string{}
 		}
 	}
-	if len(s.state.Memory) == 0 {
+	if len(s.state.Memory) == 0 && !s.freshBootstrap() {
 		s.state.Memory = defaults.Memory
 	}
-	if s.state.MemoryVersions == nil {
+	if s.state.MemoryVersions == nil && !s.freshBootstrap() {
 		s.state.MemoryVersions = defaults.MemoryVersions
 	}
 	if s.state.Credentials == nil {

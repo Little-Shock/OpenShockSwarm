@@ -62,9 +62,9 @@ func defaultWorkspaceOnboarding(now string) WorkspaceOnboardingSnapshot {
 	return WorkspaceOnboardingSnapshot{
 		Status:         workspaceOnboardingInProgress,
 		TemplateID:     "dev-team",
-		CurrentStep:    "repo-binding",
+		CurrentStep:    "account",
 		CompletedSteps: []string{"workspace-created", "template-selected"},
-		ResumeURL:      "/setup",
+		ResumeURL:      "/onboarding",
 		UpdatedAt:      now,
 	}
 }
@@ -93,9 +93,9 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 			Agents:             []string{"Spec Captain", "Build Pilot", "Review Runner", "QA Relay"},
 			NotificationPolicy: "blocked / review / release gate 优先推送",
 			Notes: []string{
-				"默认把首次启动收口到 shiproom，再把 review 和 release 风险单独抬到 review-lane / ops-watch。",
-				"模板现在会直接给出 PM / Architect / Developer / Reviewer / QA 的治理拓扑，并把 reviewer-tester loop 锚到同一份 workspace truth。",
-				"human override、response aggregation 与 formal mailbox handoff 会一起暴露在治理面里，而不是继续留在 onboarding 注释。",
+				"系统会创建交付、评审和发布相关频道。",
+				"适合需要多人协作推进需求和发布的团队。",
+				"后续可继续补充审批、通知和协作规则。",
 			},
 		}
 	case "research-team":
@@ -107,9 +107,9 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 			Agents:             []string{"Collector", "Synthesizer", "Review Runner"},
 			NotificationPolicy: "evidence ready / synthesis blocked / reviewer feedback 优先推送",
 			Notes: []string{
-				"默认先围 intake -> evidence -> synthesis 三条线组织上下文，不把 board 抬成主导航。",
-				"模板会把 evidence -> synthesis -> reviewer 的治理链直接铺成可见 topology，blocked escalation 不再只藏在 prompt 里。",
-				"模板会保留 resumable progress，换设备或 reload 后继续回到 setup truth。",
+				"系统会创建输入、资料和综合相关频道。",
+				"适合研究、分析和结论整理类工作。",
+				"设置支持中断后继续。",
 			},
 		}
 	default:
@@ -118,12 +118,12 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 			Label:              "空白自定义",
 			Channels:           []string{"#all", "#roadmap", "#announcements"},
 			Roles:              []string{"Owner / Member / Viewer"},
-			Agents:             []string{"Starter Agent", "Review Agent"},
+			Agents:             []string{"启动智能体", "评审智能体"},
 			NotificationPolicy: "只推高优先级与显式 review 事件",
 			Notes: []string{
-				"只给最小协作骨架，频道、角色和 agent skeleton 由团队后续自行补齐。",
-				"onboarding progress 继续可恢复，但仍会给最小 handoff / review / human-override 骨架，避免协作链完全失语。",
-				"适合先验证 repo / install / runtime pairing，再逐步长出自己的工作流。",
+				"系统会先创建基础频道、角色和默认智能体。",
+				"首次设置支持中断后继续，后续可再补充更多协作规则。",
+				"适合从空白工作区开始搭建自己的协作方式。",
 			},
 		}
 	}
@@ -154,9 +154,9 @@ func defaultWorkspaceRepoBinding(workspace WorkspaceSnapshot, now string) Worksp
 }
 
 func defaultWorkspaceGitHubInstallation(workspace WorkspaceSnapshot, now string) WorkspaceGitHubInstallSnapshot {
-	message := "当前还没有 GitHub App install truth；保持沿本地 repo binding 推进。"
+	message := "GitHub 应用尚未完成安装，可先使用本地仓库。"
 	if strings.EqualFold(strings.TrimSpace(workspace.RepoBindingStatus), "bound") {
-		message = "repo binding 已持久化；GitHub installation truth 会在下一次 probe / callback 时继续前滚。"
+		message = "仓库已绑定，GitHub 状态会在下一次检查后更新。"
 	}
 	return WorkspaceGitHubInstallSnapshot{
 		Provider:          defaultString(workspace.RepoProvider, "github"),
@@ -579,7 +579,7 @@ func workspaceGitHubStatusFromSnapshot(workspace WorkspaceSnapshot) WorkspaceGit
 		snapshot.PreferredAuthMode = defaultString(workspace.RepoAuthMode, "local-git-origin")
 	}
 	if strings.TrimSpace(snapshot.ConnectionMessage) == "" {
-		snapshot.ConnectionMessage = "等待 GitHub probe 或 installation callback 回写 install truth。"
+		snapshot.ConnectionMessage = "正在等待 GitHub 安装或连接状态更新。"
 	}
 	return snapshot
 }

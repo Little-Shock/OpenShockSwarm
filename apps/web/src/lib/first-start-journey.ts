@@ -45,6 +45,19 @@ function onboardingIsStarted(workspace: WorkspaceSnapshot) {
   return normalized(workspace.onboarding.status) !== "not_started";
 }
 
+function onboardingStatusLabel(workspace: WorkspaceSnapshot) {
+  switch (normalized(workspace.onboarding.status)) {
+    case "done":
+      return "已完成";
+    case "in_progress":
+      return "进行中";
+    case "not_started":
+      return "未开始";
+    default:
+      return workspace.onboarding.status?.trim() || "未开始";
+  }
+}
+
 function setupResumeHref(workspace: WorkspaceSnapshot) {
   const resume = workspace.onboarding.resumeUrl?.trim();
   if (resume) {
@@ -52,14 +65,14 @@ function setupResumeHref(workspace: WorkspaceSnapshot) {
   }
   const template = workspace.onboarding.templateId?.trim();
   if (template) {
-    return `/setup?template=${template}`;
+    return `/onboarding?template=${template}`;
   }
-  return "/setup";
+  return "/onboarding";
 }
 
 function launchHref(session: AuthSession) {
   const preferred = session.preferences.startRoute?.trim();
-  if (preferred && preferred !== "/access" && preferred !== "/setup") {
+  if (preferred && preferred !== "/access" && preferred !== "/setup" && preferred !== "/onboarding") {
     return preferred;
   }
   return "/chat/all";
@@ -67,33 +80,31 @@ function launchHref(session: AuthSession) {
 
 function accessSummary(session: AuthSession) {
   if (!sessionIsActive(session)) {
-    return "当前还没有 active session；先在 `/access` 建立或恢复当前成员会话。";
+    return "先输入邮箱进入工作区。";
   }
-  return `当前 session 已接通：${session.email?.trim() || "当前成员"}。`;
+  return `你已经以 ${session.email?.trim() || "当前成员"} 身份进入工作区。`;
 }
 
 function identitySummary(session: AuthSession) {
   if (!sessionIsActive(session)) {
-    return "先建立 active session，邮箱验证和设备授权才有确定落点。";
+    return "先进入工作区，再确认邮箱和当前设备。";
   }
   if (!emailVerificationReady(session)) {
-    return "邮箱还在 pending；先把 verify 链收平，再继续首次启动。";
+    return "先确认邮箱，再继续配置工作区。";
   }
   if (!deviceAuthorizationReady(session)) {
-    return "当前设备还在 pending；先在 `/access` 授权当前设备。";
+    return "先确认这台设备，再继续配置工作区。";
   }
-  return "邮箱验证和当前设备授权都已接通，不需要再来回猜 access recovery。";
+  return "邮箱和当前设备都已确认，可以继续。";
 }
 
 function setupSummary(workspace: WorkspaceSnapshot) {
   if (onboardingIsDone(workspace)) {
-    return `onboarding 已收口为 done；当前下一跳已经切到 ${setupResumeHref(workspace)}。`;
+    return `工作区已经准备好，下一步会进入 ${setupResumeHref(workspace)}。`;
   }
 
   const template = workspace.onboarding.templateId?.trim() || "未选模板";
-  const status = workspace.onboarding.status?.trim() || "not_started";
-  const currentStep = workspace.onboarding.currentStep?.trim() || "template-selected";
-  return `当前模板 ${template}，onboarding = ${status}，current step = ${currentStep}；继续沿 ${setupResumeHref(workspace)} 收平即可。`;
+  return `当前模板为 ${template}，进度为 ${onboardingStatusLabel(workspace)}。完成模板、仓库和运行环境设置后即可进入工作区。`;
 }
 
 export function buildFirstStartJourney(workspace: WorkspaceSnapshot, session: AuthSession): FirstStartJourney {
@@ -104,50 +115,46 @@ export function buildFirstStartJourney(workspace: WorkspaceSnapshot, session: Au
   const resumeHref = setupResumeHref(workspace);
   const finalLaunchHref = launchHref(session);
 
-  let nextHref = "/access";
-  let nextLabel = "先回 Access";
-  let nextSummary = "当前还没把 active session / recovery truth 接通；先在 `/access` 把身份链收平。";
+  let nextHref = resumeHref;
+  let nextLabel = onboardingStarted ? "继续引导" : "开始引导";
+  let nextSummary = "向导会先帮你进入工作区，再完成模板、仓库、运行环境和智能体设置。";
 
-  if (!activeSession) {
-    nextHref = "/access";
-    nextLabel = "建立会话";
-    nextSummary = "先登录或恢复当前成员会话，再继续首次启动。";
-  } else if (!emailVerificationReady(session)) {
-    nextHref = "/access";
-    nextLabel = "完成邮箱验证";
-    nextSummary = "邮箱还在 pending；先在 `/access` 把 verify 链走完。";
-  } else if (!deviceAuthorizationReady(session)) {
-    nextHref = "/access";
-    nextLabel = "授权当前设备";
-    nextSummary = "当前设备还没授权；先在 `/access` 收平 device approval。";
-  } else if (!onboardingDone) {
-    nextHref = resumeHref;
-    nextLabel = onboardingStarted ? "继续首次启动" : "开始首次启动";
-    nextSummary = `身份链已经接通；下一步直接沿 ${resumeHref} 继续模板 / repo / runtime / finish flow。`;
-  } else {
+  if (onboardingDone) {
     nextHref = finalLaunchHref;
-    nextLabel = "进入主工作面";
-    nextSummary = `首次启动已经完成；默认下一跳现在是 ${finalLaunchHref}。`;
+    nextLabel = "进入聊天";
+    nextSummary = `工作区已经准备好，直接进入 ${finalLaunchHref}。`;
+  } else if (!activeSession) {
+    nextHref = resumeHref;
+    nextLabel = onboardingStarted ? "继续引导" : "开始引导";
+    nextSummary = "向导会先帮你创建账号，再继续后面的工作区配置。";
+  } else if (!emailVerificationReady(session) || !deviceAuthorizationReady(session)) {
+    nextHref = resumeHref;
+    nextLabel = "继续引导";
+    nextSummary = "向导会自动补齐邮箱和当前设备确认，再继续工作区配置。";
+  } else {
+    nextHref = resumeHref;
+    nextLabel = onboardingStarted ? "继续引导" : "开始引导";
+    nextSummary = "下一步在向导里完成模板、仓库、运行环境和智能体设置，然后即可进入工作区。";
   }
 
   const steps: FirstStartJourneyStep[] = [
     {
       id: "session",
-      label: "建立会话",
+      label: "进入工作区",
       status: activeSession ? "ready" : "active",
       summary: accessSummary(session),
       href: "/access",
     },
     {
       id: "identity",
-      label: "验证邮箱与设备",
+      label: "确认邮箱和设备",
       status: identityReady ? "ready" : activeSession ? "active" : "pending",
       summary: identitySummary(session),
       href: "/access",
     },
     {
       id: "setup",
-      label: "完成首次启动",
+      label: "配置工作区",
       status: onboardingDone ? "ready" : identityReady ? "active" : "pending",
       summary: setupSummary(workspace),
       href: onboardingDone ? finalLaunchHref : resumeHref,

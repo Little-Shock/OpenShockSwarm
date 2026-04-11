@@ -32,6 +32,7 @@ var (
 )
 
 type AgentProfileUpdateInput struct {
+	Name                  string
 	Role                  string
 	Avatar                string
 	Prompt                string
@@ -66,6 +67,8 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 		return State{}, Agent{}, ErrAgentNotFound
 	}
 
+	agent := s.state.Agents[index]
+	name := defaultString(strings.TrimSpace(input.Name), agent.Name)
 	role := strings.TrimSpace(input.Role)
 	if role == "" {
 		return State{}, Agent{}, ErrAgentRoleRequired
@@ -111,8 +114,8 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 		return State{}, Agent{}, err
 	}
 
-	agent := s.state.Agents[index]
 	changes := []AgentProfileAuditChange{}
+	changes = appendAgentProfileChange(changes, "name", agent.Name, name)
 	changes = appendAgentProfileChange(changes, "role", agent.Role, role)
 	changes = appendAgentProfileChange(changes, "avatar", agent.Avatar, avatar)
 	changes = appendAgentProfileChange(changes, "prompt", agent.Prompt, prompt)
@@ -132,6 +135,7 @@ func (s *Store) UpdateAgentProfile(agentID string, input AgentProfileUpdateInput
 		agent.Sandbox = policy
 	}
 
+	agent.Name = name
 	agent.Role = role
 	agent.Avatar = avatar
 	agent.Prompt = prompt

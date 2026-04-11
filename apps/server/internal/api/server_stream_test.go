@@ -226,6 +226,80 @@ func TestChannelMessagePersistsAgentReply(t *testing.T) {
 	}
 }
 
+func TestChannelMessageDefaultsToPreferredProviderAndTimeout(t *testing.T) {
+	t.Setenv("OPENSHOCK_BOOTSTRAP_MODE", "fresh")
+
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if req.Provider != "codex" {
+			t.Fatalf("provider = %q, want codex", req.Provider)
+		}
+		if req.TimeoutSeconds != channelMessageExecTimeoutSeconds {
+			t.Fatalf("timeoutSeconds = %d, want %d", req.TimeoutSeconds, channelMessageExecTimeoutSeconds)
+		}
+		if err := json.NewEncoder(w).Encode(DaemonExecResponse{
+			Provider: "codex",
+			Command:  []string{"codex", "exec"},
+			Output:   "默认已经切到 Codex 了。",
+			Duration: "0.6s",
+		}); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}))
+	defer daemon.Close()
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"prompt": "给我一句确认",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	resp, err := http.Post(server.URL+"/v1/channels/all/messages", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/channels/all/messages error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		State store.State `json:"state"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+
+	messages := payload.State.ChannelMessages["all"]
+	last := messages[len(messages)-1]
+	if last.Speaker != "Codex Dockmaster" {
+		t.Fatalf("last channel speaker = %q, want Codex Dockmaster", last.Speaker)
+	}
+}
+
 func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

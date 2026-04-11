@@ -18,6 +18,7 @@ func registerAgentProfileRoutes(s *Server, mux *http.ServeMux) {
 }
 
 type AgentProfileUpdateRequest struct {
+	Name                  string                `json:"name"`
 	Role                  string                `json:"role"`
 	Avatar                string                `json:"avatar"`
 	Prompt                string                `json:"prompt"`
@@ -68,6 +69,7 @@ func (s *Server) handleAgentRoutes(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		nextState, agent, err := s.store.UpdateAgentProfile(agentID, store.AgentProfileUpdateInput{
+			Name:                  req.Name,
 			Role:                  req.Role,
 			Avatar:                req.Avatar,
 			Prompt:                req.Prompt,

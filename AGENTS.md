@@ -26,3 +26,12 @@ Any git operation that touches the network must use the user's proxy.
   - `docs/product/PRD.md`
   - `docs/product/Phase0-MVP.md`
 - Treat `Slock` as shell reference, `Multica` as control-plane reference, `Lody` as execution-isolation reference, and local `slock` files as memory/rules reference.
+
+## Frontend Guardrails
+
+- User-facing first screens must answer "what can I do now?" in plain language.
+- Do not expose internal product-building terms like `truth`, `session`, `recovery chain`, `durable`, `topology`, or `contract` on primary surfaces unless the page is explicitly debug/admin-oriented.
+- `Chat` is the primary surface. `Setup`, `Access`, and `Settings` are supporting flows and should not read like internal architecture notes.
+- Loading states must stay neutral. Do not render fallback pseudo-state that contradicts the real workspace once live data arrives.
+- When writing frontend copy, do not add self-explanatory narration, side commentary, internal monologue, or product-team thought process.
+- Frontend copy must face the customer directly with short, simple language. Ask only for the minimum information needed to continue.

@@ -44,8 +44,8 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 	case "research-team":
 		return governanceTemplateDefinition{
 			TemplateID:        "research-team",
-			Label:             "研究团队治理链",
-			Summary:           "研究模板把 intake、evidence、synthesis 和 reviewer 收成同一条多 Agent 治理链，不再只有静态 bootstrap 说明。",
+			Label:             "研究团队分工",
+			Summary:           "研究团队模板会提供资料收集、分析整理和复核分工。",
 			TimeoutMinutes:    30,
 			RetryBudget:       2,
 			EscalationChannel: "mailbox -> inbox -> lead",
@@ -59,8 +59,8 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 	case "blank-custom":
 		return governanceTemplateDefinition{
 			TemplateID:        "blank-custom",
-			Label:             "自定义治理骨架",
-			Summary:           "空白模板仍给出最小 handoff / review / override 骨架，避免团队只能靠口头约定推进。",
+			Label:             "自定义团队分工",
+			Summary:           "空白模板会提供最基础的分工和协作设置。",
 			TimeoutMinutes:    45,
 			RetryBudget:       1,
 			EscalationChannel: "mailbox -> inbox -> owner",
@@ -73,8 +73,8 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 	default:
 		return governanceTemplateDefinition{
 			TemplateID:        "dev-team",
-			Label:             "开发团队治理链",
-			Summary:           "开发模板现在把 PM / Architect / Developer / Reviewer / QA 与 human override、response aggregation 压成同一份治理快照。",
+			Label:             "开发团队分工",
+			Summary:           "开发团队模板会提供产品、开发、评审和测试协作分工。",
 			TimeoutMinutes:    20,
 			RetryBudget:       2,
 			EscalationChannel: "mailbox -> inbox -> human override",

@@ -41,26 +41,26 @@ function inboxKindLabel(kind: InboxItem["kind"]) {
 function mailboxKindLabel(kind?: AgentHandoff["kind"]) {
   switch (kind) {
     case "governed":
-      return "governed";
+      return "自动交接";
     case "delivery-closeout":
-      return "delivery closeout";
+      return "交付交接";
     case "delivery-reply":
-      return "delivery reply";
+      return "交接回复";
     default:
-      return "manual";
+      return "手动交接";
   }
 }
 
 function mailboxReplyStatusLabel(status: AgentHandoff["status"]) {
   switch (status) {
     case "acknowledged":
-      return "reply active";
+      return "处理中";
     case "blocked":
-      return "reply blocked";
+      return "回复受阻";
     case "completed":
-      return "reply completed";
+      return "回复完成";
     default:
-      return "reply requested";
+      return "等待回复";
   }
 }
 
@@ -78,7 +78,7 @@ function mailboxReplyStatusTone(status: AgentHandoff["status"]) {
 }
 
 function mailboxParentStatusLabel(status: AgentHandoff["status"]) {
-  return `parent ${handoffStatusLabel(status)}`;
+  return `主交接 ${handoffStatusLabel(status)}`;
 }
 
 function findMailboxParent(mailbox: AgentHandoff[], handoff: AgentHandoff) {
@@ -101,19 +101,19 @@ function countMailboxReplies(mailbox: AgentHandoff[], parentHandoffId: string) {
 function boardStateLabel(state: Issue["state"]) {
   switch (state) {
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "queued":
-      return "todo";
+      return "待处理";
     case "running":
-      return "in progress";
+      return "进行中";
     case "paused":
-      return "paused";
+      return "已暂停";
     case "review":
-      return "in review";
+      return "评审中";
     case "done":
-      return "done";
+      return "已完成";
     default:
-      return "status";
+      return "状态";
   }
 }
 
@@ -137,13 +137,13 @@ function pullRequestStatusLabel(status?: string) {
 function deliveryStatusLabel(status: ApprovalCenterItem["deliveryStatus"]) {
   switch (status) {
     case "ready":
-      return "delivery ready";
+      return "可发送";
     case "blocked":
-      return "delivery blocked";
+      return "发送受阻";
     case "suppressed":
-      return "delivery suppressed";
+      return "已静默";
     default:
-      return "delivery unrouted";
+      return "未路由";
   }
 }
 
@@ -163,36 +163,36 @@ function deliveryStatusTone(status: ApprovalCenterItem["deliveryStatus"]) {
 function governanceStatusLabel(status: string) {
   switch (status) {
     case "active":
-      return "active";
+      return "进行中";
     case "ready":
-      return "ready";
+      return "就绪";
     case "required":
-      return "required";
+      return "需要处理";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "done":
-      return "done";
+      return "完成";
     case "draft":
-      return "draft";
+      return "草稿";
     case "watch":
-      return "watch";
+      return "关注";
     default:
-      return "pending";
+      return "等待中";
   }
 }
 
 function decisionLabel(decision: InboxDecision) {
   switch (decision) {
     case "approved":
-      return "Approve";
+      return "通过";
     case "deferred":
-      return "Defer";
+      return "稍后";
     case "resolved":
-      return "Resolve";
+      return "已解决";
     case "merged":
-      return "Merge";
+      return "合并";
     default:
-      return "Request Changes";
+      return "请求修改";
   }
 }
 
@@ -209,7 +209,7 @@ function decisionTone(decision: InboxDecision) {
 }
 
 function governedCloseoutLabel(href: string) {
-  return href.startsWith("/pull-requests/") ? "Open Delivery Entry" : "Review Closeout";
+  return href.startsWith("/pull-requests/") ? "打开交付详情" : "查看交付结果";
 }
 
 function signalIcon(kind: InboxItem["kind"]) {
@@ -228,13 +228,13 @@ function signalIcon(kind: InboxItem["kind"]) {
 function handoffStatusLabel(status: AgentHandoff["status"]) {
   switch (status) {
     case "requested":
-      return "requested";
+      return "待接手";
     case "acknowledged":
-      return "acknowledged";
+      return "处理中";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     default:
-      return "completed";
+      return "已完成";
   }
 }
 
@@ -280,32 +280,32 @@ function commonBatchActions(handoffs: AgentHandoff[]) {
 function handoffActionLabel(action: MailboxAdvanceAction) {
   switch (action) {
     case "acknowledged":
-      return "Acknowledge";
+      return "接手";
     case "blocked":
-      return "Mark Blocked";
+      return "阻塞";
     case "comment":
-      return "Formal Comment";
+      return "留言";
     default:
-      return "Mark Complete";
+      return "完成";
   }
 }
 
 function mailboxMessageKindLabel(kind: AgentHandoff["messages"][number]["kind"]) {
   switch (kind) {
     case "request":
-      return "request";
+      return "请求";
     case "ack":
-      return "ack";
+      return "接手";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "comment":
-      return "comment";
+      return "留言";
     case "parent-progress":
-      return "parent progress";
+      return "主任务进度";
     case "response-progress":
-      return "response progress";
+      return "回复进度";
     default:
-      return "complete";
+      return "完成";
   }
 }
 
@@ -362,8 +362,8 @@ export function StitchBoardView() {
   const { state, approvalCenter, loading, error, createIssue } = usePhaseZeroState();
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("把真实 PR 写回接进讨论间");
-  const [summary, setSummary] = useState("从房间直接创建 PR，并把 review / merge 状态回写到 Room 和 Inbox。");
+  const [title, setTitle] = useState("把当前任务推进成 PR");
+  const [summary, setSummary] = useState("直接从讨论创建 PR，并同步回评审和合并状态。");
   const session = state.auth.session;
   const canCreateIssue = hasSessionPermission(session, "issue.create");
   const createIssueStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(session, "issue.create");
@@ -466,10 +466,10 @@ export function StitchBoardView() {
         <section className="flex min-h-0 flex-col">
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
-            eyebrow="Planning Mirror"
+            eyebrow="任务板"
             title="Board"
             description="这里只负责排优先级和看推进节奏，真正的讨论、执行和追问仍然回到 room。"
-            searchPlaceholder="Search issue / room / agent"
+            searchPlaceholder="搜索事项 / 讨论 / 智能体"
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           {planningContextVisible ? (
@@ -477,14 +477,14 @@ export function StitchBoardView() {
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="min-w-0">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
-                    return context
+                    返回上下文
                   </p>
                   <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
                     {sourceRoom
-                      ? `当前从 ${sourceRoom.title} 回到 board 排优先级，处理完直接回讨论间继续推进。`
+                      ? `当前从 ${sourceRoom.title} 回到任务板排优先级，处理完可以直接回讨论继续推进。`
                       : sourceIssue
-                        ? `当前从 ${sourceIssue.key} 进入 board。Issue 保持耐久真值，协作上下文仍以 room 为主。`
-                        : "当前 board 带着来源上下文打开，处理完请直接回原工作面。"}
+                        ? `当前从 ${sourceIssue.key} 进入任务板，处理完可以直接回原位置继续。`
+                        : "当前任务板带着来源上下文打开，处理完请直接回原页面。"}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -517,13 +517,13 @@ export function StitchBoardView() {
                 blocked {String(blockedLaneCount).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                agents live {String(activeAgents).padStart(2, "0")}
+                在线智能体 {String(activeAgents).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                pr links {String(livePullRequests.length).padStart(2, "0")}
+                PR {String(livePullRequests.length).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.64)]">
-                paired {loading || error ? "syncing" : state.workspace.lastPairedAt || "unpaired"}
+                连接 {loading || error ? "更新中" : state.workspace.lastPairedAt || "未连接"}
               </span>
             </div>
           </div>
@@ -533,12 +533,12 @@ export function StitchBoardView() {
               {loading ? (
                 <SurfaceStateMessage
                   title="正在同步任务板"
-                  message="等待 server 返回当前 issue / room / run 真值，任务板不再先渲染本地 seed 卡片。"
+                  message="正在获取事项、讨论间和执行状态。"
                 />
               ) : error ? (
                 <SurfaceStateMessage title="任务板同步失败" message={error} />
               ) : liveIssues.length === 0 ? (
-                <SurfaceStateMessage title="当前还没有任务卡" message="等第一条 Issue 创建后，Board 会直接显示 live lane truth。" />
+                <SurfaceStateMessage title="当前还没有任务卡" message="创建第一条事项后，这里会显示对应内容。" />
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   {displayColumns.map((column) => (
@@ -550,7 +550,7 @@ export function StitchBoardView() {
                         <div>
                           <h3 className="font-display text-lg font-bold uppercase italic">{column.title}</h3>
                           <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">
-                            {column.cards.length > 0 ? "room-return mirror" : "empty lane"}
+                            {column.cards.length > 0 ? "有内容" : "空"}
                           </p>
                         </div>
                         <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[9px]">
@@ -582,7 +582,7 @@ export function StitchBoardView() {
                               </div>
                             </div>
                             <p className="mt-3 truncate font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.54)]">
-                              {roomMap.get(card.roomId)?.title ?? "linked room"}
+                              {roomMap.get(card.roomId)?.title ?? "关联讨论间"}
                             </p>
                             <h4 className="mt-3 text-sm font-semibold leading-6">{card.title}</h4>
                             <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
@@ -590,7 +590,7 @@ export function StitchBoardView() {
                             </p>
                             <div className="mt-4 flex flex-wrap gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.62)]">
                               <span className="rounded-full border border-[var(--shock-ink)] bg-[#f7f7f7] px-2 py-1">
-                                owner {card.owner}
+                                负责人 {card.owner}
                               </span>
                             </div>
                             <div className="mt-4 flex flex-wrap gap-2">
@@ -895,7 +895,7 @@ export function StitchInboxView() {
     } catch (handoffError) {
       setMailboxError({
         id: "compose",
-        message: handoffError instanceof Error ? handoffError.message : "mailbox create failed",
+        message: handoffError instanceof Error ? handoffError.message : "创建交接失败",
       });
     } finally {
       setCreatingHandoff(false);
@@ -947,7 +947,7 @@ export function StitchInboxView() {
     } catch (handoffError) {
       setMailboxError({
         id: handoff.id,
-        message: handoffError instanceof Error ? handoffError.message : "mailbox action failed",
+        message: handoffError instanceof Error ? handoffError.message : "交接操作失败",
       });
     } finally {
       setMailboxBusyId(null);
@@ -992,7 +992,7 @@ export function StitchInboxView() {
     } catch (handoffError) {
       setMailboxError({
         id: "batch",
-        message: handoffError instanceof Error ? handoffError.message : "mailbox batch action failed",
+        message: handoffError instanceof Error ? handoffError.message : "批量操作失败",
       });
     } finally {
       setMailboxBatchBusyAction(null);
@@ -1025,14 +1025,14 @@ export function StitchInboxView() {
         <section className="flex min-h-0 flex-col">
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
-            eyebrow={mailboxSurfaceActive ? "Mailbox" : "Inbox"}
-            title={mailboxSurfaceActive ? "Mailbox" : "Inbox"}
+            eyebrow={mailboxSurfaceActive ? "交接" : "收件箱"}
+            title={mailboxSurfaceActive ? "交接" : "收件箱"}
             description={
               mailboxSurfaceActive
-                ? "正式 handoff 的 request / acknowledge / blocked / complete 都收在这里，Room 和 Inbox 继续保留上下文回链。"
-                : "这里收所有需要人类判断的 approval、blocked 和 review，再回到 room / run / PR 继续处理。"
+                ? "这里集中处理需要继续交接的事项。"
+                : "这里集中处理需要人工判断的提醒和待办。"
             }
-            searchPlaceholder={mailboxSurfaceActive ? "Search handoff / room / agent" : "Search approval / review / room"}
+            searchPlaceholder={mailboxSurfaceActive ? "搜索交接 / 讨论间 / 智能体" : "搜索审批 / 评审 / 讨论间"}
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
           <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--shock-paper)] px-4 py-4">
@@ -1041,29 +1041,29 @@ export function StitchInboxView() {
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                      {mailboxSurfaceActive ? "formal handoff ledger" : "human decision queue"}
+                      {mailboxSurfaceActive ? "交接列表" : "待处理列表"}
                     </p>
                     <p className="mt-2 font-display text-[22px] font-bold">
-                      {mailboxSurfaceActive ? "先看正式交接，再回房间推进" : "先把需要判断的信号收在一处"}
+                      {mailboxSurfaceActive ? "先处理交接，再回到讨论间继续" : "先集中处理需要判断的事项"}
                     </p>
                     <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.62)]">
                       {mailboxSurfaceActive
-                        ? "Mailbox 负责正式 handoff 自身，Inbox 继续保留可见通知和回房间入口。"
-                        : "`/inbox` 直接消费 `/v1/approval-center`，把 approval / blocked / review 的 open lifecycle 压成同一条 decision queue。"}
+                        ? "这里显示需要继续交接和跟进的内容。"
+                        : "这里显示需要人工决定的审批、阻塞和评审提醒。"}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]" data-testid={centerLoading || error ? undefined : "approval-center-open-count"}>
-                      {centerLoading || error ? "…" : approvalCenter.openCount} open
+                      {centerLoading || error ? "…" : approvalCenter.openCount} 条待处理
                     </span>
                     <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]" data-testid={centerLoading || error ? undefined : "approval-center-unread-count"}>
-                      {centerLoading || error ? "…" : approvalCenter.unreadCount} unread
+                      {centerLoading || error ? "…" : approvalCenter.unreadCount} 条未读
                     </span>
                     <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]" data-testid={centerLoading || error ? undefined : "approval-center-recent-count"}>
-                      {centerLoading || error ? "…" : approvalCenter.recentCount} recent
+                      {centerLoading || error ? "…" : approvalCenter.recentCount} 条最近
                     </span>
                     <span className="border border-[var(--shock-ink)] bg-[var(--shock-pink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white" data-testid={centerLoading || error ? undefined : "approval-center-blocked-count"}>
-                      {centerLoading || error ? "…" : blockedCount} blocked
+                      {centerLoading || error ? "…" : blockedCount} 条阻塞
                     </span>
                   </div>
                 </div>
@@ -1071,11 +1071,11 @@ export function StitchInboxView() {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
-                  { id: "all", label: "All", count: approvalCenter.openCount },
-                  { id: "approval", label: "Approvals", count: approvalCenter.approvalCount },
-                  { id: "blocked", label: "Blocks", count: approvalCenter.blockedCount },
-                  { id: "review", label: "Reviews", count: approvalCenter.reviewCount },
-                  { id: "unread", label: "Unread", count: approvalCenter.unreadCount },
+                  { id: "all", label: "全部", count: approvalCenter.openCount },
+                  { id: "approval", label: "批准", count: approvalCenter.approvalCount },
+                  { id: "blocked", label: "阻塞", count: approvalCenter.blockedCount },
+                  { id: "review", label: "评审", count: approvalCenter.reviewCount },
+                  { id: "unread", label: "未读", count: approvalCenter.unreadCount },
                 ].map((filter) => (
                   <button
                     key={filter.id}
@@ -1099,10 +1099,11 @@ export function StitchInboxView() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Mobile Triage</p>
-                      <h2 className="mt-2 font-display text-[22px] font-bold leading-6">轻量通知只先围 `/inbox` 收。</h2>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">移动端提醒</p>
+                      
+                      <h2 className="mt-2 font-display text-[22px] font-bold leading-6">手机端先看收件箱。</h2>
                       <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-                        手机端不复刻整套桌面工作台，只保留 open / unread / blocked 信号与直接 decision；更重的策略设置继续回 `/settings`。
+                        手机端只保留待处理、未读和阻塞提醒，以及直接处理动作。更完整的设置仍在设置页。
                       </p>
                     </div>
                     <Link
@@ -1110,26 +1111,26 @@ export function StitchInboxView() {
                       data-testid="approval-center-mobile-settings-link"
                       className="inline-flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                     >
-                      Notification Settings
+                      通知设置
                     </Link>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <TriageFactTile label="Open" value={centerLoading || error ? "…" : String(approvalCenter.openCount)} testId="approval-center-mobile-open" />
-                    <TriageFactTile label="Unread" value={centerLoading || error ? "…" : String(approvalCenter.unreadCount)} testId="approval-center-mobile-unread" />
-                    <TriageFactTile label="Blocked" value={centerLoading || error ? "…" : String(blockedCount)} testId="approval-center-mobile-blocked" />
-                    <TriageFactTile label="Recent" value={centerLoading || error ? "…" : String(approvalCenter.recentCount)} testId="approval-center-mobile-recent" />
+                    <TriageFactTile label="待处理" value={centerLoading || error ? "…" : String(approvalCenter.openCount)} testId="approval-center-mobile-open" />
+                    <TriageFactTile label="未读" value={centerLoading || error ? "…" : String(approvalCenter.unreadCount)} testId="approval-center-mobile-unread" />
+                    <TriageFactTile label="阻塞" value={centerLoading || error ? "…" : String(blockedCount)} testId="approval-center-mobile-blocked" />
+                    <TriageFactTile label="最近" value={centerLoading || error ? "…" : String(approvalCenter.recentCount)} testId="approval-center-mobile-recent" />
                   </div>
                 </div>
                 {centerLoading ? (
-                  <SurfaceStateMessage title="正在同步审批中心" message="等待 server 返回当前 `/v1/state + /v1/approval-center` 真值。" />
+                  <SurfaceStateMessage title="正在同步收件箱" message="正在读取当前提醒和待办。" />
                 ) : error ? (
                   <SurfaceStateMessage title="收件箱同步失败" message={error} />
                 ) : approvalCenterError ? (
-                  <SurfaceStateMessage title="审批中心同步失败" message={approvalCenterError} />
+                  <SurfaceStateMessage title="待处理列表同步失败" message={approvalCenterError} />
                 ) : openSignals.length === 0 ? (
-                  <SurfaceStateMessage title="审批中心当前为空" message="这表示当前没有需要人工判断的 approval / blocked / review 信号。" />
+                  <SurfaceStateMessage title="当前没有待处理提醒" message="现在没有需要人工判断的事项。" />
                 ) : filteredSignals.length === 0 ? (
-                  <SurfaceStateMessage title="当前筛选下没有打开信号" message="换一个 filter，或继续处理现有 open lifecycle。" />
+                  <SurfaceStateMessage title="当前筛选下没有结果" message="换个筛选试试。" />
                 ) : (
                   filteredSignals.map((item, index) => {
                     const pullRequest = findPullRequestForItem(item);
@@ -1188,7 +1189,7 @@ export function StitchInboxView() {
                               data-testid={`approval-center-unread-${item.id}`}
                               className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-pink)] px-2 py-0.5 font-mono text-[9px] text-white"
                             >
-                              unread
+                              未读
                             </span>
                           ) : null}
                           {pullRequest ? (
@@ -1245,7 +1246,7 @@ export function StitchInboxView() {
                             href={item.href}
                             className="inline-flex min-h-[44px] w-full items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                           >
-                            Open Context
+                            打开详情
                           </Link>
                           {guard || detailLinks.length > 0 ? (
                             <details
@@ -1253,7 +1254,7 @@ export function StitchInboxView() {
                               className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
                             >
                               <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.7)]">
-                                <span>details / guard / links</span>
+                                <span>更多信息</span>
                                 <span aria-hidden="true">+</span>
                               </summary>
                               <div className="mt-3 space-y-3">
@@ -1319,7 +1320,7 @@ export function StitchInboxView() {
                           </button>
                         ))}
                         <Link href={item.href} className="hidden font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2 md:inline-flex">
-                          Open Context
+                          打开详情
                         </Link>
                         {actionError?.id === item.id ? (
                           <p className="max-w-[200px] text-left font-mono text-[10px] text-[var(--shock-pink)] md:text-right">{actionError.message}</p>
@@ -1336,19 +1337,19 @@ export function StitchInboxView() {
                   <summary className="block min-h-[44px] cursor-pointer list-none">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Recent Resolution Ledger</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">最近更新</p>
                         <h2 className="mt-2 font-display text-[20px] font-bold">最近状态回写</h2>
                       </div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
-                        {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} items`}
+                        {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} 条`}
                       </p>
                     </div>
                   </summary>
                   <div className="mt-5 space-y-3">
                     {centerLoading ? (
-                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">等待 approval center recent lifecycle 真值。</p>
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">正在同步最近更新。</p>
                     ) : recentSignals.length === 0 ? (
-                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 recent resolution/status 回写。</p>
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有最近更新。</p>
                     ) : (
                       recentSignals.slice(0, 3).map((item) => (
                         <article
@@ -1358,7 +1359,7 @@ export function StitchInboxView() {
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
-                              status
+                              状态
                             </span>
                             <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.room}</span>
                             <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.time}</span>
@@ -1381,10 +1382,10 @@ export function StitchInboxView() {
                 <div className="hidden md:block">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Mailbox Ledger</p>
-                    <h2 className="mt-2 font-display text-[20px] font-bold">正式交接回链</h2>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">交接记录</p>
+                    <h2 className="mt-2 font-display text-[20px] font-bold">当前交接</h2>
                     <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-                      这块直接消费 `/v1/mailbox`，把 request / acknowledge / blocked / complete 放到同一条可审计 ledger；Room 负责现场上下文，Inbox 负责人类可见通知，这里负责正式 handoff 自身。
+                      这里集中显示每一条交接的状态、说明和后续动作。
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1392,12 +1393,12 @@ export function StitchInboxView() {
                       data-testid="mailbox-open-count"
                       className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
                     >
-                      {loading || error ? "…" : `${openMailboxCount} open`}
+                      {loading || error ? "…" : `待处理 ${openMailboxCount}`}
                     </span>
                     <span
                       className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
                     >
-                      {loading || error ? "…" : `${mailboxHandoffs.length} total`}
+                      {loading || error ? "…" : `全部 ${mailboxHandoffs.length}`}
                     </span>
                   </div>
                 </div>
@@ -1405,8 +1406,8 @@ export function StitchInboxView() {
                   <section className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Request Handoff</p>
-                        <h3 className="mt-2 font-display text-[18px] font-bold">创建一条正式交接</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">发起交接</p>
+                        <h3 className="mt-2 font-display text-[18px] font-bold">创建一条交接</h3>
                       </div>
                       <span
                         data-testid="mailbox-compose-authz"
@@ -1424,7 +1425,7 @@ export function StitchInboxView() {
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                                governed route
+                                自动建议
                               </p>
                               <p
                                 data-testid="mailbox-compose-governed-route-status"
@@ -1445,7 +1446,7 @@ export function StitchInboxView() {
                                     onClick={applyGovernedComposeRoute}
                                     className="border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-3 py-2 font-mono text-[10px]"
                                   >
-                                    Apply Route
+                                    采用建议
                                   </button>
                                   <button
                                     type="button"
@@ -1454,7 +1455,7 @@ export function StitchInboxView() {
                                     disabled={!canManageMailbox || creatingHandoff}
                                     className="border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] text-white disabled:opacity-60"
                                   >
-                                    {creatingHandoff ? "Creating..." : "Create Handoff"}
+                                    {creatingHandoff ? "创建中..." : "创建交接"}
                                   </button>
                                 </>
                               ) : null}
@@ -1464,7 +1465,7 @@ export function StitchInboxView() {
                                   data-testid="mailbox-compose-governed-route-focus"
                                   className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
                                 >
-                                  Focus Handoff
+                                  打开交接
                                 </Link>
                               ) : null}
                               {governedSuggestion.status === "done" && governedSuggestion.href ? (
@@ -1481,19 +1482,19 @@ export function StitchInboxView() {
                           <div className="mt-3 flex flex-wrap gap-2">
                             {governedSuggestion.fromLaneLabel ? (
                               <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em]">
-                                {governedSuggestion.fromLaneLabel} · {governedSuggestion.fromAgent || "manual"}
+                                {governedSuggestion.fromLaneLabel} · {governedSuggestion.fromAgent || "人工指定"}
                               </span>
                             ) : null}
                             {governedSuggestion.toLaneLabel ? (
                               <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em]">
-                                {governedSuggestion.toLaneLabel} · {governedSuggestion.toAgent || "manual"}
+                                {governedSuggestion.toLaneLabel} · {governedSuggestion.toAgent || "人工指定"}
                               </span>
                             ) : null}
                           </div>
                         </div>
                       ) : null}
                       <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Room</span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">讨论</span>
                         <select
                           data-testid="mailbox-compose-room"
                           value={composeRoomId}
@@ -1509,7 +1510,7 @@ export function StitchInboxView() {
                         </select>
                       </label>
                       <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">From Agent</span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">发起方</span>
                         <select
                           data-testid="mailbox-compose-from-agent"
                           value={composeFromAgentId}
@@ -1525,7 +1526,7 @@ export function StitchInboxView() {
                         </select>
                       </label>
                       <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">To Agent</span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">接收方</span>
                         <select
                           data-testid="mailbox-compose-to-agent"
                           value={composeToAgentId}
@@ -1541,7 +1542,7 @@ export function StitchInboxView() {
                         </select>
                       </label>
                       <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Title</span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">标题</span>
                         <input
                           data-testid="mailbox-compose-title"
                           value={composeTitle}
@@ -1552,14 +1553,14 @@ export function StitchInboxView() {
                         />
                       </label>
                       <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Summary</span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">说明</span>
                         <textarea
                           data-testid="mailbox-compose-summary"
                           value={composeSummary}
                           disabled={!canManageMailbox}
                           onChange={(event) => setComposeSummary(event.target.value)}
                           className="mt-2 min-h-[132px] w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                          placeholder="把 exact context 写清楚"
+                          placeholder="把交接背景写清楚"
                         />
                       </label>
                       <button
@@ -1578,7 +1579,7 @@ export function StitchInboxView() {
                         onClick={() => void handleCreateHandoff()}
                         className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
                       >
-                        {creatingHandoff ? "creating..." : "Create Handoff"}
+                        {creatingHandoff ? "创建中..." : "创建交接"}
                       </button>
                       {!canManageMailbox ? (
                         <p className="text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
@@ -1599,12 +1600,11 @@ export function StitchInboxView() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                            Batch Queue
+                            批量处理
                           </p>
-                          <h3 className="mt-2 font-display text-[18px] font-bold">批量处理当前 open handoff</h3>
+                          <h3 className="mt-2 font-display text-[18px] font-bold">批量处理当前交接</h3>
                           <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-                            先在 ledger 里勾选多条 open handoff，再统一执行 acknowledge / comment / complete。这里仍然按既有 `/v1/mailbox/:id`
-                            顺序提交，不额外发明第二套 batch truth。
+                            先勾选多条交接，再统一执行接手、留言、阻塞或完成。
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1612,7 +1612,7 @@ export function StitchInboxView() {
                             data-testid="mailbox-batch-selected-count"
                             className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
                           >
-                            {selectedMailboxHandoffs.length} selected
+                            已选 {selectedMailboxHandoffs.length}
                           </span>
                           <button
                             type="button"
@@ -1621,7 +1621,7 @@ export function StitchInboxView() {
                             onClick={() => setSelectedMailboxIds(selectableMailboxHandoffs.map((handoff) => handoff.id))}
                             className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60"
                           >
-                            Select Open
+                            全选可处理项
                           </button>
                           <button
                             type="button"
@@ -1630,7 +1630,7 @@ export function StitchInboxView() {
                             onClick={() => setSelectedMailboxIds([])}
                             className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-60"
                           >
-                            Clear
+                            清空
                           </button>
                         </div>
                       </div>
@@ -1642,11 +1642,11 @@ export function StitchInboxView() {
                             disabled={!canManageMailbox}
                             onChange={(event) => setMailboxBatchNote(event.target.value)}
                             className="min-h-[108px] w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                            placeholder="batch blocked / comment 时会把这段 note 顺序写进每条 selected handoff。"
+                            placeholder="批量阻塞或留言时，会把这段说明写入所有选中的交接。"
                           />
                           <label className="block">
                             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                              Batch Comment As
+                              留言身份
                             </span>
                             <select
                               data-testid="mailbox-batch-comment-actor-mode"
@@ -1655,8 +1655,8 @@ export function StitchInboxView() {
                               onChange={(event) => setMailboxBatchCommentActorMode(event.target.value as MailboxCommentActorMode)}
                               className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
                             >
-                              <option value="from">source agent</option>
-                              <option value="to">target agent</option>
+                              <option value="from">发起方</option>
+                              <option value="to">接收方</option>
                             </select>
                           </label>
                           <div className="flex flex-wrap gap-2">
@@ -1671,7 +1671,7 @@ export function StitchInboxView() {
                             ))}
                             {selectedMailboxHandoffs.length === 0 ? (
                               <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">
-                                还没有选中 handoff。先从右侧 ledger 勾选 open 项。
+                                还没有选中交接。先从右侧列表勾选。
                               </span>
                             ) : null}
                           </div>
@@ -1709,16 +1709,16 @@ export function StitchInboxView() {
                                       : "bg-[var(--shock-lime)]"
                               )}
                             >
-                              {mailboxBatchBusyAction === action ? "working..." : `Batch ${handoffActionLabel(action)}`}
+                              {mailboxBatchBusyAction === action ? "处理中..." : `批量${handoffActionLabel(action)}`}
                             </button>
                           ))}
                         </div>
                       </div>
                     </div>
                     {loading ? (
-                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">等待 mailbox ledger 真值。</p>
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">正在同步交接记录。</p>
                     ) : orderedMailboxHandoffs.length === 0 ? (
-                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 formal handoff；后续 request / ack / blocked / complete 会直接回写到这里。</p>
+                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有交接项；创建后会直接显示在这里。</p>
                     ) : (
                       orderedMailboxHandoffs.map((handoff) => {
                         const room = findRoomForHandoff(handoff);
@@ -1783,12 +1783,12 @@ export function StitchInboxView() {
                                 </span>
                                 {highlightedHandoffId === handoff.id ? (
                                   <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
-                                    focused
+                                    当前查看
                                   </span>
                                 ) : null}
                                 {selectedForBatch ? (
                                   <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-purple)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-white">
-                                    selected
+                                    已选
                                   </span>
                                 ) : null}
                               </div>
@@ -1796,19 +1796,19 @@ export function StitchInboxView() {
                               <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.summary}</p>
                               <div className="mt-4 flex flex-wrap gap-2 font-mono text-[10px] text-[color:rgba(24,20,14,0.6)]">
                                 <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
-                                  from {handoff.fromAgent}
+                                  发起方 {handoff.fromAgent}
                                 </span>
                                 <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
-                                  to {handoff.toAgent}
+                                  接收方 {handoff.toAgent}
                                 </span>
                                 {room ? (
                                   <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
-                                    room {room.title}
+                                    讨论 {room.title}
                                   </span>
                                 ) : null}
                                 {run ? (
                                   <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1">
-                                    run {run.owner}
+                                    运行 {run.owner}
                                   </span>
                                 ) : null}
                                 {parentHandoff ? (
@@ -1816,7 +1816,7 @@ export function StitchInboxView() {
                                     data-testid={`mailbox-parent-chip-${handoff.id}`}
                                     className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1"
                                   >
-                                    parent {parentHandoff.title}
+                                    主交接 · {parentHandoff.title}
                                   </span>
                                 ) : null}
                                 {parentHandoff ? (
@@ -1846,7 +1846,7 @@ export function StitchInboxView() {
                                     data-testid={`mailbox-response-attempts-${handoff.id}`}
                                     className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 uppercase tracking-[0.18em]"
                                   >
-                                    reply x{responseAttemptCount}
+                                    回复 {responseAttemptCount} 次
                                   </span>
                                 ) : null}
                               </div>
@@ -1858,7 +1858,7 @@ export function StitchInboxView() {
                               </p>
                               {handoff.lastNote ? (
                                 <p className="mt-2 border-l-4 border-[var(--shock-ink)] pl-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-                                  latest note: {handoff.lastNote}
+                                  最近说明：{handoff.lastNote}
                                 </p>
                               ) : null}
 
@@ -1868,28 +1868,28 @@ export function StitchInboxView() {
                                   href={`/inbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
                                   className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px]"
                                 >
-                                  Inbox Focus
+                                  打开收件箱
                                 </Link>
                                 <Link
                                   data-testid={`mailbox-room-link-${handoff.id}`}
                                   href={`/rooms/${handoff.roomId}?tab=context`}
                                   className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                                 >
-                                  Room
+                                  讨论
                                 </Link>
                                 <Link
                                   data-testid={`mailbox-run-link-${handoff.id}`}
                                   href={`/rooms/${handoff.roomId}?tab=run`}
                                   className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                                 >
-                                  Run
+                                  运行
                                 </Link>
                                 <Link
                                   data-testid={`mailbox-issue-link-${handoff.id}`}
                                   href={`/issues/${handoff.issueKey}`}
                                   className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                                 >
-                                  Issue
+                                  事项
                                 </Link>
                                 {parentHandoff ? (
                                   <Link
@@ -1897,7 +1897,7 @@ export function StitchInboxView() {
                                     href={`/inbox?handoffId=${parentHandoff.id}&roomId=${parentHandoff.roomId}`}
                                     className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                                   >
-                                    Open Parent Closeout
+                                    打开主交接
                                   </Link>
                                 ) : null}
                                 {responseHandoff ? (
@@ -1906,7 +1906,7 @@ export function StitchInboxView() {
                                     href={`/inbox?handoffId=${responseHandoff.id}&roomId=${responseHandoff.roomId}`}
                                     className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px]"
                                   >
-                                    Open Unblock Reply
+                                    打开回复
                                   </Link>
                                 ) : null}
                                 {canResumeParent ? (
@@ -1917,17 +1917,17 @@ export function StitchInboxView() {
                                     onClick={() => void handleMailboxAction(parentHandoff, "acknowledged")}
                                     className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] disabled:opacity-60"
                                   >
-                                    {mailboxBusyId === parentHandoff.id ? "working..." : "Resume Parent Closeout"}
+                                    {mailboxBusyId === parentHandoff.id ? "处理中..." : "继续主交接"}
                                   </button>
                                 ) : null}
                               </div>
 
                               <div className="mt-5 border-2 border-[var(--shock-ink)] bg-white p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Lifecycle Messages</p>
+                                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接记录</p>
                                   {inboxItem ? (
                                     <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">
-                                      inbox: {inboxKindLabel(inboxItem.kind)}
+                                      收件箱：{inboxKindLabel(inboxItem.kind)}
                                     </span>
                                   ) : null}
                                 </div>
@@ -1954,7 +1954,7 @@ export function StitchInboxView() {
 
                             <div className="flex flex-col gap-3">
                               <div className="border-2 border-[var(--shock-ink)] bg-white p-3">
-                                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Mailbox Action</p>
+                                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">处理操作</p>
                                 <textarea
                                   data-testid={`mailbox-note-${handoff.id}`}
                                   value={note}
@@ -1966,11 +1966,11 @@ export function StitchInboxView() {
                                     }))
                                   }
                                   className="mt-3 min-h-[112px] w-full border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-                                  placeholder="comment / blocked 时必须写 note；complete 时可以补收口备注。"
+                                  placeholder="需要留言或标记阻塞时，请写清楚原因；完成时也可以补充说明。"
                                 />
                                 <label className="mt-3 block">
                                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                                    Comment As
+                                    留言身份
                                   </span>
                                   <select
                                     data-testid={`mailbox-comment-actor-${handoff.id}`}
@@ -2011,7 +2011,7 @@ export function StitchInboxView() {
                                             : "bg-[var(--shock-lime)]"
                                       )}
                                     >
-                                      {mailboxBusyId === handoff.id ? "working..." : handoffActionLabel(action)}
+                                      {mailboxBusyId === handoff.id ? "处理中..." : handoffActionLabel(action)}
                                     </button>
                                   ))}
                                   {handoff.status === "acknowledged" ? (
@@ -2022,7 +2022,7 @@ export function StitchInboxView() {
                                       onClick={() => void handleMailboxAction(handoff, "completed", { continueGovernedRoute: true })}
                                       className="inline-flex min-h-[42px] items-center justify-center border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white disabled:opacity-60"
                                     >
-                                      {mailboxBusyId === handoff.id ? "working..." : "Complete + Auto-Advance"}
+                                      {mailboxBusyId === handoff.id ? "处理中..." : "完成并继续下一步"}
                                     </button>
                                   ) : null}
                                 </div>
@@ -2047,18 +2047,18 @@ export function StitchInboxView() {
               <div className="mt-6 border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Recent Resolution Ledger</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">最近更新</p>
                     <h2 className="mt-2 font-display text-[20px] font-bold">最近状态回写</h2>
                   </div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
-                    {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} items`}
+                    {centerLoading || error ? "同步中" : `${approvalCenter.recentCount} 条`}
                   </p>
                 </div>
                 <div className="mt-5 space-y-3">
                   {centerLoading ? (
-                    <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">等待 approval center recent lifecycle 真值。</p>
+                    <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">正在同步最近更新。</p>
                   ) : recentSignals.length === 0 ? (
-                    <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 recent resolution/status 回写。</p>
+                    <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有最近更新。</p>
                   ) : (
                     recentSignals.slice(0, 6).map((item) => (
                       <article
@@ -2068,7 +2068,7 @@ export function StitchInboxView() {
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em]">
-                            status
+                            状态
                           </span>
                           <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.room}</span>
                           <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.56)]">{item.time}</span>

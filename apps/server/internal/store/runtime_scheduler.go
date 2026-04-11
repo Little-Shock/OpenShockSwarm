@@ -218,15 +218,15 @@ func runtimeSchedulerSummary(scheduler RuntimeScheduler, candidate RuntimeSchedu
 	label := defaultString(strings.TrimSpace(candidate.Machine), strings.TrimSpace(candidate.Runtime))
 	switch scheduler.Strategy {
 	case runtimeSchedulerStrategyAgentPreference:
-		return fmt.Sprintf("调度器按 `%s` 的 runtime preference 选择 `%s`，当前承载 %d 条 active lease。", defaultString(strings.TrimSpace(owner), "owner"), label, candidate.ActiveLeaseCount)
+		return fmt.Sprintf("已按 %s 的设置选择 %s，当前有 %d 个运行任务。", defaultString(strings.TrimSpace(owner), "当前成员"), label, candidate.ActiveLeaseCount)
 	case runtimeSchedulerStrategySelected:
-		return fmt.Sprintf("调度器沿用当前 selection：`%s`，当前承载 %d 条 active lease。", label, candidate.ActiveLeaseCount)
+		return fmt.Sprintf("当前继续使用 %s，当前有 %d 个运行任务。", label, candidate.ActiveLeaseCount)
 	case runtimeSchedulerStrategyFailover:
-		return fmt.Sprintf("`%s` 当前不可调度，调度器已 failover 到 `%s`，当前承载 %d 条 active lease。", scheduler.FailoverFrom, label, candidate.ActiveLeaseCount)
+		return fmt.Sprintf("%s 当前不可用，已切换到 %s，当前有 %d 个运行任务。", scheduler.FailoverFrom, label, candidate.ActiveLeaseCount)
 	case runtimeSchedulerStrategyLeastLoaded:
-		return fmt.Sprintf("当前未锁定 preferred runtime，调度器按 lease 压力选择 `%s`，当前承载 %d 条 active lease。", label, candidate.ActiveLeaseCount)
+		return fmt.Sprintf("当前已选择 %s，当前有 %d 个运行任务。", label, candidate.ActiveLeaseCount)
 	default:
-		return "当前没有可调度 runtime。"
+		return "当前没有可用的运行环境。"
 	}
 }
 

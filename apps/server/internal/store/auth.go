@@ -537,7 +537,11 @@ func (s *Store) loginWithEmailLocked(input AuthLoginInput, now string) (Workspac
 
 	index := s.findWorkspaceMemberByEmailLocked(email)
 	if index == -1 {
-		return WorkspaceMember{}, AuthSession{}, ErrWorkspaceMemberNotFound
+		claimedIndex, claimed := s.claimFreshBootstrapOwnerLocked(input, now)
+		if !claimed {
+			return WorkspaceMember{}, AuthSession{}, ErrWorkspaceMemberNotFound
+		}
+		index = claimedIndex
 	}
 	member := s.state.Auth.Members[index]
 	if member.Status == workspaceMemberStatusSuspended {
@@ -568,6 +572,50 @@ func (s *Store) loginWithEmailLocked(input AuthLoginInput, now string) (Workspac
 	s.sortWorkspaceMembersLocked()
 
 	return member, session, nil
+}
+
+func (s *Store) claimFreshBootstrapOwnerLocked(input AuthLoginInput, now string) (int, bool) {
+	if !s.freshBootstrap() {
+		return -1, false
+	}
+	if len(s.state.Auth.Members) != 1 {
+		return -1, false
+	}
+	if len(s.state.Issues) > 0 || len(s.state.Rooms) > 0 || len(s.state.Runs) > 0 || len(s.state.PullRequests) > 0 || len(s.state.Inbox) > 0 || len(s.state.Mailbox) > 0 {
+		return -1, false
+	}
+
+	member := s.state.Auth.Members[0]
+	if member.Role != workspaceRoleOwner || member.Source != "fresh-bootstrap" {
+		return -1, false
+	}
+
+	email := normalizeEmail(input.Email)
+	if email == "" {
+		return -1, false
+	}
+
+	member.Email = email
+	member.RecoveryEmail = email
+	member.Status = workspaceMemberStatusActive
+	member.Source = "browser-registration"
+	member.EmailVerificationStatus = authEmailVerificationPending
+	member.EmailVerifiedAt = ""
+	member.PasswordResetStatus = authPasswordResetIdle
+	member.PasswordResetRequestedAt = ""
+	member.PasswordResetCompletedAt = ""
+	member.RecoveryStatus = deriveMemberRecoveryStatus(member.EmailVerificationStatus, member.PasswordResetStatus)
+	member.LastSeenAt = now
+	member.TrustedDeviceIDs = []string{}
+	if name := strings.TrimSpace(input.Name); name != "" {
+		member.Name = name
+	} else {
+		member.Name = defaultWorkspaceMemberName(email)
+	}
+	syncWorkspaceMemberDefaults(&member)
+	member.Permissions = permissionsForRole(member.Role)
+	s.state.Auth.Members[0] = member
+	return 0, true
 }
 
 func (s *Store) LoginWithEmail(input AuthLoginInput) (State, AuthSession, error) {

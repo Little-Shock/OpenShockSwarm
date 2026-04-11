@@ -37,13 +37,14 @@ type Provider struct {
 }
 
 type ExecRequest struct {
-	Provider  string `json:"provider"`
-	Prompt    string `json:"prompt"`
-	Cwd       string `json:"cwd"`
-	LeaseID   string `json:"leaseId,omitempty"`
-	RunID     string `json:"runId,omitempty"`
-	SessionID string `json:"sessionId,omitempty"`
-	RoomID    string `json:"roomId,omitempty"`
+	Provider       string `json:"provider"`
+	Prompt         string `json:"prompt"`
+	Cwd            string `json:"cwd"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	LeaseID        string `json:"leaseId,omitempty"`
+	RunID          string `json:"runId,omitempty"`
+	SessionID      string `json:"sessionId,omitempty"`
+	RoomID         string `json:"roomId,omitempty"`
 }
 
 type ExecResponse struct {
@@ -167,7 +168,7 @@ func (s *Service) RunPrompt(req ExecRequest) (ExecResponse, error) {
 		defer os.Remove(plan.outputFile)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout(req))
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, plan.command[0], plan.command[1:]...)
@@ -222,7 +223,7 @@ func (s *Service) StreamPrompt(req ExecRequest, emit func(StreamEvent) error) (E
 		defer os.Remove(plan.outputFile)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout(req))
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, plan.command[0], plan.command[1:]...)
@@ -460,8 +461,15 @@ func detectShell() string {
 	return "unknown"
 }
 
+func execTimeout(req ExecRequest) time.Duration {
+	if req.TimeoutSeconds > 0 {
+		return time.Duration(req.TimeoutSeconds) * time.Second
+	}
+	return 180 * time.Second
+}
+
 func buildCommand(req ExecRequest) (execPlan, error) {
-	switch strings.ToLower(strings.TrimSpace(req.Provider)) {
+	switch normalizedProviderID(req.Provider) {
 	case "claude":
 		claudeCLI, _ := findClaudeCLI()
 		return execPlan{
@@ -490,6 +498,18 @@ func buildCommand(req ExecRequest) (execPlan, error) {
 			outputFile:  outputFile.Name(),
 			cleanupFile: true,
 		}, nil
+	}
+}
+
+func normalizedProviderID(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(trimmed, "claude"):
+		return "claude"
+	case strings.Contains(trimmed, "codex"):
+		return "codex"
+	default:
+		return trimmed
 	}
 }
 

@@ -48,7 +48,7 @@ export function buildGlobalStats(state: PhaseZeroState) {
   const blockedCount = state.runs.filter((run) => run.status === "blocked" || run.status === "paused").length;
 
   return [
-    { label: "活跃 Run", value: String(activeRuns).padStart(2, "0"), tone: "yellow" as const },
+    { label: "活跃执行", value: String(activeRuns).padStart(2, "0"), tone: "yellow" as const },
     { label: "阻塞", value: String(blockedCount).padStart(2, "0"), tone: "pink" as const },
     { label: "收件箱", value: String(state.inbox.length).padStart(2, "0"), tone: "lime" as const },
   ];
@@ -111,30 +111,59 @@ function buildDefaultSessionMemoryPaths(roomId: string, issueKey: string) {
   return paths;
 }
 
+function asArray<T>(value: T[] | null | undefined) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asRecord<T>(value: Record<string, T[]> | null | undefined) {
+  return value && typeof value === "object" ? value : {};
+}
+
 export function sanitizePhaseZeroState(state: PhaseZeroState): PhaseZeroState {
+  const auth = state.auth ?? { session: { id: "", status: "signed_out", preferences: {}, permissions: [] }, roles: [], members: [] };
   return {
     ...state,
     workspace: sanitizeWorkspace(state.workspace),
-    channels: state.channels.map(sanitizeChannel),
-    channelMessages: mapRecord(state.channelMessages, sanitizeMessage),
-    directMessages: state.directMessages.map(sanitizeDirectMessage),
-    directMessageMessages: mapRecord(state.directMessageMessages, sanitizeMessage),
-    followedThreads: state.followedThreads.map(sanitizeMessageSurfaceEntry),
-    savedLaterItems: state.savedLaterItems.map(sanitizeMessageSurfaceEntry),
-    quickSearchEntries: state.quickSearchEntries.map(sanitizeSearchResult),
-    issues: state.issues.map(sanitizeIssue),
-    rooms: state.rooms.map(sanitizeRoom),
-    roomMessages: mapRecord(state.roomMessages, sanitizeMessage),
-    runs: state.runs.map(sanitizeRun),
-    agents: state.agents.map(sanitizeAgent),
-    runtimes: state.runtimes.map(sanitizeRuntimeRecord),
-    inbox: state.inbox.map(sanitizeInboxItem),
-    mailbox: (state.mailbox ?? []).map(sanitizeAgentHandoff),
-    pullRequests: state.pullRequests.map(sanitizePullRequest),
-    sessions: state.sessions.map(sanitizeSession),
-    runtimeLeases: state.runtimeLeases.map(sanitizeRuntimeLease),
-    memory: state.memory.map(sanitizeMemoryArtifact),
-    credentials: (state.credentials ?? []).map(sanitizeCredentialProfile),
+    auth: {
+      ...auth,
+      session: {
+        ...auth.session,
+        preferences: auth.session?.preferences ?? {},
+        linkedIdentities: asArray(auth.session?.linkedIdentities),
+        permissions: asArray(auth.session?.permissions),
+      },
+      roles: asArray(auth.roles),
+      members: asArray(auth.members).map((member) => ({
+        ...member,
+        preferences: member.preferences ?? {},
+        linkedIdentities: asArray(member.linkedIdentities),
+        trustedDeviceIds: asArray(member.trustedDeviceIds),
+        permissions: asArray(member.permissions),
+      })),
+      devices: asArray(auth.devices),
+    },
+    channels: asArray(state.channels).map(sanitizeChannel),
+    channelMessages: mapRecord(asRecord(state.channelMessages), sanitizeMessage),
+    directMessages: asArray(state.directMessages).map(sanitizeDirectMessage),
+    directMessageMessages: mapRecord(asRecord(state.directMessageMessages), sanitizeMessage),
+    followedThreads: asArray(state.followedThreads).map(sanitizeMessageSurfaceEntry),
+    savedLaterItems: asArray(state.savedLaterItems).map(sanitizeMessageSurfaceEntry),
+    quickSearchEntries: asArray(state.quickSearchEntries).map(sanitizeSearchResult),
+    issues: asArray(state.issues).map(sanitizeIssue),
+    rooms: asArray(state.rooms).map(sanitizeRoom),
+    roomMessages: mapRecord(asRecord(state.roomMessages), sanitizeMessage),
+    runs: asArray(state.runs).map(sanitizeRun),
+    agents: asArray(state.agents).map(sanitizeAgent),
+    machines: asArray(state.machines),
+    runtimes: asArray(state.runtimes).map(sanitizeRuntimeRecord),
+    inbox: asArray(state.inbox).map(sanitizeInboxItem),
+    mailbox: asArray(state.mailbox).map(sanitizeAgentHandoff),
+    pullRequests: asArray(state.pullRequests).map(sanitizePullRequest),
+    sessions: asArray(state.sessions).map(sanitizeSession),
+    runtimeLeases: asArray(state.runtimeLeases).map(sanitizeRuntimeLease),
+    guards: asArray(state.guards),
+    memory: asArray(state.memory).map(sanitizeMemoryArtifact),
+    credentials: asArray(state.credentials).map(sanitizeCredentialProfile),
   };
 }
 
@@ -142,8 +171,8 @@ export function sanitizePlannerQueue(items: PlannerQueueItem[]) {
   return items.map(sanitizePlannerQueueItem);
 }
 
-function mapRecord<T>(record: Record<string, T[]>, sanitize: (item: T) => T) {
-  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, value.map(sanitize)]));
+function mapRecord<T>(record: Record<string, T[] | null | undefined>, sanitize: (item: T) => T) {
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, asArray(value).map(sanitize)]));
 }
 
 function sanitizeWorkspace(workspace: WorkspaceSnapshot): WorkspaceSnapshot {
@@ -249,7 +278,7 @@ function sanitizeWorkspaceGovernance(
   return {
     ...safeGovernance,
     label: sanitizeDisplayText(safeGovernance.label ?? "", "当前治理链正在整理中。"),
-    summary: sanitizeDisplayText(safeGovernance.summary ?? "", "当前多 Agent 治理摘要正在整理中。"),
+    summary: sanitizeDisplayText(safeGovernance.summary ?? "", "当前多智能体治理摘要正在整理中。"),
     deliveryDelegationMode: sanitizeDisplayText(safeGovernance.deliveryDelegationMode ?? "", "formal-handoff"),
     configuredTopology: (safeGovernance.configuredTopology ?? []).map((lane) => {
       const safeLane = lane ?? {
@@ -555,7 +584,7 @@ function sanitizeIssue(issue: LiveIssue): LiveIssue {
   return {
     ...issue,
     title: sanitizeDisplayText(issue.title, "待整理任务"),
-    summary: sanitizeDisplayText(issue.summary, "这条任务的上下文正在整理，先回到讨论间查看当前 live truth。"),
+    summary: sanitizeDisplayText(issue.summary, "这条任务的上下文正在整理，先回到讨论间查看当前真实状态。"),
   };
 }
 
@@ -639,7 +668,7 @@ function sanitizeRunEvent(event: RunEvent): RunEvent {
 function sanitizeAgent(agent: Agent): Agent {
   return {
     ...agent,
-    description: sanitizeDisplayText(agent.description, "当前 Agent 摘要正在整理中。"),
+    description: sanitizeDisplayText(agent.description, "当前智能体摘要正在整理中。"),
     lane: sanitizeDisplayText(agent.lane, "待整理泳道"),
     credentialProfileIds: sanitizeTextLines(agent.credentialProfileIds ?? [], ""),
   };
@@ -679,8 +708,8 @@ function sanitizeAgentHandoff(item: AgentHandoff): AgentHandoff {
     parentHandoffId: sanitizeDisplayText(item.parentHandoffId ?? "", ""),
     title: sanitizeDisplayText(item.title, "待整理交接"),
     summary: sanitizeDisplayText(item.summary, "当前 handoff 摘要正在整理中。"),
-    fromAgent: sanitizeDisplayText(item.fromAgent, "来源 Agent"),
-    toAgent: sanitizeDisplayText(item.toAgent, "目标 Agent"),
+    fromAgent: sanitizeDisplayText(item.fromAgent, "来源智能体"),
+    toAgent: sanitizeDisplayText(item.toAgent, "目标智能体"),
     lastAction: sanitizeDisplayText(item.lastAction, "等待 handoff 同步。"),
     lastNote: sanitizeDisplayText(item.lastNote ?? "", ""),
     messages: item.messages.map(sanitizeMailboxMessage),
@@ -690,7 +719,7 @@ function sanitizeAgentHandoff(item: AgentHandoff): AgentHandoff {
 function sanitizeMailboxMessage(item: MailboxMessage): MailboxMessage {
   return {
     ...item,
-    authorName: sanitizeDisplayText(item.authorName, "OpenShock Agent"),
+    authorName: sanitizeDisplayText(item.authorName, "OpenShock 智能体"),
     body: sanitizeDisplayText(item.body, "当前 mailbox 消息正在整理中。"),
   };
 }
@@ -772,13 +801,13 @@ function sanitizeCredentialProfile(item: CredentialProfile): CredentialProfile {
     summary: sanitizeDisplayText(item.summary, "当前 credential 摘要正在整理中。"),
     secretKind: sanitizeDisplayText(item.secretKind, "opaque-secret"),
     secretStatus: sanitizeDisplayText(item.secretStatus, "configured"),
-    updatedBy: sanitizeDisplayText(item.updatedBy, "System"),
+    updatedBy: sanitizeDisplayText(item.updatedBy, "系统"),
     lastUsedBy: sanitizeDisplayText(item.lastUsedBy ?? "", ""),
     audit: (item.audit ?? []).map((entry) => ({
       ...entry,
       action: sanitizeDisplayText(entry.action, "updated"),
       summary: sanitizeDisplayText(entry.summary, "当前 credential audit 正在整理中。"),
-      updatedBy: sanitizeDisplayText(entry.updatedBy, "System"),
+      updatedBy: sanitizeDisplayText(entry.updatedBy, "系统"),
     })),
   };
 }
@@ -812,10 +841,10 @@ function looksLikeLiveTruthLeak(value: string) {
 function fallbackSpeaker(role: Message["role"]) {
   switch (role) {
     case "human":
-      return "Workspace Member";
+      return "工作区成员";
     case "agent":
-      return "OpenShock Agent";
+      return "OpenShock 智能体";
     default:
-      return "System";
+      return "系统";
   }
 }

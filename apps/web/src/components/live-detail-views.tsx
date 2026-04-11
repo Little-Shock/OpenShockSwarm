@@ -327,7 +327,7 @@ function RunCredentialScopePanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">credential scope</p>
-          <h3 className="mt-2 font-display text-3xl font-bold">把 workspace default、agent binding 和 run override 收在同一份执行真值</h3>
+          <h3 className="mt-2 font-display text-3xl font-bold">当前执行可用的凭据</h3>
         </div>
         <span
           data-testid="run-credential-effective-count"
@@ -545,13 +545,13 @@ function RunSnapshotCard({
       </div>
       {session ? (
         <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-          Resume context: {session.id} / {session.worktree}。{session.summary}
+          当前会话：{session.id} / {session.worktree}。{session.summary}
         </p>
       ) : null}
       <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
         {run.approvalRequired
           ? "这条 Run 当前需要人工批准后才能继续推进。"
-          : `当前已绑定 ${issue?.pullRequest ?? run.pullRequest}，可继续沿着 Room / Run / PR 同步收口。`}
+          : `当前已关联 ${issue?.pullRequest ?? run.pullRequest}，可以继续处理。`}
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
@@ -634,8 +634,8 @@ export function LiveIssuesListView() {
   if (loading) {
     return (
       <LiveStateNotice
-        title="正在同步 Issue 真值"
-        message="等待 server 返回当前 issue / room / run 绑定关系，前端不再先拿本地 seed issue 顶上。"
+        title="正在载入事项"
+        message="正在获取事项、讨论间和执行记录。"
       />
     );
   }
@@ -646,10 +646,7 @@ export function LiveIssuesListView() {
 
   if (state.issues.length === 0) {
     return (
-      <LiveStateNotice
-        title="当前还没有 Issue"
-        message="当 server state 里出现第一条 issue 后，这里会直接展示 live issue surface。"
-      />
+      <LiveStateNotice title="当前还没有事项" message="创建第一条事项后，这里会显示对应内容。" />
     );
   }
 
@@ -669,10 +666,10 @@ export function LiveRoomsPageContent() {
     <OpenShockShell
       view="rooms"
       eyebrow="讨论间总览"
-      title="严肃工作先进入讨论间"
-      description="频道负责聊天和对齐，一旦开始谈 owner、branch、run、PR 或 blocker，就该进入讨论间收拢执行上下文。"
-      contextTitle="Room 是协作主战场"
-      contextDescription="Phase 0 先把每个严肃需求都绑定到一个讨论间、一个当前 Topic 和一个可追踪的 Run，让前端壳层能直接承载真实协作。"
+      title="所有讨论间"
+      description="这里查看当前讨论间、对应事项和执行状态。"
+      contextTitle="讨论间概览"
+      contextDescription="每个讨论间都会关联事项和执行记录，方便直接继续处理。"
       contextBody={
         <DetailRail
           label="讨论间基线"
@@ -687,13 +684,13 @@ export function LiveRoomsPageContent() {
     >
       {loading ? (
         <LiveStateNotice
-          title="正在同步讨论间真值"
-          message="等待 server 返回最新的 room / run / issue 状态，前端不再先拿本地 seed 卡片顶上。"
+          title="正在载入讨论间"
+          message="正在获取讨论间、事项和执行状态。"
         />
       ) : error ? (
         <LiveStateNotice title="讨论间同步失败" message={error} />
       ) : rooms.length === 0 ? (
-        <LiveStateNotice title="当前还没有讨论间" message="等第一条 Issue 创建后，这里会直接显示 live room surface。" />
+        <LiveStateNotice title="当前还没有讨论间" message="创建第一条事项后，这里会显示对应讨论间。" />
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {rooms.map((room) => (
@@ -779,11 +776,11 @@ export function LiveAgentsPageContent() {
   return (
     <OpenShockShell
       view="agents"
-      eyebrow="Agent 名录"
-      title="把公民名录推进成 orchestration board"
-      description="Agent 不只要可见，还要能把调度泳道、runtime 压力、人工闸门和 auto-merge 候选摆在同一个前台。"
-      contextTitle="Agent Loop Surface"
-      contextDescription="这页现在直接消费 live scheduler / runtime lease / failover truth，把 orchestration board 上的 next-lane 与人工 gate 收成同一个前台。"
+      eyebrow="智能体"
+      title="所有智能体"
+      description="这里查看智能体当前状态、最近执行和所用运行环境。"
+      contextTitle="智能体概览"
+      contextDescription="可以在这里快速了解当前有哪些智能体正在运行、阻塞或空闲。"
       contextBody={
         <DetailRail
           label="调度基线"
@@ -791,17 +788,17 @@ export function LiveAgentsPageContent() {
             { label: "总数", value: `${agents.length} 个` },
             { label: "执行中", value: `${agents.filter((agent) => agent.state === "running").length} 个` },
             { label: "阻塞", value: `${agents.filter((agent) => agent.state === "blocked").length} 个` },
-            { label: "Session", value: `${sessions.length} 条` },
+            { label: "会话", value: `${sessions.length} 条` },
           ]}
         />
       }
     >
       {loading ? (
-        <LiveStateNotice title="正在同步 Agent 真值" message="等待 server 返回当前公民名录与最近 Run。" />
+        <LiveStateNotice title="正在载入智能体" message="正在获取智能体列表和最近执行记录。" />
       ) : error ? (
-        <LiveStateNotice title="Agent 同步失败" message={error} />
+        <LiveStateNotice title="智能体载入失败" message={error} />
       ) : agents.length === 0 ? (
-        <LiveStateNotice title="当前还没有 Agent" message="当 server state 里出现公民记录后，这里会直接展示 live agent surface。" />
+        <LiveStateNotice title="当前还没有智能体" message="创建智能体后，这里会显示对应内容。" />
       ) : (
         <div className="space-y-4">
           <LiveOrchestrationBoard
@@ -834,13 +831,13 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
     return (
       <OpenShockShell
         view="agents"
-        eyebrow="Agent 详情"
-        title="正在同步 Agent"
-        description="等待 server 返回当前公民详情。"
-        contextTitle="Agent Sync"
-        contextDescription="这页现在只读 live state，不再回退到旧的本地 seed agent。"
+        eyebrow="智能体详情"
+        title="正在载入智能体"
+        description="正在获取当前智能体详情。"
+        contextTitle="智能体详情"
+        contextDescription="请稍候，页面正在同步最新信息。"
       >
-        <LiveStateNotice title="同步中" message="正在拉取 Agent 详情和最近 Run。" />
+        <LiveStateNotice title="载入中" message="正在获取智能体详情和最近执行记录。" />
       </OpenShockShell>
     );
   }
@@ -849,13 +846,13 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
     return (
       <OpenShockShell
         view="agents"
-        eyebrow="Agent 详情"
-        title="Agent 同步失败"
-        description="当前没拿到 server truth。"
-        contextTitle="Agent Sync"
-        contextDescription="先检查 server 是否在线，再重新打开这页。"
+        eyebrow="智能体详情"
+        title="智能体载入失败"
+        description="暂时无法获取当前智能体详情。"
+        contextTitle="智能体详情"
+        contextDescription="请检查服务是否正常，然后重试。"
       >
-        <LiveStateNotice title="同步失败" message={error} />
+        <LiveStateNotice title="载入失败" message={error} />
       </OpenShockShell>
     );
   }
@@ -864,13 +861,13 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
     return (
       <OpenShockShell
         view="agents"
-        eyebrow="Agent 详情"
-        title="未找到 Agent"
-        description="这个 Agent 可能已经不在当前 server state 里。"
-        contextTitle="Agent Sync"
-        contextDescription="从公民名录重新进入通常就能拿到最新对象。"
+        eyebrow="智能体详情"
+        title="未找到智能体"
+        description="这个智能体可能已被删除，或当前数据尚未更新。"
+        contextTitle="智能体详情"
+        contextDescription="请返回智能体列表后重新进入。"
       >
-        <LiveStateNotice title="未找到 Agent" message={`当前找不到 \`${agentId}\` 对应的 live agent 记录。`} />
+        <LiveStateNotice title="未找到智能体" message={`当前找不到 \`${agentId}\` 对应的智能体记录。`} />
       </OpenShockShell>
     );
   }
@@ -890,7 +887,7 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
       title={agent.name}
       description={agent.description}
       contextTitle={agent.lane}
-      contextDescription="这是当前 server state 里这位公民真实绑定的泳道，不再沿用本地样例。"
+      contextDescription="这里显示这个智能体当前绑定的运行环境和相关信息。"
       contextBody={
         <DetailRail
           label="绑定关系"
@@ -988,10 +985,10 @@ export function LiveRunsPageContent() {
     <OpenShockShell
       view="runs"
       eyebrow="Run 总览"
-      title="执行真相集中在 Run 面"
-      description="Run 不是附属日志，而是前台第一等公民。runtime、branch、worktree、审批状态和下一步动作都要在这里直接可见。"
-      contextTitle="Run 是执行收口面"
-      contextDescription="Phase 0 先保证每个活跃 Topic 都能落到可见的 Run，再让 Room、Inbox 和 PR 围绕同一个执行真相协作。"
+      title="所有执行记录"
+      description="这里查看当前和历史执行记录，包括运行环境、分支、日志和状态。"
+      contextTitle="执行概览"
+      contextDescription="每条执行记录都保留对应的运行环境、状态和关联对象，方便排查和继续处理。"
       contextBody={
         <DetailRail
           label="Run 基线"
@@ -1005,17 +1002,17 @@ export function LiveRunsPageContent() {
       }
     >
       {loading ? (
-        <LiveStateNotice title="正在同步 Run 真值" message="等待 server 返回当前 run / room / issue 绑定关系。" />
+        <LiveStateNotice title="正在载入执行记录" message="正在获取执行记录、讨论间和事项信息。" />
       ) : error ? (
         <LiveStateNotice title="Run 同步失败" message={error} />
       ) : historyLoading && historyPage.items.length === 0 && !historyError ? (
-        <LiveStateNotice title="正在分页拉取 Run History" message="先加载最新几条 run，再按需增量展开更早的历史。" />
+        <LiveStateNotice title="正在载入历史记录" message="正在获取较早的执行记录。" />
       ) : visibleHistory.length === 0 ? (
-        <LiveStateNotice title="当前还没有 Run" message="当 server state 里出现第一条 run 后，这里会直接显示 live run surface。" />
+        <LiveStateNotice title="当前还没有执行记录" message="执行开始后，这里会显示对应内容。" />
       ) : (
         <div className="grid gap-4">
           {historyError ? (
-            <LiveStateNotice title="Run history fallback" message={historyError} />
+            <LiveStateNotice title="历史记录载入失败" message={historyError} />
           ) : null}
           {visibleHistory.map((entry) => (
             <RunSnapshotCard
@@ -1033,7 +1030,7 @@ export function LiveRunsPageContent() {
               onClick={() => void handleLoadMore()}
               className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
             >
-              {loadingMore ? "Loading..." : "Load Older Runs"}
+              {loadingMore ? "载入中..." : "加载更早的记录"}
             </button>
           ) : null}
         </div>
@@ -1049,13 +1046,13 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
     return (
       <OpenShockShell
         view="issues"
-        eyebrow="Issue 详情"
-        title="正在同步 Issue"
-        description="等待 server 返回当前 issue 详情。"
-        contextTitle="Issue Sync"
-        contextDescription="这页现在只读 live state，不再回退到旧的本地 seed issue。"
+        eyebrow="事项详情"
+        title="正在载入事项"
+        description="正在获取当前事项详情。"
+        contextTitle="事项详情"
+        contextDescription="请稍候，页面正在同步最新信息。"
       >
-        <LiveStateNotice title="同步中" message="正在拉取 Issue 详情和对应的 room / run 关系。" />
+        <LiveStateNotice title="载入中" message="正在获取事项详情和对应的讨论间、执行记录。" />
       </OpenShockShell>
     );
   }
@@ -1064,13 +1061,13 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
     return (
       <OpenShockShell
         view="issues"
-        eyebrow="Issue 详情"
-        title="Issue 同步失败"
-        description="当前没拿到 server truth。"
-        contextTitle="Issue Sync"
-        contextDescription="先检查 server 是否在线，再重新打开这页。"
+        eyebrow="事项详情"
+        title="事项载入失败"
+        description="暂时无法获取当前事项详情。"
+        contextTitle="事项详情"
+        contextDescription="请检查服务是否正常，然后重试。"
       >
-        <LiveStateNotice title="同步失败" message={error} />
+        <LiveStateNotice title="载入失败" message={error} />
       </OpenShockShell>
     );
   }
@@ -1081,14 +1078,14 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
     return (
       <OpenShockShell
         view="issues"
-        eyebrow="Issue 详情"
-        title="未找到需求"
-        description="这个 Issue 可能已经被移除，或者本地状态还没有同步到前端。"
-        contextTitle="State Sync"
-        contextDescription="刷新一下本地服务或重新从任务板进入。"
+        eyebrow="事项详情"
+        title="未找到事项"
+        description="这条事项可能已被删除，或当前数据尚未更新。"
+        contextTitle="事项详情"
+        contextDescription="请刷新页面，或从事项列表重新进入。"
       >
         <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-6 py-6 text-base">
-          当前找不到 `{issueKey}` 对应的 Issue。
+          当前找不到 `{issueKey}` 对应的事项。
         </div>
       </OpenShockShell>
     );
@@ -1100,15 +1097,15 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
   return (
     <OpenShockShell
       view="issues"
-      eyebrow="Issue 详情"
+      eyebrow="事项详情"
       title={issue.key}
       description={issue.summary}
       selectedRoomId={issue.roomId}
       contextTitle={issue.owner}
-      contextDescription="对用户来说，耐久对象仍然是 Issue，但真正谈执行、谈协商、谈闭环的地方已经变成讨论间。"
+      contextDescription="这里显示这条事项的负责人、讨论间和执行记录。"
       contextBody={
         <DetailRail
-          label="Issue 链接"
+          label="事项关联"
           items={[
             { label: "讨论间", value: room?.title ?? issue.roomId },
             { label: "Run", value: run?.id ?? issue.runId },
@@ -1141,12 +1138,12 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
       <OpenShockShell
         view="topic"
         eyebrow="Topic 详情"
-        title="正在同步 Topic"
-        description="等待 server 返回当前 topic、room 和 run 关系。"
-        contextTitle="Topic Sync"
-        contextDescription="这页现在只读 live state，不再回退到 room tab 内的临时 topic panel。"
+        title="正在载入话题"
+        description="正在获取当前话题、讨论间和执行记录。"
+        contextTitle="话题详情"
+        contextDescription="请稍候，页面正在同步最新信息。"
       >
-        <LiveStateNotice title="同步中" message="正在拉取 Topic、最近 guidance 和当前 run continuity。" />
+        <LiveStateNotice title="载入中" message="正在获取话题内容和当前执行状态。" />
       </OpenShockShell>
     );
   }
@@ -1156,12 +1153,12 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
       <OpenShockShell
         view="topic"
         eyebrow="Topic 详情"
-        title="Topic 同步失败"
-        description="当前没拿到 server truth。"
-        contextTitle="Topic Sync"
-        contextDescription="先检查 server 是否在线，再重新打开这页。"
+        title="话题载入失败"
+        description="暂时无法获取当前话题详情。"
+        contextTitle="话题详情"
+        contextDescription="请检查服务是否正常，然后重试。"
       >
-        <LiveStateNotice title="同步失败" message={error} />
+        <LiveStateNotice title="载入失败" message={error} />
       </OpenShockShell>
     );
   }
@@ -1462,13 +1459,13 @@ export function LiveRunPageContent({
       <OpenShockShell
         view="runs"
         eyebrow="Run 详情"
-        title="正在同步 Run"
-        description="等待 server 返回当前 run 详情。"
+        title="正在载入执行记录"
+        description="正在获取当前执行记录详情。"
         selectedRoomId={roomId}
-        contextTitle="Run Sync"
-        contextDescription="这页现在只读 live state，不再回退到旧的本地 seed run。"
+        contextTitle="执行记录详情"
+        contextDescription="请稍候，页面正在同步最新信息。"
       >
-        <LiveStateNotice title="同步中" message="正在拉取 Run 详情和对应的 room 关系。" />
+        <LiveStateNotice title="载入中" message="正在获取执行记录和对应的讨论间信息。" />
       </OpenShockShell>
     );
   }
@@ -1478,13 +1475,13 @@ export function LiveRunPageContent({
       <OpenShockShell
         view="runs"
         eyebrow="Run 详情"
-        title="Run 同步失败"
-        description="当前没拿到 server truth。"
+        title="执行记录载入失败"
+        description="暂时无法获取当前执行记录详情。"
         selectedRoomId={roomId}
-        contextTitle="Run Sync"
-        contextDescription="先检查 server 是否在线，再重新打开这页。"
+        contextTitle="执行记录详情"
+        contextDescription="请检查服务是否正常，然后重试。"
       >
-        <LiveStateNotice title="同步失败" message={error} />
+        <LiveStateNotice title="载入失败" message={error} />
       </OpenShockShell>
     );
   }
@@ -1529,10 +1526,10 @@ export function LiveRunPageContent({
       view="runs"
       eyebrow="Run 详情"
       title={run.id}
-      description="Run 详情就是执行真相面：runtime、分支、worktree、日志、工具调用、审批状态和收口目标都在这里。"
+      description="这里查看这条执行记录的运行环境、分支、日志、工具调用和当前状态。"
       selectedRoomId={room.id}
       contextTitle={run.issueKey}
-      contextDescription="每个活跃 Topic 都应该产出一个可见 Run。人类需要在 30 秒内定位问题落点。"
+      contextDescription="这里用于快速定位这条执行记录的问题和上下文。"
       contextBody={
         <DetailRail
           label="执行泳道"

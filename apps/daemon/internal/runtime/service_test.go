@@ -93,6 +93,33 @@ func TestBuildCommandCodexUsesOutputFile(t *testing.T) {
 	}
 }
 
+func TestBuildCommandNormalizesProviderLabels(t *testing.T) {
+	claudePlan, err := buildCommand(ExecRequest{
+		Provider: "Claude Code CLI",
+		Prompt:   "reply",
+		Cwd:      t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("buildCommand() with Claude label error = %v", err)
+	}
+	if claudePlan.command[0] != "claude" {
+		t.Fatalf("claude label command = %q, want claude", claudePlan.command[0])
+	}
+
+	codexPlan, err := buildCommand(ExecRequest{
+		Provider: "Codex CLI",
+		Prompt:   "reply",
+		Cwd:      t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("buildCommand() with Codex label error = %v", err)
+	}
+	defer os.Remove(codexPlan.outputFile)
+	if codexPlan.command[0] != "codex" {
+		t.Fatalf("codex label command = %q, want codex", codexPlan.command[0])
+	}
+}
+
 func TestSnapshotIncludesRuntimeRegistrationMetadata(t *testing.T) {
 	service := NewService("shock-sidecar", t.TempDir(),
 		WithRuntimeID("shock-sidecar"),

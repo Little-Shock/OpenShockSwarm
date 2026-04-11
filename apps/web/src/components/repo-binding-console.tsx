@@ -40,10 +40,58 @@ function bindingBadge(snapshot: RepoBindingSnapshot | null) {
 }
 
 function githubAppLabel(snapshot: RepoBindingSnapshot | null) {
-  if (!snapshot) return "等待扫描";
+  if (!snapshot) return "等待检查";
   if (snapshot.appInstalled) return "已安装";
   if (snapshot.appConfigured) return "待安装";
   return "未配置";
+}
+
+function providerLabel(value: string | undefined) {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "github":
+      return "GitHub";
+    case "gitlab":
+      return "GitLab";
+    case "bitbucket":
+      return "Bitbucket";
+    default:
+      return valueOrFallback(value, "未知");
+  }
+}
+
+function authModeLabel(value: string | undefined) {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "github-app":
+      return "GitHub 应用";
+    case "gh-cli":
+      return "GitHub 命令行";
+    case "local":
+    case "local-only":
+      return "仅本地";
+    case "ssh":
+      return "SSH";
+    case "https":
+      return "HTTPS";
+    case "token":
+      return "访问令牌";
+    case "signed_out":
+      return "未登录";
+    default:
+      return valueOrFallback(value, "待扫描");
+  }
+}
+
+function permissionStatusLabel(status: ReturnType<typeof permissionStatus>) {
+  switch (status) {
+    case "allowed":
+      return "可同步";
+    case "blocked":
+      return "无权限";
+    case "signed_out":
+      return "未登录";
+    default:
+      return "待确认";
+  }
 }
 
 export function RepoBindingConsole() {
@@ -66,8 +114,8 @@ export function RepoBindingConsole() {
       installationId: "",
       installationUrl: "",
       connectionMessage: state.workspace.repo
-        ? `当前工作区已读取到仓库真值：${state.workspace.repo}`
-        : "等待工作区返回仓库真值。",
+        ? `当前工作区已识别仓库：${state.workspace.repo}`
+        : "正在检查当前仓库。",
     };
   }, [state.workspace]);
   const [binding, setBinding] = useState<RepoBindingSnapshot | null>(null);
@@ -83,13 +131,13 @@ export function RepoBindingConsole() {
       const response = await fetch(`${API_BASE}/v1/repo/binding`, { cache: "no-store" });
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error || `repo binding request failed: ${response.status}`);
+        throw new Error(payload.error || `仓库绑定请求失败：${response.status}`);
       }
       const payload = (await response.json()) as RepoBindingSnapshot;
       setBinding(payload);
       setError(null);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "repo binding request failed");
+      setError(fetchError instanceof Error ? fetchError.message : "仓库绑定请求失败");
     }
   }, []);
 
@@ -139,7 +187,7 @@ export function RepoBindingConsole() {
         setBinding(payload.binding);
       }
       if (!response.ok) {
-        throw new Error(payload.error || `repo binding failed: ${response.status}`);
+        throw new Error(payload.error || `仓库绑定失败：${response.status}`);
       }
       if (payload.binding) {
         setSuccess(`已同步当前仓库：${valueOrFallback(payload.binding.repo, "未知仓库")} @ ${valueOrFallback(payload.binding.branch, "未知分支")}`);
@@ -147,7 +195,7 @@ export function RepoBindingConsole() {
         setSuccess("当前仓库状态已重新同步。");
       }
     } catch (bindError) {
-      setError(bindError instanceof Error ? bindError.message : "repo binding failed");
+      setError(bindError instanceof Error ? bindError.message : "仓库绑定失败");
     } finally {
       setLoading(false);
     }
@@ -162,7 +210,7 @@ export function RepoBindingConsole() {
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
             仓库绑定
           </p>
-          <h3 className="mt-2 font-display text-3xl font-bold">扫描并绑定当前 Repo</h3>
+          <h3 className="mt-2 font-display text-3xl font-bold">扫描并绑定当前仓库</h3>
         </div>
         <span
           data-testid="setup-repo-binding-status"
@@ -175,9 +223,7 @@ export function RepoBindingConsole() {
         </span>
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-        这里不再把 repo binding 读成固定的 `local-git-origin` 步骤卡，而是直接吃当前 effective auth path、install state 和 blocked contract。
-      </p>
+      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">这里只回答一件事：当前仓库有没有接通，以及还卡在哪一步。</p>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
@@ -193,16 +239,12 @@ export function RepoBindingConsole() {
           </p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Provider</p>
-          <p className="mt-2 font-display text-xl font-semibold">
-            {valueOrFallback(binding?.provider, "未知")}
-          </p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">代码平台</p>
+          <p className="mt-2 font-display text-xl font-semibold">{providerLabel(binding?.provider)}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">绑定模式</p>
-          <p className="mt-2 font-display text-xl font-semibold">
-            {valueOrFallback(binding?.authMode, "待扫描")}
-          </p>
+          <p className="mt-2 font-display text-xl font-semibold">{authModeLabel(binding?.authMode)}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">连接就绪</p>
@@ -211,11 +253,11 @@ export function RepoBindingConsole() {
           </p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">GitHub App</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">GitHub 应用</p>
           <p className="mt-2 font-display text-xl font-semibold">{githubAppLabel(binding)}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">installation</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">安装记录</p>
           <p className="mt-2 font-display text-xl font-semibold">
             {valueOrFallback(binding?.installationId, binding?.installationUrl ? "待完成安装" : "未生成")}
           </p>
@@ -224,37 +266,41 @@ export function RepoBindingConsole() {
 
       <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_0.8fr]">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Origin URL</p>
-          <p className="mt-2 font-mono text-xs leading-6 break-all text-[color:rgba(24,20,14,0.78)]">
-            {valueOrFallback(binding?.repoUrl, "等待扫描当前仓库 origin")}
-          </p>
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前判断</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前判断</p>
           <p data-testid="setup-repo-binding-message" className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.8)]">
-            {valueOrFallback(binding?.connectionMessage, "等待 repo binding contract 返回当前 GitHub 连接判断。")}
+              {valueOrFallback(binding?.connectionMessage, "正在检查仓库状态。")}
           </p>
-          {binding?.missing?.length ? (
-            <p
-              data-testid="setup-repo-binding-missing-fields"
-              className="mt-3 font-mono text-xs leading-6 text-[color:rgba(24,20,14,0.72)]"
-            >
-              缺失字段: {binding.missing.join(" / ")}
+          <details className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+            <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">
+              查看绑定依据
+            </summary>
+            <p className="mt-3 font-mono text-xs leading-6 break-all text-[color:rgba(24,20,14,0.78)]">
+              {valueOrFallback(binding?.repoUrl, "正在读取当前仓库远端地址")}
             </p>
-          ) : null}
-          {binding?.detectedAt ? (
-            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              detected at {binding.detectedAt}
-            </p>
-          ) : null}
+            {binding?.missing?.length ? (
+              <p
+                data-testid="setup-repo-binding-missing-fields"
+                className="mt-3 font-mono text-xs leading-6 text-[color:rgba(24,20,14,0.72)]"
+              >
+                缺少信息：{binding.missing.join(" / ")}
+              </p>
+            ) : null}
+            {binding?.detectedAt ? (
+              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                检查时间 {binding.detectedAt}
+              </p>
+            ) : null}
+          </details>
         </div>
 
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">安装动作</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]">
             {binding?.appInstalled
-              ? "GitHub App install 已闭环；repo binding 可以直接暴露 app-backed 真值。"
+              ? "GitHub 应用安装已经完成，仓库状态可以直接回流。"
               : binding?.appConfigured
-                ? "GitHub App 已配置但安装未完成；blocked contract 会停在这里，而不是继续沿旧口径假装可用。"
-                : "当前还没有完整 GitHub App 配置；先补配置，再重新同步 binding。"}
+                ? "GitHub 应用已配置，但安装还没完成。"
+                : "当前还没有完成 GitHub 应用配置，请先补充设置。"}
           </p>
           {binding?.installationUrl ? (
             <a
@@ -264,25 +310,23 @@ export function RepoBindingConsole() {
               rel="noreferrer"
               className="mt-4 inline-flex rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5"
             >
-              打开 installation 页面
+              打开安装页面
             </a>
           ) : null}
           <p
             data-testid="setup-repo-binding-return-steps"
             className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]"
           >
-            完成安装后，GitHub 会先回跳到 OpenShock callback，把 installation truth、repo binding 与现有 PR backfill 一次性收口；只有自动回流失败时，才需要回这里手动补同步。
+            安装完成后会自动返回并更新仓库状态。如未自动更新，再回到这里手动同步。
           </p>
         </div>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-2">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            当前按钮会重新同步 repo binding 与 GitHub 安装态；如果 server 返回 blocked contract，这里直接展示，不再退回旧文案。
-          </p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前权限</p>
           <p data-testid="setup-repo-binding-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            {bindStatus}
+            {permissionStatusLabel(bindStatus)}
           </p>
           {!canBindRepo ? <p className="text-sm leading-6 text-[var(--shock-pink)]">{bindBoundary}</p> : null}
         </div>
@@ -293,7 +337,7 @@ export function RepoBindingConsole() {
           disabled={loading || !canBindRepo}
           className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? "同步中..." : "同步 Repo Binding"}
+          {loading ? "同步中..." : "同步仓库绑定"}
         </button>
       </div>
 

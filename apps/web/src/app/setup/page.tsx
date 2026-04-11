@@ -6,8 +6,6 @@ import { LiveRolloutParityConsole } from "@/components/live-rollout-parity-conso
 import {
   LiveSetupContextRail,
   LiveSetupOverview,
-  OnboardingStudioPanel,
-  SetupFirstStartJourneyPanel,
 } from "@/components/live-setup-views";
 import { RepoBindingConsole } from "@/components/repo-binding-console";
 import { LiveRuntimeProvider } from "@/lib/live-runtime";
@@ -17,22 +15,41 @@ export default function SetupPage() {
     <LiveRuntimeProvider>
       <OpenShockShell
         view="setup"
-        eyebrow="Setup"
-        title="把首次启动收成一条主链"
-        description="这里直接镜像 next step、template bootstrap、repo / GitHub / runtime 真值和当前恢复入口，不再把 setup 做成一堆分散控制台。"
-        contextTitle="Current Setup Truth"
-        contextDescription="先回答现在该做什么，再展开 repo、GitHub、runtime 和 bridge 细节。"
+        eyebrow="高级设置"
+        title="设置与诊断"
+        description="仓库、GitHub、运行环境和诊断都集中在这里。首次使用请先完成首页设置。"
+        contextTitle="当前是否可用"
+        contextDescription="先看主链路状态，详细信息按需展开。"
         contextBody={<LiveSetupContextRail />}
       >
         <div className="space-y-4">
-          <SetupFirstStartJourneyPanel />
           <LiveSetupOverview />
-          <OnboardingStudioPanel />
-          <RepoBindingConsole />
-          <GitHubConnectionConsole />
-          <LiveBridgeConsole />
-          <BranchHeadTruthConsole />
-          <LiveRolloutParityConsole />
+          <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-yellow)]">
+            <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+              展开仓库与远端
+            </summary>
+            <div className="mt-4 space-y-4">
+              <RepoBindingConsole />
+              <GitHubConnectionConsole />
+            </div>
+          </details>
+          <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-pink)]">
+            <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+              展开运行环境
+            </summary>
+            <div className="mt-4 space-y-4">
+              <LiveBridgeConsole />
+            </div>
+          </details>
+          <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-lime)]">
+            <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+              展开诊断对账
+            </summary>
+            <div className="mt-4 space-y-4">
+              <BranchHeadTruthConsole />
+              <LiveRolloutParityConsole />
+            </div>
+          </details>
         </div>
       </OpenShockShell>
     </LiveRuntimeProvider>

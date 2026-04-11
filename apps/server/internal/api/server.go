@@ -127,6 +127,13 @@ type PairingStatusResponse struct {
 	LastPairedAt  string `json:"lastPairedAt"`
 }
 
+const (
+	channelMessageExecTimeoutSeconds = 20
+	roomMessageExecTimeoutSeconds    = 45
+	roomStreamExecTimeoutSeconds     = 90
+	defaultExecTimeoutSeconds        = 90
+)
+
 type SelectRuntimeRequest struct {
 	Machine string `json:"machine"`
 }
@@ -327,15 +334,17 @@ func (s *Server) handleChannelRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 			return
 		}
-		provider := defaultString(req.Provider, "claude")
+		snapshot := s.store.Snapshot()
+		provider := resolveExecProvider(snapshot, req.Provider)
 		payload, err := s.runDaemonExec(ExecRequest{
-			Provider: provider,
-			Prompt:   prompt,
-			Cwd:      req.Cwd,
+			Provider:       provider,
+			Prompt:         prompt,
+			Cwd:            req.Cwd,
+			TimeoutSeconds: channelMessageExecTimeoutSeconds,
 		})
 		if err != nil {
 			status := http.StatusBadGateway
-			message := fmt.Sprintf("频道 agent 连接失败：%s", err.Error())
+			message := execFailureMessage("频道消息", err)
 			var daemonErr *daemonHTTPError
 			if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
 				status = http.StatusConflict
@@ -355,7 +364,7 @@ func (s *Server) handleChannelRoutes(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, status, map[string]string{"error": appendErr.Error()})
 				return
 			}
-			response := map[string]any{"error": err.Error(), "state": nextState}
+			response := map[string]any{"error": message, "state": nextState}
 			if daemonErr != nil && daemonErr.Conflict != nil {
 				response["conflict"] = daemonErr.Conflict
 			}
@@ -520,10 +529,12 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 			return
 		}
+		provider := resolveExecProvider(s.store.Snapshot(), req.Provider)
 		s.handleRoomMessageStream(w, r, roomID, ExecRequest{
-			Provider: defaultString(req.Provider, "claude"),
-			Prompt:   prompt,
-			Cwd:      req.Cwd,
+			Provider:       provider,
+			Prompt:         prompt,
+			Cwd:            req.Cwd,
+			TimeoutSeconds: roomStreamExecTimeoutSeconds,
 		}, prompt)
 		return
 	}
@@ -547,15 +558,17 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 			return
 		}
+		provider := resolveExecProvider(s.store.Snapshot(), req.Provider)
 
 		payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
-			Provider: defaultString(req.Provider, "claude"),
-			Prompt:   prompt,
-			Cwd:      req.Cwd,
+			Provider:       provider,
+			Prompt:         prompt,
+			Cwd:            req.Cwd,
+			TimeoutSeconds: roomMessageExecTimeoutSeconds,
 		})
 		if err != nil {
 			status := http.StatusBadGateway
-			message := fmt.Sprintf("CLI 连接失败：%s", err.Error())
+			message := execFailureMessage("讨论间消息", err)
 			var daemonErr *daemonHTTPError
 			if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
 				status = http.StatusConflict
@@ -578,10 +591,10 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 				nextState, appendErr = s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
 			}
 			if appendErr != nil {
-				writeJSON(w, status, map[string]string{"error": err.Error()})
+				writeJSON(w, status, map[string]string{"error": message})
 				return
 			}
-			payload := map[string]any{"error": err.Error(), "state": nextState}
+			payload := map[string]any{"error": message, "state": nextState}
 			if daemonErr != nil && daemonErr.Conflict != nil {
 				payload["conflict"] = daemonErr.Conflict
 			}
@@ -1483,6 +1496,10 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
+	req.Provider = resolveExecProvider(s.store.Snapshot(), req.Provider)
+	if req.TimeoutSeconds <= 0 {
+		req.TimeoutSeconds = defaultExecTimeoutSeconds
+	}
 	payload, err := s.runDaemonExec(req)
 	if err != nil {
 		var daemonErr *daemonHTTPError
@@ -1536,7 +1553,7 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		return writeNDJSON(w, flusher, event)
 	})
 	if err != nil {
-		message := fmt.Sprintf("CLI 连接失败：%s", err.Error())
+		message := execFailureMessage("讨论间消息", err)
 		var daemonErr *daemonHTTPError
 		if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
 			message = runtimeLeaseConflictMessage(daemonErr.Conflict)
@@ -1558,10 +1575,10 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 			nextState, appendErr = s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
 		}
 		if appendErr != nil {
-			_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: err.Error()})
+			_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: message})
 			return
 		}
-		_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Error: err.Error(), State: &nextState})
+		_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Error: message, State: &nextState})
 		return
 	}
 
@@ -1846,12 +1863,148 @@ func defaultString(value, fallback string) string {
 }
 
 func channelReplySpeaker(provider string) string {
-	switch strings.TrimSpace(strings.ToLower(provider)) {
+	switch normalizeProviderID(provider) {
 	case "claude":
 		return "Claude Review Runner"
 	case "codex":
 		return "Codex Dockmaster"
 	default:
 		return "Shock_AI_Core"
+	}
+}
+
+func resolveExecProvider(state store.State, requested string) string {
+	if provider := normalizeProviderID(requested); provider != "" {
+		return provider
+	}
+
+	if provider := preferredExecProvider(state); provider != "" && runtimeSupportsProvider(state, provider) {
+		return provider
+	}
+
+	for _, candidate := range []string{"codex", "claude"} {
+		if runtimeSupportsProvider(state, candidate) {
+			return candidate
+		}
+	}
+
+	if provider := firstAvailableExecProvider(state); provider != "" {
+		return provider
+	}
+
+	if provider := preferredExecProvider(state); provider != "" {
+		return provider
+	}
+
+	return "codex"
+}
+
+func preferredExecProvider(state store.State) string {
+	preferredAgentID := strings.TrimSpace(state.Auth.Session.Preferences.PreferredAgentID)
+	if preferredAgentID != "" {
+		for _, agent := range state.Agents {
+			if agent.ID == preferredAgentID {
+				if provider := normalizeProviderID(defaultString(agent.ProviderPreference, agent.Provider)); provider != "" {
+					return provider
+				}
+				break
+			}
+		}
+	}
+
+	if len(state.Agents) > 0 {
+		if provider := normalizeProviderID(defaultString(state.Agents[0].ProviderPreference, state.Agents[0].Provider)); provider != "" {
+			return provider
+		}
+	}
+
+	return ""
+}
+
+func runtimeSupportsProvider(state store.State, want string) bool {
+	want = normalizeProviderID(want)
+	if want == "" {
+		return false
+	}
+	for _, provider := range runtimeProviderCandidates(state) {
+		if provider == want {
+			return true
+		}
+	}
+	return false
+}
+
+func firstAvailableExecProvider(state store.State) string {
+	for _, provider := range runtimeProviderCandidates(state) {
+		if provider != "" {
+			return provider
+		}
+	}
+	return ""
+}
+
+func runtimeProviderCandidates(state store.State) []string {
+	candidates := make([]string, 0, 4)
+	seen := map[string]bool{}
+	appendRuntimeProviders := func(runtime store.RuntimeRecord) {
+		for _, provider := range runtime.Providers {
+			id := normalizeProviderID(defaultString(provider.ID, provider.Label))
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			candidates = append(candidates, id)
+		}
+	}
+
+	pairedRuntimeID := strings.TrimSpace(state.Workspace.PairedRuntime)
+	if pairedRuntimeID != "" {
+		for _, runtime := range state.Runtimes {
+			if runtime.ID == pairedRuntimeID {
+				appendRuntimeProviders(runtime)
+				break
+			}
+		}
+	}
+
+	for _, runtime := range state.Runtimes {
+		if runtime.ID == pairedRuntimeID {
+			continue
+		}
+		appendRuntimeProviders(runtime)
+	}
+
+	return candidates
+}
+
+func normalizeProviderID(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(trimmed, "claude"):
+		return "claude"
+	case strings.Contains(trimmed, "codex"):
+		return "codex"
+	default:
+		return trimmed
+	}
+}
+
+func execFailureMessage(scope string, err error) string {
+	raw := strings.TrimSpace(err.Error())
+	lower := strings.ToLower(raw)
+
+	switch {
+	case strings.Contains(lower, "deadline exceeded"):
+		return fmt.Sprintf("%s暂时没有返回，请确认本地模型已登录后再试。", scope)
+	case strings.Contains(lower, "executable file not found"),
+		strings.Contains(lower, "not found in $path"),
+		strings.Contains(lower, "no such file or directory"):
+		return fmt.Sprintf("%s当前还没有可用模型，请先在设置里完成本地模型连接。", scope)
+	case strings.Contains(lower, "not logged"),
+		strings.Contains(lower, "login"),
+		strings.Contains(lower, "unauthorized"):
+		return fmt.Sprintf("%s当前还未登录模型服务，请先完成登录。", scope)
+	default:
+		return fmt.Sprintf("%s暂时不可用，请检查本地模型连接后重试。", scope)
 	}
 }

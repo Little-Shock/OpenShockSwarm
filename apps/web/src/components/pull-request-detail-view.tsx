@@ -44,45 +44,45 @@ function pullRequestStatusLabel(status?: string) {
 function mergeableLabel(mergeable?: string) {
   switch (mergeable) {
     case "MERGEABLE":
-      return "mergeable";
+      return "可合并";
     case "CONFLICTING":
-      return "conflicting";
+      return "有冲突";
     case "UNKNOWN":
-      return "computing";
+      return "计算中";
     default:
-      return "unspecified";
+      return "未确认";
   }
 }
 
 function mergeStateLabel(mergeStateStatus?: string) {
   switch (mergeStateStatus) {
     case "CLEAN":
-      return "clean";
+      return "干净";
     case "DIRTY":
-      return "conflicting";
+      return "有冲突";
     case "BEHIND":
-      return "behind base";
+      return "落后基线";
     case "BLOCKED":
-      return "blocked";
+      return "阻塞";
     case "HAS_HOOKS":
-      return "hooks pending";
+      return "等待检查";
     case "UNSTABLE":
-      return "unstable";
+      return "不稳定";
     case "UNKNOWN":
-      return "computing";
+      return "计算中";
     default:
-      return "unspecified";
+      return "未确认";
   }
 }
 
 function deliveryStatusLabel(status: PullRequestDeliveryEntry["status"]) {
   switch (status) {
     case "ready":
-      return "release ready";
+      return "可以交付";
     case "warning":
-      return "warning callout";
+      return "需要关注";
     default:
-      return "blocked";
+      return "暂不可交付";
   }
 }
 
@@ -129,13 +129,13 @@ function deliveryPanelTone(status: PullRequestDeliveryEntry["status"]) {
 function delegationStatusLabel(status: PullRequestDeliveryDelegation["status"]) {
   switch (status) {
     case "ready":
-      return "delegate ready";
+      return "可交接";
     case "blocked":
-      return "delegate blocked";
+      return "交接受阻";
     case "done":
-      return "delegation done";
+      return "已完成";
     default:
-      return "waiting";
+      return "等待中";
   }
 }
 
@@ -155,13 +155,13 @@ function delegationStatusTone(status: PullRequestDeliveryDelegation["status"]) {
 function delegationHandoffStatusLabel(status?: PullRequestDeliveryDelegation["handoffStatus"]) {
   switch (status) {
     case "acknowledged":
-      return "handoff acknowledged";
+      return "已接手";
     case "blocked":
-      return "handoff blocked";
+      return "交接受阻";
     case "completed":
-      return "handoff completed";
+      return "交接完成";
     case "requested":
-      return "handoff requested";
+      return "等待接手";
     default:
       return "";
   }
@@ -185,13 +185,13 @@ function delegationHandoffStatusTone(status?: PullRequestDeliveryDelegation["han
 function delegationResponseStatusLabel(status?: PullRequestDeliveryDelegation["responseHandoffStatus"]) {
   switch (status) {
     case "acknowledged":
-      return "reply active";
+      return "处理中";
     case "blocked":
-      return "reply blocked";
+      return "回复受阻";
     case "completed":
-      return "reply completed";
+      return "回复完成";
     case "requested":
-      return "reply requested";
+      return "等待回复";
     default:
       return "";
   }
@@ -215,19 +215,19 @@ function delegationResponseStatusTone(status?: PullRequestDeliveryDelegation["re
 function delegationCommunicationKindLabel(kind: PullRequestDeliveryCommunicationEntry["messageKind"]) {
   switch (kind) {
     case "request":
-      return "request";
+      return "请求";
     case "ack":
-      return "acknowledged";
+      return "已接手";
     case "blocked":
-      return "blocked";
+      return "受阻";
     case "comment":
-      return "formal comment";
+      return "留言";
     case "completed":
-      return "completed";
+      return "完成";
     case "response-progress":
-      return "response sync";
+      return "回复进度";
     case "parent-progress":
-      return "parent sync";
+      return "主任务进度";
     default:
       return kind;
   }
@@ -257,26 +257,26 @@ function delegationCommunicationKindTone(kind: PullRequestDeliveryCommunicationE
 function mailboxKindLabel(kind?: AgentHandoff["kind"]) {
   switch (kind) {
     case "governed":
-      return "governed";
+      return "自动交接";
     case "delivery-closeout":
-      return "delivery closeout";
+      return "交付收尾";
     case "delivery-reply":
-      return "delivery reply";
+      return "收尾回复";
     default:
-      return "manual";
+      return "手动交接";
   }
 }
 
 function mailboxReplyStatusLabel(status: AgentHandoff["status"]) {
   switch (status) {
     case "acknowledged":
-      return "reply active";
+      return "处理中";
     case "blocked":
-      return "reply blocked";
+      return "回复受阻";
     case "completed":
-      return "reply completed";
+      return "回复完成";
     default:
-      return "reply requested";
+      return "等待回复";
   }
 }
 
@@ -294,32 +294,32 @@ function mailboxReplyStatusTone(status: AgentHandoff["status"]) {
 }
 
 function mailboxParentStatusLabel(status: AgentHandoff["status"]) {
-  return `parent ${delegationHandoffStatusLabel(status)}`;
+  return `主交接 ${delegationHandoffStatusLabel(status)}`;
 }
 
 function formatMailboxActionLabel(action: "acknowledged" | "blocked" | "comment" | "completed") {
   switch (action) {
     case "acknowledged":
-      return "Acknowledge";
+      return "接手";
     case "blocked":
-      return "Block";
+      return "阻塞";
     case "comment":
-      return "Formal Comment";
+      return "留言";
     default:
-      return "Complete";
+      return "完成";
   }
 }
 
 function conversationKindLabel(kind: PullRequestConversationEntry["kind"]) {
   switch (kind) {
     case "review":
-      return "Review";
+      return "评审";
     case "review_comment":
-      return "Review Comment";
+      return "评审评论";
     case "review_thread":
-      return "Thread";
+      return "线程";
     default:
-      return "Comment";
+      return "评论";
   }
 }
 
@@ -394,7 +394,7 @@ function DeliveryGateCard({ gate }: { gate: PullRequestDeliveryGate }) {
           href={gate.href}
           className="mt-4 inline-flex border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
         >
-          Open Gate Context
+          打开详情
         </Link>
       ) : null}
     </article>
@@ -423,17 +423,17 @@ function DeliveryTemplateCard({ template }: { template: PullRequestDeliveryTempl
         <p className="font-display text-[18px] font-bold">{template.label}</p>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <FactTile label="Ready" value={String(template.readyDeliveries)} />
-        <FactTile label="Blocked" value={String(template.blockedDeliveries)} />
-        <FactTile label="Sent" value={String(template.sentReceipts)} />
-        <FactTile label="Failed" value={String(template.failedReceipts)} />
+        <FactTile label="可用" value={String(template.readyDeliveries)} />
+        <FactTile label="阻塞" value={String(template.blockedDeliveries)} />
+        <FactTile label="已发送" value={String(template.sentReceipts)} />
+        <FactTile label="失败" value={String(template.failedReceipts)} />
       </div>
       {template.href ? (
         <Link
           href={template.href}
           className="mt-4 inline-flex border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
         >
-          Open Delivery Surface
+          打开详情
         </Link>
       ) : null}
     </article>
@@ -456,7 +456,7 @@ function DeliveryEvidenceCard({ item }: { item: PullRequestDeliveryEvidence }) {
           rel={item.href.startsWith("http") ? "noreferrer" : undefined}
           className="mt-4 inline-flex border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
         >
-          Open Evidence
+          打开材料
         </Link>
       ) : null}
     </article>
@@ -501,7 +501,7 @@ function DeliveryCommunicationCard({ entry }: { entry: PullRequestDeliveryCommun
           href={entry.href}
           className="mt-4 inline-flex border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
         >
-          Open Mailbox Handoff
+          打开交接项
         </Link>
       ) : null}
     </article>
@@ -593,7 +593,7 @@ function ThreadActionCard({
           />
           <label className="block space-y-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              Comment As
+              留言身份
             </span>
             <select
               data-testid={`thread-action-comment-actor-${handoff.id}`}
@@ -629,7 +629,7 @@ function ThreadActionCard({
               onClick={() => onAdvance(handoff, action)}
               className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-50"
             >
-              {busyKey === `${handoff.id}:${action}` ? "Working..." : formatMailboxActionLabel(action)}
+              {busyKey === `${handoff.id}:${action}` ? "处理中..." : formatMailboxActionLabel(action)}
             </button>
           ))}
           {canResumeParent && parentHandoff ? (
@@ -640,14 +640,14 @@ function ThreadActionCard({
               onClick={() => onAdvance(parentHandoff, "acknowledged")}
               className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-50"
             >
-              {busyKey === `${parentHandoff.id}:acknowledged` ? "Working..." : "Resume Parent Closeout"}
+              {busyKey === `${parentHandoff.id}:acknowledged` ? "处理中..." : "继续主交接"}
             </button>
           ) : null}
           <Link
             href={`/mailbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
             className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.16em]"
           >
-            Open In Mailbox
+            在交接页打开
           </Link>
         </div>
       </div>
@@ -666,7 +666,7 @@ function DeliveryThreadActionSurface({ detail }: { detail: PullRequestDetail }) 
 
   const authSession = state.auth.session;
   const canMutate = hasSessionPermission(authSession, "run.execute");
-  const mutationStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "run.execute");
+  const mutationStatus = loading ? "同步中" : error ? "同步失败" : permissionStatus(authSession, "run.execute");
   const mutationBoundary = permissionBoundaryCopy(authSession, "run.execute");
 
   const parentHandoff = detail.delivery.delegation.handoffId
@@ -719,17 +719,17 @@ function DeliveryThreadActionSurface({ detail }: { detail: PullRequestDetail }) 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            Thread Actions
+            当前操作
           </p>
-          <p className="mt-2 font-display text-[22px] font-bold">Operate Current Closeout Without Leaving PR</p>
+          <p className="mt-2 font-display text-[22px] font-bold">直接在这里处理当前交接</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            当前活动的 delegated closeout / unblock reply 可以直接在 PR detail 里 formal ack、block、comment、complete，不必先跳去 Mailbox。
+            当前的交接和回复可以直接在这里处理，不需要跳去别的页面。
           </p>
         </div>
         <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-          <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Mutation Gate</p>
+          <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">操作权限</p>
           <p data-testid="pull-request-thread-action-gate" className="mt-1.5 font-display text-[18px] font-semibold">
-            {isRefreshing ? "refreshing" : mutationStatus}
+            {isRefreshing ? "刷新中" : mutationStatus}
           </p>
         </div>
       </div>
@@ -763,11 +763,11 @@ function DeliveryThreadActionSurface({ detail }: { detail: PullRequestDetail }) 
           })
         ) : detail.delivery.delegation.handoffId || detail.delivery.delegation.responseHandoffId ? (
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            当前 live mailbox truth 还在同步，稍后会在这里出现可操作 handoff。
+            正在同步，稍后这里会显示可操作的交接项。
           </p>
         ) : (
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            当前还没有 formal delivery handoff；一旦 delegated closeout / unblock reply 起单，这里会直接变成 thread action surface。
+            当前还没有交接项。
           </p>
         )}
       </div>
@@ -784,37 +784,37 @@ export function PullRequestDetailView({
 }) {
   const contextTitle = detail
     ? `${detail.pullRequest.label} · ${deliveryStatusLabel(detail.delivery.status)}`
-    : "Delivery Entry";
+    : "交付详情";
   const contextDescription = detail
     ? detail.delivery.summary
-    : "Review conversation、release gate、operator handoff note 和 evidence bundle 会在这里收成单一入口。";
+    : "评审、交接和交付信息都会集中显示在这里。";
 
   return (
     <OpenShockShell
       view="runs"
-      eyebrow="Delivery Entry"
-      title="Pull Request Delivery"
-      description="这页把 PR detail 升成 delivery entry：同一屏收 review conversation、release gate、operator handoff note 和 customer-facing evidence bundle。"
+      eyebrow="交付"
+      title="PR 交付详情"
+      description="在这里查看评审、交接、发布条件和交付材料。"
       contextTitle={contextTitle}
       contextDescription={contextDescription}
       contextBody={
         detail ? (
           <div className="grid gap-2 md:grid-cols-4">
-            <FactTile label="Room" value={detail.room.title} testID="pull-request-context-room" />
-            <FactTile label="Run" value={detail.run.id} testID="pull-request-context-run" />
-            <FactTile label="Issue" value={detail.issue.key} testID="pull-request-context-issue" />
-            <FactTile label="Release Ready" value={detail.delivery.releaseReady ? "yes" : "not yet"} testID="pull-request-context-release-ready" />
+            <FactTile label="讨论间" value={detail.room.title} testID="pull-request-context-room" />
+            <FactTile label="运行" value={detail.run.id} testID="pull-request-context-run" />
+            <FactTile label="事项" value={detail.issue.key} testID="pull-request-context-issue" />
+            <FactTile label="可交付" value={detail.delivery.releaseReady ? "是" : "否"} testID="pull-request-context-release-ready" />
           </div>
         ) : undefined
       }
     >
       <div className="space-y-4">
         {error ? (
-          <SurfaceStateMessage title="PR delivery entry 同步失败" message={error} />
+          <SurfaceStateMessage title="PR 交付详情同步失败" message={error} />
         ) : !detail ? (
           <SurfaceStateMessage
-            title="当前没有 delivery entry"
-            message="这条 PR 可能已经不存在，或当前 detail payload 还没有准备好。"
+            title="当前没有交付详情"
+            message="这条 PR 可能已经不存在，或数据暂时还没准备好。"
           />
         ) : (
           <>
@@ -830,12 +830,12 @@ export function PullRequestDetailView({
                   </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <FactTile label="Branch" value={detail.pullRequest.branch} />
-                  <FactTile label="Base" value={detail.pullRequest.baseBranch ?? "待同步"} />
-                  <FactTile label="Reviewer Truth" value={detail.pullRequest.reviewDecision || "REVIEW_REQUIRED"} />
-                  <FactTile label="Mergeable" value={mergeableLabel(detail.pullRequest.mergeable)} />
-                  <FactTile label="Merge Gate" value={mergeStateLabel(detail.pullRequest.mergeStateStatus)} />
-                  <FactTile label="Updated" value={detail.pullRequest.updatedAt} />
+                  <FactTile label="分支" value={detail.pullRequest.branch} />
+                  <FactTile label="基线" value={detail.pullRequest.baseBranch ?? "待同步"} />
+                  <FactTile label="评审结果" value={detail.pullRequest.reviewDecision || "待评审"} />
+                  <FactTile label="可合并" value={mergeableLabel(detail.pullRequest.mergeable)} />
+                  <FactTile label="合并状态" value={mergeStateLabel(detail.pullRequest.mergeStateStatus)} />
+                  <FactTile label="更新时间" value={detail.pullRequest.updatedAt} />
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -844,21 +844,21 @@ export function PullRequestDetailView({
                   data-testid="pull-request-room-pr-link"
                   className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                 >
-                  Room PR Tab
+                  讨论间 PR
                 </Link>
                 <Link
                   href={`/rooms/${detail.room.id}?tab=run`}
                   data-testid="pull-request-room-run-link"
                   className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                 >
-                  Run Context
+                  运行详情
                 </Link>
                 <Link
                   href="/inbox"
                   data-testid="pull-request-inbox-link"
                   className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                 >
-                  Inbox Back-link
+                  返回收件箱
                 </Link>
                 {detail.pullRequest.url ? (
                   <Link
@@ -867,7 +867,7 @@ export function PullRequestDetailView({
                     rel="noreferrer"
                     className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                   >
-                    Remote PR
+                    打开远端 PR
                   </Link>
                 ) : null}
               </div>
@@ -876,7 +876,7 @@ export function PullRequestDetailView({
             <Panel tone={deliveryPanelTone(detail.delivery.status)} className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-75">Delivery Status</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-75">交付状态</p>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <span
                       data-testid="pull-request-delivery-status"
@@ -887,14 +887,14 @@ export function PullRequestDetailView({
                     >
                       {deliveryStatusLabel(detail.delivery.status)}
                     </span>
-                    <h3 className="font-display text-3xl font-bold">Single Delivery Contract</h3>
+                    <h3 className="font-display text-3xl font-bold">交付总览</h3>
                   </div>
                   <p className="mt-4 max-w-4xl text-sm leading-6 opacity-85">{detail.delivery.summary}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <FactTile label="Gates" value={String(detail.delivery.gates.length)} testID="pull-request-delivery-gates-count" />
-                  <FactTile label="Templates" value={String(detail.delivery.templates.length)} testID="pull-request-delivery-templates-count" />
-                  <FactTile label="Evidence" value={String(detail.delivery.evidence.length)} testID="pull-request-delivery-evidence-count" />
+                  <FactTile label="条件" value={String(detail.delivery.gates.length)} testID="pull-request-delivery-gates-count" />
+                  <FactTile label="模板" value={String(detail.delivery.templates.length)} testID="pull-request-delivery-templates-count" />
+                  <FactTile label="材料" value={String(detail.delivery.evidence.length)} testID="pull-request-delivery-evidence-count" />
                 </div>
               </div>
             </Panel>
@@ -905,12 +905,12 @@ export function PullRequestDetailView({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        Release Gate
+                        发布条件
                       </p>
-                      <p className="mt-2 font-display text-[22px] font-bold">Can We Ship This PR?</p>
+                      <p className="mt-2 font-display text-[22px] font-bold">这条 PR 可以交付吗？</p>
                     </div>
                     <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                      {detail.delivery.gates.length} gates
+                      {detail.delivery.gates.length} 条
                     </span>
                   </div>
                   <div className="mt-4 space-y-3">
@@ -922,7 +922,7 @@ export function PullRequestDetailView({
 
                 <Panel tone="white">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                    Operator Handoff Note
+                    交接说明
                   </p>
                   <div className="mt-4 rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4 shadow-[var(--shock-shadow-sm)]">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -936,7 +936,7 @@ export function PullRequestDetailView({
                         data-testid="delivery-handoff-status"
                         className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
                       >
-                        {detail.delivery.releaseReady ? "ready to hand off" : "handoff blocked"}
+                        {detail.delivery.releaseReady ? "可以交接" : "交接受阻"}
                       </span>
                     </div>
                     <ul data-testid="delivery-handoff-note" className="mt-4 space-y-2">
@@ -953,10 +953,10 @@ export function PullRequestDetailView({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        Delivery Delegation
+                        交接状态
                       </p>
                       <p className="mt-2 font-display text-[22px] font-bold">
-                        {detail.delivery.delegation.targetAgent || "Waiting For Delegate"}
+                        {detail.delivery.delegation.targetAgent || "等待接手"}
                       </p>
                       <p
                         data-testid="delivery-delegation-summary"
@@ -1011,7 +1011,7 @@ export function PullRequestDetailView({
                         data-testid="delivery-delegation-response-attempts"
                         className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
                       >
-                        reply x{detail.delivery.delegation.responseAttemptCount}
+                        回复 x{detail.delivery.delegation.responseAttemptCount}
                       </span>
                     ) : null}
                     {(detail.delivery.delegation.handoffHref || detail.delivery.delegation.href) ? (
@@ -1020,7 +1020,7 @@ export function PullRequestDetailView({
                         data-testid="delivery-delegation-open"
                         className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
                       >
-                        {detail.delivery.delegation.handoffHref ? "Open Delegated Handoff" : "Open Delivery Context"}
+                        {detail.delivery.delegation.handoffHref ? "打开交接项" : "打开交付详情"}
                       </Link>
                     ) : null}
                     {detail.delivery.delegation.responseHandoffHref ? (
@@ -1029,7 +1029,7 @@ export function PullRequestDetailView({
                         data-testid="delivery-delegation-response-open"
                         className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]"
                       >
-                        Open Unblock Reply
+                        打开回复
                       </Link>
                     ) : null}
                   </div>
@@ -1039,15 +1039,15 @@ export function PullRequestDetailView({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        Delivery Collaboration Thread
+                        协作记录
                       </p>
-                      <p className="mt-2 font-display text-[22px] font-bold">Parent Closeout / Unblock Reply Timeline</p>
+                      <p className="mt-2 font-display text-[22px] font-bold">交接与回复时间线</p>
                     </div>
                     <span className="border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                       <span data-testid="delivery-communication-count">
                         {detail.delivery.delegation.communication?.length ?? 0}
                       </span>{" "}
-                      entries
+                      条
                     </span>
                   </div>
                   <div className="mt-4 space-y-3">
@@ -1057,7 +1057,7 @@ export function PullRequestDetailView({
                       ))
                     ) : (
                       <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                        当前还没有 formal delivery collaboration thread；一旦 delegated closeout / unblock reply 起单，这里会按时间顺序回放 parent 与 child 的正式沟通。
+                        当前还没有协作记录。
                       </p>
                     )}
                   </div>
@@ -1069,18 +1069,18 @@ export function PullRequestDetailView({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        Review Conversation
+                        评审记录
                       </p>
-                      <p className="mt-2 font-display text-[22px] font-bold">Comment / Thread Timeline</p>
+                      <p className="mt-2 font-display text-[22px] font-bold">评论与线程</p>
                     </div>
                     <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                      <span data-testid="pull-request-conversation-count">{detail.conversation.length}</span> entries
+                      <span data-testid="pull-request-conversation-count">{detail.conversation.length}</span> 条
                     </span>
                   </div>
                   <div className="mt-4 space-y-3">
                     {detail.conversation.length === 0 ? (
                       <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                        当前还没有持久化 review/comment/thread ledger。后续 webhook replay 或 fresh webhook delivery 会把 exact conversation backfill 到这里。
+                        当前还没有评审评论和讨论记录。
                       </p>
                     ) : (
                       detail.conversation.map((entry) => (
@@ -1125,13 +1125,13 @@ export function PullRequestDetailView({
                               </span>
                             ) : null}
                             {entry.url ? (
-                              <Link
-                                href={entry.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
-                              >
-                                Remote Comment
+                            <Link
+                              href={entry.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
+                            >
+                                打开原评论
                               </Link>
                             ) : null}
                           </div>
@@ -1145,12 +1145,12 @@ export function PullRequestDetailView({
               <div className="space-y-4">
                 <Panel tone="yellow">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                    Delivery Templates
+                    发送模板
                   </p>
                   <div className="mt-4 space-y-3">
                     {detail.delivery.templates.length === 0 ? (
                       <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                        当前还没有和这条 PR 关联的 notification template / receipt truth。
+                        当前还没有和这条 PR 关联的发送模板。
                       </p>
                     ) : (
                       detail.delivery.templates.map((template) => (
@@ -1162,7 +1162,7 @@ export function PullRequestDetailView({
 
                 <Panel tone="white">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                    Customer-facing Evidence Bundle
+                    对外材料
                   </p>
                   <div className="mt-4 space-y-3">
                     {detail.delivery.evidence.map((item) => (
@@ -1173,12 +1173,12 @@ export function PullRequestDetailView({
 
                 <Panel tone="yellow">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                    Related Inbox Signals
+                    相关收件箱提醒
                   </p>
                   <div className="mt-4 space-y-3">
                     {detail.relatedInbox.length === 0 ? (
                       <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                        当前没有和这条 PR 直接关联的 inbox signal。
+                        当前没有和这条 PR 直接关联的收件箱提醒。
                       </p>
                     ) : (
                       detail.relatedInbox.map((item) => (
@@ -1193,7 +1193,7 @@ export function PullRequestDetailView({
                               href={item.href}
                               className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]"
                             >
-                              Open Context
+                              打开详情
                             </Link>
                           </div>
                         </div>
@@ -1204,7 +1204,7 @@ export function PullRequestDetailView({
 
                 <Panel tone="white">
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                    Context Back-links
+                    相关上下文
                   </p>
                   <div className="mt-4 space-y-3">
                     <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">

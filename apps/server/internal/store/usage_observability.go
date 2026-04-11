@@ -253,7 +253,7 @@ func deriveWorkspaceQuotaWarning(quota WorkspaceQuotaSnapshot) string {
 	case "watch":
 		return "workspace 配额正在进入 watch 区，后续新增 room 或 citizen 前先看 plan headroom。"
 	default:
-		return "当前 workspace 仍在 Builder P0；先把 limits / retention / usage truth 摆到人类可见面。"
+		return "当前配额状态正常。"
 	}
 }
 
@@ -261,7 +261,7 @@ func deriveWorkspaceUsageWarning(workspace WorkspaceSnapshot, usage WorkspaceUsa
 	if usage.TotalTokens >= 14000 {
 		return "过去 24h 的 token 消耗已经过万，下一拍优先围绕高成本 room/run 做 drill-down。"
 	}
-	return fmt.Sprintf("%s 当前以 workspace plan 为主、usage 为辅；先把观察面做清，再决定是否要更重的 billing flow。", defaultString(workspace.Plan, "当前计划"))
+	return fmt.Sprintf("%s 当前运行正常。", defaultString(workspace.Plan, "当前计划"))
 }
 
 func safeRatio(used, limit int) float64 {

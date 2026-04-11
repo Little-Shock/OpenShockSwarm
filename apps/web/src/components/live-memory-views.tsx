@@ -72,17 +72,30 @@ function governanceTone(governance?: MemoryGovernance) {
   return "bg-white";
 }
 
+function governanceModeLabel(mode?: string) {
+  switch (mode) {
+    case "decision-ledger":
+      return "决策记录";
+    case "promoted-ledger":
+      return "复用规则";
+    case "state-snapshot":
+      return "状态快照";
+    default:
+      return mode ? mode.replace(/-/g, " ") : "";
+  }
+}
+
 function summarizeGovernance(governance?: MemoryGovernance) {
   if (!governance?.mode) {
-    return "未声明 governance";
+    return "未设置规则";
   }
 
-  const parts = [governance.mode];
+  const parts = [governanceModeLabel(governance.mode)];
   if (governance.requiresReview) {
-    parts.push("review required");
+    parts.push("需审核");
   }
   if (governance.escalation) {
-    parts.push(`escalate:${governance.escalation}`);
+    parts.push(`升级到 ${governance.escalation}`);
   }
   return parts.join(" / ");
 }
@@ -137,19 +150,19 @@ function buildDiffPreview(previous?: string, current?: string) {
 
   if (additions === 0 && removals === 0) {
     return {
-      summary: "当前版本和上一版内容一致，差异为 metadata 变更。",
-      preview: ["# no content diff"],
+      summary: "内容没有变化，仅更新时间或来源发生了变化。",
+      preview: ["# 内容无变化"],
     };
   }
 
   return {
     summary: `+${additions} / -${removals} lines`,
-    preview: lines.length > 0 ? lines : ["# diff omitted"],
+    preview: lines.length > 0 ? lines : ["# 已省略差异"],
   };
 }
 
 function policyModeLabel(mode: MemoryInjectionPolicy["mode"]) {
-  return mode === "governed-first" ? "Governed First" : "Balanced";
+  return mode === "governed-first" ? "优先固定资料" : "平衡模式";
 }
 
 function previewLabel(preview: MemoryInjectionPreview) {
@@ -164,17 +177,17 @@ function previewLabel(preview: MemoryInjectionPreview) {
 }
 
 function promotionKindLabel(kind: MemoryPromotionKind) {
-  return kind === "policy" ? "Policy" : "Skill";
+  return kind === "policy" ? "规则" : "技能";
 }
 
 function promotionStatusLabel(status: MemoryPromotionStatus) {
   switch (status) {
     case "approved":
-      return "approved";
+      return "已通过";
     case "rejected":
-      return "rejected";
+      return "未通过";
     default:
-      return "pending_review";
+      return "待审核";
   }
 }
 
@@ -196,11 +209,11 @@ function cleanupTone(status?: MemoryCleanupRun["status"]) {
 function providerKindLabel(kind: MemoryProviderBinding["kind"]) {
   switch (kind) {
     case "workspace-file":
-      return "Workspace File";
+      return "工作区文件";
     case "search-sidecar":
-      return "Search Sidecar";
+      return "搜索索引";
     default:
-      return "External Persistent";
+      return "外部记忆";
   }
 }
 
@@ -215,8 +228,19 @@ function providerStatusTone(status: MemoryProviderBinding["status"]) {
   }
 }
 
+function providerStatusLabel(status: MemoryProviderBinding["status"]) {
+  switch (status) {
+    case "healthy":
+      return "正常";
+    case "degraded":
+      return "异常";
+    default:
+      return status;
+  }
+}
+
 function providerActivityActionLabel(action: MemoryProviderActivityRun["action"]) {
-  return action === "recovery" ? "recovery" : "check";
+  return action === "recovery" ? "恢复" : "检查";
 }
 
 function providerScopeLabel(scope: string) {
@@ -224,29 +248,29 @@ function providerScopeLabel(scope: string) {
 }
 
 function providerScopeSummary(provider: MemoryProviderBinding) {
-  return `read ${provider.readScopes.join(", ")} / write ${provider.writeScopes.length > 0 ? provider.writeScopes.join(", ") : "read-only"}`;
+  return `读取：${provider.readScopes.join(", ")} / 写入：${provider.writeScopes.length > 0 ? provider.writeScopes.join(", ") : "只读"}`;
 }
 
 function cleanupStatsSummary(stats: MemoryCleanupRun["stats"]) {
   if (!stats.totalRemoved) {
-    return "queue already aligned";
+    return "当前无需清理";
   }
 
   const parts = [];
   if (stats.dedupedPending) {
-    parts.push(`${stats.dedupedPending} dedupe`);
+    parts.push(`${stats.dedupedPending} 条重复`);
   }
   if (stats.supersededPending) {
-    parts.push(`${stats.supersededPending} superseded`);
+    parts.push(`${stats.supersededPending} 条过期`);
   }
   if (stats.forgottenSourcePending) {
-    parts.push(`${stats.forgottenSourcePending} forgotten`);
+    parts.push(`${stats.forgottenSourcePending} 条已移除来源`);
   }
   if (stats.expiredPending || stats.expiredRejected) {
-    parts.push(`${stats.expiredPending + stats.expiredRejected} ttl`);
+    parts.push(`${stats.expiredPending + stats.expiredRejected} 条超时`);
   }
   if (stats.orphanedPromotions) {
-    parts.push(`${stats.orphanedPromotions} orphaned`);
+    parts.push(`${stats.orphanedPromotions} 条孤立申请`);
   }
   return parts.join(" / ");
 }
@@ -259,12 +283,12 @@ function memoryArtifactStatusLabel(artifact?: {
     return "未选择";
   }
   if (artifact.forgotten) {
-    return "forgotten / excluded from recall";
+    return "已移除";
   }
   if ((artifact.correctionCount ?? 0) > 0) {
-    return `active / ${(artifact.correctionCount ?? 0)} corrections`;
+    return `可用 / ${(artifact.correctionCount ?? 0)} 次修正`;
   }
-  return "active / recallable";
+  return "可用";
 }
 
 function ArtifactFact({
@@ -378,27 +402,27 @@ function LiveMemoryRailBody() {
 
   return (
     <DetailRail
-      label="Memory Truth"
+      label="记忆"
       items={[
         {
-          label: "Artifacts",
-          value: loading ? "同步中" : error ? "读取失败" : `${memory.length} items`,
+          label: "条目",
+          value: loading ? "同步中" : error ? "读取失败" : `${memory.length} 条`,
         },
         {
-          label: "Governed",
-          value: loading ? "同步中" : error ? "读取失败" : `${governed} governed`,
+          label: "已纳入规则",
+          value: loading ? "同步中" : error ? "读取失败" : `${governed} 条`,
         },
         {
-          label: "Pending",
-          value: centerLoading ? "同步中" : centerError ? "读取失败" : `${center.pendingCount} review`,
+          label: "待审核",
+          value: centerLoading ? "同步中" : centerError ? "读取失败" : `${center.pendingCount} 条`,
         },
         {
-          label: "Policy",
+          label: "带入方式",
           value: centerLoading ? "同步中" : centerError ? "读取失败" : policyModeLabel(center.policy.mode),
         },
         {
-          label: "Providers",
-          value: centerLoading ? "同步中" : centerError ? "读取失败" : `${activeProviders} active / ${degradedProviders} degraded`,
+          label: "来源",
+          value: centerLoading ? "同步中" : centerError ? "读取失败" : `${activeProviders} 可用 / ${degradedProviders} 异常`,
         },
       ]}
     />
@@ -457,7 +481,7 @@ export function LiveMemoryView() {
   const [promotionKind, setPromotionKind] = useState<MemoryPromotionKind>("skill");
   const [promotionTitle, setPromotionTitle] = useState("");
   const [promotionRationale, setPromotionRationale] = useState("");
-  const [feedbackSummary, setFeedbackSummary] = useState("Human Correction");
+  const [feedbackSummary, setFeedbackSummary] = useState("人工修正");
   const [feedbackNote, setFeedbackNote] = useState("");
   const [forgetReason, setForgetReason] = useState("");
 
@@ -541,7 +565,7 @@ export function LiveMemoryView() {
     try {
       await task();
     } catch (mutationFailure) {
-      setMutationError(mutationFailure instanceof Error ? mutationFailure.message : "memory action failed");
+      setMutationError(mutationFailure instanceof Error ? mutationFailure.message : "操作失败");
     } finally {
       setBusyAction(null);
     }
@@ -559,14 +583,14 @@ export function LiveMemoryView() {
       });
       setPolicyDirty(false);
       await refresh();
-      setMutationSuccess(`memory policy switched to ${policyModeLabel(policyModeDraft)} / ${maxItemsDraft} items`);
+      setMutationSuccess(`带入设置已更新为 ${policyModeLabel(policyModeDraft)}，最多 ${maxItemsDraft} 条。`);
     });
   }
 
   async function handleCreatePromotion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedArtifact) {
-      setMutationError("请先选择要提升的 memory artifact");
+      setMutationError("请先选择要整理的内容。");
       return;
     }
 
@@ -580,14 +604,14 @@ export function LiveMemoryView() {
       });
       setPromotionTitle("");
       setPromotionRationale("");
-      setMutationSuccess(`${selectedArtifact.path} queued for ${promotionKindLabel(promotionKind)} review`);
+      setMutationSuccess(`${selectedArtifact.path} 已提交${promotionKindLabel(promotionKind)}审核。`);
     });
   }
 
   async function handleSubmitFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedArtifact) {
-      setMutationError("请先选择要纠正的 memory artifact");
+      setMutationError("请先选择要修正的内容。");
       return;
     }
 
@@ -599,16 +623,16 @@ export function LiveMemoryView() {
       });
       setDetail(payload.detail);
       await refresh();
-      setFeedbackSummary("Human Correction");
+      setFeedbackSummary("人工修正");
       setFeedbackNote("");
-      setMutationSuccess(`${selectedArtifact.path} correction 已写回 governed truth`);
+      setMutationSuccess(`${selectedArtifact.path} 已更新。`);
     });
   }
 
   async function handleForget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedArtifact) {
-      setMutationError("请先选择要撤销的 memory artifact");
+      setMutationError("请先选择要移除的内容。");
       return;
     }
 
@@ -620,7 +644,7 @@ export function LiveMemoryView() {
       setDetail(payload.detail);
       await refresh();
       setForgetReason("");
-      setMutationSuccess(`${selectedArtifact.path} 已从 recall preview 撤销`);
+      setMutationSuccess(`${selectedArtifact.path} 已从后续任务中移除。`);
     });
   }
 
@@ -628,10 +652,10 @@ export function LiveMemoryView() {
     await runAction(`review-${promotion.id}-${status}`, async () => {
       await reviewPromotion(promotion.id, {
         status,
-        reviewNote: status === "approved" ? "memory center review approved" : "memory center review rejected",
+        reviewNote: status === "approved" ? "审核通过" : "审核未通过",
       });
       await refresh();
-      setMutationSuccess(`${promotion.title} marked ${promotionStatusLabel(status)}`);
+      setMutationSuccess(`${promotion.title} 已${promotionStatusLabel(status)}。`);
     });
   }
 
@@ -678,7 +702,7 @@ export function LiveMemoryView() {
       await refresh();
       const nextActive = payload.providers.filter((provider) => provider.enabled).length;
       const nextDegraded = payload.providers.filter((provider) => provider.status === "degraded").length;
-      setMutationSuccess(`memory providers updated: ${nextActive} active / ${nextDegraded} degraded`);
+      setMutationSuccess(`来源设置已保存：${nextActive} 个可用，${nextDegraded} 个异常。`);
     });
   }
 
@@ -687,10 +711,10 @@ export function LiveMemoryView() {
       const payload = await checkProvider(providerId);
       const provider = payload.providers.find((item) => item.id === providerId);
       if (!provider) {
-        throw new Error("provider check completed but target provider was not returned");
+        throw new Error("检查已完成，但没有返回对应来源。");
       }
       await refresh();
-      setMutationSuccess(`${provider.label} check -> ${provider.status}`);
+      setMutationSuccess(`${provider.label} 检查完成，当前状态：${providerStatusLabel(provider.status)}。`);
     });
   }
 
@@ -698,7 +722,7 @@ export function LiveMemoryView() {
     await runAction(`recover-provider-${providerId}`, async () => {
       const payload = await recoverProvider(providerId);
       await refresh();
-      setMutationSuccess(`${payload.provider.label} recovery -> ${payload.provider.status}`);
+      setMutationSuccess(`${payload.provider.label} 恢复完成，当前状态：${providerStatusLabel(payload.provider.status)}。`);
     });
   }
 
@@ -706,34 +730,34 @@ export function LiveMemoryView() {
     <div className="space-y-4">
       {error ? (
         <Panel tone="pink">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">State Sync Failed</p>
-          <p className="mt-3 text-base leading-7">memory center 仍可展示局部 detail，但当前 `/v1/state` 拉取失败：{error}</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">状态同步失败</p>
+          <p className="mt-3 text-base leading-7">当前无法读取工作区状态：{error}</p>
         </Panel>
       ) : null}
 
       {centerError ? (
         <Panel tone="pink">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Center Sync Failed</p>
-          <p className="mt-3 text-base leading-7">`/v1/memory-center` 当前读取失败：{centerError}</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">记忆同步失败</p>
+          <p className="mt-3 text-base leading-7">当前无法读取记忆中心：{centerError}</p>
         </Panel>
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <ArtifactFact label="Artifacts" value={loading ? "同步中" : `${memory.length} items`} testID="memory-artifact-count" />
-        <ArtifactFact label="Governed" value={loading ? "同步中" : `${governedArtifacts} governed`} testID="memory-governed-count" />
+        <ArtifactFact label="条目" value={loading ? "同步中" : `${memory.length} 条`} testID="memory-artifact-count" />
+        <ArtifactFact label="已纳入规则" value={loading ? "同步中" : `${governedArtifacts} 条`} testID="memory-governed-count" />
         <ArtifactFact
-          label="Promotion Queue"
-          value={centerLoading ? "同步中" : `${center.pendingCount} pending / ${center.approvedCount} approved`}
+          label="待审核"
+          value={centerLoading ? "同步中" : `${center.pendingCount} 待处理 / ${center.approvedCount} 已通过`}
           testID="memory-pending-count"
         />
         <ArtifactFact
-          label="Providers"
-          value={centerLoading ? "同步中" : `${activeProviders} active / ${degradedProviders} degraded`}
+          label="来源"
+          value={centerLoading ? "同步中" : `${activeProviders} 可用 / ${degradedProviders} 异常`}
           testID="memory-provider-count"
         />
         <ArtifactFact
-          label="Injection Pack"
-          value={preview ? `${preview.items.length} items / ${preview.files.length} files` : centerLoading ? "同步中" : "未选择"}
+          label="下一次任务"
+          value={preview ? `${preview.items.length} 条资料 / ${preview.files.length} 个文件` : centerLoading ? "同步中" : "未选择"}
           testID="memory-preview-size"
         />
       </div>
@@ -742,28 +766,28 @@ export function LiveMemoryView() {
         <Panel tone="paper" className="!p-3.5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Memory Registry</p>
-              <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">可治理记忆面</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">资料列表</p>
+              <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">已有资料</h2>
             </div>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-              {loading ? "syncing" : `${memory.length} artifacts`}
+              {loading ? "同步中" : `${memory.length} 条`}
             </span>
           </div>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-            这页现在不只读 detail。它会把 injection policy、next-run preview、promotion review queue 和 version audit 收成同一套 live truth。
+            这里可以查看资料内容、调整来源，并预览下一次任务会带上哪些上下文。
           </p>
 
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-1">
-            <StatusRow label="Governed Artifacts" value={`${governedArtifacts} artifacts`} tone="white" />
-            <StatusRow label="Decision Ledgers" value={`${decisionArtifacts} ledgers`} tone="yellow" />
-            <StatusRow label="Promoted Ledgers" value={`${promotedLedgers} ledgers`} tone="lime" />
-            <StatusRow label="Provider Health" value={`${activeProviders} active / ${degradedProviders} degraded`} tone="white" />
-            <StatusRow label="Current Policy" value={centerLoading ? "同步中" : policyModeLabel(center.policy.mode)} tone="white" />
+            <StatusRow label="已纳入规则" value={`${governedArtifacts} 条`} tone="white" />
+            <StatusRow label="决策记录" value={`${decisionArtifacts} 条`} tone="yellow" />
+            <StatusRow label="复用规则" value={`${promotedLedgers} 条`} tone="lime" />
+            <StatusRow label="来源状态" value={`${activeProviders} 可用 / ${degradedProviders} 异常`} tone="white" />
+            <StatusRow label="当前带入方式" value={centerLoading ? "同步中" : policyModeLabel(center.policy.mode)} tone="white" />
           </div>
 
           <div className="mt-4 space-y-2">
             {memory.length === 0 ? (
-              <EmptyState title="memory registry 为空" message="等 server 返回 `/v1/memory` 真值后，这里会展开 governed artifact registry。" />
+              <EmptyState title="还没有资料" message="等同步完成后，这里会显示已有资料和历史记录。" />
             ) : (
               memory.map((artifact) => {
                 const active = artifact.id === selectedArtifact?.id;
@@ -790,7 +814,7 @@ export function LiveMemoryView() {
                           artifact.forgotten ? "bg-[var(--shock-pink)] text-white" : "bg-white"
                         )}
                       >
-                        {artifact.forgotten ? "forgotten" : `v${artifact.version ?? 0}`}
+                        {artifact.forgotten ? "已移除" : `v${artifact.version ?? 0}`}
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-6">{artifact.summary}</p>
@@ -808,55 +832,55 @@ export function LiveMemoryView() {
           <Panel tone="white" className="!p-3.5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Artifact Detail</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">内容详情</p>
                 <h2 data-testid="memory-detail-path" className="mt-1.5 font-display text-[24px] font-bold leading-7">
                   {selectedArtifact?.path ?? "等待选择"}
                 </h2>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {selectedArtifact ? summarizeGovernance(selectedArtifact.governance) : "no artifact"}
+                {selectedArtifact ? summarizeGovernance(selectedArtifact.governance) : "未选择"}
               </span>
             </div>
 
             {detailError ? (
               <p className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-4 text-sm leading-6 text-white">
-                `/v1/memory/{deferredArtifactId}` 读取失败：{detailError}
+                无法读取这条资料：{detailError}
               </p>
             ) : null}
 
             <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              <ArtifactFact label="Version" value={selectedArtifact ? `v${selectedArtifact.version ?? 0}` : "未选择"} />
+              <ArtifactFact label="版本" value={selectedArtifact ? `v${selectedArtifact.version ?? 0}` : "未选择"} />
               <ArtifactFact
-                label="Status"
+                label="状态"
                 value={memoryArtifactStatusLabel(selectedArtifact)}
                 testID="memory-detail-status"
               />
               <ArtifactFact
-                label="Scope / Kind"
+                label="范围 / 类型"
                 value={selectedArtifact ? `${selectedArtifact.scope} / ${selectedArtifact.kind}` : "未选择"}
               />
-              <ArtifactFact label="Latest Write" value={valueOrFallback(selectedArtifact?.latestWrite, "未记录")} />
+              <ArtifactFact label="最近更新" value={valueOrFallback(selectedArtifact?.latestWrite, "未记录")} />
               <ArtifactFact
-                label="Source / Actor"
+                label="来源 / 修改人"
                 value={
                   selectedArtifact
-                    ? `${valueOrFallback(selectedArtifact.latestSource, "unknown")} / ${valueOrFallback(selectedArtifact.latestActor, "unknown")}`
+                    ? `${valueOrFallback(selectedArtifact.latestSource, "未记录")} / ${valueOrFallback(selectedArtifact.latestActor, "未记录")}`
                     : "未选择"
                 }
               />
               <ArtifactFact
-                label="Digest / Size"
+                label="摘要 / 大小"
                 value={
                   selectedArtifact
-                    ? `${valueOrFallback(selectedArtifact.digest?.slice(0, 10), "n/a")} / ${formatBytes(selectedArtifact.sizeBytes)}`
+                    ? `${valueOrFallback(selectedArtifact.digest?.slice(0, 10), "未记录")} / ${formatBytes(selectedArtifact.sizeBytes)}`
                     : "未选择"
                 }
               />
               <ArtifactFact
-                label="Correction Trail"
+                label="修正记录"
                 value={
                   selectedArtifact
-                    ? `${selectedArtifact.correctionCount ?? 0} corrections / ${valueOrFallback(selectedArtifact.lastCorrectionBy, "no human correction yet")}`
+                    ? `${selectedArtifact.correctionCount ?? 0} 次 / ${valueOrFallback(selectedArtifact.lastCorrectionBy, "暂无")}`
                     : "未选择"
                 }
                 testID="memory-detail-correction-count"
@@ -865,17 +889,17 @@ export function LiveMemoryView() {
 
             <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_0.85fr]">
               <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Current Content</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前内容</p>
                 <pre
                   data-testid="memory-detail-content"
                   className="mt-3 max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-6 text-[color:rgba(24,20,14,0.82)]"
                 >
-                  {detailLoading ? "正在读取 artifact detail..." : resolvedDetail?.content || "# 暂无内容"}
+                  {detailLoading ? "正在读取内容..." : resolvedDetail?.content || "# 暂无内容"}
                 </pre>
               </div>
 
               <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Diff Preview</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">版本差异</p>
                 <p className="mt-3 text-sm leading-6">
                   {previousVersion ? `v${previousVersion.version} -> v${latestVersion?.version ?? "?"}` : "只有基线版本，还没有上一版可对比。"}
                 </p>
@@ -892,15 +916,15 @@ export function LiveMemoryView() {
               <form onSubmit={handleSubmitFeedback} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Correction / Feedback</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold">把纠偏写回同一份 governed truth</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">修正内容</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">更新这条资料</h3>
                   </div>
                   <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    {artifactSupportsMutation ? "file-backed" : "read-only"}
+                    {artifactSupportsMutation ? "可编辑" : "只读"}
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                  correction 会追加一条 human feedback 到同一份 memory artifact，并进入 version audit。不是另长 shadow note。
+                  提交后会保留历史，并更新这条资料的最新版本。
                 </p>
                 <div className="mt-4 space-y-3">
                   <input
@@ -910,7 +934,7 @@ export function LiveMemoryView() {
                     onChange={(event) => setFeedbackSummary(event.target.value)}
                     disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null}
                     className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-                    placeholder="Human Correction"
+                    placeholder="修正标题"
                     required
                   />
                   <textarea
@@ -919,7 +943,7 @@ export function LiveMemoryView() {
                     onChange={(event) => setFeedbackNote(event.target.value)}
                     disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null}
                     className="min-h-[140px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
-                    placeholder="写清为什么这条记忆需要被纠正，以及后续 retrieval 应该读哪条 truth。"
+                    placeholder="说明哪里需要改，以及以后应该保留什么内容。"
                     required
                   />
                 </div>
@@ -930,10 +954,10 @@ export function LiveMemoryView() {
                     disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null || !selectedArtifact}
                     className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                   >
-                    {busyAction === "submit-feedback" ? "writing..." : "write correction"}
+                    {busyAction === "submit-feedback" ? "保存中..." : "保存修正"}
                   </button>
                   <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                    {selectedArtifact?.forgotten ? "forgotten artifact 不再接受 correction。" : "下一版会带上 actor / source / version trace。"}
+                    {selectedArtifact?.forgotten ? "已移除的内容不能继续修改。" : "会记录修改人、时间和版本。"}
                   </p>
                 </div>
               </form>
@@ -941,8 +965,8 @@ export function LiveMemoryView() {
               <form onSubmit={handleForget} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Forget Surface</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold">从 recall preview 撤销过期 artifact</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">移除内容</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">不要再带入后续任务</h3>
                   </div>
                   <span
                     className={cn(
@@ -950,15 +974,15 @@ export function LiveMemoryView() {
                       selectedArtifact?.forgotten ? "bg-[var(--shock-pink)] text-white" : "bg-[var(--shock-paper)]"
                     )}
                   >
-                    {selectedArtifact?.forgotten ? "forgotten" : "active"}
+                    {selectedArtifact?.forgotten ? "已移除" : "可用"}
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                  forget 会保留 audit trail，但会把这条 artifact 从 next-run recall pack 中摘掉，避免继续注入过期上下文。
+                  不会删除历史，只是不再把这条内容带进后续任务。
                 </p>
                 {selectedArtifact?.forgotten ? (
                   <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-3 text-sm leading-6 text-white">
-                    forgotten by {valueOrFallback(selectedArtifact.forgottenBy, "unknown")} @ {formatTimestamp(selectedArtifact.forgottenAt)}。{valueOrFallback(selectedArtifact.forgetReason, "未记录原因")}
+                    由 {valueOrFallback(selectedArtifact.forgottenBy, "未记录")} 于 {formatTimestamp(selectedArtifact.forgottenAt)} 移除。{valueOrFallback(selectedArtifact.forgetReason, "未记录原因")}
                   </div>
                 ) : null}
                 <textarea
@@ -967,7 +991,7 @@ export function LiveMemoryView() {
                   onChange={(event) => setForgetReason(event.target.value)}
                   disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null}
                   className="mt-4 min-h-[140px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
-                  placeholder="说明为什么这条 artifact 应该从 recall pack 中撤销。"
+                  placeholder="说明为什么后续任务不该继续使用这条内容。"
                   required
                 />
                 <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -977,10 +1001,10 @@ export function LiveMemoryView() {
                     disabled={!canMutate || !artifactSupportsMutation || selectedArtifact?.forgotten || busyAction !== null || !selectedArtifact}
                     className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white disabled:opacity-60"
                   >
-                    {busyAction === "forget-artifact" ? "forgetting..." : "forget from recall"}
+                    {busyAction === "forget-artifact" ? "处理中..." : "移除"}
                   </button>
                   <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                    {artifactSupportsMutation ? "会追加 forget audit，并从 preview 中移除。" : "当前 artifact 不是可变 file-backed memory。"}
+                    {artifactSupportsMutation ? "会保留历史，并从后续任务中移除。" : "当前内容不能直接修改。"}
                   </p>
                 </div>
               </form>
@@ -990,15 +1014,15 @@ export function LiveMemoryView() {
           <Panel tone={canMutate ? "paper" : "white"} className="!p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Provider Orchestration</p>
-                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">把记忆 provider 变成正式配置真相</h2>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">记忆来源</p>
+                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">管理资料来源</h2>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {centerLoading ? "syncing" : `${activeProviders} active / ${degradedProviders} degraded`}
+                {centerLoading ? "同步中" : `${activeProviders} 可用 / ${degradedProviders} 异常`}
               </span>
             </div>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              这里收 workspace file memory、search sidecar 和 external durable memory 的 binding truth。保存后，next-run preview 会立刻暴露 active provider、scope、retention 和 degraded fallback。
+              可以在这里管理本地文件、搜索索引和外部记忆来源。
             </p>
 
             <div className="mt-5 space-y-4">
@@ -1027,7 +1051,7 @@ export function LiveMemoryView() {
                             providerStatusTone(provider.status) === "white" && "bg-[var(--shock-paper)]"
                           )}
                         >
-                          {provider.status}
+                          {providerStatusLabel(provider.status)}
                         </span>
                         <button
                           type="button"
@@ -1044,32 +1068,32 @@ export function LiveMemoryView() {
                             provider.enabled ? "bg-[var(--shock-yellow)]" : "bg-white"
                           )}
                         >
-                          {provider.enabled ? "enabled" : "disabled"}
+                          {provider.enabled ? "已启用" : "已停用"}
                         </button>
                       </div>
                     </div>
 
                     <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                      <StatusRow label="Scopes" value={providerScopeSummary(provider)} tone="white" />
-                      <StatusRow label="Recall" value={provider.recallPolicy} tone="yellow" />
-                      <StatusRow label="Retention" value={provider.retentionPolicy} tone="white" />
+                      <StatusRow label="范围" value={providerScopeSummary(provider)} tone="white" />
+                      <StatusRow label="读取规则" value={provider.recallPolicy} tone="yellow" />
+                      <StatusRow label="保留规则" value={provider.retentionPolicy} tone="white" />
                       <StatusRow
-                        label="Last Check"
-                        value={`${formatTimestamp(provider.lastCheckedAt)} / ${valueOrFallback(provider.lastCheckSource, "unspecified")}`}
+                        label="最近检查"
+                        value={`${formatTimestamp(provider.lastCheckedAt)} / ${valueOrFallback(provider.lastCheckSource, "未记录")}`}
                         tone={provider.status === "degraded" ? "pink" : "white"}
                       />
                     </div>
 
                     <div className="mt-4 grid gap-2 md:grid-cols-2">
                       <StatusRow
-                        label="Health Summary"
-                        value={valueOrFallback(provider.lastSummary, "尚未记录 health summary")}
+                        label="当前状态"
+                        value={valueOrFallback(provider.lastSummary, "还没有状态说明")}
                         tone={provider.status === "degraded" ? "pink" : provider.status === "healthy" ? "lime" : "white"}
                         testID={`memory-provider-health-summary-${provider.id}`}
                       />
                       <StatusRow
-                        label="Next Action"
-                        value={valueOrFallback(provider.nextAction, "当前无额外操作建议")}
+                        label="建议操作"
+                        value={valueOrFallback(provider.nextAction, "当前无需额外处理")}
                         tone={provider.status === "degraded" ? "yellow" : "white"}
                         testID={`memory-provider-next-action-${provider.id}`}
                       />
@@ -1092,7 +1116,7 @@ export function LiveMemoryView() {
                         onClick={() => void handleCheckProvider(provider.id)}
                         className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                       >
-                        {busyAction === `check-provider-${provider.id}` ? "checking..." : "run health check"}
+                        {busyAction === `check-provider-${provider.id}` ? "检查中..." : "运行检查"}
                       </button>
                       <button
                         type="button"
@@ -1101,18 +1125,18 @@ export function LiveMemoryView() {
                         onClick={() => void handleRecoverProvider(provider.id)}
                         className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                       >
-                        {busyAction === `recover-provider-${provider.id}` ? "recovering..." : "attempt recovery"}
+                        {busyAction === `recover-provider-${provider.id}` ? "恢复中..." : "尝试恢复"}
                       </button>
                       <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
                         {provider.failureCount && provider.failureCount > 0
-                          ? `${provider.failureCount} consecutive degraded check(s) recorded.`
-                          : "当前没有连续失败记录。"}
+                          ? `已连续 ${provider.failureCount} 次异常。`
+                          : "当前没有连续异常记录。"}
                       </p>
                     </div>
 
                     <div className="mt-4 grid gap-4 xl:grid-cols-2">
                       <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Read Scopes</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">读取范围</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {MEMORY_PROVIDER_SCOPE_OPTIONS.map((scope) => {
                             const active = provider.readScopes.includes(scope);
@@ -1135,7 +1159,7 @@ export function LiveMemoryView() {
                       </div>
 
                       <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Write Scopes</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">写入范围</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {MEMORY_PROVIDER_SCOPE_OPTIONS.map((scope) => {
                             const active = provider.writeScopes.includes(scope);
@@ -1157,7 +1181,7 @@ export function LiveMemoryView() {
                         </div>
                         {readOnlyWriteScopes ? (
                           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                            Search Sidecar 只负责 recall，不做外部 durable write。
+                            搜索索引只负责读取，不会写回。
                           </p>
                         ) : null}
                       </div>
@@ -1175,7 +1199,7 @@ export function LiveMemoryView() {
                           }))
                         }
                         className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-                        placeholder="Recall Policy"
+                        placeholder="读取规则"
                       />
                       <input
                         type="text"
@@ -1188,7 +1212,7 @@ export function LiveMemoryView() {
                           }))
                         }
                         className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-                        placeholder="Retention Policy"
+                        placeholder="保留规则"
                       />
                       <input
                         type="text"
@@ -1201,7 +1225,7 @@ export function LiveMemoryView() {
                           }))
                         }
                         className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-                        placeholder="Sharing Policy"
+                        placeholder="共享规则"
                       />
                     </div>
 
@@ -1216,19 +1240,19 @@ export function LiveMemoryView() {
                         }))
                       }
                       className="mt-4 min-h-[110px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
-                      placeholder="Provider Summary"
+                      placeholder="补充说明"
                     />
 
                     <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Health Timeline</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">检查记录</p>
                         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                          {provider.activity.length} events
+                          {provider.activity.length} 条
                         </span>
                       </div>
                       <div className="mt-3 space-y-2" data-testid={`memory-provider-activity-${provider.id}`}>
                         {provider.activity.length === 0 ? (
-                          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">还没有 health / recovery event。先跑一次检查或恢复。</p>
+                          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">还没有检查记录。可以先运行一次检查或恢复。</p>
                         ) : (
                           provider.activity.map((event) => (
                             <div
@@ -1242,16 +1266,16 @@ export function LiveMemoryView() {
                             >
                               <div className="flex flex-wrap items-center justify-between gap-3">
                                 <p className="font-mono text-[10px] uppercase tracking-[0.18em]">
-                                  {providerActivityActionLabel(event.action)} / {event.status}
+                                  {providerActivityActionLabel(event.action)} / {providerStatusLabel(event.status)}
                                 </p>
                                 <p className="font-mono text-[10px] uppercase tracking-[0.16em]">
-                                  {formatTimestamp(event.triggeredAt)} / {valueOrFallback(event.triggeredBy, "System")}
+                                  {formatTimestamp(event.triggeredAt)} / {valueOrFallback(event.triggeredBy, "系统")}
                                 </p>
                               </div>
                               <p className="mt-2 text-sm leading-6">{event.summary}</p>
                               {event.detail ? <p className="mt-2 text-sm leading-6 opacity-80">{event.detail}</p> : null}
                               {event.nextAction ? (
-                                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-80">next: {event.nextAction}</p>
+                                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-80">下一步：{event.nextAction}</p>
                               ) : null}
                             </div>
                           ))
@@ -1271,10 +1295,10 @@ export function LiveMemoryView() {
                 onClick={() => void handleSaveProviders()}
                 className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
               >
-                {busyAction === "save-providers" ? "saving..." : "save provider bindings"}
+                {busyAction === "save-providers" ? "保存中..." : "保存来源设置"}
               </button>
               <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                {providerDirty ? "provider draft 有未保存修改。" : "provider binding 已与 durable memory-center truth 对齐。"}
+                {providerDirty ? "有未保存修改。" : "已保存。"}
               </p>
             </div>
           </Panel>
@@ -1282,21 +1306,21 @@ export function LiveMemoryView() {
           <Panel tone={canMutate ? "yellow" : "paper"} className="!p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Injection Policy</p>
-                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">下一条任务真正会注入什么</h2>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">带入设置</p>
+                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">下一次任务会带什么</h2>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {canMutate ? "memory.write live" : "read-only session"}
+                {canMutate ? "可编辑" : "只读"}
               </span>
             </div>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              这层把 recall policy、session-level injection preview、mounted files 和 runtime tools 收成同一页真值。变更 policy 后，下一条任务的 prompt summary 和 file pack 会一起更新。
+              可以控制讨论记录、决策、Agent 资料等内容是否带入下一次任务。
             </p>
 
             {!canMutate ? (
               <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
                 <p className="font-mono text-[11px] uppercase tracking-[0.16em]">
-                  当前 session 没有 `memory.write`。仍可检查 preview / audit，但 policy 和 promotion mutation 保持只读。
+                  当前账号没有修改权限，只能查看。
                 </p>
               </div>
             ) : null}
@@ -1304,9 +1328,9 @@ export function LiveMemoryView() {
             <div className="mt-5 grid gap-4 xl:grid-cols-[0.95fr_minmax(0,1.05fr)]">
               <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Policy Draft</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前设置</p>
                   <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    {policyDirty ? "dirty" : "synced"}
+                    {policyDirty ? "有修改" : "已保存"}
                   </span>
                 </div>
 
@@ -1328,7 +1352,7 @@ export function LiveMemoryView() {
                     >
                       <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{policyModeLabel(mode)}</p>
                       <p className="mt-2 text-sm leading-6">
-                        {mode === "governed-first" ? "优先把 decision / promoted ledger 推到 recall pack 前面。" : "平衡 session path 与 promoted memory，不只盯 review-required artifacts。"}
+                        {mode === "governed-first" ? "优先带入固定资料和已确认内容。" : "平衡当前会话和长期资料。"}
                       </p>
                     </button>
                   ))}
@@ -1345,8 +1369,8 @@ export function LiveMemoryView() {
                       includeRoomNotesDraft ? "bg-[var(--shock-lime)]" : "bg-white"
                     )}
                   >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Room Notes</p>
-                    <p className="mt-2 text-sm leading-6">{includeRoomNotesDraft ? "注入 room note" : "跳过 room note"}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">讨论记录</p>
+                    <p className="mt-2 text-sm leading-6">{includeRoomNotesDraft ? "带入讨论记录" : "不带入讨论记录"}</p>
                   </button>
                   <button
                     type="button"
@@ -1358,8 +1382,8 @@ export function LiveMemoryView() {
                       includeDecisionLedgerDraft ? "bg-[var(--shock-lime)]" : "bg-white"
                     )}
                   >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Decision Ledger</p>
-                    <p className="mt-2 text-sm leading-6">{includeDecisionLedgerDraft ? "注入 issue decision" : "跳过 decision ledger"}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">决策记录</p>
+                    <p className="mt-2 text-sm leading-6">{includeDecisionLedgerDraft ? "带入决策记录" : "不带入决策记录"}</p>
                   </button>
                   <button
                     type="button"
@@ -1371,8 +1395,8 @@ export function LiveMemoryView() {
                       includeAgentMemoryDraft ? "bg-[var(--shock-lime)]" : "bg-white"
                     )}
                   >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Agent Memory</p>
-                    <p className="mt-2 text-sm leading-6">{includeAgentMemoryDraft ? "附带 owner agent memory" : "只用 workspace / room / issue memory"}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Agent 资料</p>
+                    <p className="mt-2 text-sm leading-6">{includeAgentMemoryDraft ? "带入 Agent 资料" : "只用工作区和讨论资料"}</p>
                   </button>
                   <button
                     type="button"
@@ -1384,14 +1408,14 @@ export function LiveMemoryView() {
                       includePromotedArtifactsDraft ? "bg-[var(--shock-lime)]" : "bg-white"
                     )}
                   >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Promoted Ledgers</p>
-                    <p className="mt-2 text-sm leading-6">{includePromotedArtifactsDraft ? "skill / policy ledger 进入 preview" : "暂不注入 promoted ledgers"}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">复用规则</p>
+                    <p className="mt-2 text-sm leading-6">{includePromotedArtifactsDraft ? "带入已沉淀的技能和规则" : "不带入复用规则"}</p>
                   </button>
                 </div>
 
                 <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
                   <label className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]" htmlFor="memory-policy-max-items">
-                    Max Injected Items
+                    最多带入条数
                   </label>
                   <select
                     id="memory-policy-max-items"
@@ -1406,7 +1430,7 @@ export function LiveMemoryView() {
                   >
                     {POLICY_MAX_ITEM_OPTIONS.map((option) => (
                       <option key={option} value={option}>
-                        {option} items
+                        {option} 条
                       </option>
                     ))}
                   </select>
@@ -1420,10 +1444,10 @@ export function LiveMemoryView() {
                     onClick={() => void handleSavePolicy()}
                     className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                   >
-                    {busyAction === "save-policy" ? "saving..." : "save policy"}
+                    {busyAction === "save-policy" ? "保存中..." : "保存设置"}
                   </button>
                   <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                    Updated by {valueOrFallback(center.policy.updatedBy, "unknown")} @ {formatTimestamp(center.policy.updatedAt)}
+                    最近更新：{valueOrFallback(center.policy.updatedBy, "未记录")} / {formatTimestamp(center.policy.updatedAt)}
                   </p>
                 </div>
               </div>
@@ -1431,8 +1455,8 @@ export function LiveMemoryView() {
               <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Injection Preview</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold">{preview ? preview.title : "等待 session"}</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">预览</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">{preview ? preview.title : "等待会话"}</h3>
                   </div>
                   <select
                     data-testid="memory-preview-session"
@@ -1450,9 +1474,9 @@ export function LiveMemoryView() {
 
                 {preview ? (
                   <>
-                    <StatusRow label="Recall Policy" value={preview.recallPolicy} tone="yellow" />
+                    <StatusRow label="读取规则" value={preview.recallPolicy} tone="yellow" />
                     <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Prompt Summary</p>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">任务摘要</p>
                       <pre data-testid="memory-preview-summary" className="mt-3 whitespace-pre-wrap font-mono text-[12px] leading-6">
                         {preview.promptSummary}
                       </pre>
@@ -1460,13 +1484,13 @@ export function LiveMemoryView() {
 
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Mounted Files</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">附带文件</p>
                         <div className="mt-3 space-y-2">
                           {preview.files.map((path) => (
                             <StatusRow
                               key={path}
                               label={path}
-                              value="mounted into next run"
+                              value="会带入下一次任务"
                               tone="white"
                               testID={`memory-preview-file-${toTestID(path)}`}
                             />
@@ -1475,7 +1499,7 @@ export function LiveMemoryView() {
                       </div>
 
                       <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Runtime Tools</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">可用工具</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {preview.tools.map((tool) => (
                             <span key={tool} className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]">
@@ -1488,9 +1512,9 @@ export function LiveMemoryView() {
 
                     <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Provider Orchestration</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">使用中的来源</p>
                         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                          {preview.providers.length} providers
+                          {preview.providers.length} 个
                         </span>
                       </div>
                       <div className="mt-3 grid gap-3 xl:grid-cols-3">
@@ -1515,7 +1539,7 @@ export function LiveMemoryView() {
                                   providerStatusTone(provider.status) === "white" && "bg-white"
                                 )}
                               >
-                                {provider.status}
+                                {providerStatusLabel(provider.status)}
                               </span>
                             </div>
                             <p className="mt-3 text-sm leading-6">{provider.summary}</p>
@@ -1530,7 +1554,7 @@ export function LiveMemoryView() {
                             ) : null}
                             {provider.nextAction ? (
                               <p className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                                next: {provider.nextAction}
+                                下一步：{provider.nextAction}
                               </p>
                             ) : null}
                           </div>
@@ -1553,7 +1577,7 @@ export function LiveMemoryView() {
                               <p className="mt-2 font-display text-2xl font-bold">{item.path}</p>
                             </div>
                             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                              {item.required ? "required" : item.reason}
+                              {item.required ? "必带" : item.reason}
                             </span>
                           </div>
                           <p className="mt-3 text-sm leading-6">{item.latestWrite || item.summary}</p>
@@ -1570,7 +1594,7 @@ export function LiveMemoryView() {
                     </div>
                   </>
                 ) : (
-                  <EmptyState title="preview 未就绪" message="等 `/v1/memory-center` 返回 session-level recall truth 后，这里会展开 injection pack。" />
+                  <EmptyState title="预览暂不可用" message="等同步完成后，这里会显示下一次任务会带上的内容。" />
                 )}
               </div>
             </div>
@@ -1581,8 +1605,8 @@ export function LiveMemoryView() {
           <Panel tone="white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Cleanup Worker</p>
-                <h2 className="mt-2 font-display text-3xl font-bold">TTL / dedupe / recovery ledger</h2>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">清理记录</p>
+                <h2 className="mt-2 font-display text-3xl font-bold">清理过期和重复内容</h2>
               </div>
               <button
                 type="button"
@@ -1591,32 +1615,32 @@ export function LiveMemoryView() {
                 onClick={() => void handleRunCleanup()}
                 className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
               >
-                {busyAction === "run-cleanup" ? "cleaning..." : "run cleanup"}
+                {busyAction === "run-cleanup" ? "清理中..." : "开始清理"}
               </button>
             </div>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              cleanup 会把 stale pending / expired rejected / forgotten-source promotions 从同一条 governance queue 里收掉，并把恢复建议记进 ledger。
+              用来清理过期、重复或不再使用的条目。
             </p>
 
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <ArtifactFact
-                label="Last Run"
+                label="上次运行"
                 value={center.cleanup.lastRunAt ? formatTimestamp(center.cleanup.lastRunAt) : "尚未执行"}
                 testID="memory-cleanup-last-run"
               />
               <ArtifactFact
-                label="Last Actor"
-                value={valueOrFallback(center.cleanup.lastRunBy, "System")}
+                label="执行人"
+                value={valueOrFallback(center.cleanup.lastRunBy, "系统")}
                 testID="memory-cleanup-last-actor"
               />
               <ArtifactFact
-                label="Last Status"
-                value={center.cleanup.lastStatus === "cleaned" ? "cleaned" : center.cleanup.lastRunAt ? "no_changes" : "尚未执行"}
+                label="结果"
+                value={center.cleanup.lastStatus === "cleaned" ? "已清理" : center.cleanup.lastRunAt ? "无变化" : "尚未执行"}
                 testID="memory-cleanup-last-status"
               />
               <ArtifactFact
-                label="Removed"
-                value={`${center.cleanup.lastStats.totalRemoved} entries`}
+                label="移除"
+                value={`${center.cleanup.lastStats.totalRemoved} 条`}
                 testID="memory-cleanup-removed-count"
               />
             </div>
@@ -1624,25 +1648,25 @@ export function LiveMemoryView() {
             <div className="mt-4 grid gap-3 xl:grid-cols-[0.92fr_minmax(0,1.08fr)]">
               <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
                 <StatusRow
-                  label="Cleanup Summary"
-                  value={valueOrFallback(center.cleanup.lastSummary, "还没有 cleanup ledger")}
+                  label="摘要"
+                  value={valueOrFallback(center.cleanup.lastSummary, "还没有清理记录")}
                   tone={cleanupTone(center.cleanup.lastStatus)}
                   testID="memory-cleanup-last-summary"
                 />
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <StatusRow label="Dedupe" value={`${center.cleanup.lastStats.dedupedPending} removed`} tone="white" />
-                  <StatusRow label="Superseded" value={`${center.cleanup.lastStats.supersededPending} removed`} tone="white" />
-                  <StatusRow label="Forgotten Source" value={`${center.cleanup.lastStats.forgottenSourcePending} removed`} tone="white" />
+                  <StatusRow label="重复" value={`${center.cleanup.lastStats.dedupedPending} 条`} tone="white" />
+                  <StatusRow label="过期" value={`${center.cleanup.lastStats.supersededPending} 条`} tone="white" />
+                  <StatusRow label="已移除来源" value={`${center.cleanup.lastStats.forgottenSourcePending} 条`} tone="white" />
                   <StatusRow
-                    label="TTL / Orphaned"
-                    value={`${center.cleanup.lastStats.expiredPending + center.cleanup.lastStats.expiredRejected + center.cleanup.lastStats.orphanedPromotions} removed`}
+                    label="超时 / 孤立"
+                    value={`${center.cleanup.lastStats.expiredPending + center.cleanup.lastStats.expiredRejected + center.cleanup.lastStats.orphanedPromotions} 条`}
                     tone="white"
                   />
                 </div>
                 <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Recovery Note</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">处理建议</p>
                   <p data-testid="memory-cleanup-last-recovery" className="mt-3 text-sm leading-6">
-                    {valueOrFallback(center.cleanup.lastRecovery, "queue already aligned; current promotions can proceed to review.")}
+                    {valueOrFallback(center.cleanup.lastRecovery, "当前无需处理，已有内容可以继续使用。")}
                   </p>
                 </div>
               </div>
@@ -1650,19 +1674,19 @@ export function LiveMemoryView() {
               <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Cleanup Ledger</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold">recent worker runs</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">最近记录</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">最近执行</h3>
                   </div>
                   <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    {center.cleanup.ledger.length} runs
+                    {center.cleanup.ledger.length} 次
                   </span>
                 </div>
 
                 <div className="mt-4 space-y-3">
                   {center.cleanup.ledger.length === 0 ? (
                     <EmptyState
-                      title="cleanup 还没跑过"
-                      message="第一次 cleanup 会把 stale promotion queue 收平，并在这里记录 dedupe / TTL / recovery truth。"
+                      title="还没有清理记录"
+                      message="运行一次清理后，这里会显示处理结果。"
                       testID="memory-cleanup-empty"
                     />
                   ) : (
@@ -1671,7 +1695,7 @@ export function LiveMemoryView() {
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-                              {valueOrFallback(entry.triggeredBy, "System")} @ {formatTimestamp(entry.triggeredAt)}
+                              {valueOrFallback(entry.triggeredBy, "系统")} / {formatTimestamp(entry.triggeredAt)}
                             </p>
                             <h4 className="mt-2 font-display text-2xl font-bold">{entry.summary}</h4>
                           </div>
@@ -1681,13 +1705,13 @@ export function LiveMemoryView() {
                               cleanupTone(entry.status) === "yellow" ? "bg-[var(--shock-yellow)]" : "bg-white"
                             )}
                           >
-                            {entry.status === "cleaned" ? "cleaned" : "no_changes"}
+                            {entry.status === "cleaned" ? "已清理" : "无变化"}
                           </span>
                         </div>
                         <p className="mt-3 text-sm leading-6">{entry.recovery}</p>
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          <StatusRow label="Removed" value={`${entry.stats.totalRemoved} entries`} tone={cleanupTone(entry.status)} />
-                          <StatusRow label="Breakdown" value={cleanupStatsSummary(entry.stats)} tone="white" />
+                          <StatusRow label="移除" value={`${entry.stats.totalRemoved} 条`} tone={cleanupTone(entry.status)} />
+                          <StatusRow label="明细" value={cleanupStatsSummary(entry.stats)} tone="white" />
                         </div>
                       </div>
                     ))
@@ -1700,29 +1724,29 @@ export function LiveMemoryView() {
           <Panel tone={canMutate ? "paper" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Promotion Flow</p>
-                <h2 className="mt-2 font-display text-3xl font-bold">把高价值经验提升成 Skill / Policy</h2>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">沉淀经验</p>
+                <h2 className="mt-2 font-display text-3xl font-bold">把有价值的内容做成可复用规则</h2>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {center.pendingCount} pending / {center.approvedCount} approved
+                {center.pendingCount} 待处理 / {center.approvedCount} 已通过
               </span>
             </div>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              普通 writeback 只进入 artifact history。要进入可复用的 skill / policy ledger，必须先发 promotion request，再由人类 review 把它转成正式 injected truth。
+              把有价值的内容整理成技能或规则，方便后续任务直接使用。
             </p>
 
             <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_minmax(0,1.1fr)]">
               <form onSubmit={handleCreatePromotion} className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Promotion Draft</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">新建申请</p>
                   <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    {selectedArtifact ? selectedArtifact.path : "no artifact"}
+                    {selectedArtifact ? selectedArtifact.path : "未选择"}
                   </span>
                 </div>
 
                 <StatusRow
-                  label="Selected Source"
-                  value={selectedArtifact ? `${selectedArtifact.path} @ v${selectedArtifact.version ?? 0}` : "请先在左侧选择 artifact"}
+                  label="当前内容"
+                  value={selectedArtifact ? `${selectedArtifact.path} @ v${selectedArtifact.version ?? 0}` : "请先在左侧选择内容"}
                   tone="white"
                   testID="memory-promotion-source"
                 />
@@ -1742,7 +1766,7 @@ export function LiveMemoryView() {
                     >
                       <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{promotionKindLabel(kind)}</p>
                       <p className="mt-2 text-sm leading-6">
-                        {kind === "skill" ? "把已验证有效的操作套路送进 `notes/skills.md`。" : "把需要人工确认的规则送进 `notes/policies.md`。"}
+                        {kind === "skill" ? "把稳定做法沉淀成技能。" : "把需要长期遵守的要求沉淀成规则。"}
                       </p>
                     </button>
                   ))}
@@ -1765,7 +1789,7 @@ export function LiveMemoryView() {
                     onChange={(event) => setPromotionRationale(event.target.value)}
                     disabled={!canMutate || busyAction !== null}
                     className="min-h-[140px] w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm leading-6 outline-none disabled:opacity-60"
-                    placeholder="说明为什么这条经验值得被注入到下一条任务，而不是只留在单次 artifact history。"
+                    placeholder="说明为什么这条内容值得长期复用。"
                   />
                 </div>
 
@@ -1776,10 +1800,10 @@ export function LiveMemoryView() {
                     disabled={!canMutate || busyAction !== null || !selectedArtifact}
                     className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                   >
-                    {busyAction === "create-promotion" ? "submitting..." : "queue promotion"}
+                    {busyAction === "create-promotion" ? "提交中..." : "提交审核"}
                   </button>
                   <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                    当前会提交 {promotionKindLabel(promotionKind)} review；批准后才会真正写入 promoted ledger。
+                    提交后会进入审核，通过后才能加入可复用资料。
                   </p>
                 </div>
               </form>
@@ -1787,17 +1811,17 @@ export function LiveMemoryView() {
               <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Review Queue</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold">governance / approval queue</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">待审核</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">审核列表</h3>
                   </div>
                   <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    {center.promotions.length} requests
+                    {center.promotions.length} 条
                   </span>
                 </div>
 
                 <div className="mt-4 space-y-3">
                   {center.promotions.length === 0 ? (
-                    <EmptyState title="还没有 promotion request" message="先从左侧 artifact 发起一条 skill / policy promotion。批准后，它会进入 injected ledgers。" testID="memory-promotion-empty" />
+                    <EmptyState title="还没有审核项" message="先从左侧内容发起一条技能或规则申请。" testID="memory-promotion-empty" />
                   ) : (
                     center.promotions.map((promotion) => {
                       const slug = toTestID(promotion.title);
@@ -1824,9 +1848,9 @@ export function LiveMemoryView() {
                             </span>
                           </div>
 
-                          <p className="mt-3 text-sm leading-6">{promotion.rationale || "这条 promotion 没有额外 rationale。"}</p>
+                          <p className="mt-3 text-sm leading-6">{promotion.rationale || "没有补充说明。"}</p>
                           <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
-                            proposed by {promotion.proposedBy} @ {formatTimestamp(promotion.proposedAt)}
+                            提交人：{promotion.proposedBy} / {formatTimestamp(promotion.proposedAt)}
                           </p>
 
                           {promotion.excerpt ? (
@@ -1844,7 +1868,7 @@ export function LiveMemoryView() {
                                 onClick={() => void handleReviewPromotion(promotion, "approved")}
                                 className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                               >
-                                {busyAction === `review-${promotion.id}-approved` ? "approving..." : "approve"}
+                                {busyAction === `review-${promotion.id}-approved` ? "处理中..." : "通过"}
                               </button>
                               <button
                                 type="button"
@@ -1853,13 +1877,13 @@ export function LiveMemoryView() {
                                 onClick={() => void handleReviewPromotion(promotion, "rejected")}
                                 className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
                               >
-                                {busyAction === `review-${promotion.id}-rejected` ? "rejecting..." : "reject"}
+                                {busyAction === `review-${promotion.id}-rejected` ? "处理中..." : "拒绝"}
                               </button>
                             </div>
                           ) : (
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
-                              <StatusRow label="Reviewed By" value={valueOrFallback(promotion.reviewedBy, "未记录")} tone={promotionTone(promotion.status)} />
-                              <StatusRow label="Reviewed At" value={formatTimestamp(promotion.reviewedAt)} tone="white" />
+                              <StatusRow label="审核人" value={valueOrFallback(promotion.reviewedBy, "未记录")} tone={promotionTone(promotion.status)} />
+                              <StatusRow label="审核时间" value={formatTimestamp(promotion.reviewedAt)} tone="white" />
                             </div>
                           )}
                         </div>
@@ -1874,17 +1898,17 @@ export function LiveMemoryView() {
           <Panel tone="paper">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Audit Timeline</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">历史版本</p>
                 <h2 className="mt-2 font-display text-3xl font-bold">版本轨迹</h2>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {versions.length} records
+                {versions.length} 条
               </span>
             </div>
 
             <div className="mt-5 space-y-3">
               {versions.length === 0 ? (
-                <EmptyState title="当前 artifact 还没有 version history" message="等 `/v1/memory/:id` 返回 versions 后，这里会展开 audit timeline。" />
+                <EmptyState title="还没有历史版本" message="等同步完成后，这里会显示版本变化。" />
               ) : (
                 [...versions].reverse().map((version) => (
                   <div key={`${version.version}-${version.updatedAt}`} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
@@ -1900,9 +1924,9 @@ export function LiveMemoryView() {
                       </div>
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      <ArtifactFact label="Digest" value={valueOrFallback(version.digest?.slice(0, 16), "未记录")} />
-                      <ArtifactFact label="Size" value={formatBytes(version.sizeBytes)} />
-                      <ArtifactFact label="Summary" value={version.summary} />
+                      <ArtifactFact label="摘要" value={valueOrFallback(version.digest?.slice(0, 16), "未记录")} />
+                      <ArtifactFact label="大小" value={formatBytes(version.sizeBytes)} />
+                      <ArtifactFact label="说明" value={version.summary} />
                     </div>
                   </div>
                 ))

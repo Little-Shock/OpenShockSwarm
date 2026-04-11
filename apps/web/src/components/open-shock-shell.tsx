@@ -164,6 +164,19 @@ function humanStateLabel(active: boolean, status: string) {
   }
 }
 
+function workspaceRoleLabel(role: string | undefined) {
+  switch (role) {
+    case "owner":
+      return "所有者";
+    case "member":
+      return "成员";
+    case "viewer":
+      return "访客";
+    default:
+      return role || "成员";
+  }
+}
+
 export function OpenShockShell({
   view,
   title,
@@ -222,12 +235,12 @@ export function OpenShockShell({
         ? "工作区未同步"
         : "OpenShock";
   const workspaceSubtitle = hasWorkspaceTruth
-    ? `${resolvedState.workspace.branch || "unknown branch"} · ${resolvedState.workspace.pairedRuntime || "no runtime"}`
+    ? `${resolvedState.workspace.branch || "分支未返回"} · ${resolvedState.workspace.pairedRuntime || "运行环境未连接"}`
     : loading
-      ? "等待 server 返回 workspace truth"
+      ? "正在连接工作区"
       : error
-        ? "server workspace truth unavailable"
-        : "local-first os";
+        ? "暂时无法连接工作区"
+        : "本地优先协作台";
   const stats = buildGlobalStats(resolvedState);
   const disconnected = loading || Boolean(error) || resolvedState.machines.every((machine) => machine.state === "offline");
   const inboxCount = resolvedState.inbox.length;
@@ -253,9 +266,9 @@ export function OpenShockShell({
     const active = activeMember.id === activeMemberId && resolvedState.auth.session.status === "active";
     shellProfileEntries.push({
       id: "human",
-      badge: "ME",
+      badge: "我",
       title: activeMember.name,
-      meta: `${activeMember.role} · ${activeMember.email}`,
+      meta: `${workspaceRoleLabel(activeMember.role)} · ${activeMember.email}`,
       href: buildProfileHref("human", activeMember.id),
       status: humanStateLabel(active, activeMember.status),
       tone: active ? "lime" : activeMember.status === "suspended" ? "pink" : "white",
@@ -265,7 +278,7 @@ export function OpenShockShell({
   if (pairedMachine) {
     shellProfileEntries.push({
       id: "machine",
-      badge: "BOX",
+      badge: "机",
       title: pairedMachine.name,
       meta: `${pairedMachine.cli} · ${pairedMachine.shell}`,
       href: buildProfileHref("machine", pairedMachine.id),
@@ -277,7 +290,7 @@ export function OpenShockShell({
   if (preferredAgent) {
     shellProfileEntries.push({
       id: "agent",
-      badge: "AI",
+      badge: "智",
       title: preferredAgent.name,
       meta: `${preferredAgent.role} · ${preferredAgent.lane}`,
       href: buildProfileHref("agent", preferredAgent.id),
@@ -321,7 +334,7 @@ export function OpenShockShell({
             eyebrow={eyebrow}
             title={title}
             description={description}
-            searchPlaceholder="Search channel / room / topic / issue / run / agent"
+            searchPlaceholder="搜索频道 / 讨论间 / 话题 / 事项 / 运行 / 智能体"
             currentHref={currentHref}
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
@@ -358,11 +371,11 @@ export function OpenShockShell({
               <div className="flex-1 overflow-y-auto p-2.5">
                 {contextBody ?? (
                   <section className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">MVP Contract</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">当前原则</p>
                     <ul className="mt-2.5 space-y-1.5 text-[12px] leading-5 text-[color:rgba(24,20,14,0.76)]">
                       <li>频道负责轻松讨论，不直接背负执行压力。</li>
-                      <li>严肃工作必须进入讨论间，并和 Run 保持绑定。</li>
-                      <li>Topic 可见，Session 继续留在系统内部。</li>
+                      <li>严肃工作必须进入讨论间，并和当前运行保持绑定。</li>
+                      <li>话题可见，会话继续留在系统内部。</li>
                       <li>任务板只做辅助，不取代聊天和房间。</li>
                     </ul>
                   </section>
@@ -370,7 +383,7 @@ export function OpenShockShell({
 
                 <section className="mt-2.5 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Live Machines</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">运行机器</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.machines.length}</span>
                   </div>
                   <div className="mt-2.5 space-y-2">
@@ -397,7 +410,7 @@ export function OpenShockShell({
 
                 <section className="mt-2.5 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Agents</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">智能体</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.agents.length}</span>
                   </div>
                   <div className="mt-2.5 space-y-2">
@@ -424,7 +437,7 @@ export function OpenShockShell({
 
                 <section className="mt-2.5 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
                   <div className="flex items-center justify-between">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">Humans</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">成员</p>
                     <span className="font-mono text-[10px] uppercase">{resolvedState.auth.members.length}</span>
                   </div>
                   <div className="mt-2.5 space-y-2">
@@ -444,7 +457,7 @@ export function OpenShockShell({
                             </span>
                           </div>
                           <p className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
-                            {member.role} · {member.email}
+                            {workspaceRoleLabel(member.role)} · {member.email}
                           </p>
                         </Link>
                       );

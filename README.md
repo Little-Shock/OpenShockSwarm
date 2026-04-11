@@ -61,6 +61,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
   - `/profiles/[kind]/[profileId]`
   - `/pull-requests/[pullRequestId]`
   - `/mailbox`
+  - `/onboarding`
   - `/setup`
   - `/memory`
   - `/access`
@@ -167,6 +168,34 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 ```
 
 ## 快速开始
+
+### 最简单启动
+
+如果你在 Windows 上，只想直接打开一个干净的新工作区，不想自己记命令：
+
+- 双击 [START_OPENSHOCK.cmd](./START_OPENSHOCK.cmd)
+- 停止时双击 [STOP_OPENSHOCK.cmd](./STOP_OPENSHOCK.cmd)
+- 看状态时双击 [STATUS_OPENSHOCK.cmd](./STATUS_OPENSHOCK.cmd)
+
+启动成功后，默认入口是：
+
+- 脚本会打印一条 `Entry:` 地址
+- 通常是 `http://127.0.0.1:3000/onboarding`
+- 如果 `3000` 被占用，会自动换一个空闲端口
+
+这条入口会给你一个附在真实工作台上的首启引导层：
+
+- 四周会做模糊玻璃化，只保留第一次真正要填的信息
+- 填完后直接进入聊天，不会先把你扔进一整页高级设置
+- 默认绑定当前仓库目录；如果要换目录，可通过 `OPENSHOCK_FRESH_WORKSPACE_ROOT` 指定
+
+这条 fresh 入口会给你一个干净的工作区状态：
+
+- 1 个空频道 `#all`
+- 1 个可编辑的 `启动智能体`
+- 没有旧的 room / issue / run / PR / inbox 历史
+
+正常情况下你不需要先去 `/access` 或 `/setup` 折腾，跟着引导走完就行。
 
 ### 1. 安装依赖
 

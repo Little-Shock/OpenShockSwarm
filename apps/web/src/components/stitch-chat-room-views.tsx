@@ -37,9 +37,9 @@ function roleLabel(role: Message["role"]) {
     case "human":
       return "人类";
     case "agent":
-      return "Agent";
+      return "智能体";
     default:
-      return "System";
+      return "系统";
   }
 }
 
@@ -63,13 +63,13 @@ function pullRequestStatusLabel(status?: string) {
 function conversationKindLabel(kind: PullRequestConversationEntry["kind"]) {
   switch (kind) {
     case "review":
-      return "Review";
+      return "评审";
     case "review_comment":
-      return "Comment";
+      return "评论";
     case "review_thread":
-      return "Thread";
+      return "线程";
     default:
-      return "Note";
+      return "备注";
   }
 }
 
@@ -145,6 +145,30 @@ function humanStatusLabel(active: boolean, status: string) {
   }
 }
 
+function workspaceRoleLabel(role: string | undefined) {
+  switch (role) {
+    case "owner":
+      return "所有者";
+    case "member":
+      return "成员";
+    case "viewer":
+      return "访客";
+    default:
+      return role || "成员";
+  }
+}
+
+function channelPresenceLabel(presence?: string) {
+  switch (presence) {
+    case "running":
+      return "进行中";
+    case "blocked":
+      return "阻塞";
+    default:
+      return "待命";
+  }
+}
+
 function buildShellProfileEntries(state: PhaseZeroState, disabled: boolean): SidebarProfileEntry[] {
   if (disabled) {
     return [];
@@ -170,9 +194,9 @@ function buildShellProfileEntries(state: PhaseZeroState, disabled: boolean): Sid
     const active = activeMember.id === activeMemberId && state.auth.session.status === "active";
     entries.push({
       id: "human",
-      badge: "ME",
+      badge: "我",
       title: activeMember.name,
-      meta: `${activeMember.role} · ${activeMember.email}`,
+      meta: `${workspaceRoleLabel(activeMember.role)} · ${activeMember.email}`,
       href: buildProfileHref("human", activeMember.id),
       status: humanStatusLabel(active, activeMember.status),
       tone: active ? "lime" : activeMember.status === "suspended" ? "pink" : "white",
@@ -182,7 +206,7 @@ function buildShellProfileEntries(state: PhaseZeroState, disabled: boolean): Sid
   if (pairedMachine) {
     entries.push({
       id: "machine",
-      badge: "BOX",
+      badge: "机",
       title: pairedMachine.name,
       meta: `${pairedMachine.cli} · ${pairedMachine.shell}`,
       href: buildProfileHref("machine", pairedMachine.id),
@@ -194,7 +218,7 @@ function buildShellProfileEntries(state: PhaseZeroState, disabled: boolean): Sid
   if (preferredAgent) {
     entries.push({
       id: "agent",
-      badge: "AI",
+      badge: "智",
       title: preferredAgent.name,
       meta: `${preferredAgent.role} · ${preferredAgent.lane}`,
       href: buildProfileHref("agent", preferredAgent.id),
@@ -235,7 +259,7 @@ function formatRetentionSummary(workspace?: PhaseZeroState["workspace"]) {
   if (!quota) {
     return "未返回";
   }
-  return `${quota.messageHistoryDays}d 消息 / ${quota.runLogDays}d Run / ${quota.memoryDraftDays}d 草稿`;
+  return `${quota.messageHistoryDays}d 消息 / ${quota.runLogDays}d 运行 / ${quota.memoryDraftDays}d 草稿`;
 }
 
 function DiscussionStateMessage({
@@ -327,9 +351,9 @@ type MessageChannelSurface = {
 };
 
 const CHANNEL_WORKBENCH_TAB_LABEL: Record<ChannelWorkbenchTab, string> = {
-  chat: "Chat",
-  followed: "Followed",
-  saved: "Saved Later",
+  chat: "聊天",
+  followed: "关注中",
+  saved: "稍后看",
 };
 
 function parseChannelWorkbenchTab(value?: string | null): ChannelWorkbenchTab {
@@ -345,11 +369,11 @@ function parseChannelWorkbenchTab(value?: string | null): ChannelWorkbenchTab {
 type RoomWorkbenchTab = "chat" | "topic" | "run" | "pr" | "context";
 
 const ROOM_WORKBENCH_TAB_LABEL: Record<RoomWorkbenchTab, string> = {
-  chat: "Chat",
-  topic: "Topic",
-  run: "Run",
+  chat: "聊天",
+  topic: "话题",
+  run: "运行",
   pr: "PR",
-  context: "Context",
+  context: "上下文",
 };
 
 function parseRoomWorkbenchTab(value?: string | null): RoomWorkbenchTab {
@@ -384,8 +408,8 @@ const DIRECT_MESSAGES: SidebarDirectMessage[] = [
   {
     id: "dm-codex-dockmaster",
     name: "@Codex Dockmaster",
-    summary: "room-first UI、thread reopen 和消息工作流的快速对齐面。",
-    purpose: "这条 DM 用来快速对齐前台壳层和 thread reopen，不需要立刻升级成 room。",
+    summary: "以对话为主的界面、线程重开和消息工作流的快速对齐面。",
+    purpose: "这条私聊用来快速对齐前台壳层和线程重开，不需要立刻升级成讨论间。",
     unread: 2,
     presence: "running",
     counterpart: "Codex Dockmaster",
@@ -393,8 +417,8 @@ const DIRECT_MESSAGES: SidebarDirectMessage[] = [
   {
     id: "dm-mina",
     name: "@Mina",
-    summary: "copy、saved later 队列和人类回访习惯的收口面。",
-    purpose: "产品文案和 saved-later 队列先在这条 DM 里收紧，再决定是否升级为正式 room。",
+    summary: "文案、稍后查看队列和人类回访习惯的收口面。",
+    purpose: "产品文案和稍后查看队列先在这条私聊里收紧，再决定是否升级为正式讨论间。",
     unread: 1,
     presence: "idle",
     counterpart: "Mina",
@@ -408,7 +432,7 @@ const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
       speaker: "Codex Dockmaster",
       role: "agent",
       tone: "agent",
-      message: "我先不把这条抬成 room。等 thread follow / reopen 真闭环了，再升级。",
+      message: "我先不把这条抬成讨论间。等线程关注和重新打开真的闭环了，再升级。",
       time: "11:12",
     },
     {
@@ -416,7 +440,7 @@ const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
       speaker: "Larkspur",
       role: "human",
       tone: "human",
-      message: "可以。DM 先承担快速澄清，真正需要 run / PR / approval 时再升房间。",
+      message: "可以。私聊先承担快速澄清，真正需要执行、PR 或审批时再升讨论间。",
       time: "11:14",
     },
   ],
@@ -426,7 +450,7 @@ const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
       speaker: "Mina",
       role: "human",
       tone: "human",
-      message: "saved later 不应该像任务板，它更像“我晚点回来看这条 thread”。",
+      message: "稍后查看不应该像任务板，它更像“我晚点回来看这条线程”。",
       time: "11:22",
     },
     {
@@ -434,7 +458,7 @@ const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
       speaker: "System",
       role: "system",
       tone: "system",
-      message: "已记录：Later surface 用于 revisit，不伪装成新一层 backlog。",
+      message: "已记录：稍后查看用于回访，不伪装成新一层待办。",
       time: "11:24",
     },
   ],
@@ -446,9 +470,9 @@ const DEFAULT_FOLLOWED_THREADS: MessageSurfaceEntry[] = [
     channelId: "all",
     messageId: "msg-all-2",
     channelLabel: "#all",
-    title: "Codex Dockmaster runtime sync thread",
-    summary: "Runtime 在线状态已经同步；下一步要把真实 Run 和审批链路带进前台。",
-    note: "这条 thread 已被 follow，用来反复回看频道里的关键协作线索。",
+    title: "Codex Dockmaster 运行同步线程",
+    summary: "运行环境在线状态已经同步；下一步要把真实执行和审批链路带进前台。",
+    note: "这条线程已被关注，用来反复回看频道里的关键协作线索。",
     updatedAt: "09:19",
     unread: 2,
   },
@@ -460,9 +484,9 @@ const DEFAULT_SAVED_LATER_ITEMS: MessageSurfaceEntry[] = [
     channelId: "roadmap",
     messageId: "msg-roadmap-1",
     channelLabel: "#roadmap",
-    title: "Longwen default-entry note",
+    title: "Longwen 默认入口备注",
     summary: "默认入口必须聊天优先，任务板只能是辅助视图。",
-    note: "Later 队列里保留的是“之后要重新打开的消息”，不是新的 planning lane。",
+    note: "稍后查看队列里保留的是“之后要重新打开的消息”，不是新的规划泳道。",
     updatedAt: "10:06",
     unread: 1,
   },
@@ -471,9 +495,9 @@ const DEFAULT_SAVED_LATER_ITEMS: MessageSurfaceEntry[] = [
     channelId: "dm-mina",
     messageId: "msg-dm-mina-1",
     channelLabel: "@Mina",
-    title: "Mina saved-later guideline",
-    summary: "saved later 更像“晚点回来看这条 thread”，不是第二个 board。",
-    note: "DM 里的轻量讨论也可以被 later 化，然后重新打开。",
+    title: "Mina 稍后查看准则",
+    summary: "稍后查看更像“晚点回来看这条线程”，不是第二个看板。",
+    note: "私聊里的轻量讨论也可以暂存，然后重新打开。",
     updatedAt: "11:24",
     unread: 0,
   },
@@ -494,7 +518,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "Mina",
         role: "human",
         tone: "human",
-        message: "那就别把机器状态塞进 setup 了，直接留在主壳和 room 里常驻。",
+        message: "那就别把机器状态塞进设置页了，直接留在主壳和讨论间里常驻。",
         time: "09:18",
       },
       {
@@ -502,7 +526,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "Codex Dockmaster",
         role: "agent",
         tone: "agent",
-        message: "收到。我会把 presence 和 room context 一起留在左栏和右 rail，不再只给后台页。",
+        message: "收到。我会把在线状态和讨论间上下文一起留在左栏和右侧摘要，不再只给后台页。",
         time: "09:19",
       },
     ],
@@ -514,7 +538,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "System",
         role: "system",
         tone: "system",
-        message: "已记录：Board 仅保留为 planning mirror，不再作为首页主心智。",
+        message: "已记录：看板仅保留为规划镜像，不再作为首页主心智。",
         time: "10:06",
       },
     ],
@@ -526,7 +550,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "Larkspur",
         role: "human",
         tone: "human",
-        message: "先把 revisit 做顺，再谈是不是要升成新 room。",
+        message: "先把回访做顺，再谈是不是要升成新讨论间。",
         time: "11:15",
       },
     ],
@@ -538,7 +562,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "System",
         role: "system",
         tone: "system",
-        message: "Later surface 已记录为当前消息工作流的一等入口需求。",
+        message: "稍后查看已记录为当前消息工作流的一等入口需求。",
         time: "11:25",
       },
     ],
@@ -553,7 +577,7 @@ const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "Larkspur",
         role: "human",
         tone: "human",
-        message: "房间里只保留当前 room 的执行信息，不要再搞一个总览页。",
+        message: "房间里只保留当前讨论间的执行信息，不要再搞一个总览页。",
         time: "09:24",
       },
       {
@@ -561,7 +585,7 @@ const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "Codex Dockmaster",
         role: "agent",
         tone: "agent",
-        message: "明白。当前 room 会只盯住 branch、runtime、PR 和当前 topic，不再分散视线。",
+        message: "明白。当前讨论间会只盯住分支、运行环境、PR 和当前话题，不再分散视线。",
         time: "09:25",
       },
     ],
@@ -571,7 +595,7 @@ const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "System",
         role: "system",
         tone: "system",
-        message: "Follow-thread 已可把后续恢复继续锁在同一条 room discussion 上。",
+        message: "关注线程已经可以把后续恢复继续锁在同一条讨论上。",
         time: "09:27",
       },
     ],
@@ -583,7 +607,7 @@ const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
         speaker: "Mina",
         role: "human",
         tone: "human",
-        message: "Inbox 入口放左下角是对的，但卡片正文还得更克制。",
+        message: "收件箱入口放左下角是对的，但卡片正文还得更克制。",
         time: "10:03",
       },
     ],
@@ -648,26 +672,26 @@ function signalTone(kind: ApprovalCenterItem["kind"]) {
 function signalLabel(kind: ApprovalCenterItem["kind"]) {
   switch (kind) {
     case "approval":
-      return "Approval";
+      return "审批";
     case "blocked":
-      return "Blocked";
+      return "阻塞";
     case "review":
-      return "Review";
+      return "评审";
     default:
-      return "Status";
+      return "状态";
   }
 }
 
 function handoffStatusLabel(status: AgentHandoff["status"]) {
   switch (status) {
     case "acknowledged":
-      return "ack";
+      return "已接收";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "completed":
-      return "done";
+      return "完成";
     default:
-      return "requested";
+      return "待接收";
   }
 }
 
@@ -698,10 +722,10 @@ function RoomRelatedSignalsPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-            Inbox Back-links
+            收件箱回链
           </p>
           <p className="mt-2 font-display text-[20px] font-bold leading-6">
-            {relatedSignals.length} open / {recentSignals.length} recent
+            {relatedSignals.length} 条待处理 / {recentSignals.length} 条最近
           </p>
         </div>
         <Link
@@ -709,7 +733,7 @@ function RoomRelatedSignalsPanel({
           data-testid="room-workbench-open-inbox"
           className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
         >
-          打开 Inbox
+          打开收件箱
         </Link>
       </div>
       <div className="mt-4 space-y-3">
@@ -732,20 +756,20 @@ function RoomRelatedSignalsPanel({
                 href="/inbox"
                 className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--shock-ink)]"
               >
-                Inbox Detail
+                收件箱详情
               </Link>
               <Link
                 href={buildRoomWorkbenchHref(roomId, item.kind === "review" ? "pr" : "context")}
                 className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
               >
-                回到 Room
+                回到讨论间
               </Link>
             </div>
           </div>
         ))}
         {relatedSignals.length === 0 && recentSignals.length === 0 ? (
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-            当前这条 room 还没有挂住新的 approval / blocked / review signal。
+            当前这条讨论间还没有挂住新的审批、阻塞或评审信号。
           </p>
         ) : null}
       </div>
@@ -765,22 +789,22 @@ function RoomMailboxPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-            Mailbox Back-links
+            交接回链
           </p>
-          <p className="mt-2 font-display text-[20px] font-bold leading-6">{handoffs.length} tracked handoffs</p>
+          <p className="mt-2 font-display text-[20px] font-bold leading-6">{handoffs.length} 条在跟交接</p>
         </div>
         <Link
           href={`/mailbox?roomId=${roomId}`}
           data-testid="room-workbench-open-mailbox"
           className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
         >
-          打开 Mailbox
+          打开交接箱
         </Link>
       </div>
       <div className="mt-4 space-y-3">
         {handoffs.length === 0 ? (
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-            当前这条 room 还没有 formal handoff；发起 request 后，这里会直接显示 request / ack / blocked / complete 轨迹。
+            当前这条讨论间还没有正式交接；发起请求后，这里会直接显示请求、接收、阻塞和完成轨迹。
           </p>
         ) : (
           handoffs.slice(0, 3).map((handoff) => (
@@ -872,12 +896,12 @@ function RoomContextPanels({
     <div className="space-y-3">
       <div className="grid gap-3 xl:grid-cols-2">
         <Panel tone="white">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Topic</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">话题</p>
           <p className="mt-2 font-display text-[20px] font-bold leading-6">{room.topic.title}</p>
           <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{room.topic.summary}</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Owner</p>
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">负责人</p>
               {topicOwnerProfileHref ? (
                 <Link
                   href={topicOwnerProfileHref}
@@ -891,43 +915,43 @@ function RoomContextPanels({
               )}
             </div>
             <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Issue</p>
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">事项</p>
               <p className="mt-2 text-sm font-semibold">{room.issueKey}</p>
             </div>
           </div>
           {issueTitle ? (
             <p className="mt-3 text-[12px] leading-5 text-[color:rgba(24,20,14,0.6)]">
-              当前 topic 绑定的 Issue 标题：{issueTitle}
+              当前话题绑定的事项标题：{issueTitle}
             </p>
           ) : null}
         </Panel>
 
         <Panel tone="paper">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Context Links</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">上下文入口</p>
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             <Link
               href={`/issues/${room.issueKey}`}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              Issue Context
+              事项上下文
             </Link>
             <Link
               href={buildRoomWorkbenchHref(room.id, "run")}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              Run Truth
+              运行真值
             </Link>
             <Link
               href={buildRoomWorkbenchHref(room.id, "pr")}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              PR Surface
+              PR 面板
             </Link>
             <Link
               href="/board"
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              Board Mirror
+              看板镜像
             </Link>
           </div>
         </Panel>
@@ -936,7 +960,7 @@ function RoomContextPanels({
       <Panel tone="white">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
             <p className="mt-2 font-display text-[20px] font-bold leading-6">{run.id}</p>
           </div>
           <span
@@ -958,10 +982,10 @@ function RoomContextPanels({
           </span>
         </div>
         <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
-          Branch {session?.branch ?? run.branch}
+          分支 {session?.branch ?? run.branch}
         </p>
         <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
-          Worktree {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
+          工作区 {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {machineProfileHref ? (
@@ -970,7 +994,7 @@ function RoomContextPanels({
               data-testid="room-workbench-machine-profile"
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              Machine Profile
+              机器档案
             </Link>
           ) : null}
           {runOwnerProfileHref ? (
@@ -979,7 +1003,7 @@ function RoomContextPanels({
               data-testid="room-workbench-run-owner-profile"
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              Owner Profile
+              负责人档案
             </Link>
           ) : null}
         </div>
@@ -999,11 +1023,11 @@ function RoomContextPanels({
         <Panel tone="paper">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Guard Truth</p>
-              <p className="mt-2 font-display text-[20px] font-bold leading-6">Destructive / Secret Boundary</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">守护真值</p>
+              <p className="mt-2 font-display text-[20px] font-bold leading-6">高风险 / 密钥边界</p>
             </div>
             <span className="rounded-[4px] border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]">
-              {relatedGuards.length} active
+              {relatedGuards.length} 条生效中
             </span>
           </div>
           <div className="mt-4 space-y-3">
@@ -1023,7 +1047,7 @@ function RoomContextPanels({
       <Panel tone="white">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
             <p data-testid="room-workbench-pr-label" className="mt-2 font-display text-[20px] font-bold leading-6">
               {pullRequest?.label ?? run.pullRequest ?? "未创建"}
             </p>
@@ -1062,7 +1086,7 @@ function RoomContextPanels({
               data-testid="room-workbench-pr-detail-link"
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              PR Detail
+              PR 详情
             </Link>
           ) : null}
           {pullRequest?.url ? (
@@ -1072,7 +1096,7 @@ function RoomContextPanels({
               rel="noreferrer"
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              Open Remote PR
+              打开远端 PR
             </Link>
           ) : null}
           <Link
@@ -1080,14 +1104,14 @@ function RoomContextPanels({
             data-testid="room-workbench-pr-inbox-link"
             className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
           >
-            Inbox Back-link
+            返回收件箱
           </Link>
         </div>
       </Panel>
 
       <div className="grid gap-3 xl:grid-cols-2">
         <Panel tone="ink">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">Session Memory</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">会话记忆</p>
           <div className="mt-3 space-y-2 font-mono text-[10px] leading-5 text-[#8bff9e]">
             {sessionMemoryPaths.map((item) => (
               <p key={item}>{item}</p>
@@ -1095,10 +1119,10 @@ function RoomContextPanels({
           </div>
         </Panel>
         <Panel tone="paper">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Active Presence</p>
-          <p className="mt-2 font-display text-[20px] font-bold leading-6">{activeAgents.length} active agents</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前在线</p>
+          <p className="mt-2 font-display text-[20px] font-bold leading-6">{activeAgents.length} 个在线智能体</p>
           <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-            最近执行 lane 仍挂在这个 room 上的 Agent 会在这里持续可见，不再只留在总览页 badge。
+            最近执行线仍挂在这个讨论间上的智能体会在这里持续可见，不再只留在总览页角标里。
           </p>
           <div className="mt-4 space-y-2">
             {activeAgents.slice(0, 3).map((agent) => (
@@ -1120,13 +1144,13 @@ function RoomContextPanels({
 
       <div className="grid gap-3 xl:grid-cols-2">
         <Panel tone="yellow">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Tool Calls</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">工具调用</p>
           <p className="mt-2 font-display text-[28px] font-bold leading-none">{run.toolCalls.length}</p>
           <p className="mt-2 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.tool ?? "当前还没有工具调用"}</p>
           <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.summary ?? "等待下一条执行事件"}</p>
         </Panel>
         <Panel tone="white">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Timeline</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">时间线</p>
           <p className="mt-2 font-display text-[28px] font-bold leading-none">{run.timeline.length}</p>
           <p className="mt-2 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.label ?? "暂无事件"}</p>
           <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.at ?? "等待同步"}</p>
@@ -1156,13 +1180,13 @@ function RoomTopicWorkbenchPanel({
     <div data-testid="room-workbench-topic-panel" className="space-y-4">
       <Panel tone="paper" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
-          {room.issueKey} / Topic
+          {room.issueKey} / 话题
         </p>
         <h3 className="mt-2 font-display text-3xl font-bold">{room.topic.title}</h3>
         <p className="mt-4 text-base leading-7">{room.topic.summary}</p>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Owner</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">负责人</p>
             {topicOwnerProfileHref ? (
               <Link
                 href={topicOwnerProfileHref}
@@ -1176,12 +1200,12 @@ function RoomTopicWorkbenchPanel({
             )}
           </div>
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Board Mirror</p>
-            <p className="mt-2 font-display text-xl font-semibold">{room.boardCount} cards</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">看板镜像</p>
+            <p className="mt-2 font-display text-xl font-semibold">{room.boardCount} 张卡片</p>
           </div>
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">Issue Title</p>
-            <p className="mt-2 text-sm font-semibold leading-6">{issueTitle ?? "等待 issue detail 同步"}</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">事项标题</p>
+            <p className="mt-2 text-sm font-semibold leading-6">{issueTitle ?? "等待事项详情同步"}</p>
           </div>
         </div>
       </Panel>
@@ -1189,8 +1213,8 @@ function RoomTopicWorkbenchPanel({
       <Panel tone="white">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Topic Guidance</p>
-            <p className="mt-2 font-display text-[20px] font-bold leading-6">最近 room 语境</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">话题引导</p>
+            <p className="mt-2 font-display text-[20px] font-bold leading-6">最近讨论语境</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -1198,13 +1222,13 @@ function RoomTopicWorkbenchPanel({
               data-testid="room-topic-open-route"
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              打开 Topic 页
+              打开话题页
             </Link>
             <Link
               href={buildRoomWorkbenchHref(room.id, "chat")}
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              回到 Chat
+              回到聊天
             </Link>
           </div>
         </div>
@@ -1256,7 +1280,7 @@ function RoomPullRequestWorkbenchPanel({
       <Panel tone="white" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Pull Request</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">PR</p>
             <h3 className="mt-2 font-display text-3xl font-bold">{pullRequest?.label ?? "未创建 PR"}</h3>
           </div>
           <button
@@ -1278,9 +1302,9 @@ function RoomPullRequestWorkbenchPanel({
           actionStatus === "merged") ? (
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{actionBoundary}</p>
         ) : null}
-        <p className="mt-4 text-sm leading-6">{pullRequest?.title ?? "当前 room 还没有远端或本地 PR 对象。"}</p>
+        <p className="mt-4 text-sm leading-6">{pullRequest?.title ?? "当前讨论间还没有远端或本地 PR 对象。"}</p>
         <p data-testid="room-workbench-pr-review-summary" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-          {pullRequest?.reviewSummary ?? "创建 PR 后，这里会直接展示 review / merge 当前真值。"}
+          {pullRequest?.reviewSummary ?? "创建 PR 后，这里会直接展示评审和合并的当前真值。"}
         </p>
         {prError ? (
           <p className="mt-3 font-mono text-[11px] text-[var(--shock-pink)]">{prError}</p>
@@ -1292,14 +1316,14 @@ function RoomPullRequestWorkbenchPanel({
               data-testid="room-pr-detail-link"
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
             >
-              PR Detail
+              PR 详情
             </Link>
           ) : null}
           <Link
             href="/inbox"
             className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
           >
-            Inbox Review
+            收件箱评审
           </Link>
           {pullRequest?.url ? (
             <Link
@@ -1308,14 +1332,14 @@ function RoomPullRequestWorkbenchPanel({
               rel="noreferrer"
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
             >
-              Remote PR
+              打开远端 PR
             </Link>
           ) : null}
           <Link
             href={buildRoomWorkbenchHref(roomId, "context")}
             className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
           >
-            Topic Context
+            话题上下文
           </Link>
         </div>
       </Panel>
@@ -1324,15 +1348,15 @@ function RoomPullRequestWorkbenchPanel({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              Recent Review Conversation
+              最近评审会话
             </p>
-            <p className="mt-2 font-display text-[22px] font-bold">把最新 comment / thread 直接带回 room</p>
+            <p className="mt-2 font-display text-[22px] font-bold">把最新评论和线程直接带回讨论间</p>
           </div>
           <span
             data-testid="room-pr-conversation-count"
             className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
           >
-            {conversation.length} entries
+            {conversation.length} 条记录
           </span>
         </div>
         <div className="mt-4 space-y-3">
@@ -1341,7 +1365,7 @@ function RoomPullRequestWorkbenchPanel({
               data-testid="room-pr-conversation-empty"
               className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]"
             >
-              当前还没有 webhook 回流的 review conversation；一旦 comment / thread 到达，这里会和 PR detail 共用同一份 ledger。
+              当前还没有 webhook 回流的评审会话；一旦评论或线程到达，这里会和 PR 详情共用同一份记录。
             </p>
           ) : (
             conversation.map((entry) => (
@@ -1382,7 +1406,7 @@ function RoomPullRequestWorkbenchPanel({
                       rel="noreferrer"
                       className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px]"
                     >
-                      Remote Comment
+                      远端评论
                     </Link>
                   ) : null}
                 </div>
@@ -1438,17 +1462,17 @@ function RoomWorkbenchRailSummary({
   return (
     <div data-testid={contextPanelTestId} className="space-y-3">
       <Panel tone="paper">
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Room Focus</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">房间焦点</p>
         <p className="mt-2 font-display text-[22px] font-bold leading-6">{room.topic.title}</p>
         <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{room.topic.summary}</p>
         <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-1">
           <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Issue</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">事项</p>
             <p className="mt-1.5 text-sm font-semibold">{room.issueKey}</p>
-            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待 issue detail 同步"}</p>
+            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待事项详情同步"}</p>
           </div>
           <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Current Surface</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前视图</p>
             <p className="mt-1.5 text-sm font-semibold">{ROOM_WORKBENCH_TAB_LABEL[activeTab]}</p>
             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">默认回到聊天主面，其他信息只作为次级进入面保留。</p>
           </div>
@@ -1456,22 +1480,22 @@ function RoomWorkbenchRailSummary({
       </Panel>
 
       <Panel tone="white">
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Rail Snapshot</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">右栏摘要</p>
         <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
-          Chat 保持主面，Topic / Run / PR / Context 统一改走顶部 tabs，右侧 rail 只保留摘要，不再重复摆一套跳转入口。
+          聊天保持主面，话题、运行、PR、上下文统一改走顶部标签，右侧只保留摘要，不再重复摆一套跳转入口。
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
             {ROOM_WORKBENCH_TAB_LABEL[activeTab]}
           </span>
           <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {activeAgentsCount} active agents
+            {activeAgentsCount} 个在线智能体
           </span>
           <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {relatedSignals.length} signals
+            {relatedSignals.length} 条信号
           </span>
           <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {relatedHandoffs.length} handoffs
+            {relatedHandoffs.length} 条交接
           </span>
         </div>
       </Panel>
@@ -1480,7 +1504,7 @@ function RoomWorkbenchRailSummary({
         <div data-testid={runPanelTestId}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
               <p className="mt-2 font-display text-[18px] font-bold leading-5">{run.id}</p>
             </div>
             <span
@@ -1512,13 +1536,13 @@ function RoomWorkbenchRailSummary({
               href={buildRoomWorkbenchHref(room.id, "run")}
               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
             >
-              Room Run
+              房间执行
             </Link>
             <Link
               href={`/runs/${run.id}`}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
             >
-              Run Detail
+              执行详情
             </Link>
           </div>
         </div>
@@ -1528,7 +1552,7 @@ function RoomWorkbenchRailSummary({
         <div data-testid={prPanelTestId}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Pull Request</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
               <h3 data-testid="room-workbench-pr-label" className="mt-2 font-display text-[18px] font-bold leading-5">
                 {pullRequest?.label ?? run.pullRequest ?? "未创建"}
               </h3>
@@ -1565,7 +1589,7 @@ function RoomWorkbenchRailSummary({
               href={buildRoomWorkbenchHref(room.id, "pr")}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
             >
-              Room PR
+              房间 PR
             </Link>
             {pullRequest ? (
               <Link
@@ -1573,7 +1597,7 @@ function RoomWorkbenchRailSummary({
                 data-testid="room-workbench-pr-detail-link"
                 className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
               >
-                PR Detail
+              PR 详情
               </Link>
             ) : null}
           </div>
@@ -1583,20 +1607,20 @@ function RoomWorkbenchRailSummary({
       <Panel tone="paper">
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
           <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Signals</p>
-            <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} open</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">信号</p>
+            <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条待处理</p>
           </div>
           <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Mailbox</p>
-            <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} tracked</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
+            <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条跟进中</p>
           </div>
           <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Agents</p>
-            <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} active</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">智能体</p>
+            <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} 在线</p>
           </div>
           <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Board</p>
-            <p className="mt-1.5 text-sm font-semibold">{room.boardCount} cards</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板</p>
+            <p className="mt-1.5 text-sm font-semibold">{room.boardCount} 张卡片</p>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -1605,14 +1629,14 @@ function RoomWorkbenchRailSummary({
             data-testid="room-workbench-open-inbox"
             className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
           >
-            Inbox
+            收件箱
           </Link>
           <Link
             href={`/mailbox?roomId=${room.id}`}
             data-testid="room-workbench-open-mailbox"
             className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
           >
-            Mailbox
+            交接箱
           </Link>
         </div>
       </Panel>
@@ -1631,7 +1655,7 @@ function ReplyComposerChip({
     <div className="mb-2 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 shadow-[var(--shock-shadow-sm)]">
       <div className="flex items-center gap-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-          Reply
+          回复
         </span>
         <p className="min-w-0 flex-1 truncate text-[12px] text-[color:rgba(24,20,14,0.74)]">
           {replyTarget.speaker}: {replyTarget.excerpt}
@@ -1641,7 +1665,7 @@ function ReplyComposerChip({
           onClick={onClear}
           className="min-h-[32px] rounded-[10px] border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-yellow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-paper)]"
         >
-          Clear
+          清除
         </button>
       </div>
     </div>
@@ -1712,7 +1736,7 @@ function ThreadRail({
       <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-display text-[20px] font-bold leading-none">Thread</p>
+            <p className="font-display text-[20px] font-bold leading-none">线程</p>
             <p className="mt-2 truncate font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
               {scopeLabel}
             </p>
@@ -1762,7 +1786,7 @@ function ThreadRail({
           <div className="space-y-3">
             <section className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-                Parent Message
+                原始消息
               </p>
               <div className="mt-3 flex items-start gap-3">
                 <div
@@ -1788,14 +1812,14 @@ function ThreadRail({
             <section className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white shadow-[var(--shock-shadow-sm)]">
               <div className="border-b-2 border-[var(--shock-ink)] px-3 py-2">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-                  Replies
+                  回复
                 </p>
               </div>
               {replies.length > 0 ? (
                 replies.map((reply) => <ThreadReplyRow key={reply.id} message={reply} />)
               ) : (
                 <div className="px-3 py-4 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-                  当前还没有独立 reply，下一条就从这里继续。
+                  当前还没有独立回复，下一条就从这里继续。
                 </div>
               )}
             </section>
@@ -1811,8 +1835,8 @@ function ThreadRail({
           className="min-h-[44px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-yellow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
         >
           {selectedMessage && replyTarget?.messageId === selectedMessage.id
-            ? "Reply target ready in composer"
-            : "Reply in composer"}
+            ? "已在输入框锁定回复目标"
+            : "在输入框回复"}
         </button>
       </div>
     </>
@@ -1881,13 +1905,13 @@ function MessageWorkbenchCollectionPanel({
                 data-testid={item.reopenTestId}
                 className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)]"
               >
-                Reopen Thread
+                重新打开线程
               </Link>
               <Link
                 href={item.surfaceHref}
                 className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
               >
-                Open Surface
+                打开原视图
               </Link>
             </div>
           </section>
@@ -1896,7 +1920,7 @@ function MessageWorkbenchCollectionPanel({
         <section className="border-2 border-dashed border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
           <p className="font-display text-[18px] font-bold">当前还没有条目</p>
           <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-            先在 Chat 里打开一条 thread，再选择 follow 或 save for later。
+            先在聊天里打开一条线程，再选择关注或稍后查看。
           </p>
         </section>
       )}
@@ -1954,12 +1978,12 @@ function MessageStreamRow({
                 )}
               >
                 {typeof replyCount === "number" && replyCount > 0
-                  ? `${replyCount} ${replyCount > 1 ? "replies" : "reply"}`
-                  : "Reply"}
+                  ? `${replyCount} 条回复`
+                  : "回复"}
               </button>
               {threadActive ? (
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.5)]">
-                  thread open
+                  线程已展开
                 </span>
               ) : null}
             </div>
@@ -2087,7 +2111,7 @@ function ClaudeCompactComposer({
     setMessages((current) => [...current, humanMessage, agentMessage]);
 
     try {
-      const payload = await onSend(room.id, sendPrompt, "claude", (event) => {
+      const payload = await onSend(room.id, sendPrompt, undefined, (event) => {
         if (event.type === "stdout" && event.delta) {
           setMessages((current) =>
             current.map((item) =>
@@ -2126,7 +2150,7 @@ function ClaudeCompactComposer({
           speaker: "System",
           role: "system",
           tone: "blocked",
-          message: `Claude 连接失败：${message}`,
+          message: `消息发送失败：${message}`,
           time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()),
         },
       ]);
@@ -2189,7 +2213,7 @@ function ClaudeCompactComposer({
             disabled={loading || !canSend}
             className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
           >
-            {loading ? "..." : "Send"}
+            {loading ? "..." : "发送"}
           </button>
         </form>
         <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1040px] font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
@@ -2254,14 +2278,14 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   }));
   const followedItemsForSurface = followedThreads.map((item) => ({
     ...item,
-    queueLabel: "Followed",
+    queueLabel: "关注中",
     surfaceHref: buildChannelWorkbenchHref(item.channelId, "followed", item.messageId),
     reopenHref: buildThreadReopenHref(item.channelId, item.messageId),
     reopenTestId: `followed-thread-reopen-${item.id}`,
   }));
   const savedItemsForSurface = savedLaterItems.map((item) => ({
     ...item,
-    queueLabel: "Later",
+    queueLabel: "稍后看",
     surfaceHref: buildChannelWorkbenchHref(item.channelId, "saved", item.messageId),
     reopenHref: buildThreadReopenHref(item.channelId, item.messageId),
     reopenTestId: `saved-later-reopen-${item.id}`,
@@ -2368,7 +2392,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
         enabled: !exists,
       });
     } catch (collectionError) {
-      setSendError(collectionError instanceof Error ? collectionError.message : "follow thread 写回失败");
+      setSendError(collectionError instanceof Error ? collectionError.message : "关注线程写回失败");
     }
   }
 
@@ -2383,7 +2407,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
         enabled: !exists,
       });
     } catch (collectionError) {
-      setSendError(collectionError instanceof Error ? collectionError.message : "saved later 写回失败");
+      setSendError(collectionError instanceof Error ? collectionError.message : "稍后查看写回失败");
     }
   }
 
@@ -2458,17 +2482,17 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             disconnected={loading || Boolean(error) || sidebarMachines.every((machine) => machine.state === "offline")}
           />
           <StitchTopBar
-            eyebrow={isDirectMessage ? "Direct Message" : "Workspace Channel"}
+            eyebrow={isDirectMessage ? "私聊" : "工作区频道"}
             title={loading ? "消息面同步中" : error ? "消息面同步失败" : channel?.name ?? channelId}
             description={
               loading
-                ? "等待 live message surface 返回。"
+                ? "等待消息面真实状态返回。"
                 : error
                   ? error
-                  : channel?.purpose ?? "当前还没有拿到这条消息面的 purpose。"
+                  : channel?.purpose ?? "当前还没有拿到这条消息面的用途说明。"
             }
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
-            searchPlaceholder={isDirectMessage ? "Search DM / thread / saved later" : "Search channel / thread / saved later"}
+            searchPlaceholder={isDirectMessage ? "搜索私聊 / 线程 / 稍后查看" : "搜索频道 / 线程 / 稍后查看"}
             tabs={workbenchTabs}
             activeTab={CHANNEL_WORKBENCH_TAB_LABEL[activeWorkbenchTab]}
           />
@@ -2480,7 +2504,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
               {isDirectMessage ? (
                 <>
                   <span className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                    dm 1:1
+                    私聊 1:1
                   </span>
                   <span
                     className={cn(
@@ -2492,27 +2516,27 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                           : "bg-white"
                     )}
                   >
-                    {channel?.presence ?? "idle"}
+                    {channelPresenceLabel(channel?.presence)}
                   </span>
                   <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                    {channel?.unread ?? 0} unread
+                    {channel?.unread ?? 0} 未读
                   </span>
                 </>
               ) : (
                 <>
                   <span className="border border-[var(--shock-ink)] bg-[var(--shock-cyan)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                    {sidebarMachines.length} machines
+                    {sidebarMachines.length} 台机器
                   </span>
                   <span className="border border-[var(--shock-ink)] bg-[var(--shock-lime)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                    {runningAgents} active citizens
+                    {runningAgents} 个在线智能体
                   </span>
                   <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                    {blockedAgents} blocked
+                    {blockedAgents} 个阻塞
                   </span>
                 </>
               )}
               <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                {inboxCount} inbox
+                {inboxCount} 条收件箱
               </span>
             </div>
           </div>
@@ -2527,27 +2551,27 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                   >
                     <div className="mx-auto max-w-[1040px] border-x-2 border-[var(--shock-ink)] bg-[#fff9ec] pb-4">
                       <div className="border-b-2 border-[var(--shock-ink)] px-4 py-3">
-                        <p className="font-display text-[18px] font-bold">{channel?.name ?? "等待同步"}</p>
+                        <p className="font-display text-[18px] font-bold">{channel?.name ?? "正在载入"}</p>
                         <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.64)]">
-                          {channel?.summary ?? channel?.purpose ?? "当前还没有拿到这条消息面的 purpose。"}
+                          {channel?.summary ?? channel?.purpose ?? "这里会显示当前频道或私聊的说明。"}
                         </p>
                       </div>
                       {loading ? (
                         <DiscussionStateMessage
-                          title="正在同步消息面真值"
-                          message="等待 server 返回当前 channel / DM state，前端先不回退到别的页面。"
+                          title="正在载入消息"
+                          message="正在获取当前频道或私聊内容。"
                         />
                       ) : error ? (
                         <DiscussionStateMessage title="消息面同步失败" message={error} />
                       ) : !channel ? (
                         <DiscussionStateMessage
                           title="未找到消息面"
-                          message={`当前找不到 \`${channelId}\` 对应的 channel / DM 记录。`}
+                          message={`当前找不到 \`${channelId}\` 对应的频道或私聊记录。`}
                         />
                       ) : messages.length === 0 ? (
                         <DiscussionStateMessage
                           title="这个消息面当前还没有内容"
-                          message="等第一条消息出现后，这里会直接显示真实流。"
+                          message="发送第一条消息后，这里会显示对应内容。"
                         />
                       ) : (
                         messages.map((message) => (
@@ -2587,9 +2611,9 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                         placeholder={
                           replyTarget
                             ? `继续回复 ${replyTarget.speaker}...`
-                            : channel
-                              ? `发送消息到 ${channel.name}...`
-                              : "等待消息面同步..."
+                              : channel
+                                ? `发送消息到 ${channel.name}...`
+                              : "正在载入消息..."
                         }
                       />
                       <button
@@ -2605,7 +2629,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                         disabled={!channel || loading || Boolean(error) || sending || !draft.trim()}
                         className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
                       >
-                        {sending ? "..." : "Send"}
+                        {sending ? "..." : "发送"}
                       </button>
                     </form>
                     {sendError ? (
@@ -2618,7 +2642,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
               ) : activeWorkbenchTab === "followed" ? (
                 <div className="min-h-0 overflow-y-auto bg-[var(--shock-paper)] p-4">
                   <MessageWorkbenchCollectionPanel
-                    title="Followed Threads"
+                    title="关注中的线程"
                     description="从这里重新打开你决定持续跟踪的线程，不必再从消息流里重新翻。"
                     items={followedItemsForSurface}
                     activeItemId={selectedFollowedEntry?.id}
@@ -2628,8 +2652,8 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
               ) : (
                 <div className="min-h-0 overflow-y-auto bg-[var(--shock-paper)] p-4">
                   <MessageWorkbenchCollectionPanel
-                    title="Saved Later"
-                    description="Later 队列只收“晚点再回看”的消息，不复制出第二个任务板。"
+                    title="稍后查看"
+                    description="这里只收“晚点再回看”的消息，不复制出第二个任务板。"
                     items={savedItemsForSurface}
                     activeItemId={selectedSavedEntry?.id}
                     testId="saved-later-panel"
@@ -2641,7 +2665,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
             <aside className="hidden min-h-0 flex-col border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex">
               {activeWorkbenchTab === "chat" ? (
                 <ThreadRail
-                  scopeLabel={channel?.name ?? "channel"}
+                  scopeLabel={channel?.name ?? "频道"}
                   selectedMessage={selectedThreadMessage}
                   replies={selectedThreadReplies}
                   replyTarget={replyTarget}
@@ -2651,27 +2675,27 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     }
                   }}
                   primaryAction={{
-                    label: isSelectedThreadFollowed ? "Following" : "Follow Thread",
+                    label: isSelectedThreadFollowed ? "已关注" : "关注线程",
                     onClick: handleToggleFollowThread,
                     disabled: !selectedThreadMessage,
                     tone: isSelectedThreadFollowed ? "ink" : "yellow",
                     testId: "channel-thread-follow",
                   }}
                   secondaryAction={{
-                    label: isSelectedThreadSaved ? "Saved" : "Save Later",
+                    label: isSelectedThreadSaved ? "已暂存" : "稍后查看",
                     onClick: handleToggleSaveLater,
                     disabled: !selectedThreadMessage,
                     tone: "white",
                     testId: "channel-thread-save-later",
                   }}
                   emptyTitle="先选一条消息"
-                  emptyMessage="thread 是频道消息的局部回复区。先在左侧消息流里点一条消息，再决定要不要 follow 或稍后回看。"
+                  emptyMessage="线程是频道消息的局部回复区。先在左侧消息流里点一条消息，再决定要不要关注或稍后回看。"
                 />
               ) : (
                 <>
                   <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                     <p className="font-display text-[20px] font-bold leading-none">
-                      {activeWorkbenchTab === "followed" ? "Followed Rail" : "Saved Rail"}
+                      {activeWorkbenchTab === "followed" ? "关注回访区" : "暂存回访区"}
                     </p>
                     <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(17,17,17,0.56)]">
                       {selectedCollectionEntry?.channelLabel ?? channel?.name ?? channelId}
@@ -2683,7 +2707,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                         <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em]">
-                              {activeWorkbenchTab === "followed" ? "Followed" : "Later"}
+                              {activeWorkbenchTab === "followed" ? "关注中" : "稍后看"}
                             </span>
                             <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em]">
                               {selectedCollectionEntry.channelLabel}
@@ -2700,20 +2724,20 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                               data-testid={activeWorkbenchTab === "followed" ? "followed-thread-rail-reopen" : "saved-later-rail-reopen"}
                               className="border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)]"
                             >
-                              Reopen Thread
+                              重新打开线程
                             </Link>
                             <Link
                               href={selectedCollectionEntry.surfaceHref}
                               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
                             >
-                              Open Queue
+                              打开列表
                             </Link>
                           </div>
                         </section>
 
                         <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
                           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-                            Parent Message
+                            原始消息
                           </p>
                           <p className="mt-3 font-display text-[15px] font-bold">{selectedCollectionMessage.speaker}</p>
                           <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.84)]">{selectedCollectionMessage.message}</p>
@@ -2721,18 +2745,18 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 
                         <section className="border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
                           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-                            Replies
+                            回复数
                           </p>
                           <p className="mt-2 font-display text-[18px] font-bold leading-none">{selectedCollectionReplies.length}</p>
                           <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-                            这条消息当前有 {selectedCollectionReplies.length} 条 reply，可在 reopen 后继续 thread 级回访。
+                            这条消息当前有 {selectedCollectionReplies.length} 条回复，重新打开后可以继续在线程层级回访。
                           </p>
                         </section>
                       </div>
                     ) : (
                       <DiscussionStateMessage
-                        title="等待条目"
-                        message="先在 Chat 里选一条消息并 follow / save，它就会进入这个回访队列。"
+                        title="暂无内容"
+                        message="先在聊天里选一条消息并关注或暂存，它就会进入这个回访队列。"
                       />
                     )}
                   </div>
@@ -2772,7 +2796,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const canReply = !loading && !error && !runPaused && hasSessionPermission(authSession, "room.reply");
   const roomReplyStatus = loading ? "syncing" : error ? "sync_failed" : runPaused ? "paused" : permissionStatus(authSession, "room.reply");
   const roomReplyBoundary = runPaused
-    ? "当前 run 已暂停。先在右侧 Run Control 里 Resume，或先锁定 follow-thread 再恢复执行。"
+    ? "当前执行已暂停。先在右侧控制面板里恢复，或先锁定当前线程再继续执行。"
     : permissionBoundaryCopy(authSession, "room.reply");
   const canControlRun = !loading && !error && hasSessionPermission(authSession, "run.execute");
   const runControlStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "run.execute");
@@ -2940,7 +2964,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     pullRequestActionDisabled = true;
     pullRequestActionHandler = null;
     pullRequestActionStatus = "merged";
-    pullRequestBoundary = "当前 PR 已合并，不再提供新的 review / merge 动作。";
+    pullRequestBoundary = "当前 PR 已合并，不再提供新的评审或合并动作。";
   } else if (pullRequest) {
     if (canMergePullRequest) {
       pullRequestActionLabel = canMerge ? "合并 PR" : "已合并";
@@ -2955,7 +2979,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
       pullRequestActionStatus =
         loading || error ? "syncing" : canReviewPullRequest ? "review_only" : permissionStatus(authSession, "pull_request.review");
       pullRequestBoundary = canReviewPullRequest
-        ? "当前 session 只有 review 权限，可以同步 PR 状态，但不能直接 merge。"
+        ? "当前会话只有评审权限，可以同步 PR 状态，但不能直接合并。"
         : permissionBoundaryCopy(authSession, "pull_request.review");
     }
   }
@@ -3022,16 +3046,16 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
             disconnected={loading || Boolean(error) || sidebarMachines.every((machine) => machine.state === "offline")}
           />
           <StitchTopBar
-            eyebrow="Issue Room"
+            eyebrow="讨论间"
             title={loading ? "讨论间同步中" : error ? "讨论间同步失败" : room?.title ?? roomId}
             description={
               loading
-                ? "等待 live room / run state 返回。"
+                ? "正在获取讨论间和执行状态。"
                 : error
                   ? error
-                  : room?.summary ?? "当前还没有拿到这间房的 live 摘要。"
+                  : room?.summary ?? "这里会显示当前讨论间的摘要。"
             }
-            searchPlaceholder="Search room / issue / run"
+            searchPlaceholder="搜索讨论间 / 事项 / 执行"
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
             tabs={roomWorkbenchTabs}
             activeTab={ROOM_WORKBENCH_TAB_LABEL[activeWorkbenchTab]}
@@ -3039,16 +3063,16 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
           <div className="border-b-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                {room?.issueKey ?? "issue"}
+                {room?.issueKey ?? "事项"}
               </span>
               <span className="border border-[var(--shock-ink)] bg-[var(--shock-cyan)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                run {currentRunStatus ?? "syncing"}
+                执行 {currentRunStatus ? runStatusLabel(currentRunStatus) : "待同步"}
               </span>
               <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                pr {pullRequestStatusLabel(pullRequest?.status)}
+                PR {pullRequestStatusLabel(pullRequest?.status)}
               </span>
               <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                {relatedSignals.length} signals
+                {relatedSignals.length} 条信号
               </span>
             </div>
           </div>
@@ -3061,7 +3085,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       {room?.topic.title ?? "等待讨论间同步"}
                     </p>
                     <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
-                      {room?.topic.summary ?? "默认只把当前讨论留在主面，Run / PR / Topic 退到次级进入面。"}
+                      {room?.topic.summary ?? "这里显示当前讨论主题的简要说明。"}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -3069,21 +3093,21 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       href={room ? `/issues/${room.issueKey}` : "/issues"}
                       className="flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
-                      Issue
+                      事项
                     </Link>
                     <Link
                       href={planningMirrorHref}
                       data-testid="room-open-planning-mirror"
                       className="flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
-                      Board
+                      看板
                     </Link>
                   </div>
                 </div>
               </div>
               {loading ? (
                 <div className="p-4">
-                  <DiscussionStateMessage title="正在同步讨论间真值" message="等待 server 返回当前 room / run / message 状态，前端不再自动退回另一间旧的 seed room。" />
+                  <DiscussionStateMessage title="正在载入讨论间" message="正在获取当前讨论间、执行和消息内容。" />
                 </div>
               ) : error ? (
                 <div className="p-4">
@@ -3091,7 +3115,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                 </div>
               ) : !room || !run ? (
                 <div className="p-4">
-                  <DiscussionStateMessage title="未找到讨论间" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
+                  <DiscussionStateMessage title="未找到讨论间" message={`当前找不到 \`${roomId}\` 对应的讨论间或执行记录。`} />
                 </div>
               ) : (
                 <div className="min-h-0 overflow-y-auto bg-[var(--shock-paper)] p-3">
@@ -3119,11 +3143,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                   ) : activeWorkbenchTab === "run" ? (
                     <div data-testid="room-workbench-run-panel" className="space-y-4">
                       <section className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Run Usage</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行用量</p>
                         <div className="mt-3 border-2 border-[var(--shock-ink)] bg-[#f7f7f7] px-3 py-3">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">Current Branch</p>
+                              <p className="font-mono text-[10px] text-[color:rgba(24,20,14,0.48)]">当前分支</p>
                               <p className="mt-2 font-display text-[18px] font-bold leading-6">{session?.branch ?? run.branch}</p>
                             </div>
                             <span
@@ -3145,22 +3169,22 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                             </span>
                           </div>
                           <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
-                            Worktree {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
+                            工作区 {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
                           </p>
                           <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
-                            Last Sync {session?.updatedAt || run.startedAt}
+                            最近同步 {session?.updatedAt || run.startedAt}
                           </p>
                           <div className="mt-3 grid grid-cols-3 gap-2">
                             <div className="border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2">
-                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Prompt</p>
+                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">输入令牌</p>
                               <p className="mt-1 text-sm font-semibold">{formatCount(run.usage?.promptTokens)}</p>
                             </div>
                             <div className="border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2">
-                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Completion</p>
+                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">输出令牌</p>
                               <p className="mt-1 text-sm font-semibold">{formatCount(run.usage?.completionTokens)}</p>
                             </div>
                             <div className="border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2">
-                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Budget</p>
+                              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">预算</p>
                               <p className="mt-1 text-sm font-semibold">{runBudgetStatusLabel(run.usage?.budgetStatus)}</p>
                             </div>
                           </div>
@@ -3168,29 +3192,29 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       </section>
 
                       <section data-testid="room-workbench-usage-panel" className="border-2 border-[var(--shock-ink)] bg-white p-3 shadow-[var(--shock-shadow-sm)]">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Usage / Quota</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">用量 / 配额</p>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                           <div data-testid="room-workbench-room-usage-summary" className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Room</p>
+                            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">讨论间</p>
                             <p className="mt-2 text-sm font-semibold">
-                              {formatCount(room.usage?.messageCount)} msgs / {formatCount(room.usage?.totalTokens)} tokens
+                              {formatCount(room.usage?.messageCount)} 条消息 / {formatCount(room.usage?.totalTokens)} 令牌
                             </p>
                             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
-                              {formatCount(room.usage?.humanTurns)} human / {formatCount(room.usage?.agentTurns)} agent · {room.usage?.windowLabel ?? "窗口未返回"}
+                              {formatCount(room.usage?.humanTurns)} 人类 / {formatCount(room.usage?.agentTurns)} 智能体 · {room.usage?.windowLabel ?? "窗口未返回"}
                             </p>
                           </div>
                           <div data-testid="room-workbench-workspace-usage-summary" className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">Workspace</p>
+                            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">工作区</p>
                             <p className="mt-2 text-sm font-semibold">{state.workspace.plan || "未命名计划"}</p>
                             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
-                              {formatQuotaCounter(state.workspace.quota?.usedAgents, state.workspace.quota?.maxAgents, "agents")} ·{" "}
-                              {formatQuotaCounter(state.workspace.quota?.usedRooms, state.workspace.quota?.maxRooms, "rooms")}
+                              {formatQuotaCounter(state.workspace.quota?.usedAgents, state.workspace.quota?.maxAgents, "个智能体")} ·{" "}
+                              {formatQuotaCounter(state.workspace.quota?.usedRooms, state.workspace.quota?.maxRooms, "个讨论间")}
                             </p>
                             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{formatRetentionSummary(state.workspace)}</p>
                           </div>
                         </div>
                         <p data-testid="room-workbench-usage-warning" className="mt-3 text-[12px] leading-6 text-[color:rgba(24,20,14,0.7)]">
-                          {run.usage?.warning ?? room.usage?.warning ?? state.workspace.usage?.warning ?? state.workspace.quota?.warning ?? "当前还没有 usage / quota warning。"}
+                          {run.usage?.warning ?? room.usage?.warning ?? state.workspace.usage?.warning ?? state.workspace.quota?.warning ?? "当前没有用量或配额提醒。"}
                         </p>
                       </section>
 
@@ -3235,43 +3259,46 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                 <p className="font-display text-[20px] font-bold leading-none">
                   {activeWorkbenchTab === "chat"
                     ? railMode === "thread"
-                      ? "Thread Rail"
-                      : "Room Info"
-                    : "Room Info"}
+                      ? "线程侧栏"
+                      : "房间信息"
+                    : "房间信息"}
                 </p>
                 {activeWorkbenchTab === "chat" ? (
                   <div className="mt-3 flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
-                    {["Context", "Thread"].map((tab) => (
+                    {[
+                      { id: "context", label: "上下文" },
+                      { id: "thread", label: "线程" },
+                    ].map((tab) => (
                       <button
                         type="button"
-                        key={tab}
-                        data-testid={`room-rail-mode-${tab.toLowerCase()}`}
-                        onClick={() => setRailMode(tab === "Thread" ? "thread" : "context")}
+                        key={tab.id}
+                        data-testid={`room-rail-mode-${tab.id}`}
+                        onClick={() => setRailMode(tab.id === "thread" ? "thread" : "context")}
                         className={cn(
                           "min-h-[44px] border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)] last:border-r-0",
-                          (tab === "Thread" && railMode === "thread") || (tab === "Context" && railMode === "context")
+                          (tab.id === "thread" && railMode === "thread") || (tab.id === "context" && railMode === "context")
                             ? "bg-[var(--shock-yellow)]"
                             : "bg-white"
                         )}
                       >
-                        {tab}
+                        {tab.label}
                       </button>
                     ))}
                   </div>
                 ) : (
                   <div className="mt-3 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]">
-                    {room?.issueKey ?? roomId} / secondary sheet
+                    {room?.issueKey ?? roomId} / 详情
                   </div>
                 )}
               </div>
 
               <div className="flex-1 overflow-y-auto p-4">
                 {loading ? (
-                  <DiscussionStateMessage title="等待房间上下文" message="右侧 rail 会在 live room / run / session 真值返回后展开。" />
+                  <DiscussionStateMessage title="正在载入房间信息" message="右侧会显示当前讨论间、执行和会话信息。" />
                 ) : error ? (
                   <DiscussionStateMessage title="上下文同步失败" message={error} />
                 ) : !room || !run ? (
-                  <DiscussionStateMessage title="缺少讨论间上下文" message={`当前找不到 \`${roomId}\` 对应的 live room / run 记录。`} />
+                  <DiscussionStateMessage title="缺少讨论间信息" message={`当前找不到 \`${roomId}\` 对应的讨论间或执行记录。`} />
                 ) : activeWorkbenchTab === "chat" && railMode === "thread" ? (
                   <ThreadRail
                     scopeLabel={room.issueKey}
@@ -3284,20 +3311,20 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       }
                     }}
                     primaryAction={{
-                      label: session?.followThread ?? run.followThread ? "Thread Locked" : "Lock Thread",
+                      label: session?.followThread ?? run.followThread ? "已锁定线程" : "锁定线程",
                       onClick: () =>
                         void handleRunControl(
                           "follow_thread",
                           selectedThreadMessage
-                            ? `锁定 thread: ${selectedThreadMessage.speaker} / ${messageExcerpt(selectedThreadMessage.message, 48)}`
+                            ? `锁定线程: ${selectedThreadMessage.speaker} / ${messageExcerpt(selectedThreadMessage.message, 48)}`
                             : "锁定当前线程"
                         ),
                       disabled: !selectedThreadMessage || !canControlRun,
                       tone: session?.followThread ?? run.followThread ? "ink" : "yellow",
                       testId: "room-thread-follow-current",
                     }}
-                    emptyTitle="先选一条 room 消息"
-                    emptyMessage="thread 只作为当前 room 的局部回复区，不会再生成新的一级页面。先在左侧消息流里点一条消息。"
+                    emptyTitle="先选一条讨论消息"
+                    emptyMessage="线程只作为当前讨论间的局部回复区，不会再生成新的一级页面。先在左侧消息流里点一条消息。"
                   />
                 ) : (
                   <RoomWorkbenchRailSummary

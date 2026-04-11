@@ -67,6 +67,7 @@ type RunControlInput = {
 };
 
 type AgentProfileUpdateInput = {
+  name: string;
   role: string;
   avatar: string;
   prompt: string;
@@ -895,10 +896,10 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
     return payload;
   }
 
-  async function postRoomMessage(roomId: string, prompt: string, provider = "claude") {
+  async function postRoomMessage(roomId: string, prompt: string, provider?: string) {
     const payload = await readJSON<StateMutationResponse>(`/v1/rooms/${roomId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ prompt, provider }),
+      body: JSON.stringify(provider ? { prompt, provider } : { prompt }),
     });
 
     if (payload.state) {
@@ -910,7 +911,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
   async function streamRoomMessage(
     roomId: string,
     prompt: string,
-    provider = "claude",
+    provider?: string,
     onEvent?: (event: RoomStreamEvent) => void
   ) {
     const response = await fetch(`${API_BASE}/v1/rooms/${roomId}/messages/stream`, {
@@ -919,7 +920,7 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ prompt, provider }),
+      body: JSON.stringify(provider ? { prompt, provider } : { prompt }),
     });
 
     if (!response.ok) {

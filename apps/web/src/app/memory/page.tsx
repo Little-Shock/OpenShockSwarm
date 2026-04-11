@@ -8,11 +8,11 @@ export default function MemoryPage() {
   return (
     <OpenShockShell
       view="memory"
-      eyebrow="Phase 5 记忆治理"
-      title="把 file memory 和 provider binding 收成可治理的 memory center"
-      description="这里直接消费 `/v1/memory` 和 `/v1/memory-center`，把 governed artifact registry、provider orchestration、next-run injection preview、skill / policy promotion queue 与 audit timeline 收成同一页真值。"
-      contextTitle="Memory Ledger Online"
-      contextDescription="当 artifact version、provider binding、policy、preview、promotion review 和最近一版差异都能直接从 live contract 读清时，memory subsystem 才算真正站住。"
+      eyebrow="记忆"
+      title="记忆与知识"
+      description="在这里查看资料、管理来源，并决定下一次任务会带上哪些上下文。"
+      contextTitle="记忆概览"
+      contextDescription="版本、来源、可用范围和最近变更都会集中显示在这里。"
       contextBody={<LiveMemoryContextRail />}
     >
       <LiveMemoryView />

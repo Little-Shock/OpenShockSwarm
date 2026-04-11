@@ -662,8 +662,8 @@ function WorkspacePlanObservabilityPanel() {
     <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/72">workspace plan / limits / retention</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">把 workspace 的 seat、保留期和 usage warning 直接摆到 settings</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/72">工作区额度</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">当前套餐、保留期和使用情况</h2>
         </div>
         <span
           data-testid="settings-workspace-quota-status"
@@ -682,7 +682,7 @@ function WorkspacePlanObservabilityPanel() {
         </span>
       </div>
       <p className="mt-3 max-w-4xl text-sm leading-6 text-white/84">
-        `#156` 这层直接消费 `#149` 已经补好的 workspace quota / usage truth，让 plan、headroom、retention 和 warning 不再只藏在 server 默认值或 setup 边栏里。
+        这里集中展示工作区的额度、保留期和最近使用情况。
       </p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -822,7 +822,7 @@ function WorkspaceDurableConfigPanel() {
         },
       });
       setDirty(false);
-      setSuccess("workspace durable truth 已写回 server，并会跨 refresh / restart 继续保留。");
+      setSuccess("工作区设置已保存。");
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "workspace config update failed");
     } finally {
@@ -834,32 +834,31 @@ function WorkspaceDurableConfigPanel() {
     <Panel tone="yellow">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">workspace durable truth</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">把 onboarding / repo / install / memory / sandbox / governance 配置收成同一份工作区真值</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">工作区基础设置</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">启动、仓库和安全设置</h2>
         </div>
         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
           {onboardingStatusLabel(workspace.onboarding.status)}
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-        `#126` 这层不再把 onboarding progress、template selection、repo binding、GitHub installation、workspace preference、sandbox baseline 和 team topology
-        分散在多页临时状态里；settings 写回后，setup / access / mailbox / agents 会读取同一份 durable snapshot。
+        这里管理工作区模板、启动进度、仓库绑定、浏览器入口和安全范围。
       </p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <FactTile label="Template" value={valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")} testID="settings-workspace-template-value" />
+        <FactTile label="模板" value={valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")} testID="settings-workspace-template-value" />
         <p className="hidden" data-testid="settings-workspace-template-text">{valueOrPlaceholder(workspace.onboarding.templateId, "未选模板")}</p>
-        <FactTile label="Resume" value={valueOrPlaceholder(workspace.onboarding.resumeUrl, "未声明")} />
-        <FactTile label="Repo Sync" value={valueOrPlaceholder(workspace.repoBinding.syncedAt, "未回写")} />
-        <FactTile label="Install" value={workspace.githubInstallation.connectionReady ? "ready" : "pending"} />
-        <FactTile label="Sandbox" value={sandboxProfileLabel(workspace.sandbox.profile)} testID="settings-workspace-sandbox-profile-value" />
-        <FactTile label="Policy" value={sandboxPolicySummary(workspace.sandbox)} testID="settings-workspace-sandbox-summary" />
+        <FactTile label="继续地址" value={valueOrPlaceholder(workspace.onboarding.resumeUrl, "未设置")} />
+        <FactTile label="仓库同步" value={valueOrPlaceholder(workspace.repoBinding.syncedAt, "未回写")} />
+        <FactTile label="安装状态" value={workspace.githubInstallation.connectionReady ? "已连接" : "待完成"} />
+        <FactTile label="安全模式" value={sandboxProfileLabel(workspace.sandbox.profile)} testID="settings-workspace-sandbox-profile-value" />
+        <FactTile label="规则" value={sandboxPolicySummary(workspace.sandbox)} testID="settings-workspace-sandbox-summary" />
       </div>
 
       <form onSubmit={handleSubmit} className="mt-5 grid gap-3 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">template</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">模板</span>
             <input
               data-testid="settings-workspace-template"
               value={templateId}
@@ -871,7 +870,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">onboarding status</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">引导状态</span>
             <select
               data-testid="settings-workspace-onboarding-status"
               value={status}
@@ -889,7 +888,7 @@ function WorkspaceDurableConfigPanel() {
             </select>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">current step</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">当前步骤</span>
             <input
               data-testid="settings-workspace-current-step"
               value={currentStep}
@@ -901,7 +900,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">resume url</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">继续地址</span>
             <input
               data-testid="settings-workspace-resume-url"
               value={resumeUrl}
@@ -913,7 +912,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">completed steps</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">已完成步骤</span>
             <input
               data-testid="settings-workspace-completed-steps"
               value={completedSteps}
@@ -925,7 +924,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">browser push</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">浏览器提醒</span>
             <input
               data-testid="settings-workspace-browser-push"
               value={browserPush}
@@ -937,7 +936,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">memory mode</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">记忆模式</span>
             <input
               data-testid="settings-workspace-memory-mode"
               value={memoryMode}
@@ -1108,7 +1107,7 @@ function GovernanceTopologyPanel() {
         },
       });
       setDirty(false);
-      setSuccess("team topology / delivery policy 已写回 workspace truth；reload / restart 后会继续维持同一条治理链。");
+      setSuccess("团队协作流程已保存。");
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology update failed");
     } finally {
@@ -1139,7 +1138,7 @@ function GovernanceTopologyPanel() {
         },
       });
       setDirty(false);
-      setSuccess("当前 team topology 与 delivery policy 已恢复为模板默认值。");
+      setSuccess("已恢复为模板默认设置。");
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology reset failed");
     } finally {
@@ -1151,28 +1150,27 @@ function GovernanceTopologyPanel() {
     <Panel tone="paper">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">configurable team topology</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">把多 Agent 角色拓扑做成正式可配置、可恢复的 workspace truth</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">团队分工</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">配置团队角色和接力顺序</h2>
         </div>
         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
           {valueOrPlaceholder(workspace.governance.templateId, "blank-custom")}
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-        `CHK-21` 这层不再只展示只读治理预览。PM / Architect / Developer / Reviewer / QA 或研究团队变体现在可以在 settings 里直接改 lane、角色、default agent 和 handoff path，
-        setup / mailbox / agents 会继续读取同一份 durable topology；final closeout 要不要自动起 delegated handoff，也在这里收成正式 policy。
+        在这里调整团队模板、角色名称、默认 Agent 和交接方式。
       </p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-4">
         <FactTile label="Template" value={valueOrPlaceholder(workspace.governance.label, "未命名治理链")} />
-        <FactTile label="Configured Lanes" value={String(lanes.length)} testID="settings-governance-topology-count" />
+        <FactTile label="已配置角色" value={String(lanes.length)} testID="settings-governance-topology-count" />
         <FactTile
-          label="Route Preview"
+          label="当前顺序"
           value={lanes.length > 0 ? lanes.map((lane) => lane.label || lane.id).join(" -> ") : "未声明"}
           testID="settings-governance-route-preview"
         />
         <FactTile
-          label="Delivery Policy"
+          label="交接方式"
           value={deliveryDelegationModeLabel(deliveryDelegationMode)}
           testID="settings-governance-delivery-policy"
         />
@@ -1182,9 +1180,9 @@ function GovernanceTopologyPanel() {
         <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">delivery delegation policy</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">交接方式</p>
               <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                final lane closeout 后，是自动起 delegated closeout handoff、只发 signal，还是直接 auto-complete delivery closeout，都在这里收成同一份 durable policy。
+                选择任务完成后如何继续交接，或者是否自动收尾。
               </p>
             </div>
             <span className="rounded-full border border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
@@ -1216,8 +1214,8 @@ function GovernanceTopologyPanel() {
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">lane {index + 1}</p>
-                  <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">保持已知语义时，推荐继续沿用已有 lane id；新增 lane 会自动按当前 order 进入 routing matrix。</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">角色 {index + 1}</p>
+                  <p className="mt-1 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">可以调整名称、职责、默认 Agent 和显示顺序。</p>
                 </div>
                 <button
                   type="button"
@@ -1226,12 +1224,12 @@ function GovernanceTopologyPanel() {
                   disabled={pending || !canManage || lanes.length <= 2}
                   className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Remove Lane
+                  删除角色
                 </button>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <label className="grid gap-2 text-sm">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">id</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">ID</span>
                   <input
                     data-testid={`settings-governance-lane-id-${index}`}
                     value={lane.id}
@@ -1240,7 +1238,7 @@ function GovernanceTopologyPanel() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">label</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">名称</span>
                   <input
                     data-testid={`settings-governance-lane-label-${index}`}
                     value={lane.label}
@@ -1249,7 +1247,7 @@ function GovernanceTopologyPanel() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">role</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">职责</span>
                   <input
                     data-testid={`settings-governance-lane-role-${index}`}
                     value={lane.role}
@@ -1258,7 +1256,7 @@ function GovernanceTopologyPanel() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">default agent</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">默认 Agent</span>
                   <input
                     data-testid={`settings-governance-lane-default-agent-${index}`}
                     value={lane.defaultAgent ?? ""}
@@ -1267,7 +1265,7 @@ function GovernanceTopologyPanel() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">lane path</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">路径</span>
                   <input
                     data-testid={`settings-governance-lane-path-${index}`}
                     value={lane.lane ?? ""}
@@ -1282,7 +1280,7 @@ function GovernanceTopologyPanel() {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            当前 preview 会被 `/setup`、`/mailbox` 和 `/agents` 同步读取；如果切模板又想回到默认 topology，可以直接 reset。
+            修改后会同步到 Setup、交接和 Agent 页面。
           </p>
           <div className="flex flex-wrap gap-3">
             <button
@@ -1292,7 +1290,7 @@ function GovernanceTopologyPanel() {
               disabled={pending || !canManage}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Add Lane
+              添加角色
             </button>
             <button
               type="button"
@@ -1303,7 +1301,7 @@ function GovernanceTopologyPanel() {
               disabled={pending || !canManage}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Reset Template
+              恢复模板
             </button>
             <button
               type="submit"
@@ -1311,7 +1309,7 @@ function GovernanceTopologyPanel() {
               disabled={pending || !canManage}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {pending ? "写回中..." : "写回 Team Topology"}
+              {pending ? "保存中..." : "保存团队设置"}
             </button>
           </div>
         </div>
@@ -2537,12 +2535,12 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
 
         {actionMessage ? (
           <Panel tone="yellow">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Latest Action</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">最近操作</p>
             <p className="mt-3 text-base leading-7" data-testid="notification-action-message">
               {actionMessage}
             </p>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              当前这层已经把 invite / verify / reset / blocked recovery absorb 到同一条 notification template chain；前台现在直接复用这份 delivery truth。
+              这里会显示最近一次通知相关操作的结果。
             </p>
           </Panel>
         ) : null}
@@ -2557,11 +2555,11 @@ export function LiveSettingsRoute() {
   return (
     <OpenShockShell
       view="settings"
-      eyebrow="Phase 6 Durable Config"
-      title="把高频 workspace / member 配置收回同一份 durable truth，把重治理能力退到高级区"
-      description="这里默认先直出 workspace plan、usage、onboarding、sandbox、preferred agent 和 start route；治理拓扑、凭据与通知 delivery 继续保留，但不再一进来就铺满整页。"
-      contextTitle="Workspace Governance Truth"
-      contextDescription="当前页除了 `TC-040` 的 settings durable config，也吸收了 `#156`：workspace plan / limits / retention / usage warning 继续公开，但整个设置路径已改成 core-first / advanced-second。"
+      eyebrow="设置"
+      title="工作区设置"
+      description="先处理启动、仓库和常用偏好；更深的团队协作和通知配置收在后面。"
+      contextTitle="设置概览"
+      contextDescription="这里集中管理工作区额度、启动过程、默认入口和团队协作方式。"
       contextBody={<LiveSettingsContextRail notifications={notifications} />}
     >
       <LiveSettingsView notifications={notifications} />

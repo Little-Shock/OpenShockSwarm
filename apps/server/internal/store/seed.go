@@ -42,9 +42,9 @@ func seedState() State {
 			Onboarding: WorkspaceOnboardingSnapshot{
 				Status:         workspaceOnboardingInProgress,
 				TemplateID:     "delivery-ops",
-				CurrentStep:    "repo-binding",
+				CurrentStep:    "github",
 				CompletedSteps: []string{"workspace-created", "member-seeded"},
-				ResumeURL:      "/setup",
+				ResumeURL:      "/onboarding",
 				UpdatedAt:      now,
 			},
 		},

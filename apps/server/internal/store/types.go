@@ -1197,6 +1197,7 @@ type Store struct {
 	mu            sync.RWMutex
 	path          string
 	workspaceRoot string
+	bootstrapMode string
 	state         State
 	vault         credentialVault
 	vaultKey      []byte
