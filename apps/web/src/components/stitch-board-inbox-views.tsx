@@ -451,7 +451,7 @@ export function StitchBoardView() {
         onQueryChange={quickSearch.onQueryChange}
         onSelect={quickSearch.onSelectQuickSearch}
       />
-      <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+      <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[274px_minmax(0,1fr)]">
         <StitchSidebar
           active="board"
           channels={sidebarChannels}
@@ -1010,7 +1010,7 @@ export function StitchInboxView() {
         onQueryChange={quickSearch.onQueryChange}
         onSelect={quickSearch.onSelectQuickSearch}
       />
-      <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+      <div className="grid h-screen w-screen overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[274px_minmax(0,1fr)]">
         <StitchSidebar
           active="inbox"
           channels={sidebarChannels}

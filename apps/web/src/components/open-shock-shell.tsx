@@ -298,7 +298,7 @@ export function OpenShockShell({
         onQueryChange={quickSearch.onQueryChange}
         onSelect={quickSearch.onSelectQuickSearch}
       />
-      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] md:grid-cols-[298px_minmax(0,1fr)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] md:grid-cols-[274px_minmax(0,1fr)]">
         <StitchSidebar
           active={activeTab}
           mode={shellMode}

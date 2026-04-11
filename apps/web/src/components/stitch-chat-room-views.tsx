@@ -2436,7 +2436,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
         onQueryChange={quickSearch.onQueryChange}
         onSelect={quickSearch.onSelectQuickSearch}
       />
-      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[274px_minmax(0,1fr)]">
         <StitchSidebar
           active="channels"
           channels={sidebarChannels}
@@ -3008,7 +3008,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
         onQueryChange={quickSearch.onQueryChange}
         onSelect={quickSearch.onSelectQuickSearch}
       />
-      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[298px_minmax(0,1fr)]">
+      <div className="grid h-full min-h-0 w-full overflow-hidden border-y-2 border-[var(--shock-ink)] bg-white md:grid-cols-[274px_minmax(0,1fr)]">
         <StitchSidebar
           active="rooms"
           channels={sidebarChannels}

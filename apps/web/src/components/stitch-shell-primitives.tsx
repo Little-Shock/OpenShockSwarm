@@ -286,16 +286,21 @@ export function WorkspaceStatusStrip({
   disconnected?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2 border-b-2 border-[var(--shock-ink)] bg-[var(--shock-status)] px-3 py-2">
-      <span className="font-display text-[13px] font-bold">{workspaceName || "OpenShock"}</span>
-      <span className="text-[11px] text-[color:rgba(24,20,14,0.62)]">
+    <div className="flex items-center gap-2 border-b-2 border-[var(--shock-ink)] bg-[var(--shock-status)] px-3 py-1.5">
+      <span className="min-w-0 truncate font-display text-[13px] font-bold">{workspaceName || "OpenShock"}</span>
+      <span
+        className={cn(
+          "inline-flex min-h-[24px] items-center rounded-full border border-[var(--shock-ink)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]",
+          disconnected ? "bg-[var(--shock-pink)] text-white" : "bg-white"
+        )}
+      >
         {disconnected ? "offline" : "live"}
       </span>
       <Link
         href="/setup"
-        className="ml-auto inline-flex min-h-[36px] items-center rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-status)]"
+        className="ml-auto inline-flex min-h-[30px] items-center rounded-[10px] border border-[var(--shock-ink)] bg-white px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-status)]"
       >
-        Reconnect
+        {disconnected ? "Open Setup" : "Setup"}
       </Link>
     </div>
   );
@@ -336,11 +341,11 @@ export function StitchSidebar({
   const shellProfiles = profileEntries ?? [];
 
   return (
-    <aside className="hidden h-full w-[282px] flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
+    <aside className="hidden h-full w-[258px] flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
       <div className="border-b-2 border-[var(--shock-ink)] px-2 py-2">
         <button
           type="button"
-          className="flex min-h-[46px] w-full items-center gap-2 rounded-[16px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-display text-[15px] font-bold text-[var(--shock-yellow)] shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]"
+          className="flex min-h-[44px] w-full items-center gap-2 rounded-[16px] border-2 border-[var(--shock-ink)] bg-black px-3 py-2 font-display text-[14px] font-bold text-[var(--shock-yellow)] shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]"
         >
           <span className="min-w-0 flex-1 truncate text-left">{workspaceName || "OpenShock"}</span>
           <span className="font-mono text-[10px]">▾</span>
@@ -582,7 +587,7 @@ export function StitchSidebar({
         </div>
 
         <div className="mt-2 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2.5 shadow-[var(--shock-shadow-sm)]">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate font-display text-[14px] font-bold leading-none">
                 {selectedRoom?.title || workspaceName || "OpenShock"}
@@ -591,25 +596,13 @@ export function StitchSidebar({
                 {selectedRoom ? selectedRoom.issueKey : workspaceSubtitle || "shock-main"}
               </p>
             </div>
-            <div className="text-right">
-              <p className="font-mono text-[10px] uppercase text-[color:rgba(24,20,14,0.56)]">presence</p>
-              <p className="font-mono text-[10px] uppercase">{runningAgents}/{machineList.length}</p>
-            </div>
+            <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em]">
+              {runningAgents}/{machineList.length} live
+            </span>
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
-            <div className="rounded-[10px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
-              <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">live</p>
-              <p className="mt-1 font-mono">{runningAgents}</p>
-            </div>
-            <div className="rounded-[10px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
-              <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">blocked</p>
-              <p className="mt-1 font-mono">{blockedAgents}</p>
-            </div>
-            <div className="rounded-[10px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1">
-              <p className="font-mono uppercase text-[color:rgba(24,20,14,0.52)]">inbox</p>
-              <p className="mt-1 font-mono">{openInboxCount}</p>
-            </div>
-          </div>
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.62)]">
+            {runningAgents} live · {blockedAgents} blocked · {openInboxCount} inbox
+          </p>
         </div>
 
         {shellProfiles.length > 0 ? (
@@ -620,9 +613,9 @@ export function StitchSidebar({
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(255,248,231,0.72)]">
-                  Profile Hub
+                  Profiles
                 </p>
-                <p className="mt-1 font-display text-[15px] font-bold leading-none">Current People / Machine</p>
+                <p className="mt-1 font-display text-[14px] font-bold leading-none">Current People / Machine</p>
               </div>
               <span className="font-mono text-[10px] uppercase text-[color:rgba(255,248,231,0.62)]">
                 {shellProfiles.length} links
@@ -634,12 +627,12 @@ export function StitchSidebar({
                   key={entry.id}
                   href={entry.href}
                   data-testid={`sidebar-profile-${entry.id}`}
-                  className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2.5 text-[var(--shock-ink)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-paper)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2 text-[var(--shock-ink)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-paper)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 >
                   <div className="flex items-center gap-2">
                     <span
                       className={cn(
-                        "inline-flex min-h-[30px] min-w-[58px] items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+                        "inline-flex min-h-[28px] min-w-[50px] items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em]",
                         profileEntryBadgeTone(entry.id)
                       )}
                     >
@@ -698,9 +691,45 @@ export function StitchTopBar({
   activeTab,
   onOpenQuickSearch,
 }: StitchTopBarProps) {
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const workspaceMenuRef = useRef<HTMLDivElement | null>(null);
+  const workspaceLinks = [
+    { href: "/issues", label: "Issues" },
+    { href: "/runs", label: "Runs" },
+    { href: "/agents", label: "Agents" },
+    { href: "/setup", label: "Setup" },
+    { href: "/memory", label: "Memory" },
+  ];
+  const activeWorkspaceLink = workspaceLinks.find((link) => currentHref === link.href) ?? null;
+
+  useEffect(() => {
+    if (!workspaceMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!workspaceMenuRef.current?.contains(event.target as Node)) {
+        setWorkspaceMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setWorkspaceMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [workspaceMenuOpen]);
+
   return (
     <header className="border-b-2 border-[var(--shock-ink)] bg-white">
-      <div className="grid gap-2.5 px-4 py-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(250px,320px)_auto] xl:items-center">
+      <div className="grid gap-2.5 px-4 py-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(240px,300px)_auto] xl:items-center">
         <div className="min-w-0">
           {eyebrow ? (
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.52)]">
@@ -733,25 +762,42 @@ export function StitchTopBar({
           </span>
         </button>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {[
-            { href: "/issues", label: "Issues" },
-            { href: "/runs", label: "Runs" },
-            { href: "/agents", label: "Agents" },
-            { href: "/setup", label: "Setup" },
-            { href: "/memory", label: "Memory" },
-          ].map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "inline-flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-                currentHref === link.href ? "bg-[var(--shock-yellow)]" : "bg-white hover:bg-[var(--shock-paper)]"
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+        <div ref={workspaceMenuRef} className="relative flex items-center justify-end">
+          <button
+            type="button"
+            data-testid="workspace-surface-menu-trigger"
+            onClick={() => setWorkspaceMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={workspaceMenuOpen}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          >
+            <span className="text-[color:rgba(24,20,14,0.52)]">Open</span>
+            <span className="font-semibold text-[var(--shock-ink)]">
+              {activeWorkspaceLink?.label ?? "Workspace"}
+            </span>
+            <span>{workspaceMenuOpen ? "▴" : "▾"}</span>
+          </button>
+
+          {workspaceMenuOpen ? (
+            <div className="absolute right-0 top-full z-20 mt-2 w-[190px] rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-1.5 shadow-[var(--shock-shadow-sm)]">
+              {workspaceLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  data-testid={`workspace-surface-link-${link.label.toLowerCase()}`}
+                  onClick={() => setWorkspaceMenuOpen(false)}
+                  className={cn(
+                    "flex min-h-[40px] items-center rounded-[12px] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150",
+                    currentHref === link.href
+                      ? "bg-[var(--shock-yellow)] font-semibold"
+                      : "hover:bg-[var(--shock-paper)]"
+                  )}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
