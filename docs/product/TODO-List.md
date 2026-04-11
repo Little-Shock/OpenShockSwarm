@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.10
+**版本:** 1.11
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -118,6 +118,8 @@
   - child `delivery-reply` 对 parent delegated closeout 的关键 progress 现在也会显式写进 Room 主消息流，作为 `[Mailbox Sync]` orchestration 叙事；房间里不再只靠 Mailbox / PR / Inbox 才知道 parent closeout 已收到这轮 unblock response。
 - `GAP-56 / TKT-87`
   - child `delivery-reply` 如果自己再次 `blocked`，Room 主消息流现在也会显式追加 `[Mailbox Sync]` 阻塞叙事；房间里可以直接看到 unblock 链本身又被卡住，不再只剩乐观的 comment / completion sync。
+- `GAP-57 / TKT-88`
+  - shell footer 现在新增固定 `Profile Hub`；当前 `Human / Machine / Agent` 会作为 app.slock.ai 式壳层入口常驻，并一跳进入统一 profile surface，不再要求用户绕到右栏 summary 或独立列表页。
 
 ### 当前必须先收的 GAP
 
@@ -127,9 +129,9 @@
 
 ## 四、推荐推进顺序
 
-1. 先围 `CHK-16` 的 shell density / high-frequency interaction polish 开票。
-2. 再围 `CHK-21` 的更深 agent-to-agent communication、delegate execution 与跨 Agent closeout orchestration 开票。
-3. 最后继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
+1. 先围 `CHK-21` 的更深 agent-to-agent communication、delegate execution 与跨 Agent closeout orchestration 开票。
+2. 再补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
+3. 前端继续做跨页面细节回扫，但不再把 `CHK-16` 回写成主阻塞 GAP。
 
 ---
 

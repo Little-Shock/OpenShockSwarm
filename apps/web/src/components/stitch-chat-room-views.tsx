@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
+import type { SidebarProfileEntry } from "@/components/stitch-shell-primitives";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import { buildRunHistoryEntries } from "@/lib/phase-zero-helpers";
 import { useQuickSearchController } from "@/lib/quick-search";
@@ -105,6 +106,104 @@ function runStatusLabel(status?: string) {
 function buildMachineProfileHref(state: PhaseZeroState, machineRef: string) {
   const machine = state.machines.find((item) => item.id === machineRef || item.name === machineRef);
   return buildProfileHref("machine", machine?.id ?? machineRef);
+}
+
+function machineStatusLabel(state: PhaseZeroState["machines"][number]["state"]) {
+  switch (state) {
+    case "busy":
+      return "忙碌";
+    case "online":
+      return "在线";
+    default:
+      return "离线";
+  }
+}
+
+function agentStatusLabel(state: PhaseZeroState["agents"][number]["state"]) {
+  switch (state) {
+    case "running":
+      return "执行中";
+    case "blocked":
+      return "阻塞";
+    default:
+      return "待命";
+  }
+}
+
+function humanStatusLabel(active: boolean, status: string) {
+  if (active) {
+    return "在线";
+  }
+
+  switch (status) {
+    case "suspended":
+      return "停用";
+    case "invited":
+      return "待加入";
+    default:
+      return "可协作";
+  }
+}
+
+function buildShellProfileEntries(state: PhaseZeroState, disabled: boolean): SidebarProfileEntry[] {
+  if (disabled) {
+    return [];
+  }
+
+  const activeMemberId = state.auth.session.memberId;
+  const activeMember = state.auth.members.find((member) => member.id === activeMemberId) ?? state.auth.members[0];
+  const pairedMachine =
+    state.machines.find(
+      (machine) => machine.id === state.workspace.pairedRuntime || machine.name === state.workspace.pairedRuntime
+    ) ??
+    state.machines.find((machine) => machine.state === "busy") ??
+    state.machines.find((machine) => machine.state === "online") ??
+    state.machines[0];
+  const preferredAgent =
+    state.agents.find((agent) => agent.id === state.auth.session.preferences.preferredAgentId) ??
+    state.agents.find((agent) => agent.state === "running") ??
+    state.agents.find((agent) => agent.state === "blocked") ??
+    state.agents[0];
+  const entries: SidebarProfileEntry[] = [];
+
+  if (activeMember) {
+    const active = activeMember.id === activeMemberId && state.auth.session.status === "active";
+    entries.push({
+      id: "human",
+      badge: "ME",
+      title: activeMember.name,
+      meta: `${activeMember.role} · ${activeMember.email}`,
+      href: buildProfileHref("human", activeMember.id),
+      status: humanStatusLabel(active, activeMember.status),
+      tone: active ? "lime" : activeMember.status === "suspended" ? "pink" : "white",
+    });
+  }
+
+  if (pairedMachine) {
+    entries.push({
+      id: "machine",
+      badge: "BOX",
+      title: pairedMachine.name,
+      meta: `${pairedMachine.cli} · ${pairedMachine.shell}`,
+      href: buildProfileHref("machine", pairedMachine.id),
+      status: machineStatusLabel(pairedMachine.state),
+      tone: pairedMachine.state === "busy" ? "yellow" : pairedMachine.state === "online" ? "lime" : "white",
+    });
+  }
+
+  if (preferredAgent) {
+    entries.push({
+      id: "agent",
+      badge: "AI",
+      title: preferredAgent.name,
+      meta: `${preferredAgent.role} · ${preferredAgent.lane}`,
+      href: buildProfileHref("agent", preferredAgent.id),
+      status: agentStatusLabel(preferredAgent.state),
+      tone: preferredAgent.state === "running" ? "yellow" : preferredAgent.state === "blocked" ? "pink" : "white",
+    });
+  }
+
+  return entries;
 }
 
 function formatCount(value?: number) {
@@ -2068,6 +2167,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const selectedSavedLaterId = activeWorkbenchTab === "saved" ? selectedSavedEntry?.id : undefined;
   const selectedDirectMessageId = isDirectMessage ? channelId : undefined;
   const selectedChannelLinkId = isDirectMessage ? undefined : channelId;
+  const shellProfileEntries = buildShellProfileEntries(state, loading || Boolean(error));
   const workbenchTabs = (["chat", "followed", "saved"] as ChannelWorkbenchTab[]).map((tab) => ({
     label: CHANNEL_WORKBENCH_TAB_LABEL[tab],
     href: buildChannelWorkbenchHref(channelId, tab, queryThreadId ?? undefined),
@@ -2202,6 +2302,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
           agents={sidebarAgents}
           workspaceName={workspaceName}
           workspaceSubtitle={workspaceSubtitle}
+          profileEntries={shellProfileEntries}
           selectedChannelId={selectedChannelLinkId}
           selectedDirectMessageId={selectedDirectMessageId}
           selectedFollowedThreadId={selectedFollowedThreadId}
@@ -2613,6 +2714,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
       ? []
       : state.guards.filter((guard) => guard.roomId === room.id || guard.runId === run.id);
   const roomRunHistory = loading || error || !room ? [] : buildRunHistoryEntries(state, room.id);
+  const shellProfileEntries = buildShellProfileEntries(state, loading || Boolean(error));
   const workbenchTabs = ROOM_WORKBENCH_TABS.map((tab) => ({
     label: ROOM_WORKBENCH_TAB_LABEL[tab],
     href: buildRoomWorkbenchHref(roomId, tab),
@@ -2767,6 +2869,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
           agents={sidebarAgents}
           workspaceName={workspaceName}
           workspaceSubtitle={workspaceSubtitle}
+          profileEntries={shellProfileEntries}
           selectedRoomId={roomId}
           inboxCount={inboxCount}
           onOpenQuickSearch={quickSearch.onOpenQuickSearch}

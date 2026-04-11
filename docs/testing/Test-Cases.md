@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.16
+**版本:** 1.17
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1057,3 +1057,18 @@
   5. 刷新 Room 历史，确认这条 blocked-response trace 没有丢失。
 - 预期结果: Room 不应只显示 unblock 链顺利推进时的乐观同步。即使 child response 本身再次受阻，房间里也必须能直接看到这条正式阻塞真相，便于人类快速判断下一步该由谁继续接力或介入。
 - 业务结论: 2026 年 4 月 11 日 `TKT-87` 已把 blocked child-response room trace 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace-blocked.md` 已记录 `parent blocked -> child response blocked -> room [Mailbox Sync] blocked trace` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web`、`go test ./internal/store ./internal/api -run "TestDeliveryDelegationBlockedResponseSyncsIntoParentRoomTrace|TestDelegatedBlockedResponseReflectsInParentRoomTrace" -count=1` 与对抗性回归 `go test ./internal/store -run "TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger|TestDeliveryDelegationResponseRetryAttemptsSyncBackToPullRequest" -count=1` 已锁住 blocked response 的 room trace、parent/inbox/run sync 与普通 handoff / retry truth 不被污染，因此这条 blocked-response room trace 用例当前转为 `Pass`。
+
+## TC-077 Shell Profile Hub / Current People Machine Entry
+
+- 业务目标: 确认 workspace shell 已补齐 app.slock.ai 式 profile 级入口；当前 `Human / Machine / Agent` 必须在左栏 footer 常驻可见，并一跳进入统一 profile surface。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-16`
+- 前置条件: unified `Agent / Machine / Human` profile surface 已成立，workspace shell sidebar 已接 live workspace truth。
+- 测试步骤:
+  1. 打开 `/rooms/room-runtime?tab=context` 或任一 workspace shell 路由。
+  2. 确认左栏 footer 存在 `Profile Hub`，且能看到当前 `Human / Machine / Agent` 三个入口。
+  3. 依次点击 `Human`、`Machine`、`Agent` entry。
+  4. 验证 URL 会分别进入 `/profiles/human/:id`、`/profiles/machine/:id`、`/profiles/agent/:id`，并能看到对应 presence / capability / recent activity。
+  5. 回到 room context，确认 active agent / machine 的 room drill-in 仍保持可用。
+- 预期结果: profile 入口不再散落在右栏 summary 或独立列表页里。用户在任何主工作面都能从同一套壳层 footer 进入当前人物 / 机器 profile，同时不破坏 room context 的既有 drill-in。
+- 业务结论: 2026 年 4 月 11 日 `TKT-88` 已把 shell-level profile hub 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-shell-profile-hub.md` 已记录 `Profile Hub -> human -> machine -> agent -> room context regression` 的 Windows Chrome 有头 walkthrough，同时 `pnpm verify:web` 已锁住壳层类型、构建与 live truth hygiene，因此这条 shell profile-entry 用例当前转为 `Pass`。

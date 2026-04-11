@@ -181,6 +181,17 @@ type MessageSurfaceSidebarEntry = {
   unread?: number;
   href: string;
 };
+
+export type SidebarProfileEntry = {
+  id: "human" | "machine" | "agent";
+  badge: string;
+  title: string;
+  meta: string;
+  href: string;
+  status: string;
+  tone: "yellow" | "pink" | "lime" | "white";
+};
+
 type StitchSidebarProps = {
   active: "channels" | "rooms" | "board" | "inbox" | null;
   mode?: "chat" | "work";
@@ -199,8 +210,33 @@ type StitchSidebarProps = {
   selectedSavedLaterId?: string;
   selectedRoomId?: string;
   inboxCount?: number;
+  profileEntries?: SidebarProfileEntry[];
   onOpenQuickSearch?: () => void;
 };
+
+function profileEntryTone(tone: SidebarProfileEntry["tone"]) {
+  switch (tone) {
+    case "yellow":
+      return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
+    case "pink":
+      return "bg-[var(--shock-pink)] text-white";
+    case "lime":
+      return "bg-[var(--shock-lime)] text-[var(--shock-ink)]";
+    default:
+      return "bg-white text-[var(--shock-ink)]";
+  }
+}
+
+function profileEntryBadgeTone(id: SidebarProfileEntry["id"]) {
+  switch (id) {
+    case "human":
+      return "bg-[var(--shock-pink)] text-white";
+    case "machine":
+      return "bg-[var(--shock-cyan)] text-[var(--shock-ink)]";
+    case "agent":
+      return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
+  }
+}
 
 function SidebarSection({
   title,
@@ -283,6 +319,7 @@ export function StitchSidebar({
   selectedSavedLaterId,
   selectedRoomId,
   inboxCount,
+  profileEntries,
   onOpenQuickSearch,
 }: StitchSidebarProps) {
   const navChannels = channels ?? [];
@@ -296,6 +333,7 @@ export function StitchSidebar({
   const runningAgents = agentList.filter((agent) => agent.state === "running").length;
   const blockedAgents = agentList.filter((agent) => agent.state === "blocked").length;
   const selectedRoom = selectedRoomId ? roomList.find((room) => room.id === selectedRoomId) : undefined;
+  const shellProfiles = profileEntries ?? [];
 
   return (
     <aside className="hidden h-full w-[282px] flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
@@ -573,6 +611,60 @@ export function StitchSidebar({
             </div>
           </div>
         </div>
+
+        {shellProfiles.length > 0 ? (
+          <div
+            data-testid="sidebar-profile-hub"
+            className="mt-2 rounded-[18px] border-2 border-[var(--shock-ink)] bg-black px-2.5 py-2.5 text-[var(--shock-paper)] shadow-[var(--shock-shadow-sm)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(255,248,231,0.72)]">
+                  Profile Hub
+                </p>
+                <p className="mt-1 font-display text-[15px] font-bold leading-none">Current People / Machine</p>
+              </div>
+              <span className="font-mono text-[10px] uppercase text-[color:rgba(255,248,231,0.62)]">
+                {shellProfiles.length} links
+              </span>
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {shellProfiles.map((entry) => (
+                <Link
+                  key={entry.id}
+                  href={entry.href}
+                  data-testid={`sidebar-profile-${entry.id}`}
+                  className="block rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2.5 text-[var(--shock-ink)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-paper)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex min-h-[30px] min-w-[58px] items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+                        profileEntryBadgeTone(entry.id)
+                      )}
+                    >
+                      {entry.badge}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold leading-5">{entry.title}</p>
+                      <p className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                        {entry.meta}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full border border-[var(--shock-ink)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em]",
+                        profileEntryTone(entry.tone)
+                      )}
+                    >
+                      {entry.status}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </aside>
   );

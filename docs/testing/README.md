@@ -8,6 +8,8 @@
   - `TKT-49` 的 Windows Chrome 有头报告，覆盖 PR detail 的 release gate、handoff note、delivery template、evidence bundle 与回链
 - [Test Report 2026-04-11 Windows Chrome PR Conversation / Usage Observability](./Test-Report-2026-04-11-windows-chrome-pr-conversation-usage-observability.md)
   - `TKT-39` `TKT-41` `TKT-48` 的 Windows Chrome 有头报告，覆盖 `webhook review/comment/thread -> Inbox -> Room PR tab -> PR Detail -> run/room/workspace usage`
+- [Test Report 2026-04-11 Windows Chrome Shell Profile Hub](./Test-Report-2026-04-11-windows-chrome-shell-profile-hub.md)
+  - `TKT-88` 的 Windows Chrome 有头报告，覆盖左栏 `Profile Hub` 的 current `Human / Machine / Agent` 入口，以及 shell footer / room context 到统一 profile surface 的同源回放
 - [Test Report 2026-04-11 Windows Chrome Mailbox Formal Comment](./Test-Report-2026-04-11-windows-chrome-mailbox-formal-comment.md)
   - `TKT-63` 的 Windows Chrome 有头报告，覆盖 `create -> source comment -> blocked -> target comment -> acknowledged -> completed` 的双边 mailbox 通信链路
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Route](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md)
@@ -186,7 +188,9 @@
 - `pnpm test:headed-topic-route-resume-lifecycle`
   - 验证 `/topics/:topicId` 的 guidance edit、reload persistence、resume control 与 room backlink
 - `pnpm test:headed-profile-surface`
-  - 验证 `Agent / Machine / Human` unified profile surface、shell / room drill-in、presence / capability / recent activity
+  - 验证左栏 `Profile Hub`、`Agent / Machine / Human` unified profile surface、shell / room drill-in、presence / capability / recent activity
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-profile-surface -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-shell-profile-hub.md`
+  - 验证左栏 footer 的 current `Human / Machine / Agent` 入口、统一 profile drill-in，以及 room context regression
 - `pnpm test:headed-destructive-guard`
   - 验证 destructive git、越界写入、secret boundary 的 guard truth，以及 Inbox / Room / Run 三处同步
 - `pnpm test:headed-device-auth-email-recovery`

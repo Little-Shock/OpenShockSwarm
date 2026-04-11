@@ -1,6 +1,6 @@
 # OpenShock Product Checklist
 
-**版本:** 1.19
+**版本:** 1.20
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -305,7 +305,7 @@
 
 - PRD 来源: 六、八
 - 优先级: P0
-- 当前状态: 部分完成
+- 当前状态: 已完成
 - 已落地:
   - [x] 当前 web 已有频道、讨论间、收件箱、Setup、Agent、Machine 数据源与基础左栏骨架
   - [x] `OpenShockShell`、`StitchSidebar`、`StitchTopBar` 已提供可演进的全屏壳层原语
@@ -317,9 +317,8 @@
   - [x] `pnpm test:headed-quick-search` 已把 Quick Search 收成真实 command palette：同一套 search surface 现在既能命中 `channel / room / issue / run / agent`，也能命中 `dm / followed / saved` 三类 message-surface result，并验证跳转、reopen、高亮与 empty state
   - [x] `pnpm test:headed-frontend-interaction-polish` 已锁住 sidebar / topbar hit area、channel / room scrollback、composer 常驻与窄屏无横向溢出
   - [x] sidebar 现在已有 `DM / Followed Threads / Saved Later` 入口，且能在同一套壳层内直达对应消息面
-- 当前 GAP:
-  - [ ] 仍缺 `app.slock.ai` 式 profile 级入口
-- 对应 Test Cases: `TC-028` `TC-029` `TC-033` `TC-034`
+  - [x] sidebar footer 现在新增固定 `Profile Hub`，会把当前 `Human / Machine / Agent` 收成 app.slock.ai 式壳层入口，并一跳进入统一 profile surface
+- 对应 Test Cases: `TC-028` `TC-029` `TC-033` `TC-034` `TC-077`
 
 ### CHK-17 会话上下文、Presence 与 Profile Surface
 
@@ -447,9 +446,9 @@
 
 ## 四、近期收口顺序
 
-1. 继续收 `CHK-16` 的 shell density、视觉细节和 `app.slock.ai` 式高频交互抛光。
-2. 继续推进 `CHK-21` 的更深 agent-to-agent communication、auto-closeout 与跨 Agent closeout orchestration。
-3. 继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
+1. 继续推进 `CHK-21` 的更深 agent-to-agent communication、auto-closeout 与跨 Agent closeout orchestration。
+2. 继续补 `CHK-10` `CHK-22` 的长期记忆整理、外部 provider 编排与 durable governance。
+3. 持续做跨页面前端细节回扫，但不再把 `CHK-16` 回写成未完成。
 
 ---
 
@@ -463,7 +462,7 @@
 - `CHK-09` -> `TKT-13`
 - `CHK-14` -> `TKT-14`
 - `CHK-12` -> `TKT-15` `TKT-30`
-- `CHK-01` `CHK-16` -> `TKT-16` `TKT-21` `TKT-24` `TKT-38`
+- `CHK-01` `CHK-16` -> `TKT-16` `TKT-21` `TKT-24` `TKT-38` `TKT-88`
 - `CHK-02` `CHK-06` `CHK-17` -> `TKT-22` `TKT-23` `TKT-25` `TKT-27`
 - `CHK-05` `CHK-18` -> `TKT-20` `TKT-26`
 - `CHK-07` -> `TKT-28`

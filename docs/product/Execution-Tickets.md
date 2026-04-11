@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.18
+**版本:** 1.19
 **更新日期:** 2026 年 4 月 11 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1240,6 +1240,27 @@
   - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-room-trace-blocked -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace-blocked.md`
 - Checklist: `CHK-21`
 - Test Cases: `TC-076`
+
+## TKT-88 Shell Profile Hub Entry
+
+- 状态: `done`
+- 优先级: `P1`
+- 目标: 把当前 `Human / Machine / Agent` 收成 app.slock.ai 式壳层 footer profile hub，不再要求用户绕到右栏 summary 或独立列表页找 profile 入口。
+- 范围:
+  - sidebar footer `Profile Hub`
+  - current human / paired machine / preferred agent selection
+  - unified profile drill-in from shell footer
+  - Windows Chrome walkthrough + room-context regression
+- 依赖: `TKT-25`
+- Done When:
+  - sidebar footer 会常驻显示当前 `Human / Machine / Agent` 三个 profile entry
+  - 三个 entry 都会进入统一 profile surface，而不是跳到分裂详情页
+  - room context drill-in 不回退，shell / room 会共享同一份 live profile truth
+- 最新证据:
+  - `pnpm verify:web`
+  - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-profile-surface -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-shell-profile-hub.md`
+- Checklist: `CHK-16`
+- Test Cases: `TC-077`
 
 ---
 

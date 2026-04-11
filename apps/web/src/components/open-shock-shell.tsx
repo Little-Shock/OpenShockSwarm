@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import type { SidebarProfileEntry } from "@/components/stitch-shell-primitives";
 import { buildGlobalStats } from "@/lib/phase-zero-helpers";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import type { AppTab, MachineState, PresenceState } from "@/lib/phase-zero-types";
@@ -231,6 +232,59 @@ export function OpenShockShell({
   const disconnected = loading || Boolean(error) || resolvedState.machines.every((machine) => machine.state === "offline");
   const inboxCount = resolvedState.inbox.length;
   const activeMemberId = resolvedState.auth.session.memberId;
+  const activeMember =
+    resolvedState.auth.members.find((member) => member.id === activeMemberId) ?? resolvedState.auth.members[0];
+  const pairedMachine =
+    resolvedState.machines.find(
+      (machine) =>
+        machine.id === resolvedState.workspace.pairedRuntime || machine.name === resolvedState.workspace.pairedRuntime
+    ) ??
+    resolvedState.machines.find((machine) => machine.state === "busy") ??
+    resolvedState.machines.find((machine) => machine.state === "online") ??
+    resolvedState.machines[0];
+  const preferredAgent =
+    resolvedState.agents.find((agent) => agent.id === resolvedState.auth.session.preferences.preferredAgentId) ??
+    resolvedState.agents.find((agent) => agent.state === "running") ??
+    resolvedState.agents.find((agent) => agent.state === "blocked") ??
+    resolvedState.agents[0];
+  const shellProfileEntries: SidebarProfileEntry[] = [];
+
+  if (activeMember) {
+    const active = activeMember.id === activeMemberId && resolvedState.auth.session.status === "active";
+    shellProfileEntries.push({
+      id: "human",
+      badge: "ME",
+      title: activeMember.name,
+      meta: `${activeMember.role} · ${activeMember.email}`,
+      href: buildProfileHref("human", activeMember.id),
+      status: humanStateLabel(active, activeMember.status),
+      tone: active ? "lime" : activeMember.status === "suspended" ? "pink" : "white",
+    });
+  }
+
+  if (pairedMachine) {
+    shellProfileEntries.push({
+      id: "machine",
+      badge: "BOX",
+      title: pairedMachine.name,
+      meta: `${pairedMachine.cli} · ${pairedMachine.shell}`,
+      href: buildProfileHref("machine", pairedMachine.id),
+      status: machineStateLabel(pairedMachine.state),
+      tone: pairedMachine.state === "busy" ? "yellow" : pairedMachine.state === "online" ? "lime" : "white",
+    });
+  }
+
+  if (preferredAgent) {
+    shellProfileEntries.push({
+      id: "agent",
+      badge: "AI",
+      title: preferredAgent.name,
+      meta: `${preferredAgent.role} · ${preferredAgent.lane}`,
+      href: buildProfileHref("agent", preferredAgent.id),
+      status: agentStateLabel(preferredAgent.state),
+      tone: preferredAgent.state === "running" ? "yellow" : preferredAgent.state === "blocked" ? "pink" : "white",
+    });
+  }
   const quickSearch = useQuickSearchController(resolvedState);
 
   return (
@@ -257,6 +311,7 @@ export function OpenShockShell({
           selectedChannelId={selectedChannelId}
           selectedRoomId={selectedRoomId}
           inboxCount={inboxCount}
+          profileEntries={shellProfileEntries}
           onOpenQuickSearch={quickSearch.onOpenQuickSearch}
         />
 
