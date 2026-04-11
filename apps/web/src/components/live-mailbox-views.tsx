@@ -7,10 +7,11 @@ import { useSearchParams } from "next/navigation";
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
-import type { AgentHandoff } from "@/lib/phase-zero-types";
+import type { AgentHandoff, WorkspaceGovernanceSuggestedHandoff } from "@/lib/phase-zero-types";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 
 type MailboxAdvanceAction = "acknowledged" | "blocked" | "comment" | "completed";
+type MailboxBatchBusyAction = MailboxAdvanceAction | "completed:continue";
 type MailboxCommentActorMode = "from" | "to";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -67,6 +68,56 @@ function commonBatchActions(handoffs: AgentHandoff[]) {
   return availableHandoffActions(handoffs[0].status).filter((action) =>
     handoffs.every((handoff) => availableHandoffActions(handoff.status).includes(action))
   );
+}
+
+function batchGovernedPolicyStatus(selection: {
+  selectedCount: number;
+  governedCount: number;
+  canContinueGovernedRoute: boolean;
+}) {
+  if (selection.selectedCount === 0) {
+    return "pending";
+  }
+  if (selection.canContinueGovernedRoute) {
+    return "ready";
+  }
+  if (selection.governedCount > 0) {
+    return "watch";
+  }
+  return "draft";
+}
+
+function batchGovernedPolicySummary(input: {
+  selectedCount: number;
+  governedCount: number;
+  canContinueGovernedRoute: boolean;
+  governedSuggestion: WorkspaceGovernanceSuggestedHandoff;
+  roomId: string;
+}) {
+  if (input.selectedCount === 0) {
+    return "先选中当前 room 的 governed handoff，再按治理 policy 批量续下一棒。";
+  }
+  if (input.governedCount !== input.selectedCount) {
+    return "当前选择里混入了 manual / delivery handoff；auto-advance 只会对纯 governed selection 开启。";
+  }
+  if (!input.canContinueGovernedRoute) {
+    return "当前 selection 还不能做批量 complete；先把状态推进到可 complete，再让治理 policy 接棒。";
+  }
+  if (input.governedSuggestion.roomId !== input.roomId) {
+    return "当前 room 还没有可直接展示的 next-route 建议；Batch Complete + Auto-Advance 仍会在每条 complete 后重算治理链。";
+  }
+  switch (input.governedSuggestion.status) {
+    case "active":
+      return "当前 governed lane 已在推进中；Batch Complete + Auto-Advance 会在每条 selected handoff 收口后重新评估下一棒，并避免重复起单。";
+    case "blocked":
+      return input.governedSuggestion.reason || "当前下一棒仍 blocked；批量收口后系统会重算治理链，但不会绕过 blocker。";
+    case "done":
+      return "当前治理链已经到 done；批量收口后会继续沿既有 delivery delegation policy 处理最后一棒。";
+    case "ready":
+      return input.governedSuggestion.reason || "当前治理链已经给出下一棒建议；批量收口后会自动续到 next lane。";
+    default:
+      return "Batch Complete + Auto-Advance 会在每条 selected governed handoff 完成后重算 routing policy，并只在确实 ready 时续下一棒。";
+  }
 }
 
 function mailboxKindLabel(kind?: AgentHandoff["kind"]) {
@@ -276,7 +327,7 @@ export function LiveMailboxPageContent() {
   const [mailboxBatchNote, setMailboxBatchNote] = useState("");
   const [mailboxBatchCommentActorMode, setMailboxBatchCommentActorMode] =
     useState<MailboxCommentActorMode>("from");
-  const [mailboxBatchBusyAction, setMailboxBatchBusyAction] = useState<MailboxAdvanceAction | null>(null);
+  const [mailboxBatchBusyAction, setMailboxBatchBusyAction] = useState<MailboxBatchBusyAction | null>(null);
   const highlightedHandoffId = searchParams.get("handoffId");
   const requestedRoomId = searchParams.get("roomId");
   const orderedMailbox = highlightedHandoffId
@@ -300,11 +351,28 @@ export function LiveMailboxPageContent() {
   const selectableMailboxHandoffs = mailboxForRoom.filter(batchSelectableHandoff);
   const selectableMailboxIds = selectableMailboxHandoffs.map((handoff) => handoff.id);
   const selectedMailboxHandoffs = mailboxForRoom.filter((handoff) => selectedMailboxIds.includes(handoff.id));
+  const selectedGovernedMailboxHandoffs = selectedMailboxHandoffs.filter((handoff) => handoff.kind === "governed");
   const batchActions = commonBatchActions(selectedMailboxHandoffs);
   const governance = state.workspace.governance;
   const escalationQueue = governance.escalationSla.queue ?? [];
   const escalationRollup = governance.escalationSla.rollup ?? [];
   const governedSuggestion = governance.routingPolicy.suggestedHandoff;
+  const batchCanContinueGovernedRoute =
+    selectedMailboxHandoffs.length > 0 &&
+    selectedGovernedMailboxHandoffs.length === selectedMailboxHandoffs.length &&
+    batchActions.includes("completed");
+  const batchGovernedStatus = batchGovernedPolicyStatus({
+    selectedCount: selectedMailboxHandoffs.length,
+    governedCount: selectedGovernedMailboxHandoffs.length,
+    canContinueGovernedRoute: batchCanContinueGovernedRoute,
+  });
+  const batchGovernedSummary = batchGovernedPolicySummary({
+    selectedCount: selectedMailboxHandoffs.length,
+    governedCount: selectedGovernedMailboxHandoffs.length,
+    canContinueGovernedRoute: batchCanContinueGovernedRoute,
+    governedSuggestion,
+    roomId,
+  });
   const governedRouteKey = [
     governedSuggestion.status,
     governedSuggestion.roomId,
@@ -428,6 +496,7 @@ export function LiveMailboxPageContent() {
       toAgentId: governedSuggestion.toAgentId,
       title: governedSuggestion.draftTitle.trim(),
       summary: governedSuggestion.draftSummary?.trim() ?? "",
+      kind: "governed" as const,
     };
   }
 
@@ -438,6 +507,7 @@ export function LiveMailboxPageContent() {
       toAgentId: string;
       title: string;
       summary: string;
+      kind?: "governed";
     },
     busyLabel: string
   ) {
@@ -523,7 +593,10 @@ export function LiveMailboxPageContent() {
     });
   }
 
-  async function handleBatchMailboxAction(action: MailboxAdvanceAction) {
+  async function handleBatchMailboxAction(
+    action: MailboxAdvanceAction,
+    options?: { continueGovernedRoute?: boolean }
+  ) {
     if (!canMutate || mailboxMutationBusy || selectedMailboxHandoffs.length === 0 || !batchActions.includes(action)) {
       return;
     }
@@ -533,7 +606,8 @@ export function LiveMailboxPageContent() {
     }
 
     setActionError(null);
-    setMailboxBatchBusyAction(action);
+    const continueGovernedRoute = action === "completed" && options?.continueGovernedRoute === true;
+    setMailboxBatchBusyAction(continueGovernedRoute ? "completed:continue" : action);
     try {
       for (const handoff of [...selectedMailboxHandoffs]) {
         await updateHandoff(handoff.id, {
@@ -545,6 +619,7 @@ export function LiveMailboxPageContent() {
                 : handoff.fromAgentId
               : handoff.toAgentId,
           note: action === "acknowledged" ? undefined : note || undefined,
+          continueGovernedRoute: continueGovernedRoute && handoff.kind === "governed",
         });
       }
       setMailboxBatchNote("");
@@ -1242,6 +1317,40 @@ export function LiveMailboxPageContent() {
                             <option value="to">target agent</option>
                           </select>
                         </label>
+                        <div
+                          data-testid="mailbox-batch-policy"
+                          className={cn(
+                            "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4",
+                            governanceTone(batchGovernedStatus) === "pink"
+                              ? "bg-[var(--shock-pink)] text-white"
+                              : governanceTone(batchGovernedStatus) === "lime"
+                                ? "bg-[var(--shock-lime)]"
+                                : governanceTone(batchGovernedStatus) === "yellow"
+                                  ? "bg-[var(--shock-yellow)]"
+                                  : "bg-white"
+                          )}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
+                                governed batch policy
+                              </p>
+                              <p className="mt-2 font-display text-lg font-semibold">批量收口时顺手续下一棒</p>
+                            </div>
+                            <span
+                              data-testid="mailbox-batch-policy-status"
+                              className="rounded-full border border-[var(--shock-ink)] bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--shock-ink)]"
+                            >
+                              {governanceStatusLabel(batchGovernedStatus)}
+                            </span>
+                          </div>
+                          <p data-testid="mailbox-batch-policy-summary" className="mt-3 text-sm leading-6">
+                            {batchGovernedSummary}
+                          </p>
+                          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
+                            {selectedGovernedMailboxHandoffs.length} governed / {selectedMailboxHandoffs.length} selected
+                          </p>
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           {selectedMailboxHandoffs.map((handoff) => (
                             <span
@@ -1291,6 +1400,17 @@ export function LiveMailboxPageContent() {
                             {mailboxBatchBusyAction === action ? "Working..." : `Batch ${formatActionLabel(action)}`}
                           </button>
                         ))}
+                        <button
+                          type="button"
+                          data-testid="mailbox-batch-action-completed-continue"
+                          disabled={!canMutate || mailboxMutationBusy || !batchCanContinueGovernedRoute}
+                          onClick={() => void handleBatchMailboxAction("completed", { continueGovernedRoute: true })}
+                          className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.16em] text-white disabled:opacity-60"
+                        >
+                          {mailboxBatchBusyAction === "completed:continue"
+                            ? "Working..."
+                            : "Batch Complete + Auto-Advance"}
+                        </button>
                       </div>
                     </div>
                   </div>

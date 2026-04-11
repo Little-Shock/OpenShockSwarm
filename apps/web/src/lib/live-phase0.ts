@@ -136,6 +136,7 @@ type CreateHandoffInput = {
   toAgentId: string;
   title: string;
   summary: string;
+  kind?: "governed";
 };
 
 type UpdateHandoffInput = {

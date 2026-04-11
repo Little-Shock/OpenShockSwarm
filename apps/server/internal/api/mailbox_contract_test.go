@@ -21,6 +21,7 @@ func TestMailboxRoutesCreateAndListLiveTruth(t *testing.T) {
 		"toAgentId":   "agent-claude-review-runner",
 		"title":       "接住 reviewer lane",
 		"summary":     "请你正式接住 reviewer lane，并在 mailbox 里显式回写 blocked / complete。",
+		"kind":        "governed",
 	})
 	if err != nil {
 		t.Fatalf("Marshal(create handoff) error = %v", err)
@@ -43,6 +44,9 @@ func TestMailboxRoutesCreateAndListLiveTruth(t *testing.T) {
 
 	if createPayload.Handoff.Status != "requested" || createPayload.Handoff.ID == "" {
 		t.Fatalf("handoff = %#v, want requested handoff with id", createPayload.Handoff)
+	}
+	if createPayload.Handoff.Kind != "governed" {
+		t.Fatalf("handoff kind = %#v, want governed kind echoed back from create contract", createPayload.Handoff)
 	}
 	inboxItem, ok := findInboxByID(t, createPayload.State.Inbox, createPayload.Handoff.InboxItemID)
 	if !ok {

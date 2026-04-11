@@ -19,6 +19,7 @@ type CreateMailboxHandoffRequest struct {
 	ToAgentID   string `json:"toAgentId"`
 	Title       string `json:"title"`
 	Summary     string `json:"summary"`
+	Kind        string `json:"kind,omitempty"`
 }
 
 type UpdateMailboxHandoffRequest struct {
@@ -54,6 +55,7 @@ func (s *Server) handleMailbox(w http.ResponseWriter, r *http.Request) {
 			ToAgentID:   req.ToAgentID,
 			Title:       req.Title,
 			Summary:     req.Summary,
+			Kind:        req.Kind,
 		})
 		if err != nil {
 			writeMailboxError(w, err)

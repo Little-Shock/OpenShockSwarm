@@ -59,6 +59,7 @@
     "test:headed-multi-agent-governance": "node ./scripts/headed-multi-agent-governance.mjs",
     "test:headed-governance-escalation-queue": "node ./scripts/headed-governance-escalation-queue.mjs",
     "test:headed-governance-escalation-rollup": "node ./scripts/headed-governance-escalation-rollup.mjs",
+    "test:headed-mailbox-batch-policy": "node ./scripts/headed-mailbox-batch-policy.mjs",
     "test:headed-control-plane-runtime-governance": "node ./scripts/headed-control-plane-runtime-governance.mjs",
     "test:headed-planner-dispatch-replay": "node ./scripts/headed-planner-dispatch-replay.mjs",
     "test:headed-memory-governance": "node ./scripts/headed-memory-governance.mjs",
