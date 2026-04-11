@@ -10,3 +10,5 @@ coverage/
 .codex/
 .playwright-mcp
 .dev-logs/
+output/
+.playwright-cli
