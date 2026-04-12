@@ -852,20 +852,20 @@ func summarizePullRequestMergeSafety(mergeable, mergeStateStatus, reviewDecision
 
 	switch {
 	case mergeStateStatus == "DIRTY" || mergeable == "CONFLICTING":
-		return "当前 PR 与 base 存在冲突，需 refresh current base 后再继续 review / merge。"
+		return "当前 PR 与基线分支存在冲突，需先同步最新基线后再继续评审或合并。"
 	case mergeStateStatus == "BEHIND":
-		return "当前 PR 已落后 base，需先 refresh 到 current base 后再继续合并。"
+		return "当前 PR 已落后基线分支，需先同步最新基线后再继续合并。"
 	case mergeStateStatus == "BLOCKED":
 		if strings.EqualFold(reviewDecision, "APPROVED") {
-			return "GitHub Review 已批准，但 branch protections / required checks 仍阻塞 merge。"
+			return "GitHub 评审已批准，但分支保护和必需检查仍阻塞合并。"
 		}
-		return "当前 merge 仍被 branch protections / required checks 阻塞。"
+		return "当前合并仍被分支保护和必需检查阻塞。"
 	case mergeStateStatus == "HAS_HOOKS":
-		return "GitHub 当前仍在等待 required hooks / protections 收敛，merge 还不能放行。"
+		return "GitHub 当前仍在等待检查和保护规则完成，暂时还不能放行合并。"
 	case mergeStateStatus == "UNSTABLE":
-		return "GitHub 当前 merge safety 仍不稳定，需等待 checks 收敛后再继续合并。"
+		return "GitHub 当前合并状态仍不稳定，需等待检查收敛后再继续合并。"
 	case mergeStateStatus == "UNKNOWN" || mergeable == "UNKNOWN":
-		return "GitHub 正在计算 merge safety，暂不允许贸然合并。"
+		return "GitHub 正在计算当前合并条件，暂不允许直接合并。"
 	default:
 		return ""
 	}
@@ -892,6 +892,23 @@ func pullRequestLabel(number int, status string) string {
 	return "PR"
 }
 
+func sessionSpeakerLabel(auth AuthSnapshot) string {
+	if strings.TrimSpace(auth.Session.Name) != "" {
+		return strings.TrimSpace(auth.Session.Name)
+	}
+	if strings.TrimSpace(auth.Session.MemberID) != "" {
+		for _, member := range auth.Members {
+			if member.ID == auth.Session.MemberID && strings.TrimSpace(member.Name) != "" {
+				return strings.TrimSpace(member.Name)
+			}
+		}
+	}
+	if strings.TrimSpace(auth.Session.Email) != "" {
+		return strings.TrimSpace(auth.Session.Email)
+	}
+	return "我"
+}
+
 func (s *Store) AppendConversation(roomID, prompt, output string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -902,9 +919,14 @@ func (s *Store) AppendConversation(roomID, prompt, output string) (State, error)
 	}
 
 	now := shortClock()
-	humanMessage := Message{ID: fmt.Sprintf("%s-human-%d", roomID, time.Now().UnixNano()), Speaker: "Lead_Architect", Role: "human", Tone: "human", Message: prompt, Time: now}
+	humanSpeaker := sessionSpeakerLabel(s.state.Auth)
+	agentSpeaker := defaultString(
+		strings.TrimSpace(s.state.Runs[runIndex].Owner),
+		defaultString(strings.TrimSpace(s.state.Issues[issueIndex].Owner), defaultString(strings.TrimSpace(s.state.Rooms[roomIndex].Topic.Owner), "当前智能体")),
+	)
+	humanMessage := Message{ID: fmt.Sprintf("%s-human-%d", roomID, time.Now().UnixNano()), Speaker: humanSpeaker, Role: "human", Tone: "human", Message: prompt, Time: now}
 	agentText := defaultString(strings.TrimSpace(output), "已收到，但这次没有可展示的文本输出。")
-	agentMessage := Message{ID: fmt.Sprintf("%s-agent-%d", roomID, time.Now().UnixNano()), Speaker: "Shock_AI_Core", Role: "agent", Tone: "agent", Message: agentText, Time: now}
+	agentMessage := Message{ID: fmt.Sprintf("%s-agent-%d", roomID, time.Now().UnixNano()), Speaker: agentSpeaker, Role: "agent", Tone: "agent", Message: agentText, Time: now}
 
 	s.state.RoomMessages[roomID] = append(s.state.RoomMessages[roomID], humanMessage, agentMessage)
 	s.state.Rooms[roomIndex].MessageIDs = append(s.state.Rooms[roomIndex].MessageIDs, humanMessage.ID, agentMessage.ID)
@@ -937,6 +959,94 @@ func (s *Store) AppendConversation(roomID, prompt, output string) (State, error)
 	return cloneState(s.state), nil
 }
 
+func (s *Store) AppendConversationFailure(roomID, prompt, message string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(roomID)
+	if !ok {
+		return State{}, fmt.Errorf("room not found")
+	}
+
+	now := shortClock()
+	humanMessage := Message{
+		ID:      fmt.Sprintf("%s-human-%d", roomID, time.Now().UnixNano()),
+		Speaker: sessionSpeakerLabel(s.state.Auth),
+		Role:    "human",
+		Tone:    "human",
+		Message: defaultString(strings.TrimSpace(prompt), "空消息已忽略。"),
+		Time:    now,
+	}
+	blockedMessage := defaultString(strings.TrimSpace(message), "讨论间消息暂时不可用，请检查本地模型连接后重试。")
+	replyMessage := Message{
+		ID:      fmt.Sprintf("%s-system-%d", roomID, time.Now().UnixNano()),
+		Speaker: "System",
+		Role:    "system",
+		Tone:    "blocked",
+		Message: blockedMessage,
+		Time:    now,
+	}
+
+	s.state.RoomMessages[roomID] = append(s.state.RoomMessages[roomID], humanMessage, replyMessage)
+	s.state.Rooms[roomIndex].MessageIDs = append(s.state.Rooms[roomIndex].MessageIDs, humanMessage.ID, replyMessage.ID)
+	s.state.Rooms[roomIndex].Unread = 0
+	s.state.Rooms[roomIndex].Topic.Status = "blocked"
+	s.state.Rooms[roomIndex].Topic.Summary = blockedMessage
+	s.state.Issues[issueIndex].State = "blocked"
+	s.state.Runs[runIndex].Status = "blocked"
+	s.state.Runs[runIndex].Summary = blockedMessage
+	s.state.Runs[runIndex].NextAction = "等待人工处理、重试 CLI，或切换 provider。"
+	s.state.Runs[runIndex].Stderr = append(s.state.Runs[runIndex].Stderr, fmt.Sprintf("[%s] %s", now, blockedMessage))
+	s.state.Inbox = append([]InboxItem{{
+		ID:      fmt.Sprintf("inbox-blocked-%d", time.Now().UnixNano()),
+		Title:   "CLI 连接失败，等待人工处理",
+		Kind:    "blocked",
+		Room:    s.state.Rooms[roomIndex].Title,
+		Time:    "刚刚",
+		Summary: blockedMessage,
+		Action:  "解除阻塞",
+		Href:    fmt.Sprintf("/rooms/%s", roomID),
+	}}, s.state.Inbox...)
+	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
+		item.Status = "blocked"
+		item.Summary = blockedMessage
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if len(item.MemoryPaths) == 0 {
+			item.MemoryPaths = defaultSessionMemoryPaths(item.RoomID, item.IssueKey)
+		}
+	})
+
+	if err := appendRunArtifacts(
+		s.workspaceRoot,
+		roomID,
+		s.state.Issues[issueIndex].Key,
+		s.state.Issues[issueIndex].Owner,
+		"Room Conversation Blocked",
+		fmt.Sprintf("- prompt: %s\n- message: %s", humanMessage.Message, blockedMessage),
+	); err != nil {
+		return State{}, err
+	}
+	s.recordMemoryArtifactWritesLocked(
+		runArtifactPaths(roomID, s.state.Issues[issueIndex].Owner),
+		"Room Conversation Blocked",
+		"room-conversation-blocked",
+		"System",
+	)
+	if err := updateDecisionRecord(s.workspaceRoot, s.state.Issues[issueIndex].Key, "blocked", blockedMessage); err != nil {
+		return State{}, err
+	}
+	s.recordMemoryArtifactWriteLocked(
+		decisionArtifactPath(s.state.Issues[issueIndex].Key),
+		"Decision status blocked",
+		"room-conversation-blocked",
+		"System",
+	)
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
 type ChannelConversationInput struct {
 	Prompt       string
 	ReplySpeaker string
@@ -963,7 +1073,7 @@ func (s *Store) AppendChannelConversation(channelID string, input ChannelConvers
 	now := shortClock()
 	humanMessage := Message{
 		ID:      fmt.Sprintf("%s-human-%d", channelID, time.Now().UnixNano()),
-		Speaker: "Lead_Architect",
+		Speaker: sessionSpeakerLabel(s.state.Auth),
 		Role:    "human",
 		Tone:    "human",
 		Message: defaultString(strings.TrimSpace(input.Prompt), "空消息已忽略。"),
@@ -971,7 +1081,7 @@ func (s *Store) AppendChannelConversation(channelID string, input ChannelConvers
 	}
 	replyMessage := Message{
 		ID:      fmt.Sprintf("%s-reply-%d", channelID, time.Now().UnixNano()),
-		Speaker: defaultString(strings.TrimSpace(input.ReplySpeaker), "Shock_AI_Core"),
+		Speaker: defaultString(strings.TrimSpace(input.ReplySpeaker), "当前智能体"),
 		Role:    defaultString(strings.TrimSpace(input.ReplyRole), "agent"),
 		Tone:    defaultString(strings.TrimSpace(input.ReplyTone), "agent"),
 		Message: defaultString(strings.TrimSpace(input.ReplyMessage), "已收到，但这次没有拿到可展示的回复。"),

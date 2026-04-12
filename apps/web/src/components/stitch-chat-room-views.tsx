@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import type { SidebarProfileEntry } from "@/components/stitch-shell-primitives";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
-import { buildRunHistoryEntries } from "@/lib/phase-zero-helpers";
+import { buildRunHistoryEntries, rewriteCustomerFacingText } from "@/lib/phase-zero-helpers";
 import { useQuickSearchController } from "@/lib/quick-search";
 import { buildNamedProfileHref, buildProfileHref } from "@/lib/profile-surface";
 import {
@@ -100,6 +100,46 @@ function runStatusLabel(status?: string) {
       return "已完成";
     default:
       return "待同步";
+  }
+}
+
+function roomReplyStatusLabel(status: string) {
+  switch (status) {
+    case "syncing":
+      return "同步中";
+    case "sync_failed":
+      return "读取失败";
+    case "allowed":
+      return "可发送";
+    case "paused":
+      return "已暂停";
+    case "blocked":
+      return "无权限";
+    case "signed_out":
+      return "未登录";
+    default:
+      return status || "待同步";
+  }
+}
+
+function roomPullRequestActionStatusLabel(status: string) {
+  switch (status) {
+    case "syncing":
+      return "同步中";
+    case "sync_failed":
+      return "读取失败";
+    case "allowed":
+      return "可操作";
+    case "review_only":
+      return "仅可同步";
+    case "blocked":
+      return "无权限";
+    case "signed_out":
+      return "未登录";
+    case "merged":
+      return "已合并";
+    default:
+      return status || "待同步";
   }
 }
 
@@ -259,7 +299,7 @@ function formatRetentionSummary(workspace?: PhaseZeroState["workspace"]) {
   if (!quota) {
     return "未返回";
   }
-  return `${quota.messageHistoryDays}d 消息 / ${quota.runLogDays}d 运行 / ${quota.memoryDraftDays}d 草稿`;
+  return `${quota.messageHistoryDays} 天消息 / ${quota.runLogDays} 天运行记录 / ${quota.memoryDraftDays} 天草稿`;
 }
 
 function DiscussionStateMessage({
@@ -307,8 +347,8 @@ function messageBadgeTone(message: Message) {
 
 function messageGlyph(message: Message) {
   if (message.role === "human") return "人";
-  if (message.role === "agent") return "AI";
-  return "SYS";
+  if (message.role === "agent") return "智";
+  return "系";
 }
 
 type ReplyTarget = {
@@ -423,7 +463,16 @@ const DIRECT_MESSAGES: SidebarDirectMessage[] = [
     presence: "idle",
     counterpart: "Mina",
   },
-];
+].map(
+  (item): SidebarDirectMessage => ({
+    ...item,
+    presence: item.presence as SidebarDirectMessage["presence"],
+    name: rewriteCustomerFacingText(item.name),
+    summary: rewriteCustomerFacingText(item.summary),
+    purpose: rewriteCustomerFacingText(item.purpose),
+    counterpart: rewriteCustomerFacingText(item.counterpart),
+  })
+);
 
 const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
   "dm-codex-dockmaster": [
@@ -455,7 +504,7 @@ const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
     },
     {
       id: "msg-dm-mina-2",
-      speaker: "System",
+      speaker: "系统",
       role: "system",
       tone: "system",
       message: "已记录：稍后查看用于回访，不伪装成新一层待办。",
@@ -463,6 +512,17 @@ const DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = {
     },
   ],
 };
+
+const SANITIZED_DIRECT_MESSAGE_MESSAGES: Record<string, Message[]> = Object.fromEntries(
+  Object.entries(DIRECT_MESSAGE_MESSAGES).map(([channelId, messages]) => [
+    channelId,
+    messages.map((message) => ({
+      ...message,
+      speaker: rewriteCustomerFacingText(message.speaker),
+      message: rewriteCustomerFacingText(message.message),
+    })),
+  ])
+);
 
 const DEFAULT_FOLLOWED_THREADS: MessageSurfaceEntry[] = [
   {
@@ -476,7 +536,12 @@ const DEFAULT_FOLLOWED_THREADS: MessageSurfaceEntry[] = [
     updatedAt: "09:19",
     unread: 2,
   },
-];
+].map((item) => ({
+  ...item,
+  title: rewriteCustomerFacingText(item.title),
+  summary: rewriteCustomerFacingText(item.summary),
+  note: rewriteCustomerFacingText(item.note),
+}));
 
 const DEFAULT_SAVED_LATER_ITEMS: MessageSurfaceEntry[] = [
   {
@@ -501,7 +566,12 @@ const DEFAULT_SAVED_LATER_ITEMS: MessageSurfaceEntry[] = [
     updatedAt: "11:24",
     unread: 0,
   },
-];
+].map((item) => ({
+  ...item,
+  title: rewriteCustomerFacingText(item.title),
+  summary: rewriteCustomerFacingText(item.summary),
+  note: rewriteCustomerFacingText(item.note),
+}));
 
 function buildRoomWorkbenchHref(roomId: string, tab: RoomWorkbenchTab) {
   if (tab === "chat") {
@@ -535,7 +605,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
     "msg-roadmap-1": [
       {
         id: "thread-roadmap-1",
-        speaker: "System",
+        speaker: "系统",
         role: "system",
         tone: "system",
         message: "已记录：看板仅保留为规划镜像，不再作为首页主心智。",
@@ -559,7 +629,7 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
     "msg-dm-mina-1": [
       {
         id: "thread-dm-mina-1",
-        speaker: "System",
+        speaker: "系统",
         role: "system",
         tone: "system",
         message: "稍后查看已记录为当前消息工作流的一等入口需求。",
@@ -568,6 +638,22 @@ const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
     ],
   },
 };
+
+const SANITIZED_CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = Object.fromEntries(
+  Object.entries(CHANNEL_THREAD_REPLIES).map(([channelId, threadMap]) => [
+    channelId,
+    Object.fromEntries(
+      Object.entries(threadMap).map(([messageId, replies]) => [
+        messageId,
+        replies.map((reply) => ({
+          ...reply,
+          speaker: rewriteCustomerFacingText(reply.speaker),
+          message: rewriteCustomerFacingText(reply.message),
+        })),
+      ])
+    ),
+  ])
+);
 
 const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
   "room-runtime": {
@@ -592,7 +678,7 @@ const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
     "msg-room-2": [
       {
         id: "thread-room-runtime-3",
-        speaker: "System",
+        speaker: "系统",
         role: "system",
         tone: "system",
         message: "关注线程已经可以把后续恢复继续锁在同一条讨论上。",
@@ -626,6 +712,22 @@ const ROOM_THREAD_REPLIES: Record<string, ThreadMap> = {
   },
 };
 
+const SANITIZED_ROOM_THREAD_REPLIES: Record<string, ThreadMap> = Object.fromEntries(
+  Object.entries(ROOM_THREAD_REPLIES).map(([roomKey, threadMap]) => [
+    roomKey,
+    Object.fromEntries(
+      Object.entries(threadMap).map(([messageId, replies]) => [
+        messageId,
+        replies.map((reply) => ({
+          ...reply,
+          speaker: rewriteCustomerFacingText(reply.speaker),
+          message: rewriteCustomerFacingText(reply.message),
+        })),
+      ])
+    ),
+  ])
+);
+
 function messageExcerpt(text: string, maxLength = 72) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
@@ -644,6 +746,8 @@ function initialThreadMessageId(messages: Message[], threadMap: ThreadMap) {
   const seeded = messages.find((message) => (threadMap[message.id] ?? []).length > 0);
   return seeded?.id ?? messages[messages.length - 1]?.id ?? null;
 }
+
+const MESSAGE_SENDING_PLACEHOLDER = "正在生成回复...";
 
 function actionTone(tone: "yellow" | "white" | "ink") {
   switch (tone) {
@@ -939,7 +1043,7 @@ function RoomContextPanels({
               href={buildRoomWorkbenchHref(room.id, "run")}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              运行真值
+              运行详情
             </Link>
             <Link
               href={buildRoomWorkbenchHref(room.id, "pr")}
@@ -1023,7 +1127,7 @@ function RoomContextPanels({
         <Panel tone="paper">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">守护真值</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">风险守护</p>
               <p className="mt-2 font-display text-[20px] font-bold leading-6">高风险 / 密钥边界</p>
             </div>
             <span className="rounded-[4px] border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]">
@@ -1294,7 +1398,7 @@ function RoomPullRequestWorkbenchPanel({
           </button>
         </div>
         <p data-testid="room-workbench-pr-status" className="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-          {actionStatus}
+          {roomPullRequestActionStatusLabel(actionStatus)}
         </p>
         {(actionStatus === "blocked" ||
           actionStatus === "signed_out" ||
@@ -1304,7 +1408,7 @@ function RoomPullRequestWorkbenchPanel({
         ) : null}
         <p className="mt-4 text-sm leading-6">{pullRequest?.title ?? "当前讨论间还没有远端或本地 PR 对象。"}</p>
         <p data-testid="room-workbench-pr-review-summary" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-          {pullRequest?.reviewSummary ?? "创建 PR 后，这里会直接展示评审和合并的当前真值。"}
+          {pullRequest?.reviewSummary ?? "创建 PR 后，这里会直接展示评审和合并的当前状态。"}
         </p>
         {prError ? (
           <p className="mt-3 font-mono text-[11px] text-[var(--shock-pink)]">{prError}</p>
@@ -2050,6 +2154,8 @@ function ClaudeCompactComposer({
   threadReplyCounts,
   activeThreadMessageId,
   onOpenThread,
+  humanSpeaker,
+  agentSpeaker,
 }: {
   room: Room;
   initialMessages: Message[];
@@ -2067,23 +2173,54 @@ function ClaudeCompactComposer({
   threadReplyCounts: Record<string, number>;
   activeThreadMessageId?: string | null;
   onOpenThread: (message: Message) => void;
+  humanSpeaker: string;
+  agentSpeaker: string;
 }) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("先给我一句结论：这个讨论间现在该先做哪一步？");
   const [loading, setLoading] = useState(false);
+  const messages = useMemo(
+    () => (pendingMessages.length > 0 ? [...initialMessages, ...pendingMessages] : initialMessages),
+    [initialMessages, pendingMessages]
+  );
   const latestMessage = messages[messages.length - 1];
   const scrollRef = useStickyMessageScroll(room.id, messages.length, latestMessage?.message.length ?? 0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setMessages(initialMessages);
-  }, [initialMessages]);
+    setPendingMessages([]);
+  }, [room.id]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    const pendingPrompt = pendingMessages.find((item) => item.role === "human")?.message;
+    if (!pendingPrompt) {
+      return;
+    }
+    if (initialMessages.some((item) => item.role === "human" && item.message === pendingPrompt)) {
+      setPendingMessages([]);
+    }
+  }, [initialMessages, loading, pendingMessages]);
 
   useEffect(() => {
     if (replyTarget) {
       inputRef.current?.focus();
     }
   }, [replyTarget]);
+
+  function replacePlaceholderWithDelta(message: Message, delta: string, tone?: Message["tone"]) {
+    const nextMessage =
+      message.message === MESSAGE_SENDING_PLACEHOLDER || !message.message.trim()
+        ? delta
+        : `${message.message}${delta}`;
+    return {
+      ...message,
+      tone: tone ?? message.tone,
+      message: nextMessage,
+    };
+  }
 
   async function handleSend() {
     if (!draft.trim() || loading || !canSend) return;
@@ -2093,7 +2230,7 @@ function ClaudeCompactComposer({
     const now = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
     const humanMessage: Message = {
       id: `local-human-${Date.now()}`,
-      speaker: "Lead_Architect",
+      speaker: humanSpeaker,
       role: "human",
       tone: "human",
       message: sendPrompt,
@@ -2102,39 +2239,42 @@ function ClaudeCompactComposer({
     const agentMessageId = `local-agent-${Date.now()}`;
     const agentMessage: Message = {
       id: agentMessageId,
-      speaker: "Shock_AI_Core",
+      speaker: agentSpeaker,
       role: "agent",
       tone: "agent",
-      message: "",
+      message: MESSAGE_SENDING_PLACEHOLDER,
       time: now,
     };
-    setMessages((current) => [...current, humanMessage, agentMessage]);
+    setPendingMessages([humanMessage, agentMessage]);
 
     try {
       const payload = await onSend(room.id, sendPrompt, undefined, (event) => {
         if (event.type === "stdout" && event.delta) {
-          setMessages((current) =>
-            current.map((item) =>
-              item.id === agentMessageId ? { ...item, message: `${item.message}${event.delta}` } : item
-            )
+          const delta = event.delta;
+          setPendingMessages((current) =>
+            current.map((item) => (item.id === agentMessageId ? replacePlaceholderWithDelta(item, delta) : item))
           );
         }
         if (event.type === "stderr" && event.delta) {
-          setMessages((current) =>
-            current.map((item) =>
-              item.id === agentMessageId ? { ...item, tone: "blocked", message: `${item.message}${event.delta}` } : item
-            )
+          const delta = event.delta;
+          setPendingMessages((current) =>
+            current.map((item) => (item.id === agentMessageId ? replacePlaceholderWithDelta(item, delta, "blocked") : item))
           );
         }
       });
       const nextMessages = payload?.state?.roomMessages?.[room.id];
       if (nextMessages) {
-        setMessages(nextMessages);
+        setPendingMessages([]);
       } else {
-        setMessages((current) =>
+        setPendingMessages((current) =>
           current.map((item) =>
-            item.id === agentMessageId && item.message.trim() === ""
-              ? { ...item, message: payload?.error || "这次没有拿到可展示的输出。" }
+            item.id === agentMessageId &&
+            (item.message === MESSAGE_SENDING_PLACEHOLDER || item.message.trim() === "")
+              ? {
+                  ...item,
+                  tone: payload?.error ? "blocked" : item.tone,
+                  message: payload?.error || "这次没有拿到可展示的输出。",
+                }
               : item
           )
         );
@@ -2142,18 +2282,21 @@ function ClaudeCompactComposer({
       setDraft("");
       onClearReplyTarget?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "bridge error";
-      setMessages((current) => [
-        ...current.filter((item) => item.id !== agentMessageId),
-        {
-          id: `err-${Date.now()}`,
-          speaker: "System",
-          role: "system",
-          tone: "blocked",
-          message: `消息发送失败：${message}`,
-          time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()),
-        },
-      ]);
+      const message = error instanceof Error ? error.message : "发送失败";
+      setPendingMessages((current) =>
+        current.map((item) =>
+          item.id === agentMessageId
+            ? {
+                id: `err-${Date.now()}`,
+                speaker: "系统",
+                role: "system",
+                tone: "blocked",
+                message: `消息发送失败：${message}`,
+                time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()),
+              }
+            : item
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -2213,12 +2356,15 @@ function ClaudeCompactComposer({
             disabled={loading || !canSend}
             className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
           >
-            {loading ? "..." : "发送"}
+            {loading ? "发送中" : "发送"}
           </button>
         </form>
         <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1040px] font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-          {sendStatus}
+          {roomReplyStatusLabel(sendStatus)}
         </p>
+        {canSend && loading ? (
+          <p className="mx-auto mt-2 max-w-[1040px] text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{MESSAGE_SENDING_PLACEHOLDER}</p>
+        ) : null}
         {!canSend ? (
           <p className="mx-auto mt-2 max-w-[1040px] text-sm leading-6 text-[var(--shock-pink)]">{sendBoundary}</p>
         ) : null}
@@ -2250,13 +2396,18 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
-  const directMessageMessages = loading || error ? DIRECT_MESSAGE_MESSAGES : state.directMessageMessages;
+  const activeMemberName =
+    state.auth.members.find((member) => member.id === state.auth.session.memberId)?.name ||
+    state.auth.session.name ||
+    "我";
+  const directMessageMessages = loading || error ? SANITIZED_DIRECT_MESSAGE_MESSAGES : state.directMessageMessages;
   const followedThreads = loading || error ? DEFAULT_FOLLOWED_THREADS : state.followedThreads;
   const savedLaterItems = loading || error ? DEFAULT_SAVED_LATER_ITEMS : state.savedLaterItems;
   const activeChannelId = channel?.id;
-  const messages = useMemo(
+  const persistedMessages = useMemo(
     () =>
       activeChannelId
         ? isDirectMessage
@@ -2265,7 +2416,14 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
         : [],
     [activeChannelId, directMessageMessages, isDirectMessage, state.channelMessages]
   );
-  const channelThreadReplies = useMemo(() => (activeChannelId ? CHANNEL_THREAD_REPLIES[activeChannelId] ?? {} : {}), [activeChannelId]);
+  const messages = useMemo(
+    () => (pendingMessages.length > 0 ? [...persistedMessages, ...pendingMessages] : persistedMessages),
+    [pendingMessages, persistedMessages]
+  );
+  const channelThreadReplies = useMemo(
+    () => (activeChannelId ? SANITIZED_CHANNEL_THREAD_REPLIES[activeChannelId] ?? {} : {}),
+    [activeChannelId]
+  );
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const messageScrollRef = useStickyMessageScroll(channelId, messages.length, latestMessage?.message.length ?? 0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -2371,6 +2529,10 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   }, [channelId, queryThreadId, messages, channelThreadReplies]);
 
   useEffect(() => {
+    setPendingMessages([]);
+  }, [channelId]);
+
+  useEffect(() => {
     if (replyTarget) {
       inputRef.current?.focus();
     }
@@ -2415,7 +2577,28 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
     if (!channel || !draft.trim() || sending || loading || Boolean(error)) {
       return;
     }
-    const sendPrompt = replyTarget ? `回复 ${replyTarget.speaker}：${draft.trim()}` : draft.trim();
+    const submittedDraft = draft.trim();
+    const sendPrompt = replyTarget ? `回复 ${replyTarget.speaker}：${submittedDraft}` : submittedDraft;
+    const sentAt = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+    setPendingMessages([
+      {
+        id: `pending-human-${Date.now()}`,
+        speaker: activeMemberName,
+        role: "human",
+        tone: "human",
+        message: sendPrompt,
+        time: sentAt,
+      },
+      {
+        id: `pending-agent-${Date.now()}`,
+        speaker: isDirectMessage ? channel.name : "智能体",
+        role: "agent",
+        tone: "agent",
+        message: MESSAGE_SENDING_PLACEHOLDER,
+        time: sentAt,
+      },
+    ]);
+    setDraft("");
     setSending(true);
     setSendError(null);
     try {
@@ -2424,9 +2607,10 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
       } else {
         await postChannelMessage(channel.id, sendPrompt);
       }
-      setDraft("");
+      setPendingMessages([]);
       setReplyTarget(null);
     } catch (channelError) {
+      setPendingMessages([]);
       setSendError(channelError instanceof Error ? channelError.message : "频道消息发送失败");
     } finally {
       setSending(false);
@@ -2606,7 +2790,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                         data-testid="channel-message-input"
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
-                        disabled={!channel || loading || Boolean(error) || sending}
+                        disabled={!channel || loading || Boolean(error)}
                         className="h-11 flex-1 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[13px] outline-none transition-colors duration-150 focus:bg-white focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                         placeholder={
                           replyTarget
@@ -2629,12 +2813,16 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                         disabled={!channel || loading || Boolean(error) || sending || !draft.trim()}
                         className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
                       >
-                        {sending ? "..." : "发送"}
+                        {sending ? "发送中" : "发送"}
                       </button>
                     </form>
                     {sendError ? (
                       <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-[1040px] text-sm leading-6 text-[var(--shock-pink)]">
                         {sendError}
+                      </p>
+                    ) : sending ? (
+                      <p className="mx-auto mt-3 max-w-[1040px] text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+                        {MESSAGE_SENDING_PLACEHOLDER}
                       </p>
                     ) : null}
                   </div>
@@ -2785,7 +2973,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const currentRunStatus = session?.status ?? run?.status;
   const runPaused = currentRunStatus === "paused";
   const messages = useMemo(() => (room ? state.roomMessages[room.id] ?? [] : []), [room, state.roomMessages]);
-  const roomThreadReplies = useMemo(() => (room ? ROOM_THREAD_REPLIES[room.id] ?? {} : {}), [room]);
+  const roomThreadReplies = useMemo(() => (room ? SANITIZED_ROOM_THREAD_REPLIES[room.id] ?? {} : {}), [room]);
   const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
   const [prLoading, setPrLoading] = useState(false);
   const [prError, setPrError] = useState<string | null>(null);
@@ -2916,7 +3104,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     try {
       await createPullRequest(room.id);
     } catch (pullRequestError) {
-      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request create failed");
+      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "创建 PR 失败");
     } finally {
       setPrLoading(false);
     }
@@ -2929,7 +3117,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     try {
       await updatePullRequest(pullRequest.id, { status: "merged" });
     } catch (pullRequestError) {
-      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request merge failed");
+      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "合并 PR 失败");
     } finally {
       setPrLoading(false);
     }
@@ -2942,7 +3130,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     try {
       await updatePullRequest(pullRequest.id, { status: pullRequest.status === "changes_requested" ? "changes_requested" : "in_review" });
     } catch (pullRequestError) {
-      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "pull request sync failed");
+      setPrError(pullRequestError instanceof Error ? pullRequestError.message : "同步 PR 状态失败");
     } finally {
       setPrLoading(false);
     }
@@ -3132,6 +3320,12 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       threadReplyCounts={threadReplyCounts}
                       activeThreadMessageId={selectedThreadMessage?.id}
                       onOpenThread={handleOpenThread}
+                      humanSpeaker={
+                        state.auth.members.find((member) => member.id === state.auth.session.memberId)?.name ||
+                        state.auth.session.name ||
+                        "我"
+                      }
+                      agentSpeaker={run.owner || room.topic.owner || "当前智能体"}
                     />
                   ) : activeWorkbenchTab === "topic" ? (
                     <RoomTopicWorkbenchPanel
@@ -3200,7 +3394,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                               {formatCount(room.usage?.messageCount)} 条消息 / {formatCount(room.usage?.totalTokens)} 令牌
                             </p>
                             <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
-                              {formatCount(room.usage?.humanTurns)} 人类 / {formatCount(room.usage?.agentTurns)} 智能体 · {room.usage?.windowLabel ?? "窗口未返回"}
+                              {formatCount(room.usage?.humanTurns)} 人类 / {formatCount(room.usage?.agentTurns)} 智能体 · {room.usage?.windowLabel ?? "时间范围未返回"}
                             </p>
                           </div>
                           <div data-testid="room-workbench-workspace-usage-summary" className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">

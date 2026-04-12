@@ -95,7 +95,7 @@ func TestAgentProfileRouteAllowsCustomModelOutsideCatalog(t *testing.T) {
 		http.DefaultClient,
 		http.MethodPatch,
 		server.URL+"/v1/agents/agent-codex-dockmaster",
-		`{"role":"Delivery Lead","avatar":"signal-radar","prompt":"Prefer live machine truth before catalog defaults.","operatingInstructions":"Treat provider catalogs as suggestions, not allowlists.","providerPreference":"Codex CLI","modelPreference":"gpt-5.4","recallPolicy":"agent-first","runtimePreference":"shock-sidecar","memorySpaces":["workspace","user"],"sandbox":{"profile":"restricted","allowedHosts":["github.com"],"allowedCommands":["git status"],"allowedTools":["read_file"]}}`,
+		`{"name":"主执行智能体","role":"Delivery Lead","avatar":"signal-radar","prompt":"Prefer live machine truth before catalog defaults.","operatingInstructions":"Treat provider catalogs as suggestions, not allowlists.","providerPreference":"Codex CLI","modelPreference":"gpt-5.4","recallPolicy":"agent-first","runtimePreference":"shock-sidecar","memorySpaces":["workspace","user"],"sandbox":{"profile":"restricted","allowedHosts":["github.com"],"allowedCommands":["git status"],"allowedTools":["read_file"]}}`,
 	)
 	defer updateResp.Body.Close()
 	if updateResp.StatusCode != http.StatusOK {
@@ -103,10 +103,21 @@ func TestAgentProfileRouteAllowsCustomModelOutsideCatalog(t *testing.T) {
 	}
 
 	var payload struct {
-		Agent store.Agent `json:"agent"`
+		Agent  store.Agent        `json:"agent"`
+		Center store.MemoryCenter `json:"center"`
 	}
 	decodeJSON(t, updateResp, &payload)
-	if payload.Agent.ModelPreference != "gpt-5.4" || payload.Agent.RuntimePreference != "shock-sidecar" {
-		t.Fatalf("updated agent = %#v, want custom model + runtime preference persisted", payload.Agent)
+	if payload.Agent.Name != "主执行智能体" || payload.Agent.ModelPreference != "gpt-5.4" || payload.Agent.RuntimePreference != "shock-sidecar" {
+		t.Fatalf("updated agent = %#v, want renamed agent + custom model + runtime preference persisted", payload.Agent)
+	}
+
+	preview := findPreviewBySession(payload.Center.Previews, "session-runtime")
+	if preview == nil {
+		t.Fatalf("session-runtime preview missing: %#v", payload.Center.Previews)
+	}
+	if !strings.Contains(preview.PromptSummary, "主执行智能体") ||
+		!strings.Contains(preview.PromptSummary, "gpt-5.4") ||
+		!strings.Contains(preview.PromptSummary, "shock-sidecar") {
+		t.Fatalf("promptSummary = %q, want renamed agent + custom model + runtime preference", preview.PromptSummary)
 	}
 }

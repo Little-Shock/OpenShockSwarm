@@ -1065,7 +1065,7 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, p
 	run := findRunForSession(snapshot, session.ID, session.ActiveRunID)
 	var agent *Agent
 	if run != nil {
-		if found, ok := findAgentByOwner(snapshot, run.Owner); ok {
+		if found, ok := findAgentForRun(snapshot, *run); ok {
 			agent = &found
 		}
 	}

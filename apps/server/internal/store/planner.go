@@ -253,7 +253,7 @@ func findPlannerQueueItem(state State, sessionID string) (PlannerQueueItem, bool
 func plannerQueueItemFromState(snapshot State, session Session) PlannerQueueItem {
 	run, _ := findRunInState(snapshot, session.ActiveRunID)
 	issue, _ := findIssueInState(snapshot, session.IssueKey)
-	agent, agentOK := findAgentByOwner(snapshot, run.Owner)
+	agent, agentOK := findAgentForRun(snapshot, run)
 	pr, prOK := findPullRequestByRunID(snapshot, session.ActiveRunID)
 
 	gates := make([]PlannerQueueGate, 0, len(snapshot.Inbox))
@@ -353,17 +353,17 @@ func pullRequestMergeSafetyGuardReason(pr PullRequest) string {
 
 	switch {
 	case mergeStateStatus == "DIRTY" || mergeable == "CONFLICTING":
-		return "PR 当前与 base 存在冲突，需 refresh current base 后才能继续 merge。"
+		return "PR 当前与基线分支存在冲突，需先同步最新基线后再继续合并。"
 	case mergeStateStatus == "BEHIND":
-		return "PR 当前已落后 base，需先 refresh 到 current base 后再继续 merge。"
+		return "PR 当前已落后基线分支，需先同步最新基线后再继续合并。"
 	case mergeStateStatus == "BLOCKED":
-		return "GitHub 当前仍报告 merge blocked；需要先通过 branch protections / required checks。"
+		return "GitHub 当前仍报告合并受阻；需要先通过分支保护和必需检查。"
 	case mergeStateStatus == "HAS_HOOKS":
-		return "GitHub 当前仍在等待 required hooks / protections 收敛，暂不能 auto-merge。"
+		return "GitHub 当前仍在等待检查和保护规则完成，暂不能继续自动合并。"
 	case mergeStateStatus == "UNSTABLE":
-		return "GitHub 当前 merge safety 仍不稳定，需等待 checks 收敛后再继续。"
+		return "GitHub 当前合并状态仍不稳定，需等待检查收敛后再继续。"
 	case mergeStateStatus == "UNKNOWN" || mergeable == "UNKNOWN":
-		return "GitHub 正在计算 merge safety，暂不允许贸然 auto-merge。"
+		return "GitHub 正在计算当前合并条件，暂不允许直接自动合并。"
 	default:
 		return ""
 	}
@@ -424,6 +424,19 @@ func findAgentByOwner(state State, owner string) (Agent, bool) {
 		}
 	}
 	return Agent{}, false
+}
+
+func findAgentForRun(state State, run Run) (Agent, bool) {
+	if strings.TrimSpace(run.ID) != "" {
+		for _, item := range state.Agents {
+			for _, runID := range item.RecentRunIDs {
+				if runID == run.ID {
+					return item, true
+				}
+			}
+		}
+	}
+	return findAgentByOwner(state, run.Owner)
 }
 
 func prependUnique(items []string, value string) []string {

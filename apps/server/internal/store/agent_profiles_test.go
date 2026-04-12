@@ -88,6 +88,7 @@ func TestUpdateAgentProfileAllowsModelOutsideProviderCatalog(t *testing.T) {
 	}
 
 	_, agent, err := s.UpdateAgentProfile("agent-codex-dockmaster", AgentProfileUpdateInput{
+		Name:                  "主执行智能体",
 		Role:                  "Delivery Lead",
 		Avatar:                "signal-radar",
 		Prompt:                "Prefer live machine truth before catalog defaults.",
@@ -111,5 +112,19 @@ func TestUpdateAgentProfileAllowsModelOutsideProviderCatalog(t *testing.T) {
 
 	if agent.ModelPreference != "gpt-5.4" {
 		t.Fatalf("updated agent model = %q, want custom model outside catalog to persist", agent.ModelPreference)
+	}
+	if agent.Name != "主执行智能体" || agent.RuntimePreference != "shock-sidecar" {
+		t.Fatalf("updated agent = %#v, want renamed agent + runtime preference persisted", agent)
+	}
+
+	center := s.MemoryCenter()
+	preview := findMemoryPreviewBySession(center.Previews, "session-runtime")
+	if preview == nil {
+		t.Fatalf("session-runtime preview missing: %#v", center.Previews)
+	}
+	if !strings.Contains(preview.PromptSummary, "主执行智能体") ||
+		!strings.Contains(preview.PromptSummary, "gpt-5.4") ||
+		!strings.Contains(preview.PromptSummary, "shock-sidecar") {
+		t.Fatalf("preview summary = %q, want renamed agent + custom model + runtime preference", preview.PromptSummary)
 	}
 }

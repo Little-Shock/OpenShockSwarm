@@ -135,6 +135,215 @@ func TestRoomMessageStreamPersistsConversation(t *testing.T) {
 	}
 }
 
+func TestRoomMessageStreamPersistsBlockedConversationOnError(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	reportedAt := time.Now().UTC().Format(time.RFC3339)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec/stream" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		if err := json.NewEncoder(w).Encode(map[string]any{"error": "not logged in"}); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}))
+	defer daemon.Close()
+
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		DaemonURL:   daemon.URL,
+		Machine:     "shock-sidecar",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  reportedAt,
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Streaming Blocked",
+		Summary:  "verify room blocked writeback",
+		Owner:    "Claude Review Runner",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "请告诉我现在卡在哪里",
+		"provider": "claude",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST stream error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var events []DaemonStreamEvent
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		events = append(events, event)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanner.Err() = %v", err)
+	}
+
+	if len(events) == 0 {
+		t.Fatalf("expected stream events, got none")
+	}
+	last := events[len(events)-1]
+	if last.Type != "state" || last.State == nil {
+		t.Fatalf("last event = %#v, want state payload", last)
+	}
+
+	messages := last.State.RoomMessages[created.RoomID]
+	if len(messages) < 4 {
+		t.Fatalf("blocked room messages = %#v, want persisted human + blocked reply", messages)
+	}
+	human := messages[len(messages)-2]
+	blocked := messages[len(messages)-1]
+	if human.Role != "human" || human.Message != "请告诉我现在卡在哪里" {
+		t.Fatalf("human blocked message = %#v, want original prompt persisted", human)
+	}
+	if blocked.Tone != "blocked" || !strings.Contains(blocked.Message, "当前还未登录模型服务") {
+		t.Fatalf("blocked room reply = %#v, want blocked explanation", blocked)
+	}
+}
+
+func TestRoomMessagePersistsBlockedConversationOnError(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	reportedAt := time.Now().UTC().Format(time.RFC3339)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		if err := json.NewEncoder(w).Encode(map[string]any{"error": "not logged in"}); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}))
+	defer daemon.Close()
+
+	if _, err := s.UpdateRuntimePairing(store.RuntimePairingInput{
+		DaemonURL:   daemon.URL,
+		Machine:     "shock-sidecar",
+		DetectedCLI: []string{"claude"},
+		State:       "online",
+		ReportedAt:  reportedAt,
+	}); err != nil {
+		t.Fatalf("UpdateRuntimePairing() error = %v", err)
+	}
+
+	created, err := s.CreateIssue(store.CreateIssueInput{
+		Title:    "Blocked Room Reply",
+		Summary:  "verify room blocked writeback",
+		Owner:    "Claude Review Runner",
+		Priority: "high",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	if _, err := s.AttachLane(created.RunID, created.SessionID, store.LaneBinding{
+		Branch:       created.Branch,
+		WorktreeName: created.WorktreeName,
+		Path:         filepath.Join(root, ".openshock-worktrees", created.WorktreeName),
+	}); err != nil {
+		t.Fatalf("AttachLane() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "请告诉我为什么失败",
+		"provider": "claude",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST room message error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	var payload struct {
+		Error string      `json:"error"`
+		State store.State `json:"state"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if !strings.Contains(payload.Error, "当前还未登录模型服务") {
+		t.Fatalf("error = %q, want blocked explanation", payload.Error)
+	}
+
+	messages := payload.State.RoomMessages[created.RoomID]
+	if len(messages) < 4 {
+		t.Fatalf("room messages = %#v, want persisted human + blocked reply", messages)
+	}
+	human := messages[len(messages)-2]
+	blocked := messages[len(messages)-1]
+	if human.Role != "human" || human.Message != "请告诉我为什么失败" {
+		t.Fatalf("human blocked message = %#v, want original prompt persisted", human)
+	}
+	if blocked.Tone != "blocked" || !strings.Contains(blocked.Message, "当前还未登录模型服务") {
+		t.Fatalf("blocked room reply = %#v, want blocked explanation", blocked)
+	}
+}
+
 func TestChannelMessagePersistsAgentReply(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
-import { accessSync, constants as fsConstants, createWriteStream } from "node:fs";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { accessSync, constants as fsConstants, createWriteStream, writeFileSync } from "node:fs";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -174,12 +174,40 @@ async function capture(page, name) {
 async function startServices() {
   const workspaceRoot = path.join(artifactsDir, "workspace");
   const statePath = path.join(artifactsDir, "state.json");
+  const webAppRoot = path.join(projectRoot, "apps", "web");
   const webPort = await freePort();
   const serverPort = await freePort();
   const webURL = `http://127.0.0.1:${webPort}`;
   const serverURL = `http://127.0.0.1:${serverPort}`;
+  const webEnv = {
+    ...process.env,
+    OPENSHOCK_CONTROL_API_BASE: serverURL,
+    NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+  };
+  const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
+  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+
+  const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
+    cwd: projectRoot,
+    env: webEnv,
+    encoding: "utf8",
+  });
+  writeFileSync(
+    buildLogPath,
+    [
+      `[${timestamp()}] pnpm --dir apps/web build`,
+      buildResult.stdout ?? "",
+      buildResult.stderr ?? "",
+      `[${timestamp()}] exited code=${buildResult.status} signal=${buildResult.signal ?? "null"}`,
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+  if (buildResult.status !== 0) {
+    throw new Error(`web build failed before headed replay. See ${buildLogPath}`);
+  }
 
   startProcess("server", path.join(projectRoot, "scripts", "go.sh"), ["run", "./cmd/openshock-server"], {
     cwd: path.join(projectRoot, "apps", "server"),
@@ -194,14 +222,10 @@ async function startServices() {
   startProcess(
     "web",
     "pnpm",
-    ["--dir", "apps/web", "exec", "next", "dev", "--hostname", "127.0.0.1", "--port", String(webPort)],
+    ["--dir", "apps/web", "exec", "next", "start", "--hostname", "127.0.0.1", "--port", String(webPort)],
     {
       cwd: projectRoot,
-      env: {
-        ...process.env,
-        OPENSHOCK_CONTROL_API_BASE: serverURL,
-        NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
-      },
+      env: webEnv,
     }
   );
 
@@ -269,36 +293,36 @@ try {
     "older run should stay hidden before incremental fetch"
   );
   await capture(page, "runs-initial-page");
-  results.push("- `/runs` first renders only the latest history page; older room runs stay hidden until explicit incremental fetch.");
+  results.push("- `/runs` 首次只展示最新一页历史；更早的房间执行会保持折叠，直到主动加载。");
 
   await page.getByTestId("run-history-load-more").click();
   await waitForVisible(page.getByTestId("run-history-open-run_runtime_00"), "older runtime run did not appear after load more");
   await capture(page, "runs-after-load-more");
-  results.push("- `Load Older Runs` appends earlier run history instead of preloading the full ledger into the first paint.");
+  results.push("- 点击“加载更早执行”后，会按需追加更早的执行历史，而不是在首屏一次性灌入整条流水。");
 
   await page.getByTestId("run-history-open-run_runtime_01").click();
   await waitForUrlIncludes(page, "/runs/run_runtime_01");
   await waitForText(page, "run-detail-resume-session", "session-runtime");
   await waitForVisible(page.getByTestId("run-history-entry-run_runtime_00"), "run detail history did not show prior room run");
   await capture(page, "run-detail-current");
-  results.push("- Current run detail shows live resume session metadata and same-room history, including the immediately prior runtime run.");
+  results.push("- 当前执行详情会展示实时恢复会话信息和同一房间的历史记录，包括紧邻的上一条执行。");
 
   await page.getByTestId("run-history-reopen-run_runtime_00").click();
   await waitForUrlIncludes(page, "/runs/run_runtime_00");
   await waitForText(page, "run-detail-resume-session", "session-runtime-00");
   await waitForVisible(page.getByTestId("run-history-entry-run_runtime_01"), "reopened run did not keep room history context");
   await capture(page, "run-detail-reopened-history");
-  results.push("- Reopening a prior run keeps room-level history visible and swaps resume context to that run's own session continuity.");
+  results.push("- 重新打开较早执行后，房间级历史仍保持可见，同时恢复上下文会切换到该执行自己的会话链路。");
 
   await page.getByTestId("run-history-room-tab-run_runtime_00").click();
   await waitForUrlIncludes(page, "/rooms/room-runtime?tab=run");
   await waitForVisible(page.getByTestId("room-workbench-run-panel"), "room run panel did not render");
   await waitForText(page, "run-detail-resume-session", "session-runtime");
   await capture(page, "room-run-tab-current-session");
-  results.push("- Jumping back into the room run tab returns to the current room continuity instead of pinning the stale historical session.");
+  results.push("- 从历史执行回到房间执行页签时，会重新锚定到当前房间链路，而不是停留在过时会话上。");
 
   const report = [
-    "# 2026-04-09 Run History / Resume Context Report",
+    "# 2026-04-09 执行历史与恢复上下文报告",
     "",
     `- Command: \`pnpm test:headed-run-history-resume-context -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
@@ -310,7 +334,7 @@ try {
     ...screenshots.map((shot) => `- ${shot.name}: ${shot.path}`),
     "",
     "## Single Value",
-    "- `/runs` now behaves like a paginated history surface, `Load Older Runs` reveals earlier ledger pages on demand, run detail exposes session-backed resume context plus same-room history, and room run tab correctly re-anchors to the current active session instead of a stale prior continuity.",
+    "- `/runs` 现在会按页加载历史，执行详情会同时展示恢复会话与同房间历史，而回到房间执行页签时也会重新锚定到当前活跃链路，不会误留在旧会话上。",
   ].join("\n");
 
   await writeFile(reportPath, `${report}\n`, "utf8");

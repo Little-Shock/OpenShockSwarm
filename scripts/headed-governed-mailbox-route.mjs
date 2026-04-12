@@ -292,8 +292,182 @@ async function waitForMailboxWhere(serverURL, predicate, message) {
   }, message);
 }
 
+async function waitForGovernedHandoff(serverURL, expected) {
+  return waitFor(async () => {
+    const state = await readState(serverURL);
+    const suggestion = state.workspace?.governance?.routingPolicy?.suggestedHandoff;
+    if (!suggestion || suggestion.status !== "active" || !suggestion.handoffId) {
+      return false;
+    }
+    if (expected.roomId && suggestion.roomId !== expected.roomId) {
+      return false;
+    }
+    if (expected.fromAgentId && suggestion.fromAgentId !== expected.fromAgentId) {
+      return false;
+    }
+    if (expected.toAgentId && suggestion.toAgentId !== expected.toAgentId) {
+      return false;
+    }
+
+    const handoffs = await readMailbox(serverURL);
+    return handoffs.find((item) => item.id === suggestion.handoffId) ?? false;
+  }, `governed mailbox handoff ${expected.roomId} did not appear`);
+}
+
+function governanceStatusLabel(status) {
+  switch (status) {
+    case "active":
+      return "进行中";
+    case "ready":
+      return "就绪";
+    case "required":
+      return "需要处理";
+    case "blocked":
+      return "阻塞";
+    case "done":
+      return "完成";
+    case "draft":
+      return "草稿";
+    case "watch":
+      return "关注";
+    default:
+      return "等待中";
+  }
+}
+
+function handoffStatusLabel(status) {
+  switch (status) {
+    case "acknowledged":
+      return "处理中";
+    case "blocked":
+      return "阻塞";
+    case "completed":
+      return "已完成";
+    default:
+      return "待接手";
+  }
+}
+
+function deliveryDelegationStatusLabel(status) {
+  switch (status) {
+    case "ready":
+      return "可交接";
+    case "blocked":
+      return "交接受阻";
+    case "done":
+      return "已完成";
+    default:
+      return "等待中";
+  }
+}
+
+function deliveryDelegationHandoffStatusLabel(status) {
+  switch (status) {
+    case "acknowledged":
+      return "已接手";
+    case "blocked":
+      return "交接受阻";
+    case "completed":
+      return "交接完成";
+    case "requested":
+      return "等待接手";
+    default:
+      return "";
+  }
+}
+
+function deliveryDelegationResponseStatusLabel(status) {
+  switch (status) {
+    case "acknowledged":
+      return "处理中";
+    case "blocked":
+      return "回复受阻";
+    case "completed":
+      return "回复完成";
+    case "requested":
+      return "等待回复";
+    default:
+      return "";
+  }
+}
+
+function deliveryDelegationResponseAttemptsLabel(count) {
+  return `回复 x${count}`;
+}
+
+function mailboxReplyStatusLabel(status) {
+  switch (status) {
+    case "acknowledged":
+      return "处理中";
+    case "blocked":
+      return "回复受阻";
+    case "completed":
+      return "回复完成";
+    case "requested":
+      return "等待回复";
+    default:
+      return "";
+  }
+}
+
+function mailboxResponseAttemptsLabel(count) {
+  return `回复 ${count} 次`;
+}
+
+function mailboxParentStatusLabel(status) {
+  return `主交接 ${handoffStatusLabel(status)}`;
+}
+
+function mailboxKindLabel(kind) {
+  switch (kind) {
+    case "governed":
+      return "自动交接";
+    case "delivery-closeout":
+      return "交付收尾";
+    case "delivery-reply":
+      return "收尾回复";
+    default:
+      return "手动交接";
+  }
+}
+
+function mailboxMessageKindLabel(kind) {
+  switch (kind) {
+    case "request":
+      return "请求";
+    case "ack":
+      return "已接手";
+    case "blocked":
+      return "阻塞";
+    case "comment":
+      return "留言";
+    case "parent-progress":
+      return "主任务进度";
+    case "response-progress":
+      return "回复进度";
+    default:
+      return "完成";
+  }
+}
+
 async function readText(page, testId) {
   return (await page.getByTestId(testId).textContent())?.trim() ?? "";
+}
+
+async function waitForTestIdText(page, testId, expectedText, timeout = 30_000) {
+  await page.waitForFunction(
+    ({ id, text }) => document.querySelector(`[data-testid="${id}"]`)?.textContent?.trim() === text,
+    { id: testId, text: expectedText },
+    { timeout }
+  );
+}
+
+async function waitForGovernanceStatus(page, testId, status) {
+  await waitForTestIdText(page, testId, governanceStatusLabel(status));
+}
+
+async function waitForMailboxStatus(page, handoffId, status) {
+  await waitForTestIdText(page, `mailbox-status-${handoffId}`, handoffStatusLabel(status));
 }
 
 async function waitForActionEnabled(page, testId) {
@@ -429,11 +603,9 @@ try {
 
   await page.goto(`${webURL}/inbox?roomId=room-runtime`, { waitUntil: "load" });
   await page.getByTestId("mailbox-compose-governed-route").waitFor({ state: "visible" });
-  await page.waitForFunction(() => {
-    return document.querySelector('[data-testid="mailbox-compose-governed-route-status"]')?.textContent?.trim() === "ready";
-  });
+  await waitForGovernanceStatus(page, "mailbox-compose-governed-route-status", "ready");
   assert(
-    (await readText(page, "mailbox-compose-governed-route-status")) === "ready",
+    (await readText(page, "mailbox-compose-governed-route-status")) === governanceStatusLabel("ready"),
     "governed compose route should start in ready state"
   );
   await page.getByTestId("mailbox-compose-governed-route-create").waitFor({ state: "visible" });
@@ -441,12 +613,10 @@ try {
 
   await page.goto(`${webURL}/mailbox?roomId=room-runtime`, { waitUntil: "load" });
   await page.getByTestId("mailbox-governed-route").waitFor({ state: "visible" });
-  await page.waitForFunction(() => {
-    return document.querySelector('[data-testid="mailbox-governed-route-status"]')?.textContent?.trim() === "ready";
-  });
+  await waitForGovernanceStatus(page, "mailbox-governed-route-status", "ready");
 
   assert(
-    (await readText(page, "mailbox-governed-route-status")) === "ready",
+    (await readText(page, "mailbox-governed-route-status")) === governanceStatusLabel("ready"),
     "governed mailbox route should start in ready state"
   );
   assert(
@@ -461,18 +631,24 @@ try {
 
   await page.getByTestId("mailbox-governed-route-create").click();
 
-  const handoff = await waitForMailbox(serverURL, requestTitle);
+  const handoff = await waitForGovernedHandoff(serverURL, {
+    roomId: initialState.workspace.governance.routingPolicy.suggestedHandoff.roomId,
+    fromAgentId: initialState.workspace.governance.routingPolicy.suggestedHandoff.fromAgentId,
+    toAgentId: initialState.workspace.governance.routingPolicy.suggestedHandoff.toAgentId,
+  });
   await page.getByTestId(`mailbox-card-${handoff.id}`).waitFor({ state: "visible" });
+  await waitForGovernanceStatus(page, "mailbox-governed-route-status", "active");
   assert(
-    (await readText(page, "mailbox-governed-route-status")) === "active",
+    (await readText(page, "mailbox-governed-route-status")) === governanceStatusLabel("active"),
     "governed mailbox route should become active after creating the recommended handoff"
   );
   await capture(page, "governed-route-active");
 
   await page.goto(`${webURL}/inbox?roomId=room-runtime&handoffId=${handoff.id}`, { waitUntil: "load" });
   await page.getByTestId("mailbox-compose-governed-route").waitFor({ state: "visible" });
+  await waitForGovernanceStatus(page, "mailbox-compose-governed-route-status", "active");
   assert(
-    (await readText(page, "mailbox-compose-governed-route-status")) === "active",
+    (await readText(page, "mailbox-compose-governed-route-status")) === governanceStatusLabel("active"),
     "governed compose route should become active after auto-create"
   );
   await capture(page, "governed-compose-active");
@@ -535,9 +711,7 @@ try {
     );
 
     await page.getByTestId(`mailbox-card-${followup.id}`).waitFor({ state: "visible" });
-    await page.waitForFunction(() => {
-      return document.querySelector('[data-testid="mailbox-governed-route-status"]')?.textContent?.trim() === "active";
-    });
+    await waitForGovernanceStatus(page, "mailbox-governed-route-status", "active");
     await capture(page, "governed-route-auto-advanced");
 
     const stateAfterContinue = await readState(serverURL);
@@ -551,9 +725,7 @@ try {
     );
 
     await page.goto(`${webURL}/inbox?roomId=room-runtime&handoffId=${followup.id}`, { waitUntil: "load" });
-    await page.waitForFunction(() => {
-      return document.querySelector('[data-testid="mailbox-compose-governed-route-status"]')?.textContent?.trim() === "active";
-    });
+    await waitForGovernanceStatus(page, "mailbox-compose-governed-route-status", "active");
     await page.getByTestId("mailbox-compose-governed-route-focus").click();
     await page.getByTestId(`mailbox-card-${followup.id}`).waitFor({ state: "visible" });
     await capture(page, "governed-compose-auto-advanced");
@@ -626,9 +798,7 @@ try {
 	        await page.getByTestId(`mailbox-note-${followup.id}`).fill(qaCloseoutNote);
 	        await page.getByTestId(`mailbox-action-completed-${followup.id}`).click();
 	      }
-	      await page.waitForFunction(() => {
-	        return document.querySelector('[data-testid="mailbox-governed-route-status"]')?.textContent?.trim() === "done";
-	      });
+	      await waitForGovernanceStatus(page, "mailbox-governed-route-status", "done");
       await page.getByTestId("mailbox-governed-route-closeout").waitFor({ state: "visible" });
       await capture(page, "governed-route-closeout-ready");
 
@@ -673,7 +843,9 @@ try {
         runMode === "delegate-lifecycle"
       ) {
         const expectedDelegationStatus =
-          runMode === "delegate-auto-complete" ? "delegation done" : "delegate ready";
+          runMode === "delegate-auto-complete"
+            ? deliveryDelegationStatusLabel("done")
+            : deliveryDelegationStatusLabel("ready");
         assert(
           (await readText(page, "delivery-delegation-status")) === expectedDelegationStatus,
           "delivery delegation should reflect the configured post-closeout policy"
@@ -699,7 +871,7 @@ try {
 
         if (runMode === "delegate-auto-complete") {
           assert(
-            (await readText(page, "delivery-delegation-status")) === "delegation done",
+            (await readText(page, "delivery-delegation-status")) === deliveryDelegationStatusLabel("done"),
             "auto-complete policy should mark delivery delegation done immediately"
           );
           assert(
@@ -711,7 +883,7 @@ try {
             "auto-complete policy should not render a delegated handoff status chip"
           );
           assert(
-            (await readText(page, "delivery-delegation-open")) === "Open Delivery Context",
+            (await readText(page, "delivery-delegation-open")) === "打开交付详情",
             "auto-complete policy should keep the PR-level delivery context link"
           );
           const mailboxAfterCloseout = await readMailbox(serverURL);
@@ -724,7 +896,7 @@ try {
           await page.goto(`${webURL}/settings`, { waitUntil: "load" });
           await page.getByTestId("settings-advanced-governance-toggle").click();
           await page.waitForFunction(() => {
-            return document.querySelector('[data-testid="settings-governance-delivery-policy"]')?.textContent?.includes("auto complete") ?? false;
+            return document.querySelector('[data-testid="settings-governance-delivery-policy"]')?.textContent?.includes("自动结束") ?? false;
           });
           await capture(page, "settings-governance-delivery-auto-complete");
           reportTitle = "# 2026-04-11 Governed Mailbox Delegate Auto-Complete Report";
@@ -747,7 +919,7 @@ try {
             "signal-only policy should not auto-create a delegated handoff status chip"
           );
           assert(
-            (await readText(page, "delivery-delegation-open")) === "Open Delivery Context",
+            (await readText(page, "delivery-delegation-open")) === "打开交付详情",
             "signal-only policy should keep the PR-level delivery context link"
           );
           const mailboxAfterCloseout = await readMailbox(serverURL);
@@ -760,7 +932,7 @@ try {
           await page.goto(`${webURL}/settings`, { waitUntil: "load" });
           await page.getByTestId("settings-advanced-governance-toggle").click();
           await page.waitForFunction(() => {
-            return document.querySelector('[data-testid="settings-governance-delivery-policy"]')?.textContent?.includes("signal only") ?? false;
+            return document.querySelector('[data-testid="settings-governance-delivery-policy"]')?.textContent?.includes("仅提醒") ?? false;
           });
           await capture(page, "settings-governance-delivery-policy");
           reportTitle = "# 2026-04-11 Governed Mailbox Delegate Automation Policy Report";
@@ -795,7 +967,8 @@ try {
           runMode === "delegate-lifecycle"
         ) {
           assert(
-            (await readText(page, "delivery-delegation-handoff-status")) === "handoff requested",
+            (await readText(page, "delivery-delegation-handoff-status")) ===
+              deliveryDelegationHandoffStatusLabel("requested"),
             "delivery delegation should auto-create a requested formal closeout handoff"
           );
           const delegatedHandoffHref = await page.getByTestId("delivery-delegation-open").getAttribute("href");
@@ -809,17 +982,20 @@ try {
 
           await page.getByTestId("delivery-delegation-open").click();
           await page.getByTestId(`mailbox-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
-          await page.waitForFunction(
-            (handoffId) => {
-              const card = document.querySelector(`[data-testid="mailbox-card-${handoffId}"]`);
-              return (
-                card?.textContent?.includes("Memory Clerk") &&
-                card?.textContent?.includes("Spec Captain") &&
-                card?.textContent?.includes("requested")
-              );
-            },
-            delegatedHandoffID
+          const delegatedHandoff = await waitForMailboxWhere(
+            serverURL,
+            (item) => item.id === delegatedHandoffID,
+            "delegated closeout handoff did not appear in mailbox state"
           );
+          assert(
+            delegatedHandoff.fromAgent === "Memory Clerk",
+            "delegated closeout handoff should come from Memory Clerk after QA closeout"
+          );
+          assert(
+            delegatedHandoff.toAgent === "Spec Captain",
+            "delegated closeout handoff should target Spec Captain as the final delivery delegate"
+          );
+          await waitForMailboxStatus(page, delegatedHandoffID, "requested");
           await capture(page, "delivery-delegated-handoff");
 
           if (runMode === "delegate-comment-sync") {
@@ -841,7 +1017,8 @@ try {
               { note: sourceComment }
             );
             assert(
-              (await readText(page, "delivery-delegation-handoff-status")) === "handoff requested",
+              (await readText(page, "delivery-delegation-handoff-status")) ===
+                deliveryDelegationHandoffStatusLabel("requested"),
               "source formal comment should not change delegated handoff lifecycle"
             );
             await capture(page, "pull-request-delivery-delegation-source-comment");
@@ -880,7 +1057,8 @@ try {
               { note: targetComment }
             );
             assert(
-              (await readText(page, "delivery-delegation-handoff-status")) === "handoff requested",
+              (await readText(page, "delivery-delegation-handoff-status")) ===
+                deliveryDelegationHandoffStatusLabel("requested"),
               "target formal comment should preserve delegated handoff lifecycle"
             );
             await capture(page, "pull-request-delivery-delegation-comment-sync");
@@ -899,17 +1077,15 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
             await capture(page, "delivery-delegated-handoff-blocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-response-status"]')?.textContent?.trim() === "reply requested";
-            });
+            await waitForTestIdText(
+              page,
+              "delivery-delegation-response-status",
+              deliveryDelegationResponseStatusLabel("requested")
+            );
             await page.waitForFunction(
               ({ note }) => document.querySelector('[data-testid="delivery-delegation-summary"]')?.textContent?.includes(note),
               { note: blockNote }
@@ -924,15 +1100,15 @@ try {
             await page.goto(responseURL.toString(), { waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
             await page.waitForFunction(
-              (handoffId) => {
+              ({ handoffId, expectedStatus }) => {
                 const card = document.querySelector(`[data-testid="mailbox-card-${handoffId}"]`);
                 return (
                   card?.textContent?.includes("Spec Captain") &&
                   card?.textContent?.includes("Memory Clerk") &&
-                  card?.textContent?.includes("requested")
+                  card?.textContent?.includes(expectedStatus)
                 );
               },
-              responseHandoffID
+              { handoffId: responseHandoffID, expectedStatus: handoffStatusLabel("requested") }
             );
             await capture(page, "delivery-delegated-response-handoff");
 
@@ -947,31 +1123,26 @@ try {
             ]);
             await page.reload({ waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "acknowledged",
-              responseHandoffID
-            );
+            await waitForMailboxStatus(page, responseHandoffID, "acknowledged");
             const responseNote = "release receipt checklist 已补齐，请重新接住 delivery closeout。";
             await page.getByTestId(`mailbox-note-${responseHandoffID}`).fill(responseNote);
             await page.getByTestId(`mailbox-action-completed-${responseHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "completed",
-              responseHandoffID
-            );
+            await waitForMailboxStatus(page, responseHandoffID, "completed");
             await capture(page, "delivery-delegated-response-handoff-completed");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-response-status"]')?.textContent?.trim() === "reply completed";
-            });
+            await waitForTestIdText(
+              page,
+              "delivery-delegation-response-status",
+              deliveryDelegationResponseStatusLabel("completed")
+            );
             assert(
-              (await readText(page, "delivery-delegation-status")) === "delegate blocked",
+              (await readText(page, "delivery-delegation-status")) === deliveryDelegationStatusLabel("blocked"),
               "delegated closeout should remain blocked until target re-acknowledges"
             );
             assert(
-              (await readText(page, "delivery-delegation-handoff-status")) === "handoff blocked",
+              (await readText(page, "delivery-delegation-handoff-status")) ===
+                deliveryDelegationHandoffStatusLabel("blocked"),
               "blocked delegated closeout handoff should stay blocked after response completion"
             );
             await page.waitForFunction(
@@ -994,16 +1165,14 @@ try {
             const firstBlockNote = "第一轮 blocker：release 文案待确认。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(firstBlockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-response-attempts"]')?.textContent?.trim() === "reply x1";
-            });
+            await waitForTestIdText(
+              page,
+              "delivery-delegation-response-attempts",
+              deliveryDelegationResponseAttemptsLabel(1)
+            );
             const firstResponseHandoffHref = await page.getByTestId("delivery-delegation-response-open").getAttribute("href");
             assert(firstResponseHandoffHref, "first response handoff link should expose href");
             const firstResponseURL = new URL(firstResponseHandoffHref, webURL);
@@ -1023,18 +1192,10 @@ try {
             ]);
             await page.reload({ waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${firstResponseHandoffID}`).waitFor({ state: "visible" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "acknowledged",
-              firstResponseHandoffID
-            );
+            await waitForMailboxStatus(page, firstResponseHandoffID, "acknowledged");
             await page.getByTestId(`mailbox-note-${firstResponseHandoffID}`).fill("第一轮 unblock response 已补齐。");
             await page.getByTestId(`mailbox-action-completed-${firstResponseHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "completed",
-              firstResponseHandoffID
-            );
+            await waitForMailboxStatus(page, firstResponseHandoffID, "completed");
 
             await page.goto(`${webURL}/mailbox?roomId=room-runtime&handoffId=${delegatedHandoffID}`, { waitUntil: "load" });
             await Promise.all([
@@ -1048,28 +1209,24 @@ try {
             ]);
             await page.reload({ waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "acknowledged",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "acknowledged");
             const secondBlockNote = "第二轮 blocker：release owner 还没签字。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(secondBlockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
             await capture(page, "delivery-delegated-handoff-reblocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-response-status"]')?.textContent?.trim() === "reply requested";
-            });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-response-attempts"]')?.textContent?.trim() === "reply x2";
-            });
+            await waitForTestIdText(
+              page,
+              "delivery-delegation-response-status",
+              deliveryDelegationResponseStatusLabel("requested")
+            );
+            await waitForTestIdText(
+              page,
+              "delivery-delegation-response-attempts",
+              deliveryDelegationResponseAttemptsLabel(2)
+            );
             await page.waitForFunction(
               ({ note }) => document.querySelector('[data-testid="delivery-delegation-summary"]')?.textContent?.includes(note),
               { note: "第 2 轮" }
@@ -1098,26 +1255,20 @@ try {
             ]);
             await page.reload({ waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${secondResponseHandoffID}`).waitFor({ state: "visible" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "acknowledged",
-              secondResponseHandoffID
-            );
+            await waitForMailboxStatus(page, secondResponseHandoffID, "acknowledged");
             await page.getByTestId(`mailbox-note-${secondResponseHandoffID}`).fill("第二轮 unblock response 已补齐，请重新接住。");
             await page.getByTestId(`mailbox-action-completed-${secondResponseHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "completed",
-              secondResponseHandoffID
-            );
+            await waitForMailboxStatus(page, secondResponseHandoffID, "completed");
             await capture(page, "delivery-delegated-response-handoff-retry-completed");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-response-status"]')?.textContent?.trim() === "reply completed";
-            });
+            await waitForTestIdText(
+              page,
+              "delivery-delegation-response-status",
+              deliveryDelegationResponseStatusLabel("completed")
+            );
             assert(
-              (await readText(page, "delivery-delegation-response-attempts")) === "reply x2",
+              (await readText(page, "delivery-delegation-response-attempts")) === deliveryDelegationResponseAttemptsLabel(2),
               "PR detail should preserve second response attempt count"
             );
             await page.waitForFunction(
@@ -1140,11 +1291,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
             const responseHandoffHref = await page.getByTestId("delivery-delegation-response-open").getAttribute("href");
@@ -1185,7 +1332,8 @@ try {
               { note: sourceComment }
             );
             assert(
-              (await readText(page, "delivery-delegation-response-status")) === "reply requested",
+              (await readText(page, "delivery-delegation-response-status")) ===
+                deliveryDelegationResponseStatusLabel("requested"),
               "response comment should preserve response handoff lifecycle"
             );
             await page.waitForFunction(
@@ -1212,7 +1360,8 @@ try {
               { note: targetComment }
             );
             assert(
-              (await readText(page, "delivery-delegation-response-status")) === "reply requested",
+              (await readText(page, "delivery-delegation-response-status")) ===
+                deliveryDelegationResponseStatusLabel("requested"),
               "target response comment should preserve response handoff lifecycle"
             );
             await page.waitForFunction(
@@ -1238,11 +1387,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
             await page.waitForFunction(() => {
@@ -1253,7 +1398,8 @@ try {
               .evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? ""));
             assert(requestedThreadEntries.length === 3, "communication thread should show parent request, parent blocker, and child request");
             assert(
-              requestedThreadEntries[0]?.includes("Parent Closeout") && requestedThreadEntries[0]?.includes("request"),
+              requestedThreadEntries[0]?.includes("Parent Closeout") &&
+                requestedThreadEntries[0]?.includes(mailboxMessageKindLabel("request")),
               "communication thread should start with the parent closeout request"
             );
             assert(
@@ -1261,7 +1407,8 @@ try {
               "communication thread should keep the parent blocker in chronological order"
             );
             assert(
-              requestedThreadEntries[2]?.includes("Unblock Reply x1") && requestedThreadEntries[2]?.includes("request"),
+              requestedThreadEntries[2]?.includes("Unblock Reply x1") &&
+                requestedThreadEntries[2]?.includes(mailboxMessageKindLabel("request")),
               "communication thread should append the child unblock request after the parent blocker"
             );
             await capture(page, "pull-request-delivery-collaboration-thread-requested");
@@ -1362,7 +1509,7 @@ try {
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
             await page.getByTestId(`thread-action-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
             assert(
-              (await readText(page, "pull-request-thread-action-gate")) === "allowed",
+              (await readText(page, "pull-request-thread-action-gate")) === "可操作",
               "PR detail thread action gate should allow live handoff mutations"
             );
 
@@ -1436,12 +1583,10 @@ try {
               (item) => item.id === delegatedHandoffID && item.status === "acknowledged",
               "parent delegated closeout did not resume from PR detail action surface"
             );
-            await page.waitForFunction(
-              (handoffId) => {
-                const text = document.querySelector(`[data-testid="thread-action-status-${handoffId}"]`)?.textContent?.trim();
-                return text === "handoff acknowledged";
-              },
-              delegatedHandoffID
+            await waitForTestIdText(
+              page,
+              `thread-action-status-${delegatedHandoffID}`,
+              deliveryDelegationHandoffStatusLabel("acknowledged")
             );
             await page.waitForFunction(
               () => {
@@ -1466,11 +1611,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
             const responseHandoffHref = await page.getByTestId("delivery-delegation-response-open").getAttribute("href");
@@ -1549,7 +1690,7 @@ try {
               { inboxId: delegatedParent.inboxItemId, note: completeNote }
             );
             assert(
-              (await readText(page, `mailbox-status-${delegatedHandoffID}`)) === "blocked",
+              (await readText(page, `mailbox-status-${delegatedHandoffID}`)) === handoffStatusLabel("blocked"),
               "parent delegated closeout should stay blocked until target re-acknowledges"
             );
             await capture(page, "delivery-delegation-parent-response-complete-sync");
@@ -1568,20 +1709,16 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
+            await waitForTestIdText(
+              page,
+              `mailbox-response-status-${delegatedHandoffID}`,
+              mailboxReplyStatusLabel("requested")
             );
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-response-status-${handoffId}"]`)?.textContent?.trim() === "reply requested",
-              delegatedHandoffID
-            );
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-response-attempts-${handoffId}"]`)?.textContent?.trim() === "reply x1",
-              delegatedHandoffID
+            await waitForTestIdText(
+              page,
+              `mailbox-response-attempts-${delegatedHandoffID}`,
+              mailboxResponseAttemptsLabel(1)
             );
             await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).waitFor({ state: "visible" });
             await capture(page, "delivery-delegation-parent-mailbox-requested");
@@ -1599,9 +1736,10 @@ try {
 
             await page.goto(responseURL.toString(), { waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
+            const responseKindLabel = await readText(page, `mailbox-kind-${responseHandoffID}`);
             assert(
-              (await readText(page, `mailbox-kind-${responseHandoffID}`)) === "delivery reply",
-              "response mailbox card should surface delivery-reply kind"
+              responseKindLabel === mailboxKindLabel("delivery-reply"),
+              `response mailbox card should surface delivery-reply kind, got ${responseKindLabel || "<empty>"}`
             );
             await page.getByTestId(`mailbox-parent-chip-${responseHandoffID}`).waitFor({ state: "visible" });
             await page.getByTestId(`mailbox-parent-link-${responseHandoffID}`).waitFor({ state: "visible" });
@@ -1627,28 +1765,22 @@ try {
               }),
             });
             await page.reload({ waitUntil: "load" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "completed",
-              responseHandoffID
-            );
+            await waitForMailboxStatus(page, responseHandoffID, "completed");
 
             await page.getByTestId(`mailbox-parent-link-${responseHandoffID}`).click();
             await page.getByTestId(`mailbox-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-response-status-${handoffId}"]`)?.textContent?.trim() === "reply completed",
-              delegatedHandoffID
+            await waitForTestIdText(
+              page,
+              `mailbox-response-status-${delegatedHandoffID}`,
+              mailboxReplyStatusLabel("completed")
             );
-            await page.waitForFunction(
-              (handoffId) => {
-                const node = document.querySelector(`[data-testid="mailbox-response-attempts-${handoffId}"]`);
-                return node?.textContent?.trim() === "reply x1";
-              },
-              delegatedHandoffID
+            await waitForTestIdText(
+              page,
+              `mailbox-response-attempts-${delegatedHandoffID}`,
+              mailboxResponseAttemptsLabel(1)
             );
             assert(
-              (await readText(page, `mailbox-status-${delegatedHandoffID}`)) === "blocked",
+              (await readText(page, `mailbox-status-${delegatedHandoffID}`)) === handoffStatusLabel("blocked"),
               "parent delegated closeout should remain blocked after response completion"
             );
             await capture(page, "delivery-delegation-parent-mailbox-completed");
@@ -1667,11 +1799,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -1709,13 +1837,10 @@ try {
 
             await page.getByTestId(`mailbox-parent-link-${responseHandoffID}`).click();
             await page.getByTestId(`mailbox-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "acknowledged",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "acknowledged");
             assert(
-              (await readText(page, `mailbox-response-status-${delegatedHandoffID}`)) === "reply completed",
+              (await readText(page, `mailbox-response-status-${delegatedHandoffID}`)) ===
+                mailboxReplyStatusLabel("completed"),
               "parent card should preserve completed response chip after resume"
             );
             await capture(page, "delivery-response-parent-resumed");
@@ -1734,11 +1859,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -1809,11 +1930,7 @@ try {
 	              }),
 	            });
 	            await page.reload({ waitUntil: "load" });
-	            await page.waitForFunction(
-	              (handoffId) =>
-	                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "completed",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "completed");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
             assert(
@@ -1843,11 +1960,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -1879,7 +1992,8 @@ try {
             await page.goto(responseURL.toString(), { waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
             assert(
-              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) === "parent blocked",
+              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) ===
+                mailboxParentStatusLabel("blocked"),
               "child response card should show blocked parent status before resume"
             );
             await capture(page, "delivery-response-parent-blocked");
@@ -1898,7 +2012,8 @@ try {
             });
             await page.reload({ waitUntil: "load" });
             assert(
-              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) === "parent acknowledged",
+              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) ===
+                mailboxParentStatusLabel("acknowledged"),
               "child response card should show acknowledged parent status after resume"
             );
             await capture(page, "delivery-response-parent-acknowledged");
@@ -1918,7 +2033,8 @@ try {
             });
             await page.reload({ waitUntil: "load" });
             assert(
-              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) === "parent completed",
+              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) ===
+                mailboxParentStatusLabel("completed"),
               "child response card should show completed parent status after closeout finishes"
             );
             await capture(page, "delivery-response-parent-completed");
@@ -1937,11 +2053,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -2074,11 +2186,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -2110,7 +2218,8 @@ try {
             await page.goto(responseURL.toString(), { waitUntil: "load" });
             await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
             assert(
-              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) === "parent blocked",
+              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) ===
+                mailboxParentStatusLabel("blocked"),
               "child response card should start from blocked parent state"
             );
 
@@ -2128,7 +2237,8 @@ try {
             });
             await page.reload({ waitUntil: "load" });
             assert(
-              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) === "parent acknowledged",
+              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) ===
+                mailboxParentStatusLabel("acknowledged"),
               "child response card should show acknowledged parent status after resume"
             );
             assert(
@@ -2152,7 +2262,8 @@ try {
             });
             await page.reload({ waitUntil: "load" });
             assert(
-              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) === "parent completed",
+              (await readText(page, `mailbox-parent-status-${responseHandoffID}`)) ===
+                mailboxParentStatusLabel("completed"),
               "child response card should show completed parent status after closeout finishes"
             );
             assert(
@@ -2176,11 +2287,7 @@ try {
             const targetComment = "target 回应：等 owner 签字后我会重新接住。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -2251,7 +2358,7 @@ try {
             );
             const resumedTimelineMessage = (await timelineMessages.last().textContent())?.trim() ?? "";
             assert(
-              resumedTimelineMessage.includes("parent progress") &&
+              resumedTimelineMessage.includes(mailboxMessageKindLabel("parent-progress")) &&
                 resumedTimelineMessage.includes("已重新 acknowledge 主 closeout"),
               "child response lifecycle messages should append parent-progress entry after parent resume"
             );
@@ -2284,7 +2391,8 @@ try {
             await page.getByTestId(`mailbox-card-${responseHandoffID}`).waitFor({ state: "visible" });
             const completedTimelineMessage = (await timelineMessages.last().textContent())?.trim() ?? "";
             assert(
-              completedTimelineMessage.includes("parent progress") && completedTimelineMessage.includes("已完成主 closeout"),
+              completedTimelineMessage.includes(mailboxMessageKindLabel("parent-progress")) &&
+                completedTimelineMessage.includes("已完成主 closeout"),
               "child response lifecycle messages should append parent-progress completion entry"
             );
             await capture(page, "delivery-response-child-timeline-completed");
@@ -2315,11 +2423,7 @@ try {
             const completeNote = "release receipt checklist 已补齐，请重新接住 delivery closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -2347,7 +2451,8 @@ try {
             const parentTimelineMessages = page.locator(`[data-testid^="mailbox-message-${delegatedHandoffID}-"]`);
             const commentTimelineMessage = (await parentTimelineMessages.last().textContent())?.trim() ?? "";
             assert(
-              commentTimelineMessage.includes("response progress") && commentTimelineMessage.includes(sourceComment),
+              commentTimelineMessage.includes(mailboxMessageKindLabel("response-progress")) &&
+                commentTimelineMessage.includes(sourceComment),
               "parent ledger should append response-progress timeline entry after child response comment"
             );
             await capture(page, "delivery-parent-timeline-comment");
@@ -2371,7 +2476,8 @@ try {
             await page.reload({ waitUntil: "load" });
             const completionTimelineMessage = (await parentTimelineMessages.last().textContent())?.trim() ?? "";
             assert(
-              completionTimelineMessage.includes("response progress") && completionTimelineMessage.includes(completeNote),
+              completionTimelineMessage.includes(mailboxMessageKindLabel("response-progress")) &&
+                completionTimelineMessage.includes(completeNote),
               "parent ledger should append response-progress completion entry after child response complete"
             );
             await capture(page, "delivery-parent-timeline-response-completed");
@@ -2398,13 +2504,26 @@ try {
             });
 
             await page.reload({ waitUntil: "load" });
+            await page.getByTestId(`mailbox-card-${delegatedHandoffID}`).waitFor({ state: "visible" });
+            await waitForMailboxStatus(page, delegatedHandoffID, "completed");
+            await page.waitForFunction(
+              (handoffId) => {
+                const text = document.querySelector(`[data-testid="mailbox-last-action-${handoffId}"]`)?.textContent ?? "";
+                return text.includes("也已完成 final delivery closeout");
+              },
+              delegatedHandoffID
+            );
             const parentTimelineTexts = await parentTimelineMessages.allTextContents();
             assert(
-              parentTimelineTexts.some((text) => text.includes("response progress") && text.includes(sourceComment)),
+              parentTimelineTexts.some(
+                (text) => text.includes(mailboxMessageKindLabel("response-progress")) && text.includes(sourceComment)
+              ),
               "parent ledger should preserve response-progress comment history after parent follow-through"
             );
             assert(
-              parentTimelineTexts.some((text) => text.includes("response progress") && text.includes(completeNote)),
+              parentTimelineTexts.some(
+                (text) => text.includes(mailboxMessageKindLabel("response-progress")) && text.includes(completeNote)
+              ),
               "parent ledger should preserve response-progress completion history after parent follow-through"
             );
             await capture(page, "delivery-parent-timeline-preserved-after-parent-complete");
@@ -2425,11 +2544,7 @@ try {
             const completeNote = "release receipt checklist 已补齐，请重新接住 delivery closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
             assert(responseHandoffHref, "parent delegated closeout should expose response handoff link");
@@ -2504,11 +2619,7 @@ try {
             const responseBlockNote = "source 也卡住了：release owner 还没签字。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
             await capture(page, "delivery-delegated-handoff-blocked");
 
             const responseHandoffHref = await page.getByTestId(`mailbox-response-link-${delegatedHandoffID}`).getAttribute("href");
@@ -2557,11 +2668,7 @@ try {
             const blockNote = "需要先确认最终 release 文案，再继续 closeout。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(blockNote);
             await page.getByTestId(`mailbox-action-blocked-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "blocked",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "blocked");
             await page.waitForFunction(
               ({ handoffId, note }) => {
                 const card = document.querySelector(`[data-testid="mailbox-card-${handoffId}"]`);
@@ -2572,11 +2679,10 @@ try {
             await capture(page, "delivery-delegated-handoff-blocked");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-status"]')?.textContent?.trim() === "delegate blocked";
-            });
+            await waitForTestIdText(page, "delivery-delegation-status", deliveryDelegationStatusLabel("blocked"));
             assert(
-              (await readText(page, "delivery-delegation-handoff-status")) === "handoff blocked",
+              (await readText(page, "delivery-delegation-handoff-status")) ===
+                deliveryDelegationHandoffStatusLabel("blocked"),
               "blocked delegated handoff should flow back into PR detail"
             );
             await page.waitForFunction(
@@ -2599,19 +2705,14 @@ try {
             const completeNote = "最终 delivery closeout 已收口，等待 merge / release receipt。";
             await page.getByTestId(`mailbox-note-${delegatedHandoffID}`).fill(completeNote);
             await page.getByTestId(`mailbox-action-completed-${delegatedHandoffID}`).click();
-            await page.waitForFunction(
-              (handoffId) =>
-                document.querySelector(`[data-testid="mailbox-status-${handoffId}"]`)?.textContent?.trim() === "completed",
-              delegatedHandoffID
-            );
+            await waitForMailboxStatus(page, delegatedHandoffID, "completed");
             await capture(page, "delivery-delegated-handoff-completed");
 
             await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
-            await page.waitForFunction(() => {
-              return document.querySelector('[data-testid="delivery-delegation-status"]')?.textContent?.trim() === "delegation done";
-            });
+            await waitForTestIdText(page, "delivery-delegation-status", deliveryDelegationStatusLabel("done"));
             assert(
-              (await readText(page, "delivery-delegation-handoff-status")) === "handoff completed",
+              (await readText(page, "delivery-delegation-handoff-status")) ===
+                deliveryDelegationHandoffStatusLabel("completed"),
               "completed delegated handoff should show completed status in PR detail"
             );
             await page.waitForFunction(() => {
@@ -2628,9 +2729,7 @@ try {
 
       if (runMode !== "delegate-policy" && runMode !== "delegate-auto-complete" && runMode !== "delegate-comment-sync") {
         await page.goto(`${webURL}/inbox?roomId=room-runtime`, { waitUntil: "load" });
-        await page.waitForFunction(() => {
-          return document.querySelector('[data-testid="mailbox-compose-governed-route-status"]')?.textContent?.trim() === "done";
-        });
+        await waitForGovernanceStatus(page, "mailbox-compose-governed-route-status", "done");
         await page.getByTestId("mailbox-compose-governed-route-closeout").waitFor({ state: "visible" });
         await capture(page, "governed-compose-closeout-ready");
       }
@@ -2734,15 +2833,11 @@ try {
     const governedSuggestion = stateAfterComplete.workspace.governance.routingPolicy.suggestedHandoff;
     assert(governedSuggestion.status === "blocked", "next governed handoff should block when QA lane has no mapped agent");
     assert(governedSuggestion.toLaneLabel === "QA", "next governed handoff should point at the QA lane");
-    await page.waitForFunction(() => {
-      return document.querySelector('[data-testid="mailbox-governed-route-status"]')?.textContent?.trim() === "blocked";
-    });
+    await waitForGovernanceStatus(page, "mailbox-governed-route-status", "blocked");
     await capture(page, "governed-route-next-blocked");
 
     await page.goto(`${webURL}/inbox?roomId=room-runtime`, { waitUntil: "load" });
-    await page.waitForFunction(() => {
-      return document.querySelector('[data-testid="mailbox-compose-governed-route-status"]')?.textContent?.trim() === "blocked";
-    });
+    await waitForGovernanceStatus(page, "mailbox-compose-governed-route-status", "blocked");
     await capture(page, "governed-compose-next-blocked");
 
     if (runMode === "auto-create") {
