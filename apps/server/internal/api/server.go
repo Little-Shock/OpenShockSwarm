@@ -661,13 +661,15 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		if directives.SuppressReply {
 			visibleOutput = followupOutput
 		} else if suppressRelay {
-			if strings.TrimSpace(followupOutput) != "" {
-				visibleOutput = followupOutput
-			} else if strings.TrimSpace(directives.DisplayOutput) != "" {
-				if restoredState, restoreErr := s.store.AppendAgentRoomMessage(roomID, replySpeaker, directives.DisplayOutput, provider); restoreErr == nil {
-					nextState = restoredState
+			if strings.TrimSpace(directives.DisplayOutput) != "" {
+				if strings.TrimSpace(followupOutput) == "" {
+					if restoredState, restoreErr := s.store.AppendAgentRoomMessage(roomID, replySpeaker, directives.DisplayOutput, provider); restoreErr == nil {
+						nextState = restoredState
+					}
 				}
 				visibleOutput = directives.DisplayOutput
+			} else if strings.TrimSpace(followupOutput) != "" {
+				visibleOutput = followupOutput
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"output": visibleOutput, "state": nextState})
@@ -1697,13 +1699,15 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 	if directives.SuppressReply {
 		visibleOutput = followupOutput
 	} else if suppressRelay {
-		if strings.TrimSpace(followupOutput) != "" {
-			visibleOutput = followupOutput
-		} else if strings.TrimSpace(directives.DisplayOutput) != "" {
-			if restoredState, restoreErr := s.store.AppendAgentRoomMessage(roomID, replySpeaker, directives.DisplayOutput, req.Provider); restoreErr == nil {
-				nextState = restoredState
+		if strings.TrimSpace(directives.DisplayOutput) != "" {
+			if strings.TrimSpace(followupOutput) == "" {
+				if restoredState, restoreErr := s.store.AppendAgentRoomMessage(roomID, replySpeaker, directives.DisplayOutput, req.Provider); restoreErr == nil {
+					nextState = restoredState
+				}
 			}
 			visibleOutput = directives.DisplayOutput
+		} else if strings.TrimSpace(followupOutput) != "" {
+			visibleOutput = followupOutput
 		}
 	}
 	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: visibleOutput, State: &nextState})
