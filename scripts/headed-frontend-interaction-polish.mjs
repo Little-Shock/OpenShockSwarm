@@ -22,9 +22,11 @@ const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDir = path.join(artifactsDir, "next-dist");
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -180,12 +182,24 @@ async function capture(page, name) {
   screenshots.push({ name, path: filePath });
 }
 
-async function waitForPage(page, url, expectedText) {
+async function waitForPage(page, url, options = {}) {
+  const { expectedPath, expectedText, expectedTestID } = options;
   await page.goto(url, { waitUntil: "domcontentloaded" });
-  await waitFor(async () => {
-    const content = await page.content();
-    return content.includes(expectedText);
-  }, `${url} did not render expected text: ${expectedText}`);
+  if (expectedPath) {
+    await waitFor(async () => page.url().includes(expectedPath), `${url} did not reach expected path: ${expectedPath}`);
+  }
+  if (expectedTestID) {
+    await page.locator(`[data-testid="${expectedTestID}"]:visible`).first().waitFor({
+      state: "visible",
+      timeout: 120_000,
+    });
+  }
+  if (expectedText) {
+    await waitFor(async () => {
+      const content = await page.content();
+      return content.includes(expectedText);
+    }, `${url} did not render expected text: ${expectedText}`);
+  }
 }
 
 async function visibleBox(page, locator, label) {
@@ -261,6 +275,7 @@ async function startServices() {
       env: {
         ...process.env,
         OPENSHOCK_CONTROL_API_BASE: serverURL,
+        OPENSHOCK_NEXT_DIST_DIR: webDistDir,
       },
     }
   );
@@ -288,9 +303,17 @@ try {
 
   record("boundary", "`TKT-24` 当前只验证 interaction polish：不包含 quick search result surface，也不依赖 room workbench 新 contract。");
 
-  await waitForPage(page, `${webURL}/chat/all`, "Quick Search");
+  await waitForPage(page, `${webURL}/chat/all`, {
+    expectedPath: "/chat/all",
+    expectedTestID: "quick-search-trigger-sidebar",
+  });
   await assertMinHitArea(page, page.getByTestId("quick-search-trigger-sidebar"), "Sidebar Quick Search", "channel");
-  await assertMinHitArea(page, page.getByTestId("quick-search-trigger-topbar"), "Topbar Quick Search", "channel");
+  await assertMinHitArea(
+    page,
+    page.locator('[data-testid="quick-search-trigger-topbar"]:visible').first(),
+    "Topbar Quick Search",
+    "channel"
+  );
   await assertVisibleInViewport(page, page.getByTestId("channel-message-input"), "Channel composer", "channel");
   await scrollContainerTo(page, "channel-message-list", 0.55);
   await assertVisibleInViewport(page, page.getByTestId("channel-message-input"), "Channel composer after scroll", "channel");
@@ -298,13 +321,16 @@ try {
   await assertMinHitArea(page, channelReplyButton, "Channel reply action", "channel");
   await capture(page, "chat-channel-scrollback");
   await channelReplyButton.click();
-  await waitFor(async () => (await page.content()).includes("thread open"), "channel thread state did not become active");
+  await page.getByTestId("channel-thread-follow").waitFor({ state: "visible", timeout: 120_000 });
   record("channel", "频道消息流滚动后，reply action 仍可直接把 thread 交给右侧 rail，说明高亮与入口没有漂移 -> PASS");
   await capture(page, "chat-thread-focus");
 
-  await waitForPage(page, `${webURL}/rooms/room-runtime`, "Issue Room");
-  await assertMinHitArea(page, page.getByRole("link", { name: "Issue" }).first(), "Room issue link", "room");
-  await assertMinHitArea(page, page.getByRole("link", { name: "Board" }).first(), "Room board link", "room");
+  await waitForPage(page, `${webURL}/rooms/room-runtime`, {
+    expectedPath: "/rooms/room-runtime",
+    expectedText: "Runtime 讨论间",
+  });
+  await assertMinHitArea(page, page.getByRole("link", { name: "事项" }).first(), "Room issue link", "room");
+  await assertMinHitArea(page, page.getByTestId("room-open-planning-mirror"), "Room board link", "room");
   await assertVisibleInViewport(page, page.getByTestId("room-message-input"), "Room composer", "room");
   await scrollContainerTo(page, "room-message-list", 0.55);
   await assertVisibleInViewport(page, page.getByTestId("room-message-input"), "Room composer after scroll", "room");
@@ -317,17 +343,26 @@ try {
   record("room", "room message list 在滚动与 thread 打开后，composer 仍常驻可见，follow-thread 控件也维持可点 -> PASS");
   await capture(page, "room-thread-rail");
 
-  await waitForPage(page, `${webURL}/setup`, "工作区在线状态");
+  await waitForPage(page, `${webURL}/setup`, {
+    expectedPath: "/setup",
+    expectedTestID: "setup-onboarding-status",
+  });
   await assertNoHorizontalOverflow(page, "Setup work surface", "work");
   await capture(page, "setup-density");
 
-  await waitForPage(page, `${webURL}/inbox`, "Inbox");
+  await waitForPage(page, `${webURL}/inbox`, {
+    expectedPath: "/inbox",
+    expectedTestID: "quick-search-trigger-topbar",
+  });
   await assertNoHorizontalOverflow(page, "Inbox work surface", "work");
   record("work", "Setup / Inbox 都沿用更紧凑的 work shell 卡片密度，没有再出现需要横向挤压的白缝 -> PASS");
   await capture(page, "inbox-density");
 
   await page.setViewportSize({ width: 1180, height: 1100 });
-  await waitForPage(page, `${webURL}/rooms/room-runtime`, "Issue Room");
+  await waitForPage(page, `${webURL}/rooms/room-runtime`, {
+    expectedPath: "/rooms/room-runtime",
+    expectedText: "Runtime 讨论间",
+  });
   await assertNoHorizontalOverflow(page, "Narrow room surface", "narrow");
   await assertVisibleInViewport(page, page.getByTestId("room-message-input"), "Narrow room composer", "narrow");
   record("narrow", "1180px 窄屏抽查下，message list 与 composer 仍同页可用，不需要横向拖拽 -> PASS");

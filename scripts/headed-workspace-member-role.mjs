@@ -24,11 +24,13 @@ const evidenceRoot =
 const artifactsDir = path.resolve(evidenceRoot);
 const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
+const webDistDir = path.join(artifactsDir, "next-dist");
 
 const screenshots = [];
 const processes = [];
 
 await mkdir(artifactsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 function parseArgs(args) {
   const result = { reportPath: "" };
@@ -197,6 +199,7 @@ async function startServices(runDir) {
     env: {
       ...process.env,
       NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+      OPENSHOCK_NEXT_DIST_DIR: webDistDir,
     },
     logPath: path.join(logsDir, "web.log"),
   });
@@ -255,6 +258,47 @@ async function waitForEnabled(page, testID) {
   );
 }
 
+async function ensureAccessDetailsOpen(page, detailsTestID, toggleTestID) {
+  const toggle = page.getByTestId(toggleTestID);
+  await toggle.waitFor({ state: "visible", timeout: 30_000 });
+  const details = page.getByTestId(detailsTestID);
+  await details.waitFor({ state: "attached", timeout: 30_000 });
+  const isOpen = await details.evaluate(
+    (element) => element instanceof HTMLDetailsElement && element.open
+  );
+  if (!isOpen) {
+    await details.evaluate((element) => {
+      if (element instanceof HTMLDetailsElement) {
+        element.open = true;
+      }
+    });
+    await page.waitForFunction((currentDetailsTestID) => {
+      const element = document.querySelector(`[data-testid="${currentDetailsTestID}"]`);
+      return element instanceof HTMLDetailsElement && element.open;
+    }, detailsTestID);
+  }
+}
+
+async function ensureAccessAdvancedOpen(page) {
+  await ensureAccessDetailsOpen(page, "access-advanced-details", "access-advanced-toggle");
+}
+
+async function ensureAccessMemberAdminOpen(page) {
+  await ensureAccessDetailsOpen(page, "access-member-admin-details", "access-member-admin-toggle");
+}
+
+async function gotoAccessControls(page, webURL, focusTestID = "access-invite-email") {
+  await page.goto(`${webURL}/access`, { waitUntil: "load" });
+  const focus = page.getByTestId(focusTestID);
+  try {
+    await focus.waitFor({ state: "visible", timeout: 5_000 });
+    return;
+  } catch {
+    await ensureAccessMemberAdminOpen(page);
+    await focus.waitFor({ state: "visible", timeout: 30_000 });
+  }
+}
+
 const runDir = path.join(artifactsDir, "run");
 const screenshotsDir = path.join(runDir, "screenshots");
 await mkdir(screenshotsDir, { recursive: true });
@@ -271,78 +315,83 @@ try {
   context = await browser.newContext({ viewport: { width: 1440, height: 1280 } });
   page = await context.newPage();
 
-  await page.goto(`${services.webURL}/access`, { waitUntil: "load" });
-  await page.getByTestId("access-session-status").waitFor({ state: "visible" });
+  await gotoAccessControls(page, services.webURL);
   await waitForSession(page, {
     status: "已登录",
     email: "larkspur@openshock.dev",
-    role: "Owner",
+    role: "所有者",
   });
-  assert((await readText(page, "access-members-manage-status")) === "owner can mutate", "owner session should expose member management");
+  assert((await readText(page, "access-members-manage-status")) === "可编辑", "owner session should expose member management");
 
   await page.getByTestId("access-invite-email").fill(REVIEWER_EMAIL);
   await page.getByTestId("access-invite-name").fill(REVIEWER_NAME);
   await page.getByTestId("access-invite-role").selectOption("viewer");
   await page.getByTestId("access-invite-submit").click();
   await page.getByTestId(`access-member-${REVIEWER_MEMBER_ID}`).waitFor({ state: "visible" });
-  await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "role", "Viewer");
+  await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "role", "访客");
   await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "status", "待接受");
-  assert((await readText(page, "access-invite-success")) === `${REVIEWER_EMAIL} invited as Viewer`, "invite should confirm reviewer viewer invite");
+  assert(
+    (await readText(page, "access-invite-success")) === `已邀请 ${REVIEWER_EMAIL}，角色为 访客`,
+    "invite should confirm reviewer viewer invite"
+  );
   await capture(page, screenshotsDir, "invited-viewer");
 
   await page.getByTestId(`access-member-role-select-${REVIEWER_MEMBER_ID}`).selectOption("member");
   await waitForEnabled(page, `access-member-update-${REVIEWER_MEMBER_ID}`);
   await page.getByTestId(`access-member-update-${REVIEWER_MEMBER_ID}`).click();
-  await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "role", "Member");
+  await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "role", "成员");
   await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "status", "待接受");
   assert(
-    (await readText(page, `access-member-success-${REVIEWER_MEMBER_ID}`)) === "Member / 待接受 已同步到 live roster",
+    (await readText(page, `access-member-success-${REVIEWER_MEMBER_ID}`)) === "已更新为 成员 / 待接受",
     "member update should confirm invited member role change"
   );
   await capture(page, screenshotsDir, "invited-member");
 
+  await ensureAccessAdvancedOpen(page);
   await page.getByTestId(`access-quick-login-${REVIEWER_MEMBER_ID}`).click();
   await waitForSession(page, {
     status: "已登录",
     email: REVIEWER_EMAIL,
-    role: "Member",
+    role: "成员",
   });
   await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "status", "在线成员");
-  assert((await readText(page, "access-probe-status-issue-create")) === "allowed", "member session should be allowed to create issues");
-  assert((await readText(page, "access-probe-status-runtime-manage")) === "blocked", "member session should not manage runtime");
-  assert((await readText(page, "access-members-manage-status")) === "read-only session", "member session should lose member management");
+  assert((await readText(page, "access-probe-status-issue-create")) === "可进入", "member session should be allowed to create issues");
+  assert((await readText(page, "access-probe-status-runtime-manage")) === "受限", "member session should not manage runtime");
+  assert((await readText(page, "access-members-manage-status")) === "只读", "member session should lose member management");
   await capture(page, screenshotsDir, "member-activated");
 
   await page.getByTestId("access-quick-login-member-larkspur").click();
   await waitForSession(page, {
     status: "已登录",
     email: "larkspur@openshock.dev",
-    role: "Owner",
+    role: "所有者",
   });
-  assert((await readText(page, "access-members-manage-status")) === "owner can mutate", "owner restore should recover member management");
+  assert((await readText(page, "access-members-manage-status")) === "可编辑", "owner restore should recover member management");
 
+  await ensureAccessMemberAdminOpen(page);
   await page.getByTestId(`access-member-status-select-${REVIEWER_MEMBER_ID}`).selectOption("suspended");
   await waitForEnabled(page, `access-member-update-${REVIEWER_MEMBER_ID}`);
   await page.getByTestId(`access-member-update-${REVIEWER_MEMBER_ID}`).click();
   await waitForMemberLabel(page, REVIEWER_MEMBER_ID, "status", "已暂停");
   assert(
-    (await readText(page, `access-member-success-${REVIEWER_MEMBER_ID}`)) === "Member / 已暂停 已同步到 live roster",
+    (await readText(page, `access-member-success-${REVIEWER_MEMBER_ID}`)) === "已更新为 成员 / 已暂停",
     "owner should be able to suspend invited member"
   );
   await capture(page, screenshotsDir, "member-suspended");
 
+  await ensureAccessAdvancedOpen(page);
   await page.getByTestId(`access-quick-login-${REVIEWER_MEMBER_ID}`).click();
   await page.getByTestId("access-auth-error").waitFor({ state: "visible" });
   await waitForSession(page, {
     status: "已登录",
     email: "larkspur@openshock.dev",
-    role: "Owner",
+    role: "所有者",
   });
   assert((await readText(page, "access-auth-error")) === "workspace member is suspended", "suspended member login should fail closed");
   await capture(page, screenshotsDir, "suspended-login-blocked");
 
   const report = [
-    "# TKT-08 Workspace Invite / Member / Role Report",
+    "# TKT-08 工作区邀请与成员角色报告",
     "",
     `- Command: \`pnpm test:headed-workspace-member-role -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
@@ -351,17 +400,17 @@ try {
     "",
     "### Invite / Role / Status Lifecycle",
     "",
-    "- Owner invited `reviewer@openshock.dev` as `Viewer` -> PASS",
-    "- Owner changed invited reviewer role from `Viewer` to `Member` -> PASS",
-    "- Reviewer quick login activated invited member and surfaced `Member` session -> PASS",
-    "- Owner suspended reviewer and roster status flipped to `已暂停` -> PASS",
+    "- 所有者将 `reviewer@openshock.dev` 邀请为 `访客` -> PASS",
+    "- 所有者把待加入成员从 `访客` 调整为 `成员` -> PASS",
+    "- 审阅成员快速登录后会显示为 `成员` 会话 -> PASS",
+    "- 所有者暂停成员后，列表状态切换为 `已暂停` -> PASS",
     "- Suspended reviewer login failed closed with `workspace member is suspended` -> PASS",
     "",
     "### Permission Surface",
     "",
-    "- Owner session: `members.manage = live`, `runtime.manage = allowed`",
-    "- Reviewer member session: `issue.create = allowed`, `runtime.manage = blocked`, `members.manage = hidden`",
-    "- Suspended reviewer login attempt leaves owner session intact and surfaces explicit error",
+    "- 所有者会话：`members.manage = live`，`runtime.manage = allowed`",
+    "- 审阅成员会话：`issue.create = allowed`，`runtime.manage = blocked`，`members.manage = hidden`",
+    "- 已暂停成员尝试登录时，会保持原有所有者会话并显示明确错误",
     "",
     "### Screenshots",
     "",
