@@ -331,9 +331,24 @@ func normalizeRuntimeProviders(items []RuntimeProvider) []RuntimeProvider {
 		item.Transport = strings.TrimSpace(item.Transport)
 		item.Capabilities = normalizeDetectedCLI(item.Capabilities)
 		item.Models = normalizeRuntimeModels(item.Models)
+		item.Status = normalizeRuntimeProviderStatus(item.Status, item.Ready)
+		item.StatusMessage = strings.TrimSpace(item.StatusMessage)
+		item.CheckedAt = strings.TrimSpace(item.CheckedAt)
 		result = append(result, item)
 	}
 	return result
+}
+
+func normalizeRuntimeProviderStatus(value string, ready bool) string {
+	switch strings.TrimSpace(value) {
+	case "ready", "auth_required", "unavailable", "degraded":
+		return strings.TrimSpace(value)
+	default:
+		if ready {
+			return "ready"
+		}
+		return ""
+	}
 }
 
 func normalizeRuntimeModels(items []string) []string {

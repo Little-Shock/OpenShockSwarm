@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -140,12 +141,49 @@ func TestSnapshotIncludesRuntimeRegistrationMetadata(t *testing.T) {
 	}
 }
 
+func TestAnnotateProviderStatusesUsesAuthTruth(t *testing.T) {
+	tmp := t.TempDir()
+	writeExecutableWithContent(t, filepath.Join(tmp, "codex"), "#!/bin/sh\nprintf 'Logged in using an API key\\n'\n")
+	writeExecutableWithContent(t, filepath.Join(tmp, "claude"), "#!/bin/sh\nprintf '{\"loggedIn\":false,\"authMethod\":\"none\",\"apiProvider\":\"firstParty\"}\\n'\nexit 1\n")
+	t.Setenv("PATH", tmp)
+
+	providers := annotateProviderStatuses([]Provider{
+		{ID: "codex", Label: "Codex CLI"},
+		{ID: "claude", Label: "Claude Code CLI"},
+	})
+
+	if len(providers) != 2 {
+		t.Fatalf("providers length = %d, want 2", len(providers))
+	}
+	if !providers[0].Ready || providers[0].Status != providerStatusReady {
+		t.Fatalf("codex provider = %#v, want ready status", providers[0])
+	}
+	if providers[1].Ready || providers[1].Status != providerStatusAuthRequired {
+		t.Fatalf("claude provider = %#v, want auth_required status", providers[1])
+	}
+}
+
 func writeExecutable(t *testing.T, path string) {
 	t.Helper()
 	content := []byte("#!/bin/sh\nexit 0\n")
 	if goruntime.GOOS == "windows" {
 		path += ".cmd"
 		content = []byte("@echo off\r\nexit /b 0\r\n")
+	}
+	if err := os.WriteFile(path, content, 0o755); err != nil {
+		t.Fatalf("write executable %s: %v", path, err)
+	}
+}
+
+func writeExecutableWithContent(t *testing.T, path string, unixContent string) {
+	t.Helper()
+	content := []byte(unixContent)
+	if goruntime.GOOS == "windows" {
+		commandName := filepath.Base(path)
+		if !strings.HasSuffix(strings.ToLower(commandName), ".cmd") {
+			path += ".cmd"
+		}
+		content = []byte(fmt.Sprintf("@echo off\r\nif \"%s\"==\"codex\" (\r\n  echo Logged in using an API key\r\n  exit /b 0\r\n)\r\nif \"%s\"==\"claude\" (\r\n  echo {\"loggedIn\":false,\"authMethod\":\"none\",\"apiProvider\":\"firstParty\"}\r\n  exit /b 1\r\n)\r\n", commandName, commandName))
 	}
 	if err := os.WriteFile(path, content, 0o755); err != nil {
 		t.Fatalf("write executable %s: %v", path, err)

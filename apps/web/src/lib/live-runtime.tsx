@@ -285,7 +285,12 @@ export function LiveRuntimeProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const selectedRuntimeName = selection.selectedRuntime?.trim() || pairing.pairedRuntime?.trim() || "";
+  const selectedRuntimeName =
+    selection.selectedRuntime?.trim() ||
+    pairing.pairedRuntime?.trim() ||
+    registry.runtimes[0]?.machine?.trim() ||
+    registry.runtimes[0]?.id?.trim() ||
+    "";
   const selectedRuntimeRecord = findRuntimeRecord(registry, selectedRuntimeName);
   const pairedRuntimeRecord = findRuntimeRecord(registry, pairing.pairedRuntime ?? "");
 

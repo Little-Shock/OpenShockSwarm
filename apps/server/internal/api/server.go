@@ -336,6 +336,21 @@ func (s *Server) handleChannelRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		snapshot := s.store.Snapshot()
 		provider := resolveExecProvider(snapshot, req.Provider)
+		if blocked := execProviderPreflightMessage("频道消息", snapshot, provider); blocked != "" {
+			nextState, appendErr := s.store.AppendChannelConversation(channelID, store.ChannelConversationInput{
+				Prompt:       prompt,
+				ReplySpeaker: "System",
+				ReplyRole:    "system",
+				ReplyTone:    "blocked",
+				ReplyMessage: blocked,
+			})
+			if appendErr != nil {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": appendErr.Error()})
+				return
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{"error": blocked, "state": nextState})
+			return
+		}
 		payload, err := s.runDaemonExec(ExecRequest{
 			Provider:       provider,
 			Prompt:         prompt,
@@ -529,7 +544,17 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 			return
 		}
-		provider := resolveExecProvider(s.store.Snapshot(), req.Provider)
+		snapshot := s.store.Snapshot()
+		provider := resolveExecProvider(snapshot, req.Provider)
+		if blocked := execProviderPreflightMessage("讨论间消息", snapshot, provider); blocked != "" {
+			nextState, appendErr := s.store.AppendConversationFailure(roomID, prompt, blocked)
+			if appendErr != nil {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": blocked})
+				return
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{"error": blocked, "state": nextState})
+			return
+		}
 		s.handleRoomMessageStream(w, r, roomID, ExecRequest{
 			Provider:       provider,
 			Prompt:         prompt,
@@ -558,7 +583,17 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 			return
 		}
-		provider := resolveExecProvider(s.store.Snapshot(), req.Provider)
+		snapshot := s.store.Snapshot()
+		provider := resolveExecProvider(snapshot, req.Provider)
+		if blocked := execProviderPreflightMessage("讨论间消息", snapshot, provider); blocked != "" {
+			nextState, appendErr := s.store.AppendConversationFailure(roomID, prompt, blocked)
+			if appendErr != nil {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": blocked})
+				return
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{"error": blocked, "state": nextState})
+			return
+		}
 
 		payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
 			Provider:       provider,
@@ -1278,16 +1313,28 @@ func (s *Server) handleRuntime(w http.ResponseWriter, r *http.Request) {
 	if runtimeName == "" {
 		runtimeName = snapshot.Workspace.PairedRuntime
 	}
-	daemonURL, err := daemonURLForRuntime(snapshot, runtimeName)
-	if err != nil {
-		if runtimeName == "" || runtimeName != strings.TrimSpace(snapshot.Workspace.PairedRuntime) {
-			writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
-			return
-		}
+	var (
+		daemonURL string
+		err       error
+	)
+	if runtimeName == "" {
 		daemonURL = resolveWorkspaceDaemonURL(snapshot, s.daemonURLValue())
 		if strings.TrimSpace(daemonURL) == "" {
 			writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
 			return
+		}
+	} else {
+		daemonURL, err = daemonURLForRuntime(snapshot, runtimeName)
+		if err != nil {
+			if runtimeName != strings.TrimSpace(snapshot.Workspace.PairedRuntime) {
+				writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+				return
+			}
+			daemonURL = resolveWorkspaceDaemonURL(snapshot, s.daemonURLValue())
+			if strings.TrimSpace(daemonURL) == "" {
+				writeJSON(w, http.StatusOK, offlineRuntimeSnapshot(runtimeName, snapshot.Workspace.LastPairedAt))
+				return
+			}
 		}
 	}
 
@@ -1438,8 +1485,10 @@ func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	if strings.TrimSpace(nextState.Workspace.PairedRuntimeURL) != "" {
+	if strings.TrimSpace(nextState.Workspace.PairedRuntime) != "" && strings.TrimSpace(nextState.Workspace.PairedRuntimeURL) != "" {
 		s.setDaemonURL(nextState.Workspace.PairedRuntimeURL)
+	} else if strings.TrimSpace(req.DaemonURL) != "" {
+		s.setDaemonURL(req.DaemonURL)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"runtimeId": defaultString(req.RuntimeID, req.Machine),
@@ -1496,7 +1545,12 @@ func (s *Server) handleExecRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
-	req.Provider = resolveExecProvider(s.store.Snapshot(), req.Provider)
+	snapshot := s.store.Snapshot()
+	req.Provider = resolveExecProvider(snapshot, req.Provider)
+	if blocked := execProviderPreflightMessage("执行请求", snapshot, req.Provider); blocked != "" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": blocked})
+		return
+	}
 	if req.TimeoutSeconds <= 0 {
 		req.TimeoutSeconds = defaultExecTimeoutSeconds
 	}
@@ -1874,12 +1928,22 @@ func channelReplySpeaker(provider string) string {
 }
 
 func resolveExecProvider(state store.State, requested string) string {
-	if provider := normalizeProviderID(requested); provider != "" {
-		return provider
+	requestedProvider := normalizeProviderID(requested)
+	if requestedProvider != "" {
+		return requestedProvider
 	}
 
-	if provider := preferredExecProvider(state); provider != "" && runtimeSupportsProvider(state, provider) {
-		return provider
+	preferredProvider := preferredExecProvider(state)
+	readyCandidates := runtimeReadyProviderCandidates(state)
+	if len(readyCandidates) > 0 {
+		if preferredProvider != "" && runtimeProviderReady(state, preferredProvider) {
+			return preferredProvider
+		}
+		return readyCandidates[0]
+	}
+
+	if preferredProvider != "" && runtimeSupportsProvider(state, preferredProvider) {
+		return preferredProvider
 	}
 
 	for _, candidate := range []string{"codex", "claude"} {
@@ -1934,6 +1998,11 @@ func runtimeSupportsProvider(state store.State, want string) bool {
 	return false
 }
 
+func runtimeProviderReady(state store.State, want string) bool {
+	provider, ok := runtimeProviderRecord(state, want)
+	return ok && runtimeProviderIsReady(provider)
+}
+
 func firstAvailableExecProvider(state store.State) string {
 	for _, provider := range runtimeProviderCandidates(state) {
 		if provider != "" {
@@ -1941,6 +2010,40 @@ func firstAvailableExecProvider(state store.State) string {
 		}
 	}
 	return ""
+}
+
+func runtimeReadyProviderCandidates(state store.State) []string {
+	candidates := make([]string, 0, 4)
+	seen := map[string]bool{}
+	appendRuntimeProviders := func(runtime store.RuntimeRecord) {
+		for _, provider := range runtime.Providers {
+			id := normalizeProviderID(defaultString(provider.ID, provider.Label))
+			if id == "" || seen[id] || !runtimeProviderIsReady(provider) {
+				continue
+			}
+			seen[id] = true
+			candidates = append(candidates, id)
+		}
+	}
+
+	pairedRuntimeID := strings.TrimSpace(state.Workspace.PairedRuntime)
+	if pairedRuntimeID != "" {
+		for _, runtime := range state.Runtimes {
+			if runtime.ID == pairedRuntimeID {
+				appendRuntimeProviders(runtime)
+				break
+			}
+		}
+	}
+
+	for _, runtime := range state.Runtimes {
+		if runtime.ID == pairedRuntimeID {
+			continue
+		}
+		appendRuntimeProviders(runtime)
+	}
+
+	return candidates
 }
 
 func runtimeProviderCandidates(state store.State) []string {
@@ -1975,6 +2078,71 @@ func runtimeProviderCandidates(state store.State) []string {
 	}
 
 	return candidates
+}
+
+func runtimeProviderRecord(state store.State, want string) (store.RuntimeProvider, bool) {
+	want = normalizeProviderID(want)
+	if want == "" {
+		return store.RuntimeProvider{}, false
+	}
+
+	pairedRuntimeID := strings.TrimSpace(state.Workspace.PairedRuntime)
+	if pairedRuntimeID != "" {
+		for _, runtime := range state.Runtimes {
+			if runtime.ID != pairedRuntimeID {
+				continue
+			}
+			for _, provider := range runtime.Providers {
+				if normalizeProviderID(defaultString(provider.ID, provider.Label)) == want {
+					return provider, true
+				}
+			}
+			break
+		}
+	}
+
+	for _, runtime := range state.Runtimes {
+		if runtime.ID == pairedRuntimeID {
+			continue
+		}
+		for _, provider := range runtime.Providers {
+			if normalizeProviderID(defaultString(provider.ID, provider.Label)) == want {
+				return provider, true
+			}
+		}
+	}
+
+	return store.RuntimeProvider{}, false
+}
+
+func runtimeProviderIsReady(provider store.RuntimeProvider) bool {
+	status := strings.TrimSpace(provider.Status)
+	switch status {
+	case "", "ready":
+		return true
+	case "auth_required", "unavailable", "degraded":
+		return false
+	default:
+		return provider.Ready
+	}
+}
+
+func execProviderPreflightMessage(scope string, state store.State, provider string) string {
+	record, ok := runtimeProviderRecord(state, provider)
+	if !ok || runtimeProviderIsReady(record) {
+		return ""
+	}
+
+	switch strings.TrimSpace(record.Status) {
+	case "auth_required":
+		return fmt.Sprintf("%s当前还未登录模型服务，请先完成登录。", scope)
+	case "unavailable":
+		return fmt.Sprintf("%s当前还没有可用模型，请先在设置里完成本地模型连接。", scope)
+	case "degraded":
+		return fmt.Sprintf("%s当前状态异常，请先检查本地模型连接后重试。", scope)
+	default:
+		return fmt.Sprintf("%s当前还不能直接发送，请先检查模型服务状态。", scope)
+	}
 }
 
 func normalizeProviderID(value string) string {

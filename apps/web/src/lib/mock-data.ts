@@ -430,6 +430,10 @@ export type RuntimeProviderStatus = {
   capabilities: string[];
   models: string[];
   transport: string;
+  ready?: boolean;
+  status?: string;
+  statusMessage?: string;
+  checkedAt?: string;
 };
 
 export type RuntimeRegistryRecord = {
@@ -658,7 +662,7 @@ export const workspace: WorkspaceSnapshot = {
   repoProvider: "github",
   repoBindingStatus: "bound",
   repoAuthMode: "local-git-origin",
-  plan: "Builder P0",
+  plan: "本地协作基线",
   quota: {
     usedMachines: 2,
     maxMachines: 4,
@@ -672,7 +676,7 @@ export const workspace: WorkspaceSnapshot = {
     runLogDays: 14,
     memoryDraftDays: 90,
     status: "healthy",
-    warning: "当前 workspace 仍在 Builder P0；先把 limits / retention / usage truth 摆到人类可见面。",
+    warning: "当前还是本地协作基线阶段，先把配额、保留周期和使用情况看清楚。",
   },
   usage: {
     windowLabel: "过去 24h",
@@ -680,7 +684,7 @@ export const workspace: WorkspaceSnapshot = {
     runCount: 3,
     messageCount: 13,
     refreshedAt: "2026-04-08T11:02:00Z",
-    warning: "Builder P0 当前以 workspace plan 为主、usage 为辅；先把观察面做清，再决定是否要更重的 billing flow。",
+    warning: "当前先以使用观察为主，等团队稳定后再决定是否增加更重的计费流程。",
   },
   pairedRuntime: "shock-main",
   pairedRuntimeUrl: "http://127.0.0.1:8090",
@@ -712,7 +716,7 @@ export const workspace: WorkspaceSnapshot = {
     connectionReady: false,
     appConfigured: false,
     appInstalled: false,
-    connectionMessage: "当前还没有 GitHub App install truth；保持沿本地 repo binding 推进。",
+    connectionMessage: "当前还没有完成 GitHub App 安装，先沿用本地仓库绑定继续推进。",
     syncedAt: "2026-04-07T05:35:00Z",
   },
   onboarding: {
@@ -803,7 +807,7 @@ export const auth: AuthSnapshot = {
     {
       id: "viewer",
       label: "Viewer",
-      summary: "只读查看控制面和历史真值，不做破坏性变更。",
+      summary: "只读查看控制面和历史记录，不做破坏性变更。",
       permissions: ["room.read", "run.read", "inbox.read", "memory.read", "pull_request.read"],
     },
   ],
@@ -1210,10 +1214,10 @@ export const runs: Run[] = [
       status: "approval_required",
       kind: "command",
       target: "git push --force",
-      reason: "restricted sandbox 没有放行这个 action；需要 owner 显式批准后再 retry。",
+      reason: "当前受限策略没有放行这次操作，需要管理员确认后再试。",
       requestedBy: "Codex Dockmaster",
       checkedAt: "2026-04-08T09:45:00Z",
-      retryHint: "保持 target 不变，由具备 workspace.manage 的人批准 override 后重试。",
+      retryHint: "保持目标不变，等有管理权限的人确认后再重试。",
     },
     stdout: [
       "[09:26:11] 正在克隆 worktree wt-runtime-shell",
@@ -1506,6 +1510,10 @@ export const runtimes: RuntimeRegistryRecord[] = [
         capabilities: ["exec", "review", "apply-patch"],
         models: ["gpt-5.2", "gpt-5.3-codex", "gpt-5.1-codex-mini"],
         transport: "stdio",
+        ready: true,
+        status: "ready",
+        statusMessage: "Codex CLI 已就绪，可直接发送。",
+        checkedAt: "8 秒前",
       },
       {
         id: "claude",
@@ -1514,6 +1522,10 @@ export const runtimes: RuntimeRegistryRecord[] = [
         capabilities: ["exec", "review"],
         models: ["claude-sonnet-4", "claude-opus-4.1"],
         transport: "stdio",
+        ready: false,
+        status: "auth_required",
+        statusMessage: "Claude Code CLI 还没有登录，请先在本机完成登录。",
+        checkedAt: "8 秒前",
       },
     ],
     shell: "pwsh",
@@ -1538,6 +1550,10 @@ export const runtimes: RuntimeRegistryRecord[] = [
         capabilities: ["exec", "review"],
         models: ["gpt-5.2", "gpt-5.3-codex", "gpt-5.1-codex-mini"],
         transport: "stdio",
+        ready: true,
+        status: "ready",
+        statusMessage: "Codex CLI 已就绪，可直接发送。",
+        checkedAt: "21 秒前",
       },
     ],
     shell: "zsh",
@@ -1725,12 +1741,12 @@ export function getRunsForAgent(agentId: string) {
 
 function buildBoardColumns(issueList: Issue[]) {
   return [
-    { title: "Backlog", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
-    { title: "Todo", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
-    { title: "In Progress", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
-    { title: "Paused", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "paused") },
-    { title: "In Review", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
-    { title: "Done", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
+    { title: "阻塞排队", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
+    { title: "待处理", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
+    { title: "进行中", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
+    { title: "已暂停", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "paused") },
+    { title: "待评审", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
+    { title: "已完成", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
   ];
 }
 

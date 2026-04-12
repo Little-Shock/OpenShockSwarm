@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { StitchChannelsView } from "@/components/stitch-chat-room-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useLiveRuntimeTruth } from "@/lib/live-runtime";
 import type { AgentStatus, RuntimeRegistryRecord, RuntimeProviderStatus } from "@/lib/phase-zero-types";
+import { runtimeProviderBlockingReason, runtimeProviderHealthLabel, runtimeProviderHealthStatus, runtimeProviderHealthSummary, runtimeProviderHealthTone } from "@/lib/runtime-provider-health";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 
@@ -294,7 +295,9 @@ export function OnboardingExperience() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 scale-[1.015] blur-[5px] saturate-[0.88] brightness-[0.95]"
       >
-        <StitchChannelsView channelId="all" />
+        <Suspense fallback={null}>
+          <StitchChannelsView channelId="all" />
+        </Suspense>
       </div>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.38),rgba(255,248,230,0.8)_52%,rgba(24,20,14,0.16))]" />
       <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
@@ -403,6 +406,10 @@ function OnboardingWizard() {
   const providerOptions = useMemo(
     () => providerCatalog(chosenRuntime, starterAgent),
     [chosenRuntime, starterAgent]
+  );
+  const runtimeProviderBoundary = useMemo(
+    () => runtimeProviderBlockingReason(chosenRuntime?.providers ?? []),
+    [chosenRuntime?.providers]
   );
   const selectedProvider =
     providerOptions.find((provider) => provider.id === providerPreference) ?? providerOptions[0] ?? null;
@@ -591,7 +598,7 @@ function OnboardingWizard() {
       const response = await fetch(`${API_BASE}/v1/github/connection`, { cache: "no-store" });
       const payload = (await response.json()) as GitHubConnectionResponse & { error?: string };
       if (!response.ok) {
-        throw new Error(payload.error || `github connection failed: ${response.status}`);
+        throw new Error(payload.error || `GitHub 连接失败：${response.status}`);
       }
       await refresh();
       if (payload.ready) {
@@ -630,7 +637,7 @@ function OnboardingWizard() {
     };
 
     if (!response.ok) {
-      throw new Error(payload.error || `repo binding failed: ${response.status}`);
+      throw new Error(payload.error || `仓库识别失败：${response.status}`);
     }
 
     await refresh();
@@ -920,7 +927,7 @@ function OnboardingWizard() {
               <p className="mt-3 text-sm leading-6 text-[rgba(24,20,14,0.72)]">
                 {repoReady
                   ? `当前已绑定 ${valueOrFallback(state.workspace.repoUrl, "仓库地址未返回")}，分支 ${valueOrFallback(state.workspace.branch, "未返回")}。`
-                  : "点击下面的按钮，系统会读取当前运行目录中的仓库信息。"}
+                  : "点击后会读取当前目录中的仓库信息。"}
               </p>
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button
@@ -933,7 +940,7 @@ function OnboardingWizard() {
                   {busy ? "读取中..." : "识别当前仓库"}
                 </button>
                 <p className="text-sm leading-6 text-[rgba(24,20,14,0.62)]">
-                  当前运行目录：{backgroundWorkspaceRoot}
+                  当前目录：{backgroundWorkspaceRoot}
                 </p>
               </div>
             </div>
@@ -978,7 +985,7 @@ function OnboardingWizard() {
             </form>
           </div>
           <div className="rounded-[24px] border border-[rgba(24,20,14,0.12)] bg-[rgba(255,248,230,0.76)] p-5">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[rgba(24,20,14,0.48)]">系统会保存</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[rgba(24,20,14,0.48)]">保存内容</p>
             <div className="mt-4 space-y-3 text-sm leading-6 text-[rgba(24,20,14,0.72)]">
               <p>仓库地址、分支和认证方式会写入当前工作区。</p>
               <p>后续从聊天发起任务、执行命令和处理 PR 时，都会使用这里的仓库信息。</p>
@@ -1033,6 +1040,37 @@ function OnboardingWizard() {
                 <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[rgba(24,20,14,0.48)]">执行目录</p>
                 <p className="mt-2 break-all text-sm leading-6">{backgroundWorkspaceRoot}</p>
               </div>
+            </div>
+            <div className="mt-5 rounded-[18px] border border-[rgba(24,20,14,0.1)] bg-[rgba(255,248,230,0.76)] px-4 py-4">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[rgba(24,20,14,0.48)]">模型服务状态</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(chosenRuntime?.providers ?? []).map((provider) => (
+                  <span
+                    key={`runtime-provider-${provider.id}`}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]",
+                      runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "lime" &&
+                        "border-[var(--shock-ink)] bg-[var(--shock-lime)]",
+                      runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "yellow" &&
+                        "border-[var(--shock-ink)] bg-[var(--shock-yellow)]",
+                      runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "pink" &&
+                        "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white",
+                      runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "paper" &&
+                        "border-[var(--shock-ink)] bg-white"
+                    )}
+                  >
+                    {provider.label} · {runtimeProviderHealthLabel(runtimeProviderHealthStatus(provider))}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3 space-y-2 text-sm leading-6 text-[rgba(24,20,14,0.72)]">
+                {(chosenRuntime?.providers ?? []).map((provider) => (
+                  <p key={`runtime-provider-summary-${provider.id}`}>{runtimeProviderHealthSummary(provider)}</p>
+                ))}
+              </div>
+              {runtimeProviderBoundary ? (
+                <p className="mt-3 text-sm leading-6 text-[var(--shock-pink)]">{runtimeProviderBoundary}</p>
+              ) : null}
             </div>
             <button
               data-testid="onboarding-runtime-pair"
@@ -1108,7 +1146,7 @@ function OnboardingWizard() {
                 >
                   {providerOptions.map((provider) => (
                     <option key={provider.id} value={provider.id}>
-                      {provider.label}
+                      {provider.label} · {runtimeProviderHealthLabel(runtimeProviderHealthStatus(provider))}
                     </option>
                   ))}
                 </select>
@@ -1129,6 +1167,11 @@ function OnboardingWizard() {
                 </select>
               </label>
             </div>
+            {selectedProvider ? (
+              <p className="text-sm leading-6 text-[rgba(24,20,14,0.72)]">
+                {runtimeProviderHealthSummary(selectedProvider)}
+              </p>
+            ) : null}
             <button
               data-testid="onboarding-agent-submit"
               type="submit"

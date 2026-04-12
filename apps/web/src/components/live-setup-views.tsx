@@ -7,6 +7,7 @@ import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { buildFirstStartJourney, type FirstStartJourneyStepStatus } from "@/lib/first-start-journey";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useLiveRuntimeTruth } from "@/lib/live-runtime";
+import { runtimeProviderHealthLabel, runtimeProviderHealthStatus, runtimeProviderHealthSummary, runtimeProviderHealthTone } from "@/lib/runtime-provider-health";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -118,12 +119,12 @@ function runtimeSchedulerStrategyLabel(strategy: string) {
 }
 
 function runtimeProviderInventoryLabel(
-  providers: Array<{ label: string; models?: string[] }>
+  providers: Array<{ label: string; models?: string[]; ready?: boolean; status?: string }>
 ) {
   return providers
     .map((provider) => {
       const models = (provider.models ?? []).length > 0 ? (provider.models ?? []).join(" / ") : "未上报模型";
-      return `${provider.label}: ${models}`;
+      return `${provider.label} · ${runtimeProviderHealthLabel(runtimeProviderHealthStatus(provider))}: ${models}`;
     })
     .join(" · ");
 }
@@ -151,6 +152,8 @@ function onboardingStatusLabel(status?: string) {
       return "已完成";
     case "in_progress":
       return "进行中";
+    case "ready":
+      return "待收口";
     case "not_started":
       return "未开始";
     default:
@@ -201,14 +204,14 @@ function formatRetentionSummary(quota?: {
   if (!quota) {
     return "未返回";
   }
-  return `${quota.messageHistoryDays ?? 0}d 消息 / ${quota.runLogDays ?? 0}d 执行记录 / ${quota.memoryDraftDays ?? 0}d 草稿`;
+  return `${quota.messageHistoryDays ?? 0} 天消息 / ${quota.runLogDays ?? 0} 天执行记录 / ${quota.memoryDraftDays ?? 0} 天草稿`;
 }
 
 function formatWorkspaceUsageWindow(usage?: { totalTokens?: number; windowLabel?: string }) {
   if (!usage) {
     return "未返回";
   }
-  return `${formatCount(usage.totalTokens)} 令牌 / ${valueOrPlaceholder(usage.windowLabel, "窗口未返回")}`;
+  return `${formatCount(usage.totalTokens)} 令牌 / ${valueOrPlaceholder(usage.windowLabel, "时间范围未返回")}`;
 }
 
 function runtimeLeaseIsActive(status?: string) {
@@ -322,7 +325,7 @@ const ONBOARDING_TEMPLATE_DEFINITIONS: OnboardingTemplateDefinition[] = [
     defaultMemoryMode: "治理优先 / 交付笔记",
     channels: ["#shiproom", "#review-lane", "#ops-watch"],
     roles: ["产品", "架构", "开发", "评审", "测试"],
-    agents: ["需求队长", "构建主力", "评审执行者", "测试接力"],
+    agents: ["需求负责人", "构建执行", "评审助手", "测试接力"],
     notificationPolicy: "优先推送阻塞、评审和发布门事件",
     notes: [
       "系统会创建交付、评审和发布相关频道。",
@@ -339,7 +342,7 @@ const ONBOARDING_TEMPLATE_DEFINITIONS: OnboardingTemplateDefinition[] = [
     defaultMemoryMode: "证据优先 / 综合台账",
     channels: ["#intake", "#evidence", "#synthesis"],
     roles: ["研究负责人", "资料收集", "综合整理", "复核"],
-    agents: ["资料收集员", "综合整理员", "复核执行者"],
+    agents: ["研究负责人", "资料收集", "综合整理", "复核助手"],
     notificationPolicy: "优先推送证据就绪、综合阻塞和复核反馈",
     notes: [
       "系统会创建输入、资料和综合相关频道。",
@@ -964,7 +967,7 @@ export function LiveSetupOverview() {
             <WorkspaceMetric label="引导状态" value={onboardingStatusLabel(workspace.onboarding.status)} testID="setup-onboarding-status" />
             <WorkspaceMetric label="GitHub" value={githubInstallLabel(workspace.githubInstallation.connectionReady, workspace.githubInstallation.appInstalled)} testID="setup-installation-status" />
           </dl>
-          <details className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+          <details data-testid="setup-overview-technical-details" className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
             <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
               展开更多技术细节
             </summary>
@@ -1019,7 +1022,7 @@ export function LiveSetupOverview() {
             </div>
           </Panel>
         ) : null}
-        <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+        <details data-testid="setup-runtime-inventory-details" className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
           <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
             运行环境明细
           </summary>
@@ -1069,10 +1072,23 @@ export function LiveSetupOverview() {
                       {runtime.providers.map((provider) => (
                         <span
                           key={`${runtime.id}-${provider.id}`}
-                          className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px]"
+                          className={cn(
+                            "rounded-full border border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px]",
+                            runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "lime" && "bg-[var(--shock-lime)]",
+                            runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "yellow" && "bg-[var(--shock-yellow)]",
+                            runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "pink" && "bg-[var(--shock-pink)] text-white",
+                            runtimeProviderHealthTone(runtimeProviderHealthStatus(provider)) === "paper" && "bg-[var(--shock-paper)]"
+                          )}
                         >
-                          {provider.label}: {(provider.models ?? []).join(" / ") || "未上报模型"}
+                          {provider.label} · {runtimeProviderHealthLabel(runtimeProviderHealthStatus(provider))}
                         </span>
+                      ))}
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                      {runtime.providers.map((provider) => (
+                        <p key={`${runtime.id}-${provider.id}-summary`}>
+                          {runtimeProviderHealthSummary(provider)}
+                        </p>
                       ))}
                     </div>
                     {candidate?.reason ? <p className="mt-2.5 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p> : null}

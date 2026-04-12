@@ -25,6 +25,7 @@ import {
 import { type RoomStreamEvent, usePhaseZeroState } from "@/lib/live-phase0";
 import { buildPlanningMirrorHref } from "@/lib/planning-mirror";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
+import { runtimeProviderBlockingReason } from "@/lib/runtime-provider-health";
 import { Panel, RunDetailView } from "@/components/phase-zero-views";
 import { RunControlSurface } from "@/components/run-control-surface";
 
@@ -115,6 +116,8 @@ function roomReplyStatusLabel(status: string) {
       return "已暂停";
     case "blocked":
       return "无权限";
+    case "runtime_blocked":
+      return "模型未就绪";
     case "signed_out":
       return "未登录";
     default:
@@ -157,6 +160,28 @@ function machineStatusLabel(state: PhaseZeroState["machines"][number]["state"]) 
     default:
       return "离线";
   }
+}
+
+function resolveRuntimeRecord(state: PhaseZeroState, runtimeName?: string) {
+  const target = runtimeName?.trim();
+  if (target) {
+    const matched =
+      state.runtimes.find((runtime) => runtime.id === target || runtime.machine === target) ?? null;
+    if (matched) {
+      return matched;
+    }
+  }
+
+  const pairedRuntime = state.workspace.pairedRuntime?.trim();
+  if (pairedRuntime) {
+    const paired =
+      state.runtimes.find((runtime) => runtime.id === pairedRuntime || runtime.machine === pairedRuntime) ?? null;
+    if (paired) {
+      return paired;
+    }
+  }
+
+  return state.runtimes[0] ?? null;
 }
 
 function agentStatusLabel(state: PhaseZeroState["agents"][number]["state"]) {
@@ -2407,6 +2432,12 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   const followedThreads = loading || error ? DEFAULT_FOLLOWED_THREADS : state.followedThreads;
   const savedLaterItems = loading || error ? DEFAULT_SAVED_LATER_ITEMS : state.savedLaterItems;
   const activeChannelId = channel?.id;
+  const channelRuntimeRecord = useMemo(() => resolveRuntimeRecord(state), [state]);
+  const channelSendBoundary = useMemo(
+    () => (loading || error ? "" : runtimeProviderBlockingReason(channelRuntimeRecord?.providers ?? [])),
+    [channelRuntimeRecord?.providers, error, loading]
+  );
+  const canChannelCompose = Boolean(channel) && !loading && !error && !channelSendBoundary;
   const persistedMessages = useMemo(
     () =>
       activeChannelId
@@ -2574,7 +2605,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
   }
 
   async function handleChannelSend() {
-    if (!channel || !draft.trim() || sending || loading || Boolean(error)) {
+    if (!channel || !draft.trim() || sending || loading || Boolean(error) || Boolean(channelSendBoundary)) {
       return;
     }
     const submittedDraft = draft.trim();
@@ -2790,14 +2821,14 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                         data-testid="channel-message-input"
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
-                        disabled={!channel || loading || Boolean(error)}
+                        disabled={!canChannelCompose}
                         className="h-11 flex-1 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[13px] outline-none transition-colors duration-150 focus:bg-white focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                         placeholder={
                           replyTarget
                             ? `继续回复 ${replyTarget.speaker}...`
-                              : channel
+                              : canChannelCompose && channel
                                 ? `发送消息到 ${channel.name}...`
-                              : "正在载入消息..."
+                              : channelSendBoundary || "正在载入消息..."
                         }
                       />
                       <button
@@ -2810,7 +2841,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                       <button
                         type="submit"
                         data-testid="channel-send-message"
-                        disabled={!channel || loading || Boolean(error) || sending || !draft.trim()}
+                        disabled={!canChannelCompose || sending || !draft.trim()}
                         className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
                       >
                         {sending ? "发送中" : "发送"}
@@ -2819,6 +2850,10 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
                     {sendError ? (
                       <p data-testid="channel-send-error" className="mx-auto mt-3 max-w-[1040px] text-sm leading-6 text-[var(--shock-pink)]">
                         {sendError}
+                      </p>
+                    ) : channelSendBoundary ? (
+                      <p data-testid="channel-send-boundary" className="mx-auto mt-3 max-w-[1040px] text-sm leading-6 text-[var(--shock-pink)]">
+                        {channelSendBoundary}
                       </p>
                     ) : sending ? (
                       <p className="mx-auto mt-3 max-w-[1040px] text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
@@ -2972,6 +3007,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const authSession = state.auth.session;
   const currentRunStatus = session?.status ?? run?.status;
   const runPaused = currentRunStatus === "paused";
+  const roomRuntimeRecord = useMemo(() => resolveRuntimeRecord(state, run?.runtime), [run?.runtime, state]);
+  const roomRuntimeBoundary = useMemo(
+    () => (loading || error ? "" : runtimeProviderBlockingReason(roomRuntimeRecord?.providers ?? [])),
+    [error, loading, roomRuntimeRecord?.providers]
+  );
   const messages = useMemo(() => (room ? state.roomMessages[room.id] ?? [] : []), [room, state.roomMessages]);
   const roomThreadReplies = useMemo(() => (room ? SANITIZED_ROOM_THREAD_REPLIES[room.id] ?? {} : {}), [room]);
   const pullRequest = room ? state.pullRequests.find((item) => item.roomId === room.id) : undefined;
@@ -2981,11 +3021,30 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [railMode, setRailMode] = useState<"context" | "thread">("context");
   const canMerge = pullRequest && pullRequest.status !== "merged";
-  const canReply = !loading && !error && !runPaused && hasSessionPermission(authSession, "room.reply");
-  const roomReplyStatus = loading ? "syncing" : error ? "sync_failed" : runPaused ? "paused" : permissionStatus(authSession, "room.reply");
+  const permissionReplyStatus = permissionStatus(authSession, "room.reply");
+  const permissionReplyBoundary = permissionBoundaryCopy(authSession, "room.reply");
+  const canReply =
+    !loading &&
+    !error &&
+    !runPaused &&
+    permissionReplyStatus === "allowed" &&
+    roomRuntimeBoundary === "";
+  const roomReplyStatus = loading
+    ? "syncing"
+    : error
+      ? "sync_failed"
+      : runPaused
+        ? "paused"
+        : permissionReplyStatus !== "allowed"
+          ? permissionReplyStatus
+          : roomRuntimeBoundary
+            ? "runtime_blocked"
+            : "allowed";
   const roomReplyBoundary = runPaused
     ? "当前执行已暂停。先在右侧控制面板里恢复，或先锁定当前线程再继续执行。"
-    : permissionBoundaryCopy(authSession, "room.reply");
+    : permissionReplyStatus !== "allowed"
+      ? permissionReplyBoundary
+      : roomRuntimeBoundary;
   const canControlRun = !loading && !error && hasSessionPermission(authSession, "run.execute");
   const runControlStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "run.execute");
   const runControlBoundary = permissionBoundaryCopy(authSession, "run.execute");

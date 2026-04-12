@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -28,12 +30,16 @@ type Heartbeat struct {
 }
 
 type Provider struct {
-	ID           string   `json:"id"`
-	Label        string   `json:"label"`
-	Mode         string   `json:"mode"`
-	Capabilities []string `json:"capabilities"`
-	Models       []string `json:"models,omitempty"`
-	Transport    string   `json:"transport"`
+	ID            string   `json:"id"`
+	Label         string   `json:"label"`
+	Mode          string   `json:"mode"`
+	Capabilities  []string `json:"capabilities"`
+	Models        []string `json:"models,omitempty"`
+	Transport     string   `json:"transport"`
+	Ready         bool     `json:"ready,omitempty"`
+	Status        string   `json:"status,omitempty"`
+	StatusMessage string   `json:"statusMessage,omitempty"`
+	CheckedAt     string   `json:"checkedAt,omitempty"`
 }
 
 type ExecRequest struct {
@@ -88,6 +94,26 @@ type streamChunk struct {
 	text   string
 	err    error
 }
+
+type providerAuthProbe struct {
+	Ready   bool
+	Status  string
+	Message string
+}
+
+type claudeAuthStatus struct {
+	LoggedIn    bool   `json:"loggedIn"`
+	AuthMethod  string `json:"authMethod"`
+	APIProvider string `json:"apiProvider"`
+}
+
+const (
+	providerStatusReady        = "ready"
+	providerStatusAuthRequired = "auth_required"
+	providerStatusUnavailable  = "unavailable"
+	providerStatusDegraded     = "degraded"
+	providerProbeTimeout       = 3 * time.Second
+)
 
 func NewService(machine, root string, options ...Option) *Service {
 	service := &Service{
@@ -148,7 +174,7 @@ func (s *Service) Snapshot() Heartbeat {
 		DaemonURL:          strings.TrimRight(strings.TrimSpace(s.daemonURL), "/"),
 		Machine:            s.machine,
 		DetectedCLI:        detectCLI(),
-		Providers:          detectProviders(),
+		Providers:          annotateProviderStatuses(detectProviders()),
 		Shell:              detectShell(),
 		State:              "online",
 		WorkspaceRoot:      s.root,
@@ -438,6 +464,164 @@ func detectProviders() []Provider {
 		})
 	}
 	return providers
+}
+
+func annotateProviderStatuses(providers []Provider) []Provider {
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
+	result := make([]Provider, 0, len(providers))
+	for _, provider := range providers {
+		probe := probeProviderAuthStatus(provider.ID)
+		provider.Ready = probe.Ready
+		provider.Status = probe.Status
+		provider.StatusMessage = probe.Message
+		provider.CheckedAt = checkedAt
+		result = append(result, provider)
+	}
+	return result
+}
+
+func probeProviderAuthStatus(providerID string) providerAuthProbe {
+	switch normalizedProviderID(providerID) {
+	case "codex":
+		return probeCodexAuthStatus()
+	case "claude":
+		return probeClaudeAuthStatus()
+	default:
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusDegraded,
+			Message: "当前模型服务状态还没确认。",
+		}
+	}
+}
+
+func probeCodexAuthStatus() providerAuthProbe {
+	output, err := runProviderStatusCommand(providerProbeTimeout, "codex", "login", "status")
+	lower := strings.ToLower(output)
+
+	switch {
+	case errors.Is(err, exec.ErrNotFound):
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusUnavailable,
+			Message: "Codex CLI 当前未安装，请先补齐本地 CLI。",
+		}
+	case errors.Is(err, context.DeadlineExceeded):
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusDegraded,
+			Message: "Codex CLI 状态检查超时，请稍后重试。",
+		}
+	case strings.Contains(lower, "logged in"):
+		return providerAuthProbe{
+			Ready:   true,
+			Status:  providerStatusReady,
+			Message: "Codex CLI 已登录，可直接发送。",
+		}
+	case strings.Contains(lower, "not logged"):
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusAuthRequired,
+			Message: "Codex CLI 还没有登录，请先在本机完成登录。",
+		}
+	case err != nil:
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusDegraded,
+			Message: fallbackProviderProbeMessage("Codex CLI", output, err),
+		}
+	default:
+		return providerAuthProbe{
+			Ready:   true,
+			Status:  providerStatusReady,
+			Message: "Codex CLI 已就绪，可直接发送。",
+		}
+	}
+}
+
+func probeClaudeAuthStatus() providerAuthProbe {
+	output, err := runProviderStatusCommand(providerProbeTimeout, "claude", "auth", "status")
+	if errors.Is(err, exec.ErrNotFound) {
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusUnavailable,
+			Message: "Claude Code CLI 当前未安装，请先补齐本地 CLI。",
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusDegraded,
+			Message: "Claude Code CLI 状态检查超时，请稍后重试。",
+		}
+	}
+
+	var payload claudeAuthStatus
+	if strings.TrimSpace(output) != "" && json.Unmarshal([]byte(output), &payload) == nil {
+		if payload.LoggedIn {
+			return providerAuthProbe{
+				Ready:   true,
+				Status:  providerStatusReady,
+				Message: "Claude Code CLI 已登录，可直接发送。",
+			}
+		}
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusAuthRequired,
+			Message: "Claude Code CLI 还没有登录，请先在本机完成登录。",
+		}
+	}
+
+	if err != nil {
+		return providerAuthProbe{
+			Ready:   false,
+			Status:  providerStatusDegraded,
+			Message: fallbackProviderProbeMessage("Claude Code CLI", output, err),
+		}
+	}
+
+	return providerAuthProbe{
+		Ready:   false,
+		Status:  providerStatusDegraded,
+		Message: "Claude Code CLI 状态暂时无法确认。",
+	}
+}
+
+func runProviderStatusCommand(timeout time.Duration, name string, args ...string) (string, error) {
+	if _, err := exec.LookPath(name); err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = os.Environ()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	output := strings.TrimSpace(stdout.String())
+	if output == "" {
+		output = strings.TrimSpace(stderr.String())
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		return output, context.DeadlineExceeded
+	}
+	return output, err
+}
+
+func fallbackProviderProbeMessage(label, output string, err error) string {
+	if text := strings.TrimSpace(output); text != "" {
+		return text
+	}
+	if err != nil {
+		return label + " 状态检查失败，请稍后重试。"
+	}
+	return label + " 状态暂时无法确认。"
 }
 
 func detectShell() string {

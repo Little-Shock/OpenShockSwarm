@@ -541,8 +541,12 @@ type RuntimeProvider struct {
 	Capabilities []string `json:"capabilities"`
 	// Models is a runtime-surfaced suggestion catalog for the UI. It is not a hard allowlist
 	// unless the daemon starts deriving it from a real local source.
-	Models    []string `json:"models,omitempty"`
-	Transport string   `json:"transport"`
+	Models        []string `json:"models,omitempty"`
+	Transport     string   `json:"transport"`
+	Ready         bool     `json:"ready,omitempty"`
+	Status        string   `json:"status,omitempty"`
+	StatusMessage string   `json:"statusMessage,omitempty"`
+	CheckedAt     string   `json:"checkedAt,omitempty"`
 }
 
 type RuntimeRecord struct {

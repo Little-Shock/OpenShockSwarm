@@ -655,6 +655,10 @@ export type RuntimeProviderStatus = {
   capabilities: string[];
   models: string[];
   transport: string;
+  ready?: boolean;
+  status?: string;
+  statusMessage?: string;
+  checkedAt?: string;
 };
 
 export type RuntimeRegistryRecord = {
