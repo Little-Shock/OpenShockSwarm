@@ -51,6 +51,8 @@ func (s *MemoryStore) RegisterMember(username, displayName, password string) (co
 		return core.AuthTokenResponse{}, err
 	}
 
+	s.grantMemberWorkspaceAccessLocked(memberID, s.defaultWorkspaceID)
+
 	token, session, err := s.createAuthSessionLocked(memberID, now)
 	if err != nil {
 		return core.AuthTokenResponse{}, err
@@ -121,6 +123,9 @@ func (s *MemoryStore) LookupMemberBySessionToken(token string) (core.Member, cor
 		delete(s.authSessions, resolvedToken)
 		return core.Member{}, core.AuthSession{}, false
 	}
+	if !s.memberHasWorkspaceAccessLocked(session.MemberID, session.ActiveWorkspaceID) {
+		session.ActiveWorkspaceID = s.defaultAccessibleWorkspaceForMemberLocked(session.MemberID)
+	}
 
 	session.LastSeenAt = time.Now().UTC().Format(time.RFC3339)
 	s.authSessions[resolvedToken] = session
@@ -173,7 +178,7 @@ func (s *MemoryStore) createAuthSessionLocked(memberID, now string) (string, cor
 	session := core.AuthSession{
 		ID:                fmt.Sprintf("session_%03d", s.nextAuthSessionID),
 		MemberID:          memberID,
-		ActiveWorkspaceID: s.defaultWorkspaceID,
+		ActiveWorkspaceID: s.defaultAccessibleWorkspaceForMemberLocked(memberID),
 		CreatedAt:         now,
 		LastSeenAt:        now,
 	}
@@ -209,6 +214,9 @@ func (s *MemoryStore) SetActiveWorkspaceForSession(token, workspaceID string) (c
 	}
 	if _, ok := s.workspaceIndexByIDLocked(resolvedWorkspaceID); !ok {
 		return core.AuthSession{}, ErrNotFound
+	}
+	if !s.memberHasWorkspaceAccessLocked(session.MemberID, resolvedWorkspaceID) {
+		return core.AuthSession{}, ErrUnauthorized
 	}
 
 	session.ActiveWorkspaceID = resolvedWorkspaceID

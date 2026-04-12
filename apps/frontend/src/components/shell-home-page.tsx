@@ -3,7 +3,7 @@ import { RoomContextPanel } from "@/components/room-context-panel";
 import type { RoomDetailResponse } from "@/lib/types";
 import { LiveRefresh } from "@/components/live-refresh";
 import { RoomActionComposer } from "@/components/room-action-composer";
-import { RoomMessageCard } from "@/components/room-message-card";
+import { RoomMessageStream } from "@/components/room-message-stream";
 import { ShellFrame } from "@/components/shell-frame";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentSessionToken } from "@/lib/operator-server";
@@ -91,7 +91,6 @@ export async function ShellHomePage({ roomId }: { roomId?: string } = {}) {
           turns={room.agentTurns}
           turnOutputChunks={room.agentTurnOutputChunks}
           turnToolCalls={room.agentTurnToolCalls}
-          waits={room.agentWaits}
           handoffs={room.handoffRecords}
           tasks={room.tasks}
           runs={room.runs}
@@ -103,25 +102,29 @@ export async function ShellHomePage({ roomId }: { roomId?: string } = {}) {
     >
       <div className="flex h-full min-h-0 flex-col">
         <LiveRefresh scopes={realtimeScopes} />
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-            {room.messages.map((message) => (
-            <RoomMessageCard key={message.id} message={message} />
-          ))}
-        </div>
-      </div>
-      <div className="border-t border-[var(--border)] bg-white px-3 py-2.5">
-        <div className="mx-auto w-full max-w-3xl rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5 shadow-[0_6px_18px_rgba(31,35,41,0.05)]">
+        <RoomMessageStream
+          roomId={room.room.id}
+          unreadCount={room.room.unreadCount}
+          messages={room.messages}
+          agents={bootstrap.agents}
+          rooms={bootstrap.rooms}
+          directRooms={bootstrap.directRooms}
+        />
+        <div className="border-t border-[var(--border)] bg-white px-3 py-2.5">
+          <div className="mx-auto w-full max-w-3xl rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5 shadow-[0_6px_18px_rgba(31,35,41,0.05)]">
             <RoomActionComposer
               roomId={room.room.id}
+              agents={bootstrap.agents}
+              rooms={bootstrap.rooms}
+              directRooms={bootstrap.directRooms}
               placeholder={
                 room.room.kind === "direct_message"
-                  ? `Send a private message to ${room.room.title}...`
-                  : "发消息，支持 @agent_xxx ..."
+                  ? `发私信给 ${room.room.title}，支持 @ 和 # ...`
+                  : "发消息，支持 @agent 和 #room ..."
               }
             />
+          </div>
         </div>
-      </div>
       </div>
     </ShellFrame>
   );

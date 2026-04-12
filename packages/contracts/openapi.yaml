@@ -319,7 +319,6 @@ components:
         - agentTurns
         - agentTurnOutputChunks
         - agentTurnToolCalls
-        - agentWaits
         - handoffRecords
         - tasks
         - runs
@@ -355,10 +354,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTurnToolCall"
-        agentWaits:
-          type: array
-          items:
-            $ref: "#/components/schemas/AgentWait"
         handoffRecords:
           type: array
           items:
@@ -832,26 +827,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Message"
-    AgentWait:
-      type: object
-      required: [id, sessionId, roomId, agentId, blockingMessageId, status, createdAt]
-      properties:
-        id:
-          type: string
-        sessionId:
-          type: string
-        roomId:
-          type: string
-        agentId:
-          type: string
-        blockingMessageId:
-          type: string
-        status:
-          type: string
-        createdAt:
-          type: string
-        resolvedAt:
-          type: string
     HandoffRecord:
       type: object
       required: [id, roomId, fromSessionId, fromAgentId, toAgentId, triggerMessageId, status, createdAt]

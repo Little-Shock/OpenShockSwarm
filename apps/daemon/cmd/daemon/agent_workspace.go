@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"openshock/daemon/internal/client"
@@ -23,57 +24,96 @@ type agentWorkspaceSession struct {
 	CurrentWakeupMode string `json:"currentWakeupMode"`
 }
 
+type agentWorkspaceLayout struct {
+	RootDir  string
+	AgentDir string
+	RoomDir  string
+}
+
 func defaultAgentWorkspaceRoot() string {
-	return filepath.Join(os.TempDir(), "openshock-agent-sessions")
+	homeDir, err := os.UserHomeDir()
+	if err == nil && strings.TrimSpace(homeDir) != "" {
+		return filepath.Join(homeDir, ".openshock-workspaces")
+	}
+	return filepath.Join(os.TempDir(), "openshock-workspaces")
 }
 
 func prepareAgentWorkspace(root string, execution client.AgentTurnExecution) (string, error) {
-	dir, err := ensureAgentSessionWorkspace(root, execution.Session)
+	layout, err := ensureAgentSessionWorkspace(root, execution.Session)
 	if err != nil {
 		return "", err
 	}
-	if err := ensureWorkspaceMemoryFile(dir, execution); err != nil {
+	if err := ensureWorkspaceMemoryFile(layout.AgentDir, execution); err != nil {
 		return "", err
 	}
-	if err := ensureWorkspaceLogFile(dir); err != nil {
+	if err := ensureWorkspaceLogFile(layout.RoomDir); err != nil {
 		return "", err
 	}
-	if err := writeWorkspaceSessionFile(dir, execution); err != nil {
+	if err := writeWorkspaceSessionFile(layout.RoomDir, execution); err != nil {
 		return "", err
 	}
-	if err := writeWorkspaceRoomContextFile(dir, execution); err != nil {
+	if err := writeWorkspaceRoomContextFile(layout.RoomDir, execution); err != nil {
 		return "", err
 	}
 
 	turnSnapshot := buildAgentTurnWorkspaceSnapshot(execution)
-	if err := os.WriteFile(filepath.Join(dir, "CURRENT_TURN.md"), []byte(turnSnapshot), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(layout.RoomDir, "CURRENT_TURN.md"), []byte(turnSnapshot), 0o644); err != nil {
 		return "", err
 	}
-
-	turnFile := filepath.Join(dir, "turns", fmt.Sprintf("%03d-%s.md", execution.Turn.Sequence, execution.Turn.ID))
-	if err := os.WriteFile(turnFile, []byte(turnSnapshot), 0o644); err != nil {
-		return "", err
-	}
-	return dir, nil
+	return layout.RoomDir, nil
 }
 
-func ensureAgentSessionWorkspace(root string, session client.AgentSession) (string, error) {
+func ensureAgentSessionWorkspace(root string, session client.AgentSession) (agentWorkspaceLayout, error) {
 	workspaceRoot := strings.TrimSpace(root)
 	if workspaceRoot == "" {
 		workspaceRoot = defaultAgentWorkspaceRoot()
 	}
 
-	dir := filepath.Join(workspaceRoot, sanitizeWorkspaceName(workspaceSessionKey(session)))
-	if err := os.MkdirAll(filepath.Join(dir, "turns"), 0o755); err != nil {
-		return "", err
+	layout := buildAgentWorkspaceLayout(workspaceRoot, session)
+	if err := os.MkdirAll(filepath.Join(layout.RoomDir, "notes"), 0o755); err != nil {
+		return agentWorkspaceLayout{}, err
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "notes"), 0o755); err != nil {
-		return "", err
+	if err := writeWorkspaceSessionMetadata(layout.RoomDir, session, "", "", session.AgentID, "", ""); err != nil {
+		return agentWorkspaceLayout{}, err
 	}
-	if err := writeWorkspaceSessionMetadata(dir, session, "", "", session.AgentID, "", ""); err != nil {
-		return "", err
+	return layout, nil
+}
+
+func buildAgentWorkspaceLayout(root string, session client.AgentSession) agentWorkspaceLayout {
+	agentKey := sanitizeWorkspaceName(agentWorkspaceAgentKey(session))
+	roomKey := sanitizeWorkspaceName(agentWorkspaceRoomKey(session))
+	agentDir := filepath.Join(root, "agents", agentKey)
+	return agentWorkspaceLayout{
+		RootDir:  root,
+		AgentDir: agentDir,
+		RoomDir:  filepath.Join(agentDir, "rooms", roomKey),
 	}
-	return dir, nil
+}
+
+func agentWorkspaceAgentKey(session client.AgentSession) string {
+	if value := strings.TrimSpace(session.AgentID); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(session.ID); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(session.ProviderThreadID); value != "" {
+		return value
+	}
+	return "agent"
+}
+
+func agentWorkspaceRoomKey(session client.AgentSession) string {
+	if value := strings.TrimSpace(session.RoomID); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(session.ID); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(session.ProviderThreadID); value != "" {
+		return value
+	}
+	return "room"
 }
 
 func workspaceSessionKey(session client.AgentSession) string {
@@ -129,16 +169,22 @@ func ensureWorkspaceLogFile(dir string) error {
 func defaultAgentMemory(execution client.AgentTurnExecution) string {
 	var builder strings.Builder
 	builder.WriteString("# OpenShock Agent 记忆\n\n")
-	builder.WriteString("这个工作区会在同一个 OpenShock agent session 的多个回合之间持续复用。\n\n")
+	builder.WriteString("这个文件属于 agent 级工作区，会在同一个 agent 的多个房间、多次回合之间持续复用。\n")
+	builder.WriteString("这里建议只记录跨回合仍然有价值的稳定事实，不要把临时回复策略或一次性指令写进来。\n\n")
 	builder.WriteString("当稳定上下文发生变化时，请更新这个文件，例如：\n")
 	builder.WriteString("- 频道或房间规则\n")
 	builder.WriteString("- 所有权或 handoff 预期\n")
 	builder.WriteString("- 持续性的阻塞或决策\n")
 	builder.WriteString("- 下个回合值得复用的稳定项目背景\n\n")
-	builder.WriteString("## Session\n")
-	builder.WriteString("- Agent：")
+	builder.WriteString("## Agent\n")
+	builder.WriteString("- Agent 名称：")
+	builder.WriteString(firstNonEmptyString(execution.AgentName, execution.Turn.AgentID))
+	builder.WriteString("\n")
+	builder.WriteString("- Agent ID：")
 	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n- 房间：")
+	builder.WriteString("\n")
+	builder.WriteString("\n## Session\n")
+	builder.WriteString("- Session 房间：")
 	builder.WriteString(execution.Turn.RoomID)
 	builder.WriteString("\n- Provider 线程：")
 	builder.WriteString(workspaceSessionKey(execution.Session))
@@ -159,11 +205,17 @@ func writeWorkspaceSessionFile(dir string, execution client.AgentTurnExecution) 
 }
 
 func writeWorkspaceSessionMetadata(dir string, session client.AgentSession, roomID, roomTitle, agentID, currentTurnID, wakeupMode string) error {
-	existing, _ := readAgentWorkspaceSession(dir)
+	existing, existingErr := readAgentWorkspaceSession(dir)
+	appServerThreadID := strings.TrimSpace(session.AppServerThreadID)
+	if existingErr == nil {
+		// Once a local workspace exists, treat its app-server thread as the source of truth.
+		// This preserves intentional local clears instead of rehydrating stale backend state.
+		appServerThreadID = existing.AppServerThreadID
+	}
 	payload := agentWorkspaceSession{
 		SessionID:         firstNonEmptyString(session.ID, existing.SessionID),
 		ProviderThreadID:  firstNonEmptyString(session.ProviderThreadID, existing.ProviderThreadID),
-		AppServerThreadID: firstNonEmptyString(session.AppServerThreadID, existing.AppServerThreadID),
+		AppServerThreadID: strings.TrimSpace(appServerThreadID),
 		RoomID:            firstNonEmptyString(roomID, existing.RoomID),
 		RoomTitle:         firstNonEmptyString(roomTitle, existing.RoomTitle),
 		AgentID:           firstNonEmptyString(agentID, session.AgentID, existing.AgentID),
@@ -229,6 +281,7 @@ func writeWorkspaceRoomContextFile(dir string, execution client.AgentTurnExecuti
 func buildAgentRoomContextSnapshot(execution client.AgentTurnExecution) string {
 	var builder strings.Builder
 	builder.WriteString("# 房间上下文\n\n")
+	builder.WriteString("本文件只记录房间相关的事实快照；回复规则和 workflow 约束由系统 prompt 直接注入。\n\n")
 	builder.WriteString("- 房间 ID：")
 	builder.WriteString(execution.Room.ID)
 	builder.WriteString("\n- 房间标题：")
@@ -268,7 +321,6 @@ func buildAgentRoomContextSnapshot(execution client.AgentTurnExecution) string {
 		builder.WriteString(summary)
 		builder.WriteString("\n")
 	}
-	appendAgentWorkflowSection(&builder, execution)
 	appendAgentIssueStateSection(&builder, execution)
 	return builder.String()
 }
@@ -276,6 +328,7 @@ func buildAgentRoomContextSnapshot(execution client.AgentTurnExecution) string {
 func buildAgentTurnWorkspaceSnapshot(execution client.AgentTurnExecution) string {
 	var builder strings.Builder
 	builder.WriteString("# 当前回合\n\n")
+	builder.WriteString("本文件只记录本回合的事实快照；回复契约、决策规则和 CLI 用法以系统 prompt 为准。\n\n")
 	builder.WriteString("- 回合 ID：")
 	builder.WriteString(execution.Turn.ID)
 	builder.WriteString("\n- 序号：")
@@ -313,13 +366,6 @@ func buildAgentTurnWorkspaceSnapshot(execution client.AgentTurnExecution) string
 	builder.WriteString("]: ")
 	builder.WriteString(execution.TriggerMessage.Body)
 	builder.WriteString("\n")
-	builder.WriteString("\n## 回复契约\n")
-	builder.WriteString("严格按以下格式返回：\n")
-	builder.WriteString("KIND: <message|clarification_request|handoff|summary|no_response>\n")
-	builder.WriteString("BODY:\n")
-	builder.WriteString("<你的消息>\n")
-	appendAgentWorkflowSection(&builder, execution)
-	appendAgentIssueStateSection(&builder, execution)
 	builder.WriteString("\n## 最近消息\n")
 	for _, message := range execution.Messages {
 		builder.WriteString("- ")
@@ -330,50 +376,8 @@ func buildAgentTurnWorkspaceSnapshot(execution client.AgentTurnExecution) string
 		builder.WriteString(message.Body)
 		builder.WriteString("\n")
 	}
+	appendAgentIssueStateSection(&builder, execution)
 	return builder.String()
-}
-
-func appendAgentWorkflowSection(builder *strings.Builder, execution client.AgentTurnExecution) {
-	if builder == nil {
-		return
-	}
-
-	builder.WriteString("\n## 系统工作流\n")
-	if execution.Issue == nil {
-		builder.WriteString("当前房间没有绑定 issue/task 工作流，本回合默认以对话协作和信息澄清为主。\n")
-		return
-	}
-
-	builder.WriteString("当前房间绑定 Issue，可通过 `openshock` 推进真实系统动作。\n")
-	builder.WriteString("注意：这个工作区是 agent session 工作区，不是业务仓库工作树；要推动代码实施，请走 task / run / merge / delivery 流程。\n")
-	builder.WriteString("- 创建任务：openshock task create --issue ")
-	builder.WriteString(execution.Issue.ID)
-	builder.WriteString(" --title \"<标题>\" --description \"<描述>\" --assignee-agent-id <agent_id> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 认领任务：openshock task claim --task <task_id> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 改派任务：openshock task assign --task <task_id> --agent-id <agent_id> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 任务状态翻转：openshock task status set --task <task_id> --status <todo|in_progress|blocked|ready_for_integration> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 发起代码执行：openshock run create --task <task_id> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 请求合并审批：openshock git request-merge --task <task_id> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 批准并排队执行合并：openshock git approve-merge --task <task_id> --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
-	builder.WriteString("- 创建 delivery PR：openshock delivery request --issue ")
-	builder.WriteString(execution.Issue.ID)
-	builder.WriteString(" --actor-id ")
-	builder.WriteString(execution.Turn.AgentID)
-	builder.WriteString("\n")
 }
 
 func appendAgentIssueStateSection(builder *strings.Builder, execution client.AgentTurnExecution) {
@@ -528,14 +532,36 @@ func appendAgentWorkspaceLog(dir, stage string, execution client.AgentTurnExecut
 		builder.WriteString("\n")
 	}
 
+	return appendFileLocked(path, []byte(builder.String()))
+}
+
+func appendFileLocked(path string, data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	_, err = file.WriteString(builder.String())
-	return err
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	}()
+
+	for len(data) > 0 {
+		written, err := file.Write(data)
+		if err != nil {
+			return err
+		}
+		data = data[written:]
+	}
+
+	return nil
 }
 
 func compactWorkspaceLogValue(value string) string {

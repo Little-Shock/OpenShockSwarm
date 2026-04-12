@@ -16,7 +16,6 @@ type MemoryStoreSnapshot struct {
 	AgentTurns              []core.AgentTurn
 	AgentTurnOutputChunks   []core.AgentTurnOutputChunk
 	AgentTurnToolCalls      []core.AgentTurnToolCall
-	AgentWaits              []core.AgentWait
 	HandoffRecords          []core.HandoffRecord
 	Tasks                   []core.Task
 	Runs                    []core.Run
@@ -28,6 +27,7 @@ type MemoryStoreSnapshot struct {
 	InboxItems              []core.InboxItem
 	RepoWebhookEvents       map[string]core.RepoWebhookResponse
 	Members                 map[string]core.Member
+	MemberWorkspaceAccess   map[string][]string
 	MemberIDsByUsername     map[string]string
 	PasswordHashes          map[string]string
 	AuthSessions            map[string]core.AuthSession
@@ -47,7 +47,6 @@ type MemoryStoreSnapshot struct {
 	NextAgentTurnID         int
 	NextAgentTurnOutputID   int
 	NextAgentTurnToolCallID int
-	NextAgentWaitID         int
 	NextHandoffID           int
 	NextAgentID             int
 	NextWorkspaceRepoID     int

@@ -30,8 +30,8 @@ func main() {
 		runtimeProvider = flag.String("provider", envOr("OPENSHOCK_PROVIDER", "codex"), "Execution provider label reported to the backend")
 		codexMode       = flag.String("codex-mode", envOr("OPENSHOCK_CODEX_MODE", codexModeAuto), "Codex execution mode: exec, app-server, or auto")
 		codexSandbox    = flag.String("codex-sandbox", envOr("OPENSHOCK_CODEX_SANDBOX", "danger-full-access"), "Codex sandbox mode for agent turns and runs")
-		codexHome       = flag.String("codex-home", envOr("OPENSHOCK_CODEX_HOME", defaultCodexHome()), "Dedicated CODEX_HOME used by the daemon")
-		slotCount       = flag.Int("slots", 2, "Available execution slots")
+		codexHome       = flag.String("codex-home", envOr("OPENSHOCK_CODEX_HOME", defaultCodexHome()), "Optional CODEX_HOME override used by the daemon")
+		slotCount       = flag.Int("slots", 6, "Available execution slots")
 		turnTimeout     = flag.Duration("codex-turn-timeout", durationEnvOr("OPENSHOCK_CODEX_TURN_TIMEOUT", 10*time.Minute), "Timeout per Codex execution")
 		once            = flag.Bool("once", false, "Run one register/claim/report cycle and exit")
 	)
@@ -209,10 +209,7 @@ func (w daemonWorker) processAgentTurn(ctx context.Context) bool {
 		log.Printf("worker %d failed to append agent workspace start log for turn %s: %v", w.id, claim.AgentTurn.Turn.ID, logErr)
 	}
 
-	resumeThreadID := strings.TrimSpace(claim.AgentTurn.Session.AppServerThreadID)
-	if resumeThreadID == "" {
-		resumeThreadID, _ = readAppServerThreadID(workspaceDir)
-	}
+	resumeThreadID := resolveResumeThreadID(claim.AgentTurn.Session.AppServerThreadID, workspaceDir)
 	executionCodexHome := prepareSessionCodexHome(w.codexHomeRoot, claim.AgentTurn.Session)
 	result, execErr := w.execute(ctx, provider.ExecuteRequest{
 		RepoPath:       workspaceDir,
@@ -269,10 +266,8 @@ func (w daemonWorker) processAgentTurn(ctx context.Context) bool {
 			return nil
 		}
 	})
-	if strings.TrimSpace(result.ProviderThreadID) != "" {
-		if err := writeAppServerThreadID(workspaceDir, result.ProviderThreadID); err != nil {
-			log.Printf("worker %d failed to persist app-server thread id for turn %s: %v", w.id, claim.AgentTurn.Turn.ID, err)
-		}
+	if err := persistAgentTurnThreadState(workspaceDir, result.ProviderThreadID, execErr); err != nil {
+		log.Printf("worker %d failed to persist app-server thread state for turn %s: %v", w.id, claim.AgentTurn.Turn.ID, err)
 	}
 
 	reply := parseAgentTurnReply(result.LastMessage)
@@ -285,9 +280,14 @@ func (w daemonWorker) processAgentTurn(ctx context.Context) bool {
 	}
 
 	resultMessageID := ""
-	if kind != "no_response" {
+	if shouldPostVisibleAgentReply(kind) {
 		if body == "" {
-			body = "收到，我先看一下。"
+			switch kind {
+			case "blocked":
+				body = "执行时遇到了阻塞，请看观测面板里的错误细节。"
+			case "handoff":
+				body = "这里需要另一位 agent 接手。"
+			}
 		}
 		actionResp, submitErr := w.api.SubmitAction(ctx, client.ActionRequest{
 			ActorType:      "agent",
@@ -310,9 +310,10 @@ func (w daemonWorker) processAgentTurn(ctx context.Context) bool {
 	}
 
 	if _, err := w.api.CompleteAgentTurn(ctx, claim.AgentTurn.Turn.ID, client.AgentTurnCompleteRequest{
-		RuntimeID:         w.runtimeID,
-		ResultMessageID:   resultMessageID,
-		AppServerThreadID: strings.TrimSpace(result.ProviderThreadID),
+		RuntimeID:              w.runtimeID,
+		ResultMessageID:        resultMessageID,
+		AppServerThreadID:      strings.TrimSpace(result.ProviderThreadID),
+		ClearAppServerThreadID: execErr != nil,
 	}); err != nil {
 		_ = appendAgentWorkspaceLog(workspaceDir, "turn_complete_failed", *claim.AgentTurn, agentTurnReply{Kind: kind, Body: body}, err)
 		log.Printf("worker %d failed to complete agent turn %s: %v", w.id, claim.AgentTurn.Turn.ID, err)
@@ -367,14 +368,11 @@ func (w daemonWorker) processRun(ctx context.Context) bool {
 	if claim.AgentSession != nil {
 		runSessionKey = claim.AgentSession.ID
 		runCodexHome = prepareSessionCodexHome(w.codexHomeRoot, *claim.AgentSession)
-		if dir, err := ensureAgentSessionWorkspace(w.agentWorkspacesDir, *claim.AgentSession); err != nil {
+		if layout, err := ensureAgentSessionWorkspace(w.agentWorkspacesDir, *claim.AgentSession); err != nil {
 			log.Printf("worker %d failed to ensure agent session workspace for run %s: %v", w.id, claim.Run.ID, err)
 		} else {
-			runSessionWorkspaceDir = dir
-			runResumeThreadID = strings.TrimSpace(claim.AgentSession.AppServerThreadID)
-			if runResumeThreadID == "" {
-				runResumeThreadID, _ = readAppServerThreadID(dir)
-			}
+			runSessionWorkspaceDir = layout.RoomDir
+			runResumeThreadID = resolveResumeThreadID(claim.AgentSession.AppServerThreadID, layout.RoomDir)
 		}
 	}
 
@@ -532,6 +530,26 @@ func (w daemonWorker) execute(ctx context.Context, req provider.ExecuteRequest, 
 	return w.executor.Execute(execCtx, req, handle)
 }
 
+func resolveResumeThreadID(sessionThreadID, workspaceDir string) string {
+	if localThreadID, err := readAppServerThreadID(workspaceDir); err == nil {
+		return localThreadID
+	}
+	return strings.TrimSpace(sessionThreadID)
+}
+
+func persistAgentTurnThreadState(workspaceDir, providerThreadID string, execErr error) error {
+	if strings.TrimSpace(workspaceDir) == "" {
+		return nil
+	}
+	if execErr != nil {
+		return writeAppServerThreadID(workspaceDir, "")
+	}
+	if strings.TrimSpace(providerThreadID) == "" {
+		return nil
+	}
+	return writeAppServerThreadID(workspaceDir, providerThreadID)
+}
+
 func (w daemonWorker) failRun(ctx context.Context, runID, summary string) {
 	if _, err := w.api.PostRunEvent(ctx, runID, client.RunEventRequest{
 		RuntimeID:     w.runtimeID,
@@ -564,17 +582,13 @@ func startHeartbeatLoop(ctx context.Context, api *client.Client, runtimeID strin
 }
 
 func defaultCodexHome() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "openshock-codex-home")
-	}
-	return filepath.Join(home, ".openshock-codex-home")
+	return ""
 }
 
 func workerCodexHome(base string, workerID int) string {
 	trimmed := strings.TrimSpace(base)
 	if trimmed == "" {
-		trimmed = defaultCodexHome()
+		return ""
 	}
 	path := filepath.Join(trimmed, fmt.Sprintf("worker-%02d", workerID))
 	if err := os.MkdirAll(path, 0o755); err != nil {
@@ -586,9 +600,10 @@ func workerCodexHome(base string, workerID int) string {
 func codexHomeForAgentSession(base string, session client.AgentSession) string {
 	trimmed := strings.TrimSpace(base)
 	if trimmed == "" {
-		trimmed = defaultCodexHome()
+		return ""
 	}
-	path := filepath.Join(trimmed, "sessions", sanitizeWorkspaceName(workspaceSessionKey(session)))
+	layout := buildAgentWorkspaceLayout(filepath.Join(trimmed, "sessions"), session)
+	path := layout.RoomDir
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return trimmed
 	}
@@ -596,6 +611,9 @@ func codexHomeForAgentSession(base string, session client.AgentSession) string {
 }
 
 func prepareSessionCodexHome(base string, session client.AgentSession) string {
+	if strings.TrimSpace(base) == "" {
+		return ""
+	}
 	path := codexHomeForAgentSession(base, session)
 	if path == "" {
 		return path
@@ -609,7 +627,7 @@ func prepareSessionCodexHome(base string, session client.AgentSession) string {
 func syncCodexHomeFiles(base, target string) error {
 	sourceRoot := strings.TrimSpace(base)
 	if sourceRoot == "" {
-		sourceRoot = defaultCodexHome()
+		return nil
 	}
 	targetRoot := strings.TrimSpace(target)
 	if targetRoot == "" || targetRoot == sourceRoot {
@@ -781,10 +799,10 @@ type agentTurnReply struct {
 func parseAgentTurnReply(raw string) agentTurnReply {
 	text := strings.TrimSpace(raw)
 	if text == "" {
-		return agentTurnReply{Kind: "message", Body: ""}
+		return agentTurnReply{Kind: "done", Body: ""}
 	}
 
-	reply := agentTurnReply{Kind: "message", Body: text}
+	reply := agentTurnReply{Kind: "done", Body: text}
 	lines := strings.Split(text, "\n")
 	bodyStart := -1
 	for i, line := range lines {
@@ -792,6 +810,12 @@ func parseAgentTurnReply(raw string) agentTurnReply {
 		lower := strings.ToLower(trimmed)
 		if strings.HasPrefix(lower, "kind:") {
 			if kind := normalizeAgentReplyKind(strings.TrimSpace(trimmed[len("kind:"):])); kind != "" {
+				reply.Kind = kind
+			}
+			continue
+		}
+		if strings.HasPrefix(lower, "result:") {
+			if kind := normalizeAgentReplyKind(strings.TrimSpace(trimmed[len("result:"):])); kind != "" {
 				reply.Kind = kind
 			}
 			continue
@@ -814,8 +838,6 @@ func normalizedWakeupMode(execution client.AgentTurnExecution) string {
 		return mode
 	}
 	switch strings.TrimSpace(execution.Turn.IntentType) {
-	case "clarification_followup":
-		return "clarification_followup"
 	case "handoff_response":
 		return "handoff_response"
 	default:
@@ -825,10 +847,21 @@ func normalizedWakeupMode(execution client.AgentTurnExecution) string {
 
 func normalizeAgentReplyKind(kind string) string {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "message", "clarification_request", "handoff", "summary", "no_response":
+	case "done", "handoff", "blocked", "no_response":
 		return strings.ToLower(strings.TrimSpace(kind))
+	case "message", "summary":
+		return "done"
 	default:
 		return ""
+	}
+}
+
+func shouldPostVisibleAgentReply(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "handoff", "blocked":
+		return true
+	default:
+		return false
 	}
 }
 

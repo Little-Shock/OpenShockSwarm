@@ -60,7 +60,7 @@ func TestOpenShockCLICreatesTaskAndRoomMessage(t *testing.T) {
 		}
 	}
 	for _, message := range detail.Messages {
-		if message.ActorName == "agent_shell" && strings.Contains(message.Body, "integration is ready for review") {
+		if message.ActorName == "Shell_Runner" && strings.Contains(message.Body, "integration is ready for review") {
 			messageFound = true
 		}
 	}

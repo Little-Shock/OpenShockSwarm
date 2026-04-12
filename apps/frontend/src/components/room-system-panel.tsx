@@ -6,7 +6,6 @@ import type {
   Agent,
   AgentSession,
   AgentTurn,
-  AgentWait,
   HandoffRecord,
   Runtime,
 } from "@/lib/types";
@@ -16,7 +15,6 @@ type RoomSystemPanelProps = {
   runtimes: Runtime[];
   sessions: AgentSession[];
   turns: AgentTurn[];
-  waits: AgentWait[];
   handoffs: HandoffRecord[];
   messageCount: number;
 };
@@ -40,7 +38,6 @@ function sessionBadgeTone(status: string): BadgeTone {
     case "resolved":
     case "accepted":
       return "green";
-    case "waiting_reply":
     case "handoff_requested":
     case "blocked":
       return "orange";
@@ -62,7 +59,6 @@ export function RoomSystemPanel({
   runtimes,
   sessions,
   turns,
-  waits,
   handoffs,
   messageCount,
 }: RoomSystemPanelProps) {
@@ -74,9 +70,6 @@ export function RoomSystemPanel({
   const queuedTurns = turns.filter((turn) => turn.status === "queued");
   const claimedTurns = turns.filter((turn) => turn.status === "claimed");
   const respondingSessions = sessions.filter((session) => session.status === "responding");
-  const waitingReply = waits
-    .filter((wait) => wait.status === "waiting_reply")
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const openHandoffs = handoffs
     .filter((handoff) => handoff.status !== "accepted")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -100,7 +93,7 @@ export function RoomSystemPanel({
           {metricCard("Messages", messageCount, "chat events in this room")}
           {metricCard("Sessions", sessions.length, "agent contexts live here")}
           {metricCard("Queued Turns", queuedTurns.length, "waiting for daemon claim")}
-          {metricCard("Waiting Reply", waitingReply.length, "blocked on room input")}
+          {metricCard("Open Handoffs", openHandoffs.length, "pending agent coordination")}
         </div>
 
         <div className="mt-2.5 space-y-1.5 border-t border-[var(--border)] pt-2.5">
@@ -177,35 +170,13 @@ export function RoomSystemPanel({
         )}
       </Card>
 
-      {waitingReply.length > 0 || openHandoffs.length > 0 ? (
+      {openHandoffs.length > 0 ? (
         <Card className="rounded-[12px] px-3 py-2.5">
           <div className="mb-2 flex items-center justify-between gap-2">
-              <Eyebrow>Attention Queue</Eyebrow>
-              <Badge tone="orange">
-              {waitingReply.length + openHandoffs.length} open
-              </Badge>
-            </div>
+            <Eyebrow>Attention Queue</Eyebrow>
+            <Badge tone="orange">{openHandoffs.length} open</Badge>
+          </div>
           <div className="space-y-1.5">
-            {waitingReply.map((wait) => (
-              <div
-                key={wait.id}
-                className="rounded-[10px] border border-[var(--border)] bg-white px-2.5 py-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[12px] font-medium">
-                    {agentName(wait.agentId, agents)} waiting for room reply
-                  </div>
-                  <Badge tone="orange">wait</Badge>
-                </div>
-                <div className="mt-1 grid gap-1 text-[11px] text-black/60">
-                  <div>Blocking message: {wait.blockingMessageId}</div>
-                  <div>
-                    Since: <LocalTime value={wait.createdAt} withSeconds />
-                  </div>
-                </div>
-              </div>
-            ))}
-
             {openHandoffs.map((handoff) => (
               <div
                 key={handoff.id}

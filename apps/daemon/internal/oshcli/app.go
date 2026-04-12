@@ -33,8 +33,12 @@ func NewApp() *App {
 
 func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: openshock <action|room|task|run|git|delivery> ...")
+		writeTopLevelHelp(stderr)
 		return 2
+	}
+	if isHelpToken(args[0]) {
+		writeTopLevelHelp(stderr)
+		return 0
 	}
 
 	switch args[0] {
@@ -42,6 +46,8 @@ func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		return a.runAction(ctx, args[1:], stdout, stderr)
 	case "room":
 		return a.runRoom(ctx, args[1:], stdout, stderr)
+	case "send-message":
+		return a.runSendMessage(ctx, args[1:], stdout, stderr)
 	case "task":
 		return a.runTask(ctx, args[1:], stdout, stderr)
 	case "run":
@@ -57,8 +63,12 @@ func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) 
 }
 
 func (a *App) runAction(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "submit" {
-		fmt.Fprintln(stderr, "usage: openshock action submit ...")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeActionHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+	if args[0] != "submit" {
+		writeActionHelp(stderr)
 		return 2
 	}
 
@@ -93,8 +103,12 @@ func (a *App) runAction(ctx context.Context, args []string, stdout, stderr io.Wr
 }
 
 func (a *App) runRoom(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "post" {
-		fmt.Fprintln(stderr, "usage: openshock room post ...")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeRoomHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+	if args[0] != "post" {
+		writeRoomHelp(stderr)
 		return 2
 	}
 
@@ -128,9 +142,64 @@ func (a *App) runRoom(ctx context.Context, args []string, stdout, stderr io.Writ
 	return a.submit(ctx, *baseURL, req, stdout, stderr)
 }
 
+func (a *App) runSendMessage(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeSendMessageHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+
+	fs := flag.NewFlagSet("send-message", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+
+	baseURL := fs.String("api-base-url", defaultAPIBaseURL(), "OpenShock backend base URL")
+	roomID := fs.String("room", "", "Room id")
+	body := fs.String("body", "", "Visible message body")
+	kind := fs.String("kind", "message", "Visible message kind: message or summary")
+	actorType := fs.String("actor-type", "agent", "Actor type")
+	actorID := fs.String("actor-id", "", "Actor id")
+	idempotencyKey := fs.String("idempotency-key", "", "Idempotency key")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	normalizedKind := strings.ToLower(strings.TrimSpace(*kind))
+	switch normalizedKind {
+	case "message", "summary":
+	default:
+		fmt.Fprintln(stderr, "send-message kind must be message or summary")
+		return 2
+	}
+
+	req, err := buildActionRequest(
+		*actorType,
+		*actorID,
+		"RoomMessage.post",
+		"room",
+		*roomID,
+		a.defaultIdempotencyKey(*idempotencyKey, "send-message", *roomID),
+		map[string]any{
+			"body": *body,
+			"kind": normalizedKind,
+		},
+	)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	return a.submit(ctx, *baseURL, req, stdout, stderr)
+}
+
 func (a *App) runTask(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: openshock task <create|claim|assign|status|mark-ready> ...")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeTaskHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+
+	switch args[0] {
+	case "create", "claim", "assign", "status", "mark-ready":
+	default:
+		writeTaskHelp(stderr)
 		return 2
 	}
 
@@ -296,8 +365,12 @@ func (a *App) runTask(ctx context.Context, args []string, stdout, stderr io.Writ
 }
 
 func (a *App) runRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "create" {
-		fmt.Fprintln(stderr, "usage: openshock run create ...")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeRunHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+	if args[0] != "create" {
+		writeRunHelp(stderr)
 		return 2
 	}
 
@@ -331,8 +404,12 @@ func (a *App) runRun(ctx context.Context, args []string, stdout, stderr io.Write
 }
 
 func (a *App) runGit(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: openshock git <request-merge|approve-merge> ...")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeGitHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+	if args[0] != "request-merge" && args[0] != "approve-merge" {
+		writeGitHelp(stderr)
 		return 2
 	}
 
@@ -400,8 +477,12 @@ func (a *App) runGit(ctx context.Context, args []string, stdout, stderr io.Write
 }
 
 func (a *App) runDelivery(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "request" {
-		fmt.Fprintln(stderr, "usage: openshock delivery request ...")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		writeDeliveryHelp(stderr)
+		return boolToExitCode(len(args) == 0, 2, 0)
+	}
+	if args[0] != "request" {
+		writeDeliveryHelp(stderr)
 		return 2
 	}
 
@@ -518,4 +599,69 @@ func defaultAPIBaseURL() string {
 
 var getenv = func(key string) string {
 	return os.Getenv(key)
+}
+
+func isHelpToken(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed == "-h" || trimmed == "--help" || trimmed == "help"
+}
+
+func boolToExitCode(condition bool, whenTrue, whenFalse int) int {
+	if condition {
+		return whenTrue
+	}
+	return whenFalse
+}
+
+func writeTopLevelHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock <action|room|send-message|task|run|git|delivery> ...")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "common commands:")
+	fmt.Fprintln(w, "  openshock action submit ...")
+	fmt.Fprintln(w, "  openshock room post ...")
+	fmt.Fprintln(w, "  openshock send-message ...")
+	fmt.Fprintln(w, "  openshock task create ...")
+	fmt.Fprintln(w, "  openshock task claim ...")
+	fmt.Fprintln(w, "  openshock task assign ...")
+	fmt.Fprintln(w, "  openshock task status set ...")
+	fmt.Fprintln(w, "  openshock task mark-ready ...")
+	fmt.Fprintln(w, "  openshock run create ...")
+	fmt.Fprintln(w, "  openshock git request-merge ...")
+	fmt.Fprintln(w, "  openshock git approve-merge ...")
+	fmt.Fprintln(w, "  openshock delivery request ...")
+}
+
+func writeActionHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock action submit ...")
+}
+
+func writeRoomHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock room post ...")
+}
+
+func writeSendMessageHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock send-message --room <room_id> --body \"<message>\" --actor-id <agent_id> [--kind message|summary]")
+}
+
+func writeTaskHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock task <create|claim|assign|status|mark-ready> ...")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "common commands:")
+	fmt.Fprintln(w, "  openshock task create ...")
+	fmt.Fprintln(w, "  openshock task claim ...")
+	fmt.Fprintln(w, "  openshock task assign ...")
+	fmt.Fprintln(w, "  openshock task status set ...")
+	fmt.Fprintln(w, "  openshock task mark-ready ...")
+}
+
+func writeRunHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock run create ...")
+}
+
+func writeGitHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock git <request-merge|approve-merge> ...")
+}
+
+func writeDeliveryHelp(w io.Writer) {
+	fmt.Fprintln(w, "usage: openshock delivery request ...")
 }

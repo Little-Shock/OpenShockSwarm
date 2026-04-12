@@ -25,7 +25,7 @@ func mustCreateGatewayTestAgent(t *testing.T, s *store.MemoryStore, agentID stri
 	if agentID == "agent_shell" {
 		name = "Shell_Runner"
 	}
-	if _, err := s.CreateAgent(agentID, name, "test fixture prompt"); err != nil {
+	if _, err := s.CreateAgentWithID(agentID, name, "test fixture prompt"); err != nil {
 		t.Fatalf("create test agent returned error: %v", err)
 	}
 }
@@ -130,8 +130,8 @@ func TestSubmitAddsAgentToRoom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit returned error: %v", err)
 	}
-	if resp.ResultCode != "room_agent_joined" {
-		t.Fatalf("expected room_agent_joined result code, got %q", resp.ResultCode)
+	if resp.ResultCode != "room_agent_already_joined" {
+		t.Fatalf("expected room_agent_already_joined result code, got %q", resp.ResultCode)
 	}
 
 	detail, err := s.RoomDetail("room_001")

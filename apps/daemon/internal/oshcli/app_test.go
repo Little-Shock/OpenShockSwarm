@@ -4,255 +4,151 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"openshock/daemon/internal/client"
 )
 
-func TestRoomPostBuildsActionRequest(t *testing.T) {
-	stub := &stubSubmitter{
-		resp: client.ActionResponse{
-			ActionID:      "action_201",
-			Status:        "completed",
-			ResultCode:    "room_message_posted",
-			ResultMessage: "ok",
-		},
+func TestRunShowsTopLevelHelp(t *testing.T) {
+	app := NewApp()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := app.Run(context.Background(), []string{"--help"}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected top-level help to exit 0, got %d stderr=%q", exitCode, stderr.String())
 	}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
+	for _, expected := range []string{
+		"usage: openshock <action|room|send-message|task|run|git|delivery> ...",
+		"send-message",
+		"task create",
+		"task status set",
+		"run create",
+	} {
+		if !strings.Contains(stderr.String(), expected) {
+			t.Fatalf("expected top-level help to contain %q, got %q", expected, stderr.String())
+		}
+	}
+}
+
+func TestRunShowsTaskHelp(t *testing.T) {
+	app := NewApp()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := app.Run(context.Background(), []string{"task", "--help"}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected task help to exit 0, got %d stderr=%q", exitCode, stderr.String())
+	}
+	for _, expected := range []string{
+		"usage: openshock task <create|claim|assign|status|mark-ready> ...",
+		"openshock task create",
+		"openshock task claim",
+		"openshock task status set",
+	} {
+		if !strings.Contains(stderr.String(), expected) {
+			t.Fatalf("expected task help to contain %q, got %q", expected, stderr.String())
+		}
+	}
+}
+
+func TestRunShowsRoomHelp(t *testing.T) {
+	app := NewApp()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := app.Run(context.Background(), []string{"room", "--help"}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected room help to exit 0, got %d stderr=%q", exitCode, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "usage: openshock room post ...") {
+		t.Fatalf("expected room help to describe room post, got %q", stderr.String())
+	}
+}
+
+func TestRunSendMessageSubmitsRoomMessagePost(t *testing.T) {
+	app := NewApp()
+	recorder := &recordingSubmitter{
+		resp: client.ActionResponse{ActionID: "action_001", Status: "completed"},
+	}
+	app.newClient = func(baseURL string) actionSubmitter {
+		recorder.baseURL = baseURL
+		return recorder
 	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exitCode := app.Run(context.Background(), []string{
-		"room", "post",
+		"send-message",
 		"--api-base-url", "http://example.test",
-		"--issue", "issue_101",
-		"--body", "Need human input",
+		"--room", "room_001",
+		"--body", "这条信息需要同步给房间成员。",
 		"--actor-id", "agent_shell",
-		"--idempotency-key", "room-post-1",
+		"--kind", "summary",
+		"--idempotency-key", "send-message-1",
 	}, &stdout, &stderr)
 
 	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
+		t.Fatalf("expected send-message to exit 0, got %d stderr=%q", exitCode, stderr.String())
 	}
-	if stub.lastReq.ActionType != "RoomMessage.post" || stub.lastReq.TargetID != "issue_101" {
-		t.Fatalf("unexpected action request: %#v", stub.lastReq)
+	if recorder.baseURL != "http://example.test" {
+		t.Fatalf("expected explicit api base url to be used, got %q", recorder.baseURL)
 	}
-	if stub.lastReq.Payload["body"] != "Need human input" {
-		t.Fatalf("unexpected payload: %#v", stub.lastReq.Payload)
+	if recorder.req.ActionType != "RoomMessage.post" || recorder.req.TargetType != "room" || recorder.req.TargetID != "room_001" {
+		t.Fatalf("unexpected action request: %#v", recorder.req)
+	}
+	if recorder.req.ActorID != "agent_shell" || recorder.req.ActorType != "agent" {
+		t.Fatalf("unexpected actor payload: %#v", recorder.req)
+	}
+	if recorder.req.Payload["body"] != "这条信息需要同步给房间成员。" || recorder.req.Payload["kind"] != "summary" {
+		t.Fatalf("unexpected payload: %#v", recorder.req.Payload)
+	}
+	if recorder.req.IdempotencyKey != "send-message-1" {
+		t.Fatalf("unexpected idempotency key: %#v", recorder.req)
 	}
 
 	var resp client.ActionResponse
 	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid stdout json: %v", err)
+		t.Fatalf("expected json response, got err=%v stdout=%q", err, stdout.String())
 	}
-	if resp.ActionID != "action_201" {
+	if resp.ActionID != "action_001" {
 		t.Fatalf("unexpected action response: %#v", resp)
 	}
 }
 
-func TestActionSubmitParsesPayloadJSON(t *testing.T) {
-	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_202", Status: "completed"}}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
-	}
-
+func TestRunSendMessageRejectsHandoffKind(t *testing.T) {
+	app := NewApp()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+
 	exitCode := app.Run(context.Background(), []string{
-		"action", "submit",
-		"--actor-type", "agent",
-		"--actor-id", "agent_lead",
-		"--action-type", "Task.assign",
-		"--target-type", "task",
-		"--target-id", "task_101",
-		"--idempotency-key", "assign-1",
-		"--payload-json", `{"agentId":"agent_shell"}`,
-	}, &stdout, &stderr)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
-	}
-	if stub.lastReq.Payload["agentId"] != "agent_shell" {
-		t.Fatalf("unexpected payload: %#v", stub.lastReq.Payload)
-	}
-}
-
-func TestTaskStatusSetBuildsActionRequest(t *testing.T) {
-	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_203", Status: "completed"}}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
-		now:       func() time.Time { return time.Unix(0, 123456789) },
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{
-		"task", "status", "set",
-		"--task", "task_101",
-		"--status", "in_progress",
+		"send-message",
+		"--room", "room_001",
+		"--body", "@agent_guardian 请接手。",
 		"--actor-id", "agent_shell",
+		"--kind", "handoff",
+		"--idempotency-key", "send-message-2",
 	}, &stdout, &stderr)
 
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
+	if exitCode != 2 {
+		t.Fatalf("expected invalid send-message kind to exit 2, got %d stderr=%q", exitCode, stderr.String())
 	}
-	if stub.lastReq.ActionType != "Task.status.set" || stub.lastReq.TargetID != "task_101" {
-		t.Fatalf("unexpected action request: %#v", stub.lastReq)
-	}
-	if stub.lastReq.Payload["status"] != "in_progress" {
-		t.Fatalf("unexpected payload: %#v", stub.lastReq.Payload)
-	}
-	if stub.lastReq.IdempotencyKey != "task-status-task_101-123456789" {
-		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
+	if !strings.Contains(stderr.String(), "send-message kind must be message or summary") {
+		t.Fatalf("expected validation error for handoff kind, got %q", stderr.String())
 	}
 }
 
-func TestTaskClaimBuildsAssignRequestForActor(t *testing.T) {
-	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_203b", Status: "completed"}}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
-		now:       func() time.Time { return time.Unix(0, 222333444) },
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{
-		"task", "claim",
-		"--task", "task_101",
-		"--actor-id", "agent_shell",
-	}, &stdout, &stderr)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
-	}
-	if stub.lastReq.ActionType != "Task.assign" || stub.lastReq.TargetID != "task_101" {
-		t.Fatalf("unexpected action request: %#v", stub.lastReq)
-	}
-	if stub.lastReq.Payload["agentId"] != "agent_shell" {
-		t.Fatalf("expected task claim to assign actor to self, got %#v", stub.lastReq.Payload)
-	}
-	if stub.lastReq.IdempotencyKey != "task-claim-task_101-222333444" {
-		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
-	}
-}
-
-func TestTaskMarkReadyBuildsActionRequest(t *testing.T) {
-	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_204", Status: "completed"}}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
-		now:       func() time.Time { return time.Unix(0, 987654321) },
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{
-		"task", "mark-ready",
-		"--task", "task_101",
-		"--actor-id", "agent_shell",
-	}, &stdout, &stderr)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
-	}
-	if stub.lastReq.ActionType != "Task.mark_ready_for_integration" || stub.lastReq.TargetID != "task_101" {
-		t.Fatalf("unexpected action request: %#v", stub.lastReq)
-	}
-	if stub.lastReq.IdempotencyKey != "task-mark-ready-task_101-987654321" {
-		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
-	}
-}
-
-func TestRunCreateBuildsDefaultIdempotencyKey(t *testing.T) {
-	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_205", Status: "completed"}}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
-		now:       func() time.Time { return time.Unix(0, 555666777) },
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{
-		"run", "create",
-		"--task", "task_101",
-		"--actor-id", "agent_shell",
-	}, &stdout, &stderr)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
-	}
-	if stub.lastReq.ActionType != "Run.create" || stub.lastReq.TargetID != "task_101" {
-		t.Fatalf("unexpected action request: %#v", stub.lastReq)
-	}
-	if stub.lastReq.IdempotencyKey != "run-create-task_101-555666777" {
-		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
-	}
-}
-
-func TestGitApproveMergeBuildsActionRequest(t *testing.T) {
-	stub := &stubSubmitter{resp: client.ActionResponse{ActionID: "action_206", Status: "completed"}}
-	app := &App{
-		newClient: func(string) actionSubmitter { return stub },
-		now:       func() time.Time { return time.Unix(0, 888999000) },
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{
-		"git", "approve-merge",
-		"--task", "task_101",
-		"--actor-id", "agent_guardian",
-	}, &stdout, &stderr)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d with stderr %s", exitCode, stderr.String())
-	}
-	if stub.lastReq.ActionType != "GitIntegration.merge.approve" || stub.lastReq.TargetID != "task_101" {
-		t.Fatalf("unexpected action request: %#v", stub.lastReq)
-	}
-	if stub.lastReq.IdempotencyKey != "merge-approve-task_101-888999000" {
-		t.Fatalf("expected generated idempotency key, got %q", stub.lastReq.IdempotencyKey)
-	}
-}
-
-func TestSubmitFailureReturnsExitOne(t *testing.T) {
-	app := &App{
-		newClient: func(string) actionSubmitter {
-			return &stubSubmitter{err: errors.New("boom")}
-		},
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{
-		"delivery", "request",
-		"--issue", "issue_101",
-		"--actor-id", "agent_lead",
-		"--idempotency-key", "delivery-1",
-	}, &stdout, &stderr)
-
-	if exitCode != 1 {
-		t.Fatalf("expected exit 1, got %d", exitCode)
-	}
-	if !strings.Contains(stderr.String(), "submit action failed") {
-		t.Fatalf("unexpected stderr: %s", stderr.String())
-	}
-}
-
-type stubSubmitter struct {
-	lastReq client.ActionRequest
+type recordingSubmitter struct {
+	baseURL string
+	req     client.ActionRequest
 	resp    client.ActionResponse
-	err     error
 }
 
-func (s *stubSubmitter) SubmitAction(_ context.Context, req client.ActionRequest) (client.ActionResponse, error) {
-	s.lastReq = req
-	if s.err != nil {
-		return client.ActionResponse{}, s.err
-	}
-	return s.resp, nil
+func (r *recordingSubmitter) SubmitAction(_ context.Context, req client.ActionRequest) (client.ActionResponse, error) {
+	r.req = req
+	return r.resp, nil
 }

@@ -24,7 +24,6 @@ import type {
   AgentTurn,
   AgentTurnOutputChunk,
   AgentTurnToolCall,
-  AgentWait,
   DeliveryPR,
   HandoffRecord,
   IntegrationBranch,
@@ -47,7 +46,6 @@ type RoomContextPanelProps = {
   turns: AgentTurn[];
   turnOutputChunks: AgentTurnOutputChunk[];
   turnToolCalls: AgentTurnToolCall[];
-  waits: AgentWait[];
   handoffs: HandoffRecord[];
   tasks: Task[];
   runs: Run[];
@@ -129,7 +127,6 @@ export function RoomContextPanel({
   turns,
   turnOutputChunks,
   turnToolCalls,
-  waits,
   handoffs,
   tasks,
   runs,
@@ -158,7 +155,6 @@ export function RoomContextPanel({
     turns.length,
     turnOutputChunks.length,
     turnToolCalls.length,
-    waits.length,
     handoffs.length,
   ].join(":");
   const joinedAgentIds = Array.from(
@@ -309,6 +305,7 @@ export function RoomContextPanel({
                   <AgentObservabilitySurface
                     agentId={roomDirectAgentId}
                     sessionToken={sessionToken}
+                    agents={agents}
                     refreshKey={observabilityRefreshKey}
                   />
                 </div>
@@ -480,7 +477,6 @@ export function RoomContextPanel({
               runtimes={runtimes}
               sessions={sessions}
               turns={turns}
-              waits={waits}
               handoffs={handoffs}
               messageCount={messageCount}
             />
@@ -488,6 +484,7 @@ export function RoomContextPanel({
         ) : null}
       </div>
       <AgentObservabilityDrawer
+        agents={agents}
         sessionToken={sessionToken}
         openAgentId={openAgentId}
         onOpenAgentIdChange={setOpenAgentId}

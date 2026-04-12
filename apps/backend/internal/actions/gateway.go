@@ -101,13 +101,13 @@ func (g *Gateway) Submit(req core.ActionRequest) (core.ActionResponse, error) {
 	case "RoomAgent.add":
 		agentID, _ := req.Payload["agentId"].(string)
 		if strings.TrimSpace(agentID) == "" {
-			return core.ActionResponse{}, fmt.Errorf("%w: agentId is required", ErrInvalidAction)
+			return core.ActionResponse{}, fmt.Errorf("%w: agent is required", ErrInvalidAction)
 		}
 		resp, err = g.store.AddAgentToRoom(req.TargetID, agentID, req.ActorID)
 	case "RoomAgent.remove":
 		agentID, _ := req.Payload["agentId"].(string)
 		if strings.TrimSpace(agentID) == "" {
-			return core.ActionResponse{}, fmt.Errorf("%w: agentId is required", ErrInvalidAction)
+			return core.ActionResponse{}, fmt.Errorf("%w: agent is required", ErrInvalidAction)
 		}
 		resp, err = g.store.RemoveAgentFromRoom(req.TargetID, agentID, req.ActorID)
 	case "Task.create":
@@ -121,7 +121,7 @@ func (g *Gateway) Submit(req core.ActionRequest) (core.ActionResponse, error) {
 	case "Task.assign":
 		agentID, _ := req.Payload["agentId"].(string)
 		if strings.TrimSpace(agentID) == "" {
-			return core.ActionResponse{}, fmt.Errorf("%w: agentId is required", ErrInvalidAction)
+			return core.ActionResponse{}, fmt.Errorf("%w: agent is required", ErrInvalidAction)
 		}
 		resp, err = g.store.AssignTask(req.TargetID, agentID)
 	case "Task.status.set":

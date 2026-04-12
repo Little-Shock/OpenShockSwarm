@@ -253,7 +253,11 @@ func TestDaemonOnceCompletesQueuedAgentTurn(t *testing.T) {
 	daemonDir := daemonModuleDir(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	fakeCodex := writeFakeCodexBinary(t)
+	fakeCodex := writeFakeCodexBinaryWithScript(t, "RESULT: no_response\nBODY:\n", `
+if ! openshock send-message --room room_001 --body "我已经理解目标，下一步会先整理简短计划。" --actor-id agent_shell >/dev/null; then
+  exit 1
+fi
+`)
 
 	cmd := exec.CommandContext(
 		ctx,
@@ -293,7 +297,7 @@ func TestDaemonOnceCompletesQueuedAgentTurn(t *testing.T) {
 
 	foundAgentReply := false
 	for _, message := range detail.Messages {
-		if message.ActorType == "agent" && message.ActorName == "agent_shell" {
+		if message.ActorType == "agent" && message.ActorName == "Shell_Runner" {
 			foundAgentReply = true
 		}
 	}
@@ -318,7 +322,7 @@ func TestDaemonAgentTurnCanDriveTaskAndMergeWorkflowViaOpenShockCLI(t *testing.T
 	daemonDir := daemonModuleDir(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	fakeCodex := writeFakeCodexBinaryWithScript(t, "KIND: message\nBODY:\n我已经把任务流转往前推进了。", `
+	fakeCodex := writeFakeCodexBinaryWithScript(t, "RESULT: done\nBODY:\n", `
 if [ -f CURRENT_TURN.md ]; then
   if ! openshock task create --issue issue_101 --title "Follow-up cleanup" --description "Coordinate the next integration-safe cleanup." --assignee-agent-id agent_guardian --actor-id agent_shell >/dev/null; then
     exit 1
@@ -422,7 +426,7 @@ func TestDaemonOnceCanCompleteQueuedAgentTurnWithoutPostingReply(t *testing.T) {
 	daemonDir := daemonModuleDir(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	fakeCodex := writeFakeCodexBinaryWithFinalMessage(t, "KIND: no_response\nBODY:\n")
+	fakeCodex := writeFakeCodexBinaryWithFinalMessage(t, "RESULT: no_response\nBODY:\n")
 
 	cmd := exec.CommandContext(
 		ctx,
@@ -458,6 +462,60 @@ func TestDaemonOnceCanCompleteQueuedAgentTurnWithoutPostingReply(t *testing.T) {
 	}
 }
 
+func TestDaemonOnceDoesNotPostVisibleReplyFromFinalResultBody(t *testing.T) {
+	backingStore := store.NewMemoryStoreFromSnapshot(scenario.Snapshot())
+	if _, err := backingStore.PostRoomMessage("room_001", "member", "Sarah", "message", "@agent_shell FYI，先看看这条。"); err != nil {
+		t.Fatalf("post room message returned error: %v", err)
+	}
+
+	before, err := backingStore.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail before daemon returned error: %v", err)
+	}
+	beforeMessageCount := len(before.Messages)
+
+	server := httptest.NewServer(New(backingStore).Handler())
+	defer server.Close()
+
+	daemonDir := daemonModuleDir(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fakeCodex := writeFakeCodexBinaryWithFinalMessage(t, "RESULT: done\nBODY:\n我先看一下。")
+
+	cmd := exec.CommandContext(
+		ctx,
+		"go",
+		"run",
+		"./cmd/daemon",
+		"--once",
+		"--api-base-url",
+		server.URL,
+		"--name",
+		"E2E Agent Turn Result Body Ignored Daemon",
+	)
+	cmd.Dir = daemonDir
+	cmd.Env = append(os.Environ(), "OPENSHOCK_CODEX_BIN="+fakeCodex)
+
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("daemon timed out: %s", string(output))
+	}
+	if err != nil {
+		t.Fatalf("daemon command failed: %v\n%s", err, string(output))
+	}
+
+	detail, err := backingStore.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	if len(detail.AgentTurns) != 1 || detail.AgentTurns[0].Status != "completed" {
+		t.Fatalf("expected completed agent turn, got %#v", detail.AgentTurns)
+	}
+	if len(detail.Messages) != beforeMessageCount {
+		t.Fatalf("expected final result body to stay invisible, got before=%d after=%d %#v", beforeMessageCount, len(detail.Messages), detail.Messages)
+	}
+}
+
 func TestDaemonAgentTurnReusesPersistentWorkspace(t *testing.T) {
 	backingStore := store.NewMemoryStoreFromSnapshot(scenario.Snapshot())
 	if _, err := backingStore.PostRoomMessage("room_001", "member", "Sarah", "message", "@agent_shell 先看一下这个问题。"); err != nil {
@@ -468,8 +526,8 @@ func TestDaemonAgentTurnReusesPersistentWorkspace(t *testing.T) {
 
 	workspaceRoot := t.TempDir()
 	daemonDir := daemonModuleDir(t)
-	fakeCodex := writeFakeCodexBinaryWithScript(t, "KIND: message\nBODY:\n我先看一下。", `
-printf '%s\n' "memory touched" >> MEMORY.md
+	fakeCodex := writeFakeCodexBinaryWithScript(t, "RESULT: done\nBODY:\n", `
+printf '%s\n' "memory touched" >> ../../MEMORY.md
 `)
 
 	runOnce := func(name string) []byte {
@@ -512,8 +570,9 @@ printf '%s\n' "memory touched" >> MEMORY.md
 	if len(firstDetail.AgentSessions) != 1 {
 		t.Fatalf("expected one agent session after first run, got %#v", firstDetail.AgentSessions)
 	}
-	workspaceDir := filepath.Join(workspaceRoot, firstDetail.AgentSessions[0].ProviderThreadID)
-	if _, err := os.Stat(filepath.Join(workspaceDir, "MEMORY.md")); err != nil {
+	workspaceDir := filepath.Join(workspaceRoot, "agents", firstDetail.AgentSessions[0].AgentID, "rooms", firstDetail.AgentSessions[0].RoomID)
+	memoryPath := filepath.Join(workspaceRoot, "agents", firstDetail.AgentSessions[0].AgentID, "MEMORY.md")
+	if _, err := os.Stat(memoryPath); err != nil {
 		t.Fatalf("expected MEMORY.md to exist in workspace: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(workspaceDir, "notes", "work-log.md")); err != nil {
@@ -522,8 +581,8 @@ printf '%s\n' "memory touched" >> MEMORY.md
 	if _, err := os.Stat(filepath.Join(workspaceDir, "notes", "room-context.md")); err != nil {
 		t.Fatalf("expected room context note to exist in workspace: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, "turns", "001-turn_101.md")); err != nil {
-		t.Fatalf("expected first turn snapshot to exist: %v", err)
+	if _, err := os.Stat(filepath.Join(workspaceDir, "turns")); !os.IsNotExist(err) {
+		t.Fatalf("expected turns directory to be absent, got err=%v", err)
 	}
 
 	if _, err := backingStore.PostRoomMessage("room_001", "member", "Sarah", "message", "@agent_shell 再继续往下看。"); err != nil {
@@ -538,11 +597,11 @@ printf '%s\n' "memory touched" >> MEMORY.md
 	if len(secondDetail.AgentSessions) != 1 || secondDetail.AgentSessions[0].ProviderThreadID != firstDetail.AgentSessions[0].ProviderThreadID {
 		t.Fatalf("expected provider thread reuse across turns, got %#v %#v", firstDetail.AgentSessions, secondDetail.AgentSessions)
 	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, "turns", "002-turn_102.md")); err != nil {
-		t.Fatalf("expected second turn snapshot to exist: %v", err)
+	if _, err := os.Stat(filepath.Join(workspaceDir, "turns")); !os.IsNotExist(err) {
+		t.Fatalf("expected turns directory to remain absent, got err=%v", err)
 	}
 
-	memoryBytes, err := os.ReadFile(filepath.Join(workspaceDir, "MEMORY.md"))
+	memoryBytes, err := os.ReadFile(memoryPath)
 	if err != nil {
 		t.Fatalf("failed to read workspace memory: %v", err)
 	}

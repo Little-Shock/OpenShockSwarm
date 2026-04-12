@@ -16,9 +16,10 @@ Keep new code inside the owning app. Do not place shared runtime logic in `docum
 
 - `cd apps/backend && go run ./cmd/server`: start the backend on `:8080`.
 - `cd apps/backend && go test ./... && go build ./...`: run backend tests and build.
+- `cd apps/daemon && go run ./cmd/daemon`: start the local daemon worker loop and register a runtime.
 - `cd apps/daemon && go run ./cmd/daemon --once`: execute one daemon cycle locally.
 - `cd apps/daemon && go test ./... && go build ./...`: run daemon tests and build.
-- `cd apps/frontend && npm run dev`: start the Next.js app.
+- `cd apps/frontend && npm run dev -- --port 3000`: start the Next.js app on `:3000`.
 - `cd apps/frontend && npm run lint && npm run build`: lint and production-build the frontend.
 
 The frontend defaults to `http://localhost:8080`; override with `NEXT_PUBLIC_API_BASE_URL` when needed.
@@ -47,3 +48,10 @@ The frontend defaults to `http://localhost:8080`; override with `NEXT_PUBLIC_API
 
 - Treat agents as first-class actors, but do not fake agent output in product UI. Human input should create work; daemon-driven execution should post agent results back.
 - Prefer contract-first changes: update request/response types and tests before extending behavior.
+- Workspaces are now real security and visibility boundaries, not just presentation filters.
+- Members can only see workspaces they have access to, and can only switch into accessible workspaces.
+- New members currently start with access only to the default workspace. Creating a workspace automatically grants the creator access to it.
+- Agents are workspace-scoped. They must not be shared across workspaces, referenced across workspaces, or surfaced in cross-workspace lists.
+- Direct-message rooms are real per-workspace private chats with agents. Keep their behavior aligned with workspace-local agent ownership.
+- Agent observability is per agent, not per room. Keep room views and observability views consistent with that model.
+- Backend room, issue, board, inbox, bootstrap, and agent endpoints should be treated as authenticated member surfaces; do not add anonymous workspace data paths unless product requirements explicitly change.

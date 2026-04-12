@@ -92,7 +92,7 @@ export function RoomAgentAddDialog({
         open={open}
         onClose={closeDialog}
         title="Add Agent To Room"
-        description="Join a workspace agent to this room so it becomes part of the room context before it is explicitly mentioned."
+        description="Join a workspace agent to this room so it becomes part of the room context before it is directly mentioned by name."
       >
         <div className="space-y-3">
           <select
@@ -103,7 +103,7 @@ export function RoomAgentAddDialog({
             {availableAgents.length > 0 ? (
               availableAgents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
-                  {agent.name} · {agent.id}
+                  {agent.name}
                 </option>
               ))
             ) : (

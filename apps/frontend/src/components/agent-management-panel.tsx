@@ -15,20 +15,17 @@ type AgentManagementPanelProps = {
 };
 
 type AgentFormState = {
-  id: string;
   name: string;
   prompt: string;
 };
 
 const EMPTY_FORM: AgentFormState = {
-  id: "",
   name: "",
   prompt: "",
 };
 
 function toFormState(agent: Agent): AgentFormState {
   return {
-    id: agent.id,
     name: agent.name,
     prompt: agent.prompt,
   };
@@ -36,37 +33,27 @@ function toFormState(agent: Agent): AgentFormState {
 
 function AgentFormFields({
   form,
+  isEditing,
   onChange,
-  disableID,
 }: {
   form: AgentFormState;
+  isEditing: boolean;
   onChange: (field: keyof AgentFormState, value: string) => void;
-  disableID: boolean;
 }) {
   return (
     <div className="grid gap-3">
       <label className="grid gap-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/48">
-          Agent ID
-        </span>
-        <input
-          value={form.id}
-          disabled={disableID}
-          onChange={(event) => onChange("id", event.target.value)}
-          placeholder="agent_support"
-          className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[var(--accent-blue)] disabled:bg-[var(--surface-muted)] disabled:text-black/45"
-        />
-      </label>
-
-      <label className="grid gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/48">
-          Display Name
+          Agent Name
         </span>
         <input
           value={form.name}
           onChange={(event) => onChange("name", event.target.value)}
-          placeholder="Support Agent"
-          className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[var(--accent-blue)]"
+          placeholder="research_partner"
+          disabled={isEditing}
+          autoCapitalize="off"
+          spellCheck={false}
+          className="rounded-[12px] border border-[var(--border)] bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[var(--accent-blue)] disabled:bg-[var(--surface-muted)] disabled:text-black/45"
         />
       </label>
 
@@ -144,7 +131,6 @@ export function AgentManagementPanel({ agents }: AgentManagementPanelProps) {
 
   function handleSubmit() {
     const payload = {
-      id: form.id.trim(),
       name: form.name.trim(),
       prompt: form.prompt.trim(),
     };
@@ -169,7 +155,7 @@ export function AgentManagementPanel({ agents }: AgentManagementPanelProps) {
   }
 
   function handleDelete(agent: Agent) {
-    const confirmed = window.confirm(`确认删除 ${agent.name}（${agent.id}）吗？`);
+    const confirmed = window.confirm(`确认删除 ${agent.name} 吗？`);
     if (!confirmed) {
       return;
     }
@@ -224,9 +210,6 @@ export function AgentManagementPanel({ agents }: AgentManagementPanelProps) {
                   <div className="min-w-0">
                     <div className="truncate text-[13px] font-semibold text-black/84">
                       {agent.name}
-                    </div>
-                    <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-black/45">
-                      {agent.id}
                     </div>
                   </div>
                   <div className="min-w-0">
@@ -284,9 +267,6 @@ export function AgentManagementPanel({ agents }: AgentManagementPanelProps) {
                     <div className="truncate text-[13px] font-semibold text-black/84">
                       {agent.name}
                     </div>
-                    <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-black/45">
-                      {agent.id}
-                    </div>
                   </div>
                 </div>
                 {agent.prompt ? (
@@ -329,13 +309,14 @@ export function AgentManagementPanel({ agents }: AgentManagementPanelProps) {
         <div className="space-y-3">
           <AgentFormFields
             form={form}
+            isEditing={editingAgent !== null}
             onChange={updateForm}
-            disableID={Boolean(editingAgent)}
           />
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] leading-5 text-black/50">
-              Agent ID 用于 <code>@agent_id</code> 这类直接引用。Agent Prompt 会注入到运
-              行时指令中，作为这个 agent 的核心系统提示。
+              Agent 名称会用于页面展示，以及房间里像 <code>@agent_name</code> 这样的直接提及。
+              名称创建后不可修改，且只能使用字母、数字和下划线。
+              Agent Prompt 会注入到运行时指令中，作为这个 agent 的核心系统提示。
             </div>
             <div className="flex items-center gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={closeModal}>
@@ -347,7 +328,6 @@ export function AgentManagementPanel({ agents }: AgentManagementPanelProps) {
                 size="sm"
                 disabled={
                   isPending ||
-                  form.id.trim().length === 0 ||
                   form.name.trim().length === 0 ||
                   form.prompt.trim().length === 0
                 }

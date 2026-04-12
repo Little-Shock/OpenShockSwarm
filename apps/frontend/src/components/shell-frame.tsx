@@ -1,7 +1,11 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MobileDrawer } from "@/components/mobile-drawer";
 import { RoomCreateDialog } from "@/components/room-create-dialog";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { ROOM_READ_EVENT, type RoomReadEventDetail } from "@/lib/room-read-events";
 import type { RoomSummary } from "@/lib/types";
 import { Eyebrow } from "@/components/ui/eyebrow";
 
@@ -161,7 +165,7 @@ function SidebarContent({
                   {room.title}
                 </div>
                 <div className="mt-1 truncate text-[11px] uppercase tracking-[0.12em] text-black/45">
-                  {room.directAgentId ?? room.id}
+                  private chat
                 </div>
               </Link>
             ))}
@@ -223,6 +227,37 @@ export function ShellFrame({
   const hasRightRail = Boolean(rightRail);
   const resolvedRightRailWidthClass = rightRailWidthClass ?? "md:grid-cols-[minmax(0,1fr)_280px]";
   const resolvedFooterPanel = footerPanel !== undefined ? footerPanel : null;
+  const [visibleRooms, setVisibleRooms] = useState(rooms);
+  const [visibleDirectRooms, setVisibleDirectRooms] = useState(directRooms);
+
+  useEffect(() => {
+    setVisibleRooms(rooms);
+  }, [rooms]);
+
+  useEffect(() => {
+    setVisibleDirectRooms(directRooms);
+  }, [directRooms]);
+
+  useEffect(() => {
+    const handleRoomRead = (event: Event) => {
+      const detail = (event as CustomEvent<RoomReadEventDetail>).detail;
+      const roomId = detail?.roomId?.trim();
+      if (!roomId) {
+        return;
+      }
+
+      const clearUnread = (room: RoomSummary) =>
+        room.id === roomId && room.unreadCount > 0 ? { ...room, unreadCount: 0 } : room;
+
+      setVisibleRooms((current) => current.map(clearUnread));
+      setVisibleDirectRooms((current) => current.map(clearUnread));
+    };
+
+    window.addEventListener(ROOM_READ_EVENT, handleRoomRead as EventListener);
+    return () => {
+      window.removeEventListener(ROOM_READ_EVENT, handleRoomRead as EventListener);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[var(--surface)] md:h-screen md:overflow-hidden">
@@ -241,8 +276,8 @@ export function ShellFrame({
               <SidebarContent
                 workspaceId={workspaceId}
                 workspaceName={workspaceName}
-                rooms={rooms}
-                directRooms={directRooms}
+                rooms={visibleRooms}
+                directRooms={visibleDirectRooms}
                 activeRoute={activeRoute}
                 activeRoomId={activeRoomId}
                 sidebarPanel={sidebarPanel}
@@ -296,14 +331,14 @@ export function ShellFrame({
                 </div>
               </div>
             )}
-            <SidebarContent
-              workspaceId={workspaceId}
-              workspaceName={workspaceName}
-              rooms={rooms}
-              directRooms={directRooms}
-              activeRoute={activeRoute}
-              activeRoomId={activeRoomId}
-              sidebarPanel={sidebarPanel}
+              <SidebarContent
+                workspaceId={workspaceId}
+                workspaceName={workspaceName}
+                rooms={visibleRooms}
+                directRooms={visibleDirectRooms}
+                activeRoute={activeRoute}
+                activeRoomId={activeRoomId}
+                sidebarPanel={sidebarPanel}
               footerPanel={resolvedFooterPanel}
             />
           </div>

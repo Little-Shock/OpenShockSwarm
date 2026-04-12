@@ -409,6 +409,7 @@ func getIssue(t *testing.T, client *http.Client, baseURL, issueID string) core.I
 	if err != nil {
 		t.Fatalf("failed to build issue request: %v", err)
 	}
+	req.Header.Set(sessionHeaderName, ensureMemberSessionToken(t, client, baseURL, "Sarah"))
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("issue request failed: %v", err)
@@ -432,6 +433,7 @@ func getRoom(t *testing.T, client *http.Client, baseURL, roomID string) core.Roo
 	if err != nil {
 		t.Fatalf("failed to build room request: %v", err)
 	}
+	req.Header.Set(sessionHeaderName, ensureMemberSessionToken(t, client, baseURL, "Sarah"))
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("room request failed: %v", err)
@@ -455,6 +457,7 @@ func getInbox(t *testing.T, client *http.Client, baseURL string) core.InboxRespo
 	if err != nil {
 		t.Fatalf("failed to build inbox request: %v", err)
 	}
+	req.Header.Set(sessionHeaderName, ensureMemberSessionToken(t, client, baseURL, "Sarah"))
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("inbox request failed: %v", err)

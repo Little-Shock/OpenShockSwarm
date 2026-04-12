@@ -12,24 +12,28 @@ func Snapshot() storestate.MemoryStoreSnapshot {
 
 	agents := []core.Agent{
 		{
-			ID:     "agent_lead",
-			Name:   "Lead_Architect",
-			Prompt: "全局规划者，负责先厘清目标、约束、依赖和阶段性里程碑，再把工作切给合适的 agent，偏好先建模再行动。",
+			WorkspaceID: "ws_01",
+			ID:          "agent_lead",
+			Name:        "Lead_Architect",
+			Prompt:      "全局规划者，负责先厘清目标、约束、依赖和阶段性里程碑，再把工作切给合适的 agent，偏好先建模再行动。",
 		},
 		{
-			ID:     "agent_systems",
-			Name:   "Systems-Agent-01",
-			Prompt: "系统侦探，优先做证据驱动的排查，喜欢收集上下文、复现路径和指标信号，再给出系统层面的定位和修复建议。",
+			WorkspaceID: "ws_01",
+			ID:          "agent_systems",
+			Name:        "Systems_Agent_01",
+			Prompt:      "系统侦探，优先做证据驱动的排查，喜欢收集上下文、复现路径和指标信号，再给出系统层面的定位和修复建议。",
 		},
 		{
-			ID:     "agent_guardian",
-			Name:   "Guardian_Bot",
-			Prompt: "风险守门人，在涉及高风险改动、审批边界或跨模块影响时会更谨慎，偏好从失败场景和回滚成本来审视方案。",
+			WorkspaceID: "ws_01",
+			ID:          "agent_guardian",
+			Name:        "Guardian_Bot",
+			Prompt:      "风险守门人，在涉及高风险改动、审批边界或跨模块影响时会更谨慎，偏好从失败场景和回滚成本来审视方案。",
 		},
 		{
-			ID:     "agent_shell",
-			Name:   "Shell_Runner",
-			Prompt: "执行型工程师，适合承担具体实现和命令执行工作，习惯边做边验证，重视把抽象计划转换成可交付的代码和产物。",
+			WorkspaceID: "ws_01",
+			ID:          "agent_shell",
+			Name:        "Shell_Runner",
+			Prompt:      "执行型工程师，适合承担具体实现和命令执行工作，习惯边做边验证，重视把抽象计划转换成可交付的代码和产物。",
 		},
 	}
 
@@ -40,7 +44,7 @@ func Snapshot() storestate.MemoryStoreSnapshot {
 		{WorkspaceID: "ws_01", ID: "room_102", IssueID: "issue_102", Kind: "issue", Title: "Task Board Refresh", UnreadCount: 1},
 		{WorkspaceID: "ws_01", ID: "room_103", IssueID: "issue_103", Kind: "issue", Title: "Latency Audit", UnreadCount: 0},
 		{WorkspaceID: "ws_01", ID: "room_104", DirectAgentID: "agent_lead", Kind: "direct_message", Title: "Lead_Architect", UnreadCount: 0},
-		{WorkspaceID: "ws_01", ID: "room_105", DirectAgentID: "agent_systems", Kind: "direct_message", Title: "Systems-Agent-01", UnreadCount: 0},
+		{WorkspaceID: "ws_01", ID: "room_105", DirectAgentID: "agent_systems", Kind: "direct_message", Title: "Systems_Agent_01", UnreadCount: 0},
 		{WorkspaceID: "ws_01", ID: "room_106", DirectAgentID: "agent_guardian", Kind: "direct_message", Title: "Guardian_Bot", UnreadCount: 0},
 		{WorkspaceID: "ws_01", ID: "room_107", DirectAgentID: "agent_shell", Kind: "direct_message", Title: "Shell_Runner", UnreadCount: 0},
 	}
@@ -125,7 +129,7 @@ func Snapshot() storestate.MemoryStoreSnapshot {
 				{
 					ID:        "msg_002",
 					ActorType: "agent",
-					ActorName: "Systems-Agent-01",
+					ActorName: "Systems_Agent_01",
 					Kind:      "log",
 					Body:      "Diagnostic initiated. Captured a strong reference chain from observer cache to retired event frames.",
 					CreatedAt: "2026-04-05T08:03:00Z",
@@ -150,7 +154,6 @@ func Snapshot() storestate.MemoryStoreSnapshot {
 		AgentTurns:            []core.AgentTurn{},
 		AgentTurnOutputChunks: []core.AgentTurnOutputChunk{},
 		AgentTurnToolCalls:    []core.AgentTurnToolCall{},
-		AgentWaits:            []core.AgentWait{},
 		HandoffRecords:        []core.HandoffRecord{},
 		Tasks: []core.Task{
 			{
@@ -321,7 +324,6 @@ func Snapshot() storestate.MemoryStoreSnapshot {
 		NextAgentTurnID:         100,
 		NextAgentTurnOutputID:   100,
 		NextAgentTurnToolCallID: 100,
-		NextAgentWaitID:         100,
 		NextHandoffID:           100,
 		NextAgentID:             len(agents),
 		NextWorkspaceRepoID:     100,

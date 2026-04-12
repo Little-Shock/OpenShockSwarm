@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAgentDetail } from "@/lib/api";
 import type {
+  Agent,
   AgentDetailResponse,
   AgentTurn,
   RoomSummary,
@@ -12,45 +13,9 @@ import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { LocalTime } from "@/components/ui/local-time";
 import { cn } from "@/lib/cn";
-
-type AgentFeedItem =
-  | {
-      id: string;
-      kind: "turn";
-      turnId: string;
-      roomId: string;
-      createdAt: string;
-      sequence: number;
-      turnSequence: number;
-      intentType: string;
-      wakeupMode?: string;
-      triggerActorName?: string;
-      triggerBody?: string;
-      hasTriggerMessage: boolean;
-    }
-  | {
-      id: string;
-      kind: "output";
-      turnId: string;
-      roomId: string;
-      createdAt: string;
-      sequence: number;
-      turnSequence: number;
-      stream: string;
-      content: string;
-    }
-  | {
-      id: string;
-      kind: "tool";
-      turnId: string;
-      roomId: string;
-      createdAt: string;
-      sequence: number;
-      turnSequence: number;
-      toolName: string;
-      arguments?: string;
-      status: string;
-    };
+import { restoreVisibleLineBreaks } from "@/lib/message-text";
+import { useAutoScrollBottom } from "@/lib/use-auto-scroll-bottom";
+import { collapseFeedItems, type AgentFeedItem } from "@/lib/agent-feed";
 
 function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ");
@@ -65,7 +30,6 @@ function sessionBadgeTone(status: string): BadgeTone {
     case "resolved":
     case "accepted":
       return "green";
-    case "waiting_reply":
     case "handoff_requested":
     case "blocked":
       return "orange";
@@ -116,7 +80,7 @@ function turnSummaryLabel(item: Extract<AgentFeedItem, { kind: "turn" }>) {
 }
 
 function summarizeTriggerBody(body: string) {
-  const compact = body.replace(/\s+/g, " ").trim();
+  const compact = restoreVisibleLineBreaks(body).replace(/\s+/g, " ").trim();
   if (compact.length <= 180) {
     return compact;
   }
@@ -124,53 +88,27 @@ function summarizeTriggerBody(body: string) {
   return `${compact.slice(0, 177)}...`;
 }
 
-function mergeOutputContent(stream: string, current: string, next: string) {
-  if (stream === "session") {
-    return `${current}${next}`;
-  }
-  if (!current) {
-    return next;
-  }
-  if (!next) {
-    return current;
-  }
-  if (current.endsWith("\n") || next.startsWith("\n")) {
-    return `${current}${next}`;
-  }
-  return `${current}\n${next}`;
-}
-
-function collapseFeedItems(items: AgentFeedItem[]) {
-  const collapsed: AgentFeedItem[] = [];
-
-  for (const item of items) {
-    const previous = collapsed[collapsed.length - 1];
-    if (
-      previous &&
-      previous.kind === "output" &&
-      item.kind === "output" &&
-      previous.turnId === item.turnId &&
-      previous.stream === item.stream
-    ) {
-      previous.content = mergeOutputContent(previous.stream, previous.content, item.content);
-      previous.createdAt = item.createdAt;
-      previous.sequence = item.sequence;
-      continue;
-    }
-    collapsed.push({ ...item });
+function resolveAgentDisplayName(actorName: string, agents: Agent[]) {
+  const normalized = actorName.trim();
+  if (!normalized) {
+    return actorName;
   }
 
-  return collapsed;
+  return (
+    agents.find((agent) => agent.id === normalized || agent.name === normalized)?.name ?? actorName
+  );
 }
 
 type AgentObservabilityPanelProps = {
   detail: AgentDetailResponse;
+  agents: Agent[];
   showCloseButton?: boolean;
   onClose?: () => void;
 };
 
 export function AgentObservabilityPanel({
   detail,
+  agents,
   showCloseButton = false,
   onClose,
 }: AgentObservabilityPanelProps) {
@@ -182,7 +120,6 @@ export function AgentObservabilityPanel({
     agentTurns,
     agentTurnOutputChunks,
     agentTurnToolCalls,
-    agentWaits,
     handoffRecords,
   } = detail;
   const selectedSessions = [...agentSessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -203,11 +140,6 @@ export function AgentObservabilityPanel({
     }
   }
 
-  const openWaits = new Map(
-    agentWaits
-      .filter((wait) => wait.status === "waiting_reply")
-      .map((wait) => [wait.sessionId, wait]),
-  );
   const queuedHandoffs = new Map(
     handoffRecords
       .filter((handoff) => handoff.status !== "accepted")
@@ -227,7 +159,9 @@ export function AgentObservabilityPanel({
         turnSequence: turn.sequence,
         intentType: turn.intentType,
         wakeupMode: turn.wakeupMode,
-        triggerActorName: triggerMessage?.actorName,
+        triggerActorName: triggerMessage?.actorName
+          ? resolveAgentDisplayName(triggerMessage.actorName, agents)
+          : undefined,
         triggerBody: triggerMessage?.body ? summarizeTriggerBody(triggerMessage.body) : undefined,
         hasTriggerMessage: Boolean(triggerMessage),
       };
@@ -280,6 +214,21 @@ export function AgentObservabilityPanel({
     return a.id.localeCompare(b.id);
   });
   const feedItems = collapseFeedItems(rawFeedItems);
+  const lastFeedItem = feedItems[feedItems.length - 1];
+  const feedChangeKey = !lastFeedItem
+    ? "empty"
+    : [
+        feedItems.length,
+        lastFeedItem.id,
+        lastFeedItem.createdAt,
+        lastFeedItem.kind,
+        lastFeedItem.kind === "output"
+          ? lastFeedItem.content.length
+          : lastFeedItem.kind === "tool"
+          ? lastFeedItem.status
+          : lastFeedItem.turnSequence,
+      ].join(":");
+  const feedContainerRef = useAutoScrollBottom<HTMLDivElement>(feedChangeKey);
 
   return (
     <div className="flex h-full flex-col">
@@ -288,7 +237,6 @@ export function AgentObservabilityPanel({
           <div>
             <Eyebrow className="text-black/50">Agent Observability</Eyebrow>
             <div className="display-font mt-1 text-xl font-black">{agent.name}</div>
-            <div className="mt-1 text-[13px] text-black/60">{agent.id}</div>
             {agent.prompt ? (
               <div className="mt-2 max-w-2xl">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/42">
@@ -354,7 +302,6 @@ export function AgentObservabilityPanel({
             <div className="space-y-3">
               {selectedSessions.map((session) => {
                 const turn = latestTurns.get(session.id);
-                const wait = openWaits.get(session.id);
                 const handoff = queuedHandoffs.get(session.id);
                 const room = roomById.get(session.roomId);
 
@@ -393,15 +340,15 @@ export function AgentObservabilityPanel({
                         Current intent: {turn ? formatStatusLabel(turn.intentType) : "no turn yet"}
                       </div>
                       <div>
-                        Last update: <LocalTime value={session.updatedAt} withSeconds />
+                        Wakeup mode: {turn?.wakeupMode ? formatStatusLabel(turn.wakeupMode) : "direct"}
                       </div>
                       <div>
-                        Waiting state: {wait ? `waiting on ${wait.blockingMessageId}` : "not waiting"}
+                        Last update: <LocalTime value={session.updatedAt} withSeconds />
                       </div>
                       <div>
                         App thread: {session.appServerThreadId ?? "not linked"}
                       </div>
-                      <div>Handoff: {handoff ? `queued to ${handoff.toAgentId}` : "none"}</div>
+                      <div>Handoff: {handoff ? "queued" : "none"}</div>
                     </div>
                   </div>
                 );
@@ -420,7 +367,10 @@ export function AgentObservabilityPanel({
               No live session feed for this agent yet.
             </p>
           ) : (
-            <div className="max-h-[640px] space-y-1.5 overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)] p-2">
+            <div
+              ref={feedContainerRef}
+              className="max-h-[640px] space-y-1.5 overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)] p-2"
+            >
               {feedItems.map((item) => {
                 const room = roomById.get(item.roomId);
 
@@ -513,6 +463,7 @@ export function AgentObservabilityPanel({
 type AgentObservabilitySurfaceProps = {
   agentId: string;
   sessionToken: string;
+  agents: Agent[];
   refreshKey?: string;
   showCloseButton?: boolean;
   onClose?: () => void;
@@ -521,6 +472,7 @@ type AgentObservabilitySurfaceProps = {
 export function AgentObservabilitySurface({
   agentId,
   sessionToken,
+  agents,
   refreshKey,
   showCloseButton = false,
   onClose,
@@ -575,6 +527,7 @@ export function AgentObservabilitySurface({
     return (
       <AgentObservabilityPanel
         detail={visibleDetail}
+        agents={agents}
         showCloseButton={showCloseButton}
         onClose={onClose}
       />
@@ -587,7 +540,7 @@ export function AgentObservabilitySurface({
         <div className="flex items-start justify-between gap-4">
           <div>
             <Eyebrow className="text-black/50">Agent Observability</Eyebrow>
-            <div className="display-font mt-1 text-xl font-black">{agentId}</div>
+            <div className="display-font mt-1 text-xl font-black">Loading agent…</div>
           </div>
           {showCloseButton ? (
             <button

@@ -73,7 +73,6 @@ export type AgentDetailResponse = {
   agentTurns: AgentTurn[];
   agentTurnOutputChunks: AgentTurnOutputChunk[];
   agentTurnToolCalls: AgentTurnToolCall[];
-  agentWaits: AgentWait[];
   handoffRecords: HandoffRecord[];
 };
 
@@ -154,17 +153,6 @@ export type AgentTurnToolCall = {
   arguments?: string;
   status: string;
   createdAt: string;
-};
-
-export type AgentWait = {
-  id: string;
-  sessionId: string;
-  roomId: string;
-  agentId: string;
-  blockingMessageId: string;
-  status: string;
-  createdAt: string;
-  resolvedAt?: string;
 };
 
 export type HandoffRecord = {
@@ -285,7 +273,6 @@ export type RoomDetailResponse = {
   agentTurns: AgentTurn[];
   agentTurnOutputChunks: AgentTurnOutputChunk[];
   agentTurnToolCalls: AgentTurnToolCall[];
-  agentWaits: AgentWait[];
   handoffRecords: HandoffRecord[];
   issue?: Issue;
   tasks: Task[];
@@ -295,6 +282,10 @@ export type RoomDetailResponse = {
   mergeAttempts: MergeAttempt[];
   integrationBranch?: IntegrationBranch;
   deliveryPr: DeliveryPR | null;
+};
+
+export type RoomReadResponse = {
+  room: RoomSummary;
 };
 
 export type IssueDetailResponse = {
@@ -307,7 +298,6 @@ export type IssueDetailResponse = {
   agentTurns: AgentTurn[];
   agentTurnOutputChunks: AgentTurnOutputChunk[];
   agentTurnToolCalls: AgentTurnToolCall[];
-  agentWaits: AgentWait[];
   handoffRecords: HandoffRecord[];
   tasks: Task[];
   runs: Run[];

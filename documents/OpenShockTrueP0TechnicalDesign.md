@@ -298,7 +298,6 @@ True P0 后端采用一个 Go 代码库内的模块化单体。
 - `ack`
 - `plan`
 - `progress_update`
-- `clarification_request`
 - `blocked`
 - `completion_summary`
 - `handoff`
@@ -332,7 +331,6 @@ True P0 后端采用一个 Go 代码库内的模块化单体。
 
 - `agent_session`
 - `agent_turn`
-- `agent_wait`
 - `handoff_record`
 
 不拥有：
@@ -655,7 +653,6 @@ OpenShock 需要自己提供的，是 Codex 所不拥有的系统上下文：
 - `message`
 - `agent_session`
 - `agent_turn`
-- `agent_wait`
 - `handoff_record`
 - `task`
 - `task_assignment`
@@ -720,8 +717,8 @@ OpenShock 需要自己提供的，是 Codex 所不拥有的系统上下文：
 - `status`
   - `idle`
   - `responding`
-  - `waiting_human`
-  - `waiting_agent`
+  - `handoff_requested`
+  - `blocked`
   - `executing`
   - `completed`
 - `last_message_id`
@@ -770,13 +767,10 @@ OpenShock 需要自己提供的，是 Codex 所不拥有的系统上下文：
 - `expected_action`
 - `context_summary`
 
-`agent_wait`
+不再单独建模 `agent_wait`。
 
-- `turn_id`
-- `wait_type`
-  - `human_answer`
-  - `agent_answer`
-  - `approval`
+- Agent 需要继续讨论时，直接回写普通 `message`
+- 人类或其他 Agent 的后续消息按普通 Room fanout 继续驱动下一轮 `agent_turn`
 - `question_message_id`
 - `resolved_by_message_id`
 
@@ -846,7 +840,7 @@ OpenShock 需要自己提供的，是 Codex 所不拥有的系统上下文：
    - 生成理解确认
    - 必要时生成执行计划
    - 必要时触发正式动作
-7. Agent 回写 `ack` / `plan` / `clarification_request` / `progress_update` / `completion_summary`
+7. Agent 回写 `ack` / `plan` / `message` / `progress_update` / `completion_summary`
 
 要求：
 
@@ -1067,12 +1061,11 @@ QA 与迁移边界冻结为：
    - daemon 托管代码执行
    - Run 状态通过系统事件与摘要消息回流 Room
 4. 若 Agent 遇到阻塞：
-   - 生成 `clarification_request` 或 `blocked` 消息
-   - 创建 `agent_wait`
-   - session 进入 `waiting_human` 或 `waiting_agent`
+   - 生成普通 `message` 提问，或明确回写 `blocked`
+   - 不创建额外 `agent_wait` 语义
+   - 后续回复按普通 Room 消息继续 fanout 编排
 5. 人类或其他 Agent 回复后：
-   - Orchestrator 将回复绑定到 `agent_wait`
-   - 生成下一条 `agent_turn`
+   - Orchestrator 按普通可见消息规则生成下一条 `agent_turn`
 
 要求：
 
@@ -1140,7 +1133,7 @@ QA 与迁移边界冻结为：
 3. Agent B 收到新的 `agent_turn`
 4. Agent B 必须回写：
    - `handoff_accept`
-   - 或 `clarification_request`
+   - 或普通 `message`
    - 或 `handoff` 拒绝说明
 5. 若交接接受：
    - Task assignment、后续 run、Room session 一并切换
@@ -1576,7 +1569,7 @@ True P0 必须采用分层测试，不接受“只跑几个端到端用例”。
 
 - 人类在 Room 中给 Agent 下指令，Agent 回 `ack + plan`
 - Agent 执行中主动发 `progress_update`
-- Agent 遇阻塞发 `clarification_request`，人类回答后继续
+- Agent 遇阻塞发普通 `message` 提问或 `blocked`，人类回答后继续
 - Agent 完成后发 `completion_summary`
 - Agent A 委托 Agent B 创建 / 接管 Task
 - Agent A 向 Agent B 发起 handoff，Agent B 接受并继续推进

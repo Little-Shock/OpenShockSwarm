@@ -4,7 +4,20 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { LocalTime } from "@/components/ui/local-time";
 import { useCurrentOperator } from "@/components/operator-provider";
 import { cn } from "@/lib/cn";
-import type { Message } from "@/lib/types";
+import { restoreVisibleLineBreaks } from "@/lib/message-text";
+import { buildMentionSuggestions, parseMentionSegments } from "@/lib/mentions";
+import type { Agent, Message, RoomSummary } from "@/lib/types";
+
+function resolveAgentDisplayName(actorName: string, agents: Agent[]) {
+  const normalized = actorName.trim();
+  if (!normalized) {
+    return actorName;
+  }
+
+  return (
+    agents.find((agent) => agent.id === normalized || agent.name === normalized)?.name ?? actorName
+  );
+}
 
 function badgeStyles(kind: string): BadgeTone {
   switch (kind) {
@@ -52,14 +65,25 @@ function messageMetaLabel(kind: string) {
   }
 }
 
-export function RoomMessageCard({ message }: { message: Message }) {
-  const { operatorName } = useCurrentOperator();
+export function RoomMessageCard({
+  message,
+  agents,
+  rooms,
+  directRooms,
+}: {
+  message: Message;
+  agents: Agent[];
+  rooms: RoomSummary[];
+  directRooms: RoomSummary[];
+}) {
+  const { member, operatorName } = useCurrentOperator();
+  const normalizedBody = restoreVisibleLineBreaks(message.body);
 
   if (message.actorType === "system") {
     return (
       <article className="py-1">
         <p className="mx-auto max-w-2xl text-center text-[13px] leading-6 text-black/46">
-          {message.body}
+          {normalizedBody}
         </p>
       </article>
     );
@@ -69,7 +93,13 @@ export function RoomMessageCard({ message }: { message: Message }) {
     message.actorType === "member" &&
     Boolean(operatorName) &&
     message.actorName.trim() === operatorName;
+  const actorDisplayName =
+    message.actorType === "agent"
+      ? resolveAgentDisplayName(message.actorName, agents)
+      : message.actorName;
   const metaLabel = messageMetaLabel(message.kind);
+  const mentionSuggestions = buildMentionSuggestions(agents, rooms, directRooms, member);
+  const messageSegments = parseMentionSegments(normalizedBody, mentionSuggestions, member);
 
   return (
     <article className="flex items-start gap-2">
@@ -81,7 +111,7 @@ export function RoomMessageCard({ message }: { message: Message }) {
             : "border-[var(--border)] bg-[var(--accent-blue-soft)] text-[var(--accent-blue)]",
         )}
       >
-        {message.actorName.slice(0, 2)}
+        {actorDisplayName.slice(0, 2)}
       </div>
       <div className="min-w-0 flex-1">
         <div
@@ -96,7 +126,7 @@ export function RoomMessageCard({ message }: { message: Message }) {
               isCurrentMemberMessage && "text-[var(--accent-blue)]",
             )}
           >
-            {message.actorName}
+            {actorDisplayName}
           </span>
           <span>
             <LocalTime value={message.createdAt} />
@@ -116,11 +146,28 @@ export function RoomMessageCard({ message }: { message: Message }) {
           ) : null}
           <p
             className={cn(
-              "text-[14px] leading-5 text-black/80",
+              "whitespace-pre-wrap break-words text-[14px] leading-5 text-black/80",
               isCurrentMemberMessage && "text-black/84",
             )}
           >
-            {message.body}
+            {messageSegments.map((segment) => (
+              <span
+                key={segment.key}
+                className={cn(
+                  segment.kind === "text" && "text-inherit",
+                  segment.kind === "agent" &&
+                    "rounded-[7px] bg-[var(--accent-blue-soft)] px-0.5 py-[1px] font-semibold text-[var(--accent-blue)]",
+                  segment.kind === "room" &&
+                    "rounded-[7px] bg-[#f2edff] px-0.5 py-[1px] font-semibold text-[#6b4fd3]",
+                  segment.kind === "member" &&
+                    "rounded-[7px] bg-[#fff1c8] px-0.5 py-[1px] font-semibold text-[#9a6a00]",
+                  segment.isCurrentUser &&
+                    "bg-[#ffe8a3] text-[#7d5600] shadow-[inset_0_0_0_1px_rgba(188,139,0,0.16)]",
+                )}
+              >
+                {segment.text}
+              </span>
+            ))}
           </p>
         </div>
       </div>

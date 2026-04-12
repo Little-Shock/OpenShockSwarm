@@ -67,9 +67,10 @@ type Issue struct {
 }
 
 type Agent struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Prompt string `json:"prompt"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Prompt      string `json:"prompt"`
 }
 
 type AgentListResponse struct {
@@ -89,7 +90,6 @@ type AgentDetailResponse struct {
 	AgentTurns            []AgentTurn            `json:"agentTurns"`
 	AgentTurnOutputChunks []AgentTurnOutputChunk `json:"agentTurnOutputChunks"`
 	AgentTurnToolCalls    []AgentTurnToolCall    `json:"agentTurnToolCalls"`
-	AgentWaits            []AgentWait            `json:"agentWaits"`
 	HandoffRecords        []HandoffRecord        `json:"handoffRecords"`
 }
 
@@ -99,7 +99,6 @@ type AgentDeleteResponse struct {
 }
 
 type AgentCreateRequest struct {
-	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Prompt string `json:"prompt"`
 }
@@ -290,17 +289,6 @@ type AgentTurnToolCall struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-type AgentWait struct {
-	ID                string `json:"id"`
-	SessionID         string `json:"sessionId"`
-	RoomID            string `json:"roomId"`
-	AgentID           string `json:"agentId"`
-	BlockingMessageID string `json:"blockingMessageId"`
-	Status            string `json:"status"`
-	CreatedAt         string `json:"createdAt"`
-	ResolvedAt        string `json:"resolvedAt,omitempty"`
-}
-
 type HandoffRecord struct {
 	ID               string `json:"id"`
 	RoomID           string `json:"roomId"`
@@ -434,9 +422,10 @@ type AgentTurnClaimResponse struct {
 }
 
 type AgentTurnCompleteRequest struct {
-	RuntimeID         string `json:"runtimeId"`
-	ResultMessageID   string `json:"resultMessageId,omitempty"`
-	AppServerThreadID string `json:"appServerThreadId,omitempty"`
+	RuntimeID              string `json:"runtimeId"`
+	ResultMessageID        string `json:"resultMessageId,omitempty"`
+	AppServerThreadID      string `json:"appServerThreadId,omitempty"`
+	ClearAppServerThreadID bool   `json:"clearAppServerThreadId,omitempty"`
 }
 
 type AgentTurnCompleteResponse struct {
@@ -508,7 +497,6 @@ type RoomDetailResponse struct {
 	AgentTurns            []AgentTurn            `json:"agentTurns"`
 	AgentTurnOutputChunks []AgentTurnOutputChunk `json:"agentTurnOutputChunks"`
 	AgentTurnToolCalls    []AgentTurnToolCall    `json:"agentTurnToolCalls"`
-	AgentWaits            []AgentWait            `json:"agentWaits"`
 	HandoffRecords        []HandoffRecord        `json:"handoffRecords"`
 	Issue                 *Issue                 `json:"issue,omitempty"`
 	Tasks                 []Task                 `json:"tasks"`
@@ -518,6 +506,14 @@ type RoomDetailResponse struct {
 	MergeAttempts         []MergeAttempt         `json:"mergeAttempts"`
 	IntegrationBranch     *IntegrationBranch     `json:"integrationBranch,omitempty"`
 	DeliveryPR            *DeliveryPR            `json:"deliveryPr"`
+}
+
+type RoomReadResponse struct {
+	Room RoomSummary `json:"room"`
+}
+
+type RoomReadRequest struct {
+	MessageID string `json:"messageId"`
 }
 
 type IssueDetailResponse struct {
@@ -530,7 +526,6 @@ type IssueDetailResponse struct {
 	AgentTurns            []AgentTurn            `json:"agentTurns"`
 	AgentTurnOutputChunks []AgentTurnOutputChunk `json:"agentTurnOutputChunks"`
 	AgentTurnToolCalls    []AgentTurnToolCall    `json:"agentTurnToolCalls"`
-	AgentWaits            []AgentWait            `json:"agentWaits"`
 	HandoffRecords        []HandoffRecord        `json:"handoffRecords"`
 	Tasks                 []Task                 `json:"tasks"`
 	Runs                  []Run                  `json:"runs"`

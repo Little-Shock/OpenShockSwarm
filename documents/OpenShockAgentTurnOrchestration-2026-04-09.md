@@ -46,13 +46,17 @@ Those are valid next steps, but they require additional backend product semantic
 The implementation covers all wakeup sources OpenShock already emits today:
 
 - `direct_message`
-  - produced from ordinary visible room messages
-- `clarification_followup`
-  - produced when a human replies after an agent asked a blocking question
+  - produced from human-authored visible room messages
 - `handoff_response`
   - produced when one agent explicitly hands work to another
 
-These wakeup modes are orchestration concepts. They are separate from the final visible reply kind (`message`, `clarification_request`, `handoff`, `summary`, `no_response`).
+Guardrails:
+
+- joined room agents may all receive the same human-authored visible message turn
+- agent-authored plain `message` replies may continue visible room discussion
+- explicit `handoff` remains a separate orchestration path
+
+These wakeup modes are orchestration concepts. They are separate from the final visible reply kind (`message`, `handoff`, `summary`, `no_response`).
 
 ## Design
 
@@ -63,7 +67,6 @@ Add a structured `WakeupMode` field to `AgentTurn`.
 Mapping:
 
 - `visible_message_response` -> `direct_message`
-- `clarification_followup` -> `clarification_followup`
 - `handoff_response` -> `handoff_response`
 
 Why add it when `IntentType` already exists:

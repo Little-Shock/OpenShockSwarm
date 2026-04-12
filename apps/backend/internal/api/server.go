@@ -80,9 +80,8 @@ func (a *API) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		_ = member
 		writeJSON(w, http.StatusOK, core.WorkspaceListResponse{
-			Workspaces:         a.store.Workspaces(),
+			Workspaces:         a.store.WorkspacesForMember(member.ID),
 			CurrentWorkspaceID: session.ActiveWorkspaceID,
 		})
 	case http.MethodPost:
@@ -94,6 +93,10 @@ func (a *API) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 		workspace, err := a.store.CreateWorkspace(req.Name)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := a.store.GrantMemberWorkspaceAccess(member.ID, workspace.ID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		if _, err := a.store.SetActiveWorkspaceForSession(sessionTokenFromRequest(r), workspace.ID); err != nil {
@@ -152,16 +155,17 @@ func (a *API) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
+
 	_, session, ok := a.memberFromRequest(r)
-	if ok {
-		writeJSON(w, http.StatusOK, a.store.BootstrapForWorkspaceAndSession(session.ActiveWorkspaceID, session.ID))
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
 		return
 	}
-	writeJSON(w, http.StatusOK, a.store.BootstrapForWorkspace(a.workspaceIDFromRequest(r)))
+	writeJSON(w, http.StatusOK, a.store.BootstrapForWorkspaceAndSession(session.ActiveWorkspaceID, session.ID))
 }
 
 func (a *API) handleAgents(w http.ResponseWriter, r *http.Request) {
-	member, _, ok := a.memberFromRequest(r)
+	member, session, ok := a.memberFromRequest(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
 		return
@@ -169,8 +173,7 @@ func (a *API) handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		_ = member
-		writeJSON(w, http.StatusOK, core.AgentListResponse{Agents: a.store.Agents()})
+		writeJSON(w, http.StatusOK, core.AgentListResponse{Agents: a.store.AgentsForWorkspace(session.ActiveWorkspaceID)})
 	case http.MethodPost:
 		var req core.AgentCreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -178,7 +181,7 @@ func (a *API) handleAgents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		agent, err := a.store.CreateAgent(req.ID, req.Name, req.Prompt)
+		agent, err := a.store.CreateAgentInWorkspace(session.ActiveWorkspaceID, req.Name, req.Prompt)
 		if err != nil {
 			code := http.StatusBadRequest
 			if errors.Is(err, store.ErrConflict) {
@@ -199,7 +202,7 @@ func (a *API) handleAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleAgentByID(w http.ResponseWriter, r *http.Request) {
-	_, _, ok := a.memberFromRequest(r)
+	_, session, ok := a.memberFromRequest(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
 		return
@@ -230,7 +233,7 @@ func (a *API) handleAgentByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		agent, err := a.store.UpdateAgent(agentID, req.Name, req.Prompt)
+		agent, err := a.store.UpdateAgentInWorkspace(session.ActiveWorkspaceID, agentID, req.Name, req.Prompt)
 		if errors.Is(err, store.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -249,7 +252,7 @@ func (a *API) handleAgentByID(w http.ResponseWriter, r *http.Request) {
 		})
 		writeJSON(w, http.StatusOK, core.AgentResponse{Agent: agent})
 	case http.MethodDelete:
-		err := a.store.DeleteAgent(agentID)
+		err := a.store.DeleteAgentInWorkspace(session.ActiveWorkspaceID, agentID)
 		if errors.Is(err, store.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -277,6 +280,11 @@ func (a *API) handleIssueDetail(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
+	_, session, ok := a.memberFromRequest(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
+		return
+	}
 
 	issueID := strings.TrimPrefix(r.URL.Path, "/api/v1/issues/")
 	if issueID == "" {
@@ -284,7 +292,7 @@ func (a *API) handleIssueDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := a.store.IssueDetailForWorkspace(a.workspaceIDFromRequest(r), issueID)
+	resp, err := a.store.IssueDetailForWorkspace(session.ActiveWorkspaceID, issueID)
 	if errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -298,28 +306,64 @@ func (a *API) handleIssueDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleRoomDetail(w http.ResponseWriter, r *http.Request) {
+	_, session, ok := a.memberFromRequest(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
+		return
+	}
+
+	roomPath := strings.TrimPrefix(r.URL.Path, "/api/v1/rooms/")
+	if roomPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if strings.HasSuffix(roomPath, "/read") {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+
+		roomID := strings.TrimSuffix(roomPath, "/read")
+		roomID = strings.TrimSuffix(roomID, "/")
+		if roomID == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		var req core.RoomReadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON payload"})
+			return
+		}
+
+		room, err := a.store.MarkRoomReadForWorkspaceAndSession(
+			session.ActiveWorkspaceID,
+			roomID,
+			session.ID,
+			req.MessageID,
+		)
+		if errors.Is(err, store.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, core.RoomReadResponse{Room: room})
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)
 		return
 	}
 
-	roomID := strings.TrimPrefix(r.URL.Path, "/api/v1/rooms/")
-	if roomID == "" {
-		http.NotFound(w, r)
-		return
-	}
+	roomID := roomPath
 
-	_, session, ok := a.memberFromRequest(r)
-	workspaceID := a.workspaceIDFromRequest(r)
-	var (
-		resp core.RoomDetailResponse
-		err  error
-	)
-	if ok {
-		resp, err = a.store.RoomDetailForWorkspaceAndSession(workspaceID, roomID, session.ID)
-	} else {
-		resp, err = a.store.RoomDetailForWorkspace(workspaceID, roomID)
-	}
+	resp, err := a.store.RoomDetailForWorkspaceAndSession(session.ActiveWorkspaceID, roomID, session.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -337,7 +381,12 @@ func (a *API) handleTaskBoard(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.store.TaskBoardForWorkspace(a.workspaceIDFromRequest(r)))
+	_, session, ok := a.memberFromRequest(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
+		return
+	}
+	writeJSON(w, http.StatusOK, a.store.TaskBoardForWorkspace(session.ActiveWorkspaceID))
 }
 
 func (a *API) handleInbox(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +394,12 @@ func (a *API) handleInbox(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.store.InboxForWorkspace(a.workspaceIDFromRequest(r)))
+	_, session, ok := a.memberFromRequest(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
+		return
+	}
+	writeJSON(w, http.StatusOK, a.store.InboxForWorkspace(session.ActiveWorkspaceID))
 }
 
 func (a *API) handleActions(w http.ResponseWriter, r *http.Request) {
@@ -369,6 +423,10 @@ func (a *API) handleActions(w http.ResponseWriter, r *http.Request) {
 		member, _, ok := a.memberFromRequest(r)
 		if !ok {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "member session is required"})
+			return
+		}
+		if workspaceID, ok := a.workspaceIDForActionTarget(effectiveReq); ok && !a.store.MemberHasWorkspaceAccess(member.ID, workspaceID) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "workspace access denied"})
 			return
 		}
 		effectiveReq.ActorType = "member"
@@ -570,7 +628,7 @@ func (a *API) handleCompleteAgentTurn(w http.ResponseWriter, r *http.Request, tu
 		return
 	}
 
-	turn, err := a.store.CompleteAgentTurn(turnID, req.RuntimeID, req.ResultMessageID, req.AppServerThreadID)
+	turn, err := a.store.CompleteAgentTurn(turnID, req.RuntimeID, req.ResultMessageID, req.AppServerThreadID, req.ClearAppServerThreadID)
 	if errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
 		return

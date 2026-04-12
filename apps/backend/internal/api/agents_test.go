@@ -5,13 +5,21 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"openshock/backend/internal/core"
 	"openshock/backend/internal/store"
 	"openshock/backend/internal/testsupport/scenario"
 )
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+func looksLikeUUID(value string) bool {
+	return uuidPattern.MatchString(strings.ToLower(strings.TrimSpace(value)))
+}
 
 func TestAgentCRUDRoutesRequireMemberSession(t *testing.T) {
 	server := httptest.NewServer(New(store.NewMemoryStoreFromSnapshot(scenario.Snapshot())).Handler())
@@ -42,8 +50,7 @@ func TestAgentCRUDRoutesEndToEnd(t *testing.T) {
 	sessionToken := ensureMemberSessionToken(t, client, server.URL, "Sarah")
 
 	createBody, err := json.Marshal(core.AgentCreateRequest{
-		ID:     "agent_research",
-		Name:   "Research Partner",
+		Name:   "research_partner",
 		Prompt: "会主动补齐上下文、记录不确定项，并把长信息压缩成便于团队决策的结构化摘要。",
 	})
 	if err != nil {
@@ -70,7 +77,7 @@ func TestAgentCRUDRoutesEndToEnd(t *testing.T) {
 	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
 		t.Fatalf("failed to decode create response: %v", err)
 	}
-	if created.Agent.ID != "agent_research" || created.Agent.Prompt == "" {
+	if !looksLikeUUID(created.Agent.ID) || created.Agent.Name != "research_partner" || created.Agent.Prompt == "" {
 		t.Fatalf("unexpected created agent: %#v", created.Agent)
 	}
 
@@ -94,7 +101,7 @@ func TestAgentCRUDRoutesEndToEnd(t *testing.T) {
 	}
 	foundCreated := false
 	for _, agent := range listed.Agents {
-		if agent.ID == "agent_research" {
+		if agent.Name == "research_partner" {
 			foundCreated = true
 			break
 		}
@@ -104,14 +111,14 @@ func TestAgentCRUDRoutesEndToEnd(t *testing.T) {
 	}
 
 	updateBody, err := json.Marshal(core.AgentUpdateRequest{
-		Name:   "Research Partner",
+		Name:   "research_partner",
 		Prompt: "更新后的 agent prompt 应该被完整保留，前端会用多行输入框维护它。",
 	})
 	if err != nil {
 		t.Fatalf("failed to encode update payload: %v", err)
 	}
 
-	updateReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/v1/agents/agent_research", bytes.NewReader(updateBody))
+	updateReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/v1/agents/"+created.Agent.ID, bytes.NewReader(updateBody))
 	if err != nil {
 		t.Fatalf("failed to build update request: %v", err)
 	}
@@ -135,7 +142,29 @@ func TestAgentCRUDRoutesEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected updated agent: %#v", updated.Agent)
 	}
 
-	deleteReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/v1/agents/agent_research", nil)
+	renameBody, err := json.Marshal(core.AgentUpdateRequest{
+		Name:   "renamed_partner",
+		Prompt: "should fail",
+	})
+	if err != nil {
+		t.Fatalf("failed to encode rename payload: %v", err)
+	}
+	renameReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/v1/agents/"+created.Agent.ID, bytes.NewReader(renameBody))
+	if err != nil {
+		t.Fatalf("failed to build rename request: %v", err)
+	}
+	renameReq.Header.Set("Content-Type", "application/json")
+	renameReq.Header.Set("X-OpenShock-Session", sessionToken)
+	renameResp, err := client.Do(renameReq)
+	if err != nil {
+		t.Fatalf("rename request failed: %v", err)
+	}
+	defer renameResp.Body.Close()
+	if renameResp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 from rename attempt, got %d", renameResp.StatusCode)
+	}
+
+	deleteReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/v1/agents/"+created.Agent.ID, nil)
 	if err != nil {
 		t.Fatalf("failed to build delete request: %v", err)
 	}
@@ -154,7 +183,7 @@ func TestAgentCRUDRoutesEndToEnd(t *testing.T) {
 	if err := json.NewDecoder(deleteResp.Body).Decode(&deleted); err != nil {
 		t.Fatalf("failed to decode delete response: %v", err)
 	}
-	if !deleted.Deleted || deleted.AgentID != "agent_research" {
+	if !deleted.Deleted || deleted.AgentID != created.Agent.ID {
 		t.Fatalf("unexpected delete response: %#v", deleted)
 	}
 
@@ -215,7 +244,7 @@ func TestGetAgentDetailReturnsWorkspaceWideObservability(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ingest tool call failed: %v", err)
 	}
-	if _, err := backingStore.CompleteAgentTurn(execution.Turn.ID, "rt_local", "", "thread_agent_shell"); err != nil {
+	if _, err := backingStore.CompleteAgentTurn(execution.Turn.ID, "rt_local", "", "thread_agent_shell", false); err != nil {
 		t.Fatalf("complete turn failed: %v", err)
 	}
 

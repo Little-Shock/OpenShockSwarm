@@ -31,6 +31,7 @@ type agentTurnPromptTaskView struct {
 	ID              string
 	Title           string
 	Status          string
+	AssigneeAgent   string
 	AssigneeAgentID string
 	BranchName      string
 	RunCount        int
@@ -40,7 +41,7 @@ type agentTurnPromptRunView struct {
 	ID            string
 	TaskID        string
 	Status        string
-	AgentID       string
+	Agent         string
 	BranchName    string
 	OutputPreview string
 }
@@ -58,6 +59,7 @@ type agentTurnPromptData struct {
 	AgentID               string
 	AgentDisplayName      string
 	AgentPrompt           string
+	RoomID                string
 	WakeupMode            string
 	VisibleTarget         string
 	RoomTitle             string
@@ -101,6 +103,7 @@ func buildAgentTurnInstruction(execution core.AgentTurnExecution) string {
 			ID:              task.ID,
 			Title:           task.Title,
 			Status:          task.Status,
+			AssigneeAgent:   strings.TrimSpace(task.AssigneeAgentID),
 			AssigneeAgentID: strings.TrimSpace(task.AssigneeAgentID),
 			BranchName:      task.BranchName,
 			RunCount:        task.RunCount,
@@ -113,7 +116,7 @@ func buildAgentTurnInstruction(execution core.AgentTurnExecution) string {
 			ID:            run.ID,
 			TaskID:        run.TaskID,
 			Status:        run.Status,
-			AgentID:       strings.TrimSpace(run.AgentID),
+			Agent:         strings.TrimSpace(run.AgentID),
 			BranchName:    run.BranchName,
 			OutputPreview: strings.TrimSpace(run.OutputPreview),
 		})
@@ -135,6 +138,7 @@ func buildAgentTurnInstruction(execution core.AgentTurnExecution) string {
 		AgentID:               execution.Turn.AgentID,
 		AgentDisplayName:      agentDisplayName,
 		AgentPrompt:           strings.TrimSpace(execution.AgentPrompt),
+		RoomID:                execution.Turn.RoomID,
 		WakeupMode:            normalizedAgentTurnWakeupMode(execution),
 		VisibleTarget:         visibleTarget,
 		RoomTitle:             execution.Room.Title,
@@ -165,8 +169,6 @@ func normalizedAgentTurnWakeupMode(execution core.AgentTurnExecution) string {
 		return mode
 	}
 	switch strings.TrimSpace(execution.Turn.IntentType) {
-	case "clarification_followup":
-		return "clarification_followup"
 	case "handoff_response":
 		return "handoff_response"
 	default:

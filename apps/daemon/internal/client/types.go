@@ -137,9 +137,10 @@ type AgentTurnClaimResponse struct {
 }
 
 type AgentTurnCompleteRequest struct {
-	RuntimeID         string `json:"runtimeId"`
-	ResultMessageID   string `json:"resultMessageId,omitempty"`
-	AppServerThreadID string `json:"appServerThreadId,omitempty"`
+	RuntimeID              string `json:"runtimeId"`
+	ResultMessageID        string `json:"resultMessageId,omitempty"`
+	AppServerThreadID      string `json:"appServerThreadId,omitempty"`
+	ClearAppServerThreadID bool   `json:"clearAppServerThreadId,omitempty"`
 }
 
 type AgentTurnCompleteResponse struct {

@@ -11,27 +11,33 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"openshock/daemon/internal/acp"
 	"openshock/daemon/internal/provider"
 )
 
 type Options struct {
-	CodexBinPath string
-	CodexHome    string
+	CodexBinPath       string
+	CodexHome          string
+	ResumeStallTimeout time.Duration
 }
 
 type Executor struct {
-	mu          sync.Mutex
-	binPath     string
-	codexHome   string
-	cmd         *exec.Cmd
-	stdin       io.WriteCloser
-	stdout      *bufio.Reader
-	stderrDone  chan struct{}
-	queued      []rpcEnvelope
-	nextRequest int
+	mu                 sync.Mutex
+	binPath            string
+	codexHome          string
+	resumeStallTimeout time.Duration
+	cmd                *exec.Cmd
+	stdin              io.WriteCloser
+	stdout             *bufio.Reader
+	stderrDone         chan struct{}
+	queued             []rpcEnvelope
+	nextRequest        int
 }
+
+const defaultResumeStallTimeout = 15 * time.Second
 
 type rpcEnvelope struct {
 	ID     json.RawMessage `json:"id"`
@@ -107,13 +113,17 @@ type threadItem struct {
 
 func NewExecutor(options Options) (*Executor, error) {
 	executor := &Executor{
-		binPath:     strings.TrimSpace(options.CodexBinPath),
-		codexHome:   strings.TrimSpace(options.CodexHome),
-		stderrDone:  make(chan struct{}),
-		nextRequest: 1,
+		binPath:            strings.TrimSpace(options.CodexBinPath),
+		codexHome:          strings.TrimSpace(options.CodexHome),
+		resumeStallTimeout: options.ResumeStallTimeout,
+		stderrDone:         make(chan struct{}),
+		nextRequest:        1,
 	}
 	if executor.binPath == "" {
 		executor.binPath = "codex"
+	}
+	if executor.resumeStallTimeout <= 0 {
+		executor.resumeStallTimeout = defaultResumeStallTimeout
 	}
 	if err := executor.start(); err != nil {
 		return nil, err
@@ -122,6 +132,21 @@ func NewExecutor(options Options) (*Executor, error) {
 }
 
 func (e *Executor) Execute(ctx context.Context, req provider.ExecuteRequest, handle func(acp.Event) error) (provider.ExecuteResult, error) {
+	if retryCtx, cancel, ok := e.resumeAttemptContext(ctx, req); ok {
+		result, err := e.executeOnce(retryCtx, req, handle)
+		cancel()
+		if !shouldRetryWithoutResume(ctx, req, result, err) {
+			return result, err
+		}
+
+		freshReq := req
+		freshReq.ResumeThreadID = ""
+		return e.executeOnce(ctx, freshReq, handle)
+	}
+	return e.executeOnce(ctx, req, handle)
+}
+
+func (e *Executor) executeOnce(ctx context.Context, req provider.ExecuteRequest, handle func(acp.Event) error) (provider.ExecuteResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -149,7 +174,7 @@ func (e *Executor) Execute(ctx context.Context, req provider.ExecuteRequest, han
 	go func(proc *os.Process) {
 		select {
 		case <-ctx.Done():
-			_ = proc.Kill()
+			killProcessGroup(proc)
 		case <-cancelled:
 		}
 	}(process)
@@ -197,11 +222,50 @@ func (e *Executor) Execute(ctx context.Context, req provider.ExecuteRequest, han
 	}
 }
 
+func (e *Executor) resumeAttemptContext(parent context.Context, req provider.ExecuteRequest) (context.Context, context.CancelFunc, bool) {
+	if strings.TrimSpace(req.ResumeThreadID) == "" || e.resumeStallTimeout <= 0 {
+		return nil, nil, false
+	}
+
+	timeout := e.resumeStallTimeout
+	if deadline, ok := parent.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, nil, false
+		}
+		if remaining <= timeout {
+			timeout = remaining / 2
+		}
+		if timeout <= 0 {
+			return nil, nil, false
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	return ctx, cancel, true
+}
+
 func (e *Executor) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.resetLocked()
 	return nil
+}
+
+func shouldRetryWithoutResume(parent context.Context, req provider.ExecuteRequest, result provider.ExecuteResult, err error) bool {
+	if strings.TrimSpace(req.ResumeThreadID) == "" {
+		return false
+	}
+	if err == nil || parent.Err() != nil {
+		return false
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if strings.TrimSpace(result.LastMessage) != "" {
+		return false
+	}
+	return strings.TrimSpace(result.ProviderThreadID) == strings.TrimSpace(req.ResumeThreadID)
 }
 
 func (e *Executor) start() error {
@@ -216,6 +280,7 @@ func (e *Executor) ensureStartedLocked() error {
 	}
 
 	cmd := exec.Command(e.binPath, "app-server", "--listen", "stdio://")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = append(os.Environ(), "OTEL_SDK_DISABLED=true")
 	if strings.TrimSpace(e.codexHome) != "" {
 		cmd.Env = append(cmd.Env, "CODEX_HOME="+e.codexHome)
@@ -267,11 +332,12 @@ func (e *Executor) resetLocked() {
 		_ = e.stdin.Close()
 	}
 	if e.cmd != nil && e.cmd.Process != nil {
-		_ = e.cmd.Process.Kill()
+		killProcessGroup(e.cmd.Process)
 		_, _ = e.cmd.Process.Wait()
 	}
 	if e.stderrDone != nil {
 		close(e.stderrDone)
+		e.stderrDone = nil
 	}
 	e.cmd = nil
 	e.stdin = nil
@@ -284,6 +350,16 @@ func (e *Executor) processLocked() *os.Process {
 		return nil
 	}
 	return e.cmd.Process
+}
+
+func killProcessGroup(proc *os.Process) {
+	if proc == nil {
+		return
+	}
+	if proc.Pid > 0 {
+		_ = syscall.Kill(-proc.Pid, syscall.SIGKILL)
+	}
+	_ = proc.Kill()
 }
 
 func (e *Executor) prepareThreadLocked(req provider.ExecuteRequest, rawOutput *strings.Builder) (string, error) {

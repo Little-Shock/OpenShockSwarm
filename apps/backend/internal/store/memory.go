@@ -1,6 +1,7 @@
 package store
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"openshock/backend/internal/core"
 	"openshock/backend/internal/storestate"
@@ -35,7 +37,6 @@ type MemoryStore struct {
 	agentTurns              []core.AgentTurn
 	agentTurnOutputChunks   []core.AgentTurnOutputChunk
 	agentTurnToolCalls      []core.AgentTurnToolCall
-	agentWaits              []core.AgentWait
 	handoffRecords          []core.HandoffRecord
 	tasks                   []core.Task
 	runs                    []core.Run
@@ -47,6 +48,7 @@ type MemoryStore struct {
 	inboxItems              []core.InboxItem
 	repoWebhookEvents       map[string]core.RepoWebhookResponse
 	members                 map[string]core.Member
+	memberWorkspaceAccess   map[string]map[string]struct{}
 	memberIDsByUsername     map[string]string
 	passwordHashes          map[string]string
 	authSessions            map[string]core.AuthSession
@@ -66,7 +68,6 @@ type MemoryStore struct {
 	nextAgentTurnID         int
 	nextAgentTurnOutputID   int
 	nextAgentTurnToolCallID int
-	nextAgentWaitID         int
 	nextHandoffID           int
 	nextAgentID             int
 	nextWorkspaceRepoID     int
@@ -127,6 +128,43 @@ func cloneMembers(src map[string]core.Member) map[string]core.Member {
 	dst := make(map[string]core.Member, len(src))
 	for key, value := range src {
 		dst[key] = value
+	}
+	return dst
+}
+
+func cloneMemberWorkspaceAccess(src map[string][]string) map[string]map[string]struct{} {
+	if src == nil {
+		return map[string]map[string]struct{}{}
+	}
+
+	dst := make(map[string]map[string]struct{}, len(src))
+	for memberID, workspaceIDs := range src {
+		scopes := make(map[string]struct{}, len(workspaceIDs))
+		for _, workspaceID := range workspaceIDs {
+			trimmed := strings.TrimSpace(workspaceID)
+			if trimmed == "" {
+				continue
+			}
+			scopes[trimmed] = struct{}{}
+		}
+		dst[memberID] = scopes
+	}
+	return dst
+}
+
+func snapshotMemberWorkspaceAccess(src map[string]map[string]struct{}) map[string][]string {
+	if src == nil {
+		return map[string][]string{}
+	}
+
+	dst := make(map[string][]string, len(src))
+	for memberID, workspaceIDs := range src {
+		values := make([]string, 0, len(workspaceIDs))
+		for workspaceID := range workspaceIDs {
+			values = append(values, workspaceID)
+		}
+		slices.Sort(values)
+		dst[memberID] = values
 	}
 	return dst
 }
@@ -221,7 +259,6 @@ func newMemoryStoreFromSnapshot(snapshot storestate.MemoryStoreSnapshot) *Memory
 		agentTurns:              slices.Clone(snapshot.AgentTurns),
 		agentTurnOutputChunks:   slices.Clone(snapshot.AgentTurnOutputChunks),
 		agentTurnToolCalls:      slices.Clone(snapshot.AgentTurnToolCalls),
-		agentWaits:              slices.Clone(snapshot.AgentWaits),
 		handoffRecords:          slices.Clone(snapshot.HandoffRecords),
 		tasks:                   slices.Clone(snapshot.Tasks),
 		runs:                    slices.Clone(snapshot.Runs),
@@ -233,6 +270,7 @@ func newMemoryStoreFromSnapshot(snapshot storestate.MemoryStoreSnapshot) *Memory
 		inboxItems:              slices.Clone(snapshot.InboxItems),
 		repoWebhookEvents:       cloneRepoWebhookEvents(snapshot.RepoWebhookEvents),
 		members:                 cloneMembers(snapshot.Members),
+		memberWorkspaceAccess:   cloneMemberWorkspaceAccess(snapshot.MemberWorkspaceAccess),
 		memberIDsByUsername:     cloneStringMap(snapshot.MemberIDsByUsername),
 		passwordHashes:          cloneStringMap(snapshot.PasswordHashes),
 		authSessions:            cloneAuthSessions(snapshot.AuthSessions),
@@ -252,13 +290,16 @@ func newMemoryStoreFromSnapshot(snapshot storestate.MemoryStoreSnapshot) *Memory
 		nextAgentTurnID:         snapshot.NextAgentTurnID,
 		nextAgentTurnOutputID:   snapshot.NextAgentTurnOutputID,
 		nextAgentTurnToolCallID: snapshot.NextAgentTurnToolCallID,
-		nextAgentWaitID:         snapshot.NextAgentWaitID,
 		nextHandoffID:           snapshot.NextHandoffID,
 		nextAgentID:             snapshot.NextAgentID,
 		nextWorkspaceRepoID:     snapshot.NextWorkspaceRepoID,
 		nextMemberID:            snapshot.NextMemberID,
 		nextAuthSessionID:       snapshot.NextAuthSessionID,
 		actionResults:           cloneActionResults(snapshot.ActionResults),
+	}
+	for _, workspace := range store.workspaces {
+		store.ensureDirectMessageRoomsForWorkspaceLocked(workspace.ID)
+		store.ensureWorkspaceDefaultDiscussionAgentSessionsLocked(workspace.ID)
 	}
 	return store
 }
@@ -282,7 +323,6 @@ func NewMemoryStore() *MemoryStore {
 		AgentTurns:              []core.AgentTurn{},
 		AgentTurnOutputChunks:   []core.AgentTurnOutputChunk{},
 		AgentTurnToolCalls:      []core.AgentTurnToolCall{},
-		AgentWaits:              []core.AgentWait{},
 		HandoffRecords:          []core.HandoffRecord{},
 		Tasks:                   []core.Task{},
 		Runs:                    []core.Run{},
@@ -294,6 +334,7 @@ func NewMemoryStore() *MemoryStore {
 		InboxItems:              []core.InboxItem{},
 		RepoWebhookEvents:       map[string]core.RepoWebhookResponse{},
 		Members:                 map[string]core.Member{},
+		MemberWorkspaceAccess:   map[string][]string{},
 		MemberIDsByUsername:     map[string]string{},
 		PasswordHashes:          map[string]string{},
 		AuthSessions:            map[string]core.AuthSession{},
@@ -313,7 +354,6 @@ func NewMemoryStore() *MemoryStore {
 		NextAgentTurnID:         0,
 		NextAgentTurnOutputID:   0,
 		NextAgentTurnToolCallID: 0,
-		NextAgentWaitID:         0,
 		NextHandoffID:           0,
 		NextAgentID:             0,
 		NextWorkspaceRepoID:     0,
@@ -354,10 +394,7 @@ func (s *MemoryStore) BindWorkspaceRepoAction(workspaceID, repoPath, label strin
 		return core.ActionResponse{}, err
 	}
 
-	actorName := strings.TrimSpace(actorID)
-	if actorName == "" {
-		actorName = "someone"
-	}
+	actorName := s.resolveDisplayActorNameInWorkspaceLocked(workspaceID, actorID)
 	if defaultBinding, ok := s.defaultWorkspaceRepoBindingLocked(workspaceID); ok {
 		s.appendSystemMessageLocked(
 			s.defaultRoomIDForWorkspaceLocked(workspaceID),
@@ -381,6 +418,24 @@ func (s *MemoryStore) Workspaces() []core.Workspace {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	return s.workspacesLocked()
+}
+
+func (s *MemoryStore) WorkspacesForMember(memberID string) []core.Workspace {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	workspaces := make([]core.Workspace, 0, len(s.workspaces))
+	for _, workspace := range s.workspaces {
+		if !s.memberHasWorkspaceAccessLocked(memberID, workspace.ID) {
+			continue
+		}
+		workspaces = append(workspaces, s.workspaceSnapshotLocked(workspace.ID))
+	}
+	return workspaces
+}
+
+func (s *MemoryStore) workspacesLocked() []core.Workspace {
 	workspaces := make([]core.Workspace, 0, len(s.workspaces))
 	for _, workspace := range s.workspaces {
 		workspaces = append(workspaces, s.workspaceSnapshotLocked(workspace.ID))
@@ -426,10 +481,25 @@ func (s *MemoryStore) CreateWorkspace(name string) (core.Workspace, error) {
 		s.messagesByRoom[room.ID] = []core.Message{}
 	}
 	s.ensureDirectMessageRoomsForWorkspaceLocked(workspaceID)
+	s.ensureWorkspaceDefaultDiscussionAgentSessionsLocked(workspaceID)
 	s.appendSystemMessageLocked(defaultRooms[0].ID, "summary", "Workspace initialized. Use this room for discussion that should stay visible to the whole workspace.")
 	s.appendSystemMessageLocked(defaultRooms[1].ID, "summary", "Use this room for workspace-wide announcements, notices, and status updates.")
 
 	return s.workspaceSnapshotLocked(workspaceID), nil
+}
+
+func (s *MemoryStore) GrantMemberWorkspaceAccess(memberID, workspaceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.members[strings.TrimSpace(memberID)]; !ok {
+		return ErrNotFound
+	}
+	if _, ok := s.workspaceIndexByIDLocked(strings.TrimSpace(workspaceID)); !ok {
+		return ErrNotFound
+	}
+	s.grantMemberWorkspaceAccessLocked(memberID, workspaceID)
+	return nil
 }
 
 func (s *MemoryStore) AddAgentToRoom(targetID, agentID, actorID string) (core.ActionResponse, error) {
@@ -445,7 +515,7 @@ func (s *MemoryStore) AddAgentToRoom(targetID, agentID, actorID string) (core.Ac
 		return core.ActionResponse{}, fmt.Errorf("%w: direct chats manage their agent automatically", ErrConflict)
 	}
 
-	agent, ok := s.findAgentByIDLocked(strings.TrimSpace(agentID))
+	agent, ok := s.resolveAgentReferenceInWorkspaceLocked(room.WorkspaceID, agentID)
 	if !ok {
 		return core.ActionResponse{}, ErrNotFound
 	}
@@ -474,10 +544,7 @@ func (s *MemoryStore) AddAgentToRoom(targetID, agentID, actorID string) (core.Ac
 	s.agentSessions[sessionIndex].JoinedRoom = true
 	session := s.agentSessions[sessionIndex]
 
-	displayActor := strings.TrimSpace(actorID)
-	if displayActor == "" {
-		displayActor = "Someone"
-	}
+	displayActor := s.resolveDisplayActorNameInWorkspaceLocked(room.WorkspaceID, actorID)
 	s.appendSystemMessageLocked(
 		roomID,
 		"summary",
@@ -514,7 +581,7 @@ func (s *MemoryStore) RemoveAgentFromRoom(targetID, agentID, actorID string) (co
 		return core.ActionResponse{}, fmt.Errorf("%w: direct chats manage their agent automatically", ErrConflict)
 	}
 
-	agent, ok := s.findAgentByIDLocked(strings.TrimSpace(agentID))
+	agent, ok := s.resolveAgentReferenceInWorkspaceLocked(room.WorkspaceID, agentID)
 	if !ok {
 		return core.ActionResponse{}, ErrNotFound
 	}
@@ -543,10 +610,7 @@ func (s *MemoryStore) RemoveAgentFromRoom(targetID, agentID, actorID string) (co
 	s.agentSessions[sessionIndex].JoinedRoom = false
 	s.agentSessions[sessionIndex].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
-	displayActor := strings.TrimSpace(actorID)
-	if displayActor == "" {
-		displayActor = "Someone"
-	}
+	displayActor := s.resolveDisplayActorNameInWorkspaceLocked(room.WorkspaceID, actorID)
 	s.appendSystemMessageLocked(
 		roomID,
 		"summary",
@@ -631,7 +695,7 @@ func (s *MemoryStore) BootstrapForWorkspaceAndSession(workspaceID, sessionID str
 		DefaultIssueID: s.defaultIssueIDs[resolvedWorkspaceID],
 		Rooms:          rooms,
 		DirectRooms:    directRooms,
-		Agents:         slices.Clone(s.agents),
+		Agents:         s.agentsForWorkspaceLocked(resolvedWorkspaceID),
 		Runtimes:       slices.Clone(s.runtimes),
 		IssueSummaries: issueSummaries,
 	}
@@ -644,59 +708,96 @@ func (s *MemoryStore) Agents() []core.Agent {
 	return slices.Clone(s.agents)
 }
 
-func (s *MemoryStore) CreateAgent(id, name, prompt string) (core.Agent, error) {
+func (s *MemoryStore) AgentsForWorkspace(workspaceID string) []core.Agent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.agentsForWorkspaceLocked(s.normalizeWorkspaceIDLocked(workspaceID))
+}
+
+func (s *MemoryStore) CreateAgent(name, prompt string) (core.Agent, error) {
+	return s.createAgent(s.defaultWorkspaceID, "", name, prompt)
+}
+
+func (s *MemoryStore) CreateAgentWithID(id, name, prompt string) (core.Agent, error) {
+	return s.createAgent(s.defaultWorkspaceID, id, name, prompt)
+}
+
+func (s *MemoryStore) CreateAgentInWorkspace(workspaceID, name, prompt string) (core.Agent, error) {
+	return s.createAgent(workspaceID, "", name, prompt)
+}
+
+func (s *MemoryStore) CreateAgentWithIDInWorkspace(workspaceID, id, name, prompt string) (core.Agent, error) {
+	return s.createAgent(workspaceID, id, name, prompt)
+}
+
+func (s *MemoryStore) createAgent(workspaceID, id, name, prompt string) (core.Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	resolvedWorkspaceID := s.normalizeWorkspaceIDLocked(workspaceID)
+	if _, ok := s.workspaceIndexByIDLocked(resolvedWorkspaceID); !ok {
+		return core.Agent{}, ErrNotFound
+	}
 	normalizedID := strings.TrimSpace(id)
 	normalizedName := strings.TrimSpace(name)
 	normalizedPrompt := strings.TrimSpace(prompt)
-	if normalizedID == "" {
-		return core.Agent{}, fmt.Errorf("%w: id is required", ErrConflict)
-	}
-	if strings.ContainsAny(normalizedID, " \t\n\r") {
-		return core.Agent{}, fmt.Errorf("%w: id cannot contain whitespace", ErrConflict)
-	}
-	if normalizedName == "" {
-		return core.Agent{}, fmt.Errorf("%w: name is required", ErrConflict)
+	if err := validateAgentName(normalizedName); err != nil {
+		return core.Agent{}, err
 	}
 	if normalizedPrompt == "" {
 		return core.Agent{}, fmt.Errorf("%w: prompt is required", ErrConflict)
 	}
-	if _, ok := s.findAgentByIDLocked(normalizedID); ok {
-		return core.Agent{}, fmt.Errorf("%w: agent id already exists", ErrConflict)
+	if _, ok := s.findAgentByNameLocked(normalizedName, ""); ok {
+		return core.Agent{}, fmt.Errorf("%w: agent name already exists", ErrConflict)
+	}
+	if normalizedID != "" {
+		if strings.ContainsAny(normalizedID, " \t\n\r") {
+			return core.Agent{}, fmt.Errorf("%w: id cannot contain whitespace", ErrConflict)
+		}
+		if _, ok := s.findAgentByIDLocked(normalizedID); ok {
+			return core.Agent{}, fmt.Errorf("%w: agent already exists", ErrConflict)
+		}
+	} else {
+		normalizedID = s.nextAgentUUIDLocked()
 	}
 
 	agent := core.Agent{
-		ID:     normalizedID,
-		Name:   normalizedName,
-		Prompt: normalizedPrompt,
+		WorkspaceID: resolvedWorkspaceID,
+		ID:          normalizedID,
+		Name:        normalizedName,
+		Prompt:      normalizedPrompt,
 	}
 	s.agents = append(s.agents, agent)
-	for _, workspace := range s.workspaces {
-		s.ensureDirectMessageRoomLocked(workspace.ID, agent)
-	}
+	s.ensureDirectMessageRoomLocked(resolvedWorkspaceID, agent)
+	s.ensureWorkspaceDefaultDiscussionAgentSessionsLocked(resolvedWorkspaceID)
 	return agent, nil
 }
 
 func (s *MemoryStore) UpdateAgent(agentID, name, prompt string) (core.Agent, error) {
+	return s.UpdateAgentInWorkspace(s.defaultWorkspaceID, agentID, name, prompt)
+}
+
+func (s *MemoryStore) UpdateAgentInWorkspace(workspaceID, agentID, name, prompt string) (core.Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	resolvedWorkspaceID := s.normalizeWorkspaceIDLocked(workspaceID)
 	normalizedName := strings.TrimSpace(name)
 	normalizedPrompt := strings.TrimSpace(prompt)
-	if normalizedName == "" {
-		return core.Agent{}, fmt.Errorf("%w: name is required", ErrConflict)
-	}
 	if normalizedPrompt == "" {
 		return core.Agent{}, fmt.Errorf("%w: prompt is required", ErrConflict)
 	}
+	if err := validateAgentName(normalizedName); err != nil {
+		return core.Agent{}, err
+	}
 
 	for i := range s.agents {
-		if s.agents[i].ID == agentID {
-			s.agents[i].Name = normalizedName
+		if s.agents[i].ID == agentID && s.agents[i].WorkspaceID == resolvedWorkspaceID {
+			if s.agents[i].Name != normalizedName {
+				return core.Agent{}, fmt.Errorf("%w: agent name cannot be renamed", ErrConflict)
+			}
 			s.agents[i].Prompt = normalizedPrompt
-			s.renameDirectMessageRoomsLocked(agentID, normalizedName)
 			return s.agents[i], nil
 		}
 	}
@@ -704,12 +805,17 @@ func (s *MemoryStore) UpdateAgent(agentID, name, prompt string) (core.Agent, err
 }
 
 func (s *MemoryStore) DeleteAgent(agentID string) error {
+	return s.DeleteAgentInWorkspace(s.defaultWorkspaceID, agentID)
+}
+
+func (s *MemoryStore) DeleteAgentInWorkspace(workspaceID, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	resolvedWorkspaceID := s.normalizeWorkspaceIDLocked(workspaceID)
 	index := -1
 	for i := range s.agents {
-		if s.agents[i].ID == agentID {
+		if s.agents[i].ID == agentID && s.agents[i].WorkspaceID == resolvedWorkspaceID {
 			index = i
 			break
 		}
@@ -722,7 +828,7 @@ func (s *MemoryStore) DeleteAgent(agentID string) error {
 	}
 
 	s.agents = append(s.agents[:index], s.agents[index+1:]...)
-	s.deleteDirectMessageRoomsLocked(agentID)
+	s.deleteDirectMessageRoomsLocked(resolvedWorkspaceID, agentID)
 	return nil
 }
 
@@ -737,7 +843,7 @@ func (s *MemoryStore) AgentDetailForWorkspace(workspaceID, agentID string) (core
 	s.reconcileRuntimeHealthLocked(time.Now().UTC())
 
 	resolvedWorkspaceID := s.normalizeWorkspaceIDLocked(workspaceID)
-	agent, ok := s.findAgentByIDLocked(agentID)
+	agent, ok := s.findAgentByIDInWorkspaceLocked(resolvedWorkspaceID, agentID)
 	if !ok {
 		return core.AgentDetailResponse{}, ErrNotFound
 	}
@@ -747,7 +853,6 @@ func (s *MemoryStore) AgentDetailForWorkspace(workspaceID, agentID string) (core
 	triggerMessageIDs := map[string]struct{}{}
 	sessions := make([]core.AgentSession, 0)
 	turns := make([]core.AgentTurn, 0)
-	waits := make([]core.AgentWait, 0)
 	handoffs := make([]core.HandoffRecord, 0)
 
 	for _, session := range s.agentSessions {
@@ -774,17 +879,6 @@ func (s *MemoryStore) AgentDetailForWorkspace(workspaceID, agentID string) (core
 		if strings.TrimSpace(turn.TriggerMessageID) != "" {
 			triggerMessageIDs[turn.TriggerMessageID] = struct{}{}
 		}
-	}
-
-	for _, wait := range s.agentWaits {
-		if wait.AgentID != agentID {
-			continue
-		}
-		if _, ok := s.findRoomByIDInWorkspaceLocked(resolvedWorkspaceID, wait.RoomID); !ok {
-			continue
-		}
-		waits = append(waits, wait)
-		roomIDs[wait.RoomID] = struct{}{}
 	}
 
 	for _, handoff := range s.handoffRecords {
@@ -840,7 +934,6 @@ func (s *MemoryStore) AgentDetailForWorkspace(workspaceID, agentID string) (core
 		AgentTurns:            turns,
 		AgentTurnOutputChunks: outputChunks,
 		AgentTurnToolCalls:    toolCalls,
-		AgentWaits:            waits,
 		HandoffRecords:        handoffs,
 	}, nil
 }
@@ -891,7 +984,6 @@ func (s *MemoryStore) IssueDetailForWorkspace(workspaceID, issueID string) (core
 		AgentTurns:            s.agentTurnsForRoom(room.ID),
 		AgentTurnOutputChunks: s.agentTurnOutputChunksForRoom(room.ID),
 		AgentTurnToolCalls:    s.agentTurnToolCallsForRoom(room.ID),
-		AgentWaits:            s.agentWaitsForRoom(room.ID),
 		HandoffRecords:        s.handoffRecordsForRoom(room.ID),
 		Tasks:                 s.tasksForIssue(issueID),
 		Runs:                  s.runsForIssue(issueID),
@@ -923,7 +1015,6 @@ func (s *MemoryStore) RoomDetailForWorkspaceAndSession(workspaceID, roomID, sess
 		return core.RoomDetailResponse{}, ErrNotFound
 	}
 	if strings.TrimSpace(sessionID) != "" {
-		s.markRoomReadLocked(sessionID, room.ID)
 		room = s.roomSummaryForSessionLocked(room, sessionID)
 	}
 
@@ -936,7 +1027,6 @@ func (s *MemoryStore) RoomDetailForWorkspaceAndSession(workspaceID, roomID, sess
 		AgentTurns:            s.agentTurnsForRoom(room.ID),
 		AgentTurnOutputChunks: s.agentTurnOutputChunksForRoom(room.ID),
 		AgentTurnToolCalls:    s.agentTurnToolCallsForRoom(room.ID),
-		AgentWaits:            s.agentWaitsForRoom(room.ID),
 		HandoffRecords:        s.handoffRecordsForRoom(room.ID),
 		Tasks:                 []core.Task{},
 		Runs:                  []core.Run{},
@@ -963,6 +1053,27 @@ func (s *MemoryStore) RoomDetailForWorkspaceAndSession(workspaceID, roomID, sess
 	}
 
 	return response, nil
+}
+
+func (s *MemoryStore) MarkRoomReadForWorkspaceAndSession(workspaceID, roomID, sessionID, messageID string) (core.RoomSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.reconcileRuntimeHealthLocked(time.Now().UTC())
+
+	resolvedWorkspaceID := s.normalizeWorkspaceIDLocked(workspaceID)
+	room, ok := s.findRoomByIDInWorkspaceLocked(resolvedWorkspaceID, roomID)
+	if !ok {
+		return core.RoomSummary{}, ErrNotFound
+	}
+	if strings.TrimSpace(sessionID) != "" {
+		if err := s.markRoomReadThroughMessageLocked(sessionID, room.ID, messageID); err != nil {
+			return core.RoomSummary{}, err
+		}
+		room = s.roomSummaryForSessionLocked(room, sessionID)
+	}
+
+	return room, nil
 }
 
 func (s *MemoryStore) roomSummaryForSessionLocked(room core.RoomSummary, sessionID string) core.RoomSummary {
@@ -1027,6 +1138,51 @@ func (s *MemoryStore) markRoomReadLocked(sessionID, roomID string) {
 		s.roomReadBySession[resolvedSessionID] = map[string]string{}
 	}
 	s.roomReadBySession[resolvedSessionID][resolvedRoomID] = messages[len(messages)-1].ID
+}
+
+func (s *MemoryStore) markRoomReadThroughMessageLocked(sessionID, roomID, messageID string) error {
+	resolvedSessionID := strings.TrimSpace(sessionID)
+	resolvedRoomID := strings.TrimSpace(roomID)
+	resolvedMessageID := strings.TrimSpace(messageID)
+	if resolvedSessionID == "" || resolvedRoomID == "" {
+		return nil
+	}
+	if resolvedMessageID == "" {
+		return fmt.Errorf("message id is required")
+	}
+
+	messages := s.messagesByRoom[resolvedRoomID]
+	targetIndex := -1
+	found := false
+	for index, message := range messages {
+		if message.ID == resolvedMessageID {
+			found = true
+			targetIndex = index
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("message %s not found in room %s", resolvedMessageID, resolvedRoomID)
+	}
+
+	if s.roomReadBySession[resolvedSessionID] == nil {
+		s.roomReadBySession[resolvedSessionID] = map[string]string{}
+	}
+	currentMessageID := strings.TrimSpace(s.roomReadBySession[resolvedSessionID][resolvedRoomID])
+	if currentMessageID != "" {
+		currentIndex := -1
+		for index, message := range messages {
+			if message.ID == currentMessageID {
+				currentIndex = index
+				break
+			}
+		}
+		if currentIndex > targetIndex {
+			return nil
+		}
+	}
+	s.roomReadBySession[resolvedSessionID][resolvedRoomID] = resolvedMessageID
+	return nil
 }
 
 func (s *MemoryStore) TaskBoard() core.TaskBoardResponse {
@@ -1225,7 +1381,7 @@ func (s *MemoryStore) invalidateAgentTurnLocked(turnIndex int) {
 	}
 }
 
-func (s *MemoryStore) CompleteAgentTurn(turnID, runtimeID, resultMessageID, appServerThreadID string) (core.AgentTurn, error) {
+func (s *MemoryStore) CompleteAgentTurn(turnID, runtimeID, resultMessageID, appServerThreadID string, clearAppServerThreadID bool) (core.AgentTurn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1244,7 +1400,9 @@ func (s *MemoryStore) CompleteAgentTurn(turnID, runtimeID, resultMessageID, appS
 		s.agentTurns[i].Status = "completed"
 		s.completeHandoffForTurnLocked(turnID)
 		if sessionIndex, ok := s.agentSessionIndexByIDLocked(s.agentTurns[i].SessionID); ok {
-			if threadID := strings.TrimSpace(appServerThreadID); threadID != "" {
+			if clearAppServerThreadID {
+				s.agentSessions[sessionIndex].AppServerThreadID = ""
+			} else if threadID := strings.TrimSpace(appServerThreadID); threadID != "" {
 				s.agentSessions[sessionIndex].AppServerThreadID = threadID
 			}
 			s.agentSessions[sessionIndex].LastMessageID = strings.TrimSpace(resultMessageID)
@@ -1302,16 +1460,26 @@ func (s *MemoryStore) PostRoomMessage(targetID, actorType, actorName, kind, body
 	if !ok {
 		return core.ActionResponse{}, ErrNotFound
 	}
+	room, ok := s.findRoomByIDLocked(roomID)
+	if !ok {
+		return core.ActionResponse{}, ErrNotFound
+	}
 	messageKind := strings.TrimSpace(kind)
 	if messageKind == "" {
 		messageKind = "message"
+	}
+	resolvedActorName := strings.TrimSpace(actorName)
+	if actorType == "agent" {
+		if agent, ok := s.findAgentByActorInWorkspaceLocked(room.WorkspaceID, actorName); ok {
+			resolvedActorName = agent.Name
+		}
 	}
 
 	s.nextMessageID++
 	message := core.Message{
 		ID:        fmt.Sprintf("msg_%03d", s.nextMessageID),
 		ActorType: actorType,
-		ActorName: actorName,
+		ActorName: resolvedActorName,
 		Body:      body,
 		Kind:      messageKind,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -1446,9 +1614,14 @@ func (s *MemoryStore) CreateTask(issueID, title, description, assigneeAgentID st
 		return core.ActionResponse{}, ErrNotFound
 	}
 
+	issueWorkspaceID, _ := s.workspaceIDForIssueLocked(issueID)
+	agent, ok := s.resolveAgentReferenceInWorkspaceLocked(issueWorkspaceID, assigneeAgentID)
+	if !ok {
+		return core.ActionResponse{}, ErrNotFound
+	}
+
 	s.nextTaskID++
 	taskID := fmt.Sprintf("task_%03d", s.nextTaskID)
-	issueWorkspaceID, _ := s.workspaceIDForIssueLocked(issueID)
 	task := core.Task{
 		WorkspaceID:     issueWorkspaceID,
 		ID:              taskID,
@@ -1456,7 +1629,7 @@ func (s *MemoryStore) CreateTask(issueID, title, description, assigneeAgentID st
 		Title:           title,
 		Description:     description,
 		Status:          "todo",
-		AssigneeAgentID: assigneeAgentID,
+		AssigneeAgentID: agent.ID,
 		BranchName:      fmt.Sprintf("%s/%s", strings.ReplaceAll(issueID, "_", "-"), taskID),
 		RunCount:        0,
 	}
@@ -1478,16 +1651,26 @@ func (s *MemoryStore) AssignTask(taskID, agentID string) (core.ActionResponse, e
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	taskWorkspaceID, ok := s.workspaceIDForTaskLocked(taskID)
+	if !ok {
+		return core.ActionResponse{}, ErrNotFound
+	}
+
+	agent, ok := s.resolveAgentReferenceInWorkspaceLocked(taskWorkspaceID, agentID)
+	if !ok {
+		return core.ActionResponse{}, ErrNotFound
+	}
+
 	for i := range s.tasks {
 		if s.tasks[i].ID == taskID {
-			s.tasks[i].AssigneeAgentID = agentID
+			s.tasks[i].AssigneeAgentID = agent.ID
 			return core.ActionResponse{
 				Status:        "completed",
 				ResultCode:    "task_assigned",
 				ResultMessage: "Task reassigned.",
 				AffectedEntities: []core.ActionEntity{
 					{Type: "task", ID: taskID},
-					{Type: "agent", ID: agentID},
+					{Type: "agent", ID: agent.ID},
 				},
 			}, nil
 		}
@@ -1512,10 +1695,7 @@ func (s *MemoryStore) SetTaskStatus(taskID, status, actorID string) (core.Action
 
 	s.tasks[taskIndex].Status = normalizedStatus
 	if issueID, ok := s.issueIDForTaskLocked(taskID); ok {
-		actorName := strings.TrimSpace(actorID)
-		if actorName == "" {
-			actorName = "someone"
-		}
+		actorName := s.resolveDisplayActorNameInWorkspaceLocked(s.tasks[taskIndex].WorkspaceID, actorID)
 		s.appendSystemMessageLocked(
 			issueID,
 			"log",
@@ -1611,10 +1791,11 @@ func (s *MemoryStore) ApproveRun(runID, actorID string) (core.ActionResponse, er
 		s.runs[i].RuntimeID = ""
 		s.resolveInboxItemsLocked("run", runID)
 		if issueID, ok := s.issueIDForTaskLocked(s.runs[i].TaskID); ok {
+			actorName := s.resolveDisplayActorNameInWorkspaceLocked(s.runs[i].WorkspaceID, actorID)
 			s.appendSystemMessageLocked(
 				issueID,
 				"log",
-				fmt.Sprintf("%s approved %s for another execution attempt.", actorID, s.runs[i].Title),
+				fmt.Sprintf("%s approved %s for another execution attempt.", actorName, s.runs[i].Title),
 			)
 		}
 
@@ -1653,10 +1834,11 @@ func (s *MemoryStore) CancelRun(runID, actorID string) (core.ActionResponse, err
 		}
 		s.resolveInboxItemsLocked("run", runID)
 		if issueID, ok := s.issueIDForTaskLocked(s.runs[i].TaskID); ok {
+			actorName := s.resolveDisplayActorNameInWorkspaceLocked(s.runs[i].WorkspaceID, actorID)
 			s.appendSystemMessageLocked(
 				issueID,
 				"blocked",
-				fmt.Sprintf("%s cancelled %s before it reached integration.", actorID, s.runs[i].Title),
+				fmt.Sprintf("%s cancelled %s before it reached integration.", actorName, s.runs[i].Title),
 			)
 		}
 
@@ -1729,10 +1911,11 @@ func (s *MemoryStore) ApproveMerge(taskID, actorID string) (core.ActionResponse,
 	}
 	s.mergeAttempts = append(s.mergeAttempts, mergeAttempt)
 	s.resolveInboxItemsLocked("task", taskID)
+	actorName := s.resolveDisplayActorNameInWorkspaceLocked(s.tasks[taskIndex].WorkspaceID, actorID)
 	s.appendSystemMessageLocked(
 		issueID,
 		"log",
-		fmt.Sprintf("%s approved merge for %s into %s.", actorID, s.tasks[taskIndex].Title, branch.Name),
+		fmt.Sprintf("%s approved merge for %s into %s.", actorName, s.tasks[taskIndex].Title, branch.Name),
 	)
 
 	return core.ActionResponse{
@@ -1784,10 +1967,11 @@ func (s *MemoryStore) CreateDeliveryPR(issueID, actorID string) (core.ActionResp
 	}
 	s.deliveryPRs = append(s.deliveryPRs, pr)
 	s.setIssueStatusLocked(issueID, "in_review")
+	actorName := s.resolveDisplayActorNameInWorkspaceLocked(workspaceID, actorID)
 	s.appendSystemMessageLocked(
 		issueID,
 		"summary",
-		fmt.Sprintf("%s created Delivery PR %s from %s.", actorID, pr.ID, branch.Name),
+		fmt.Sprintf("%s created Delivery PR %s from %s.", actorName, pr.ID, branch.Name),
 	)
 
 	return core.ActionResponse{
@@ -2156,6 +2340,51 @@ func (s *MemoryStore) workspaceIndexByIDLocked(workspaceID string) (int, bool) {
 	return 0, false
 }
 
+func (s *MemoryStore) memberHasWorkspaceAccessLocked(memberID, workspaceID string) bool {
+	resolvedMemberID := strings.TrimSpace(memberID)
+	resolvedWorkspaceID := strings.TrimSpace(workspaceID)
+	if resolvedMemberID == "" || resolvedWorkspaceID == "" {
+		return false
+	}
+	workspaceIDs, ok := s.memberWorkspaceAccess[resolvedMemberID]
+	if !ok {
+		return false
+	}
+	_, ok = workspaceIDs[resolvedWorkspaceID]
+	return ok
+}
+
+func (s *MemoryStore) MemberHasWorkspaceAccess(memberID, workspaceID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.memberHasWorkspaceAccessLocked(memberID, workspaceID)
+}
+
+func (s *MemoryStore) grantMemberWorkspaceAccessLocked(memberID, workspaceID string) {
+	resolvedMemberID := strings.TrimSpace(memberID)
+	resolvedWorkspaceID := strings.TrimSpace(workspaceID)
+	if resolvedMemberID == "" || resolvedWorkspaceID == "" {
+		return
+	}
+	if _, ok := s.memberWorkspaceAccess[resolvedMemberID]; !ok {
+		s.memberWorkspaceAccess[resolvedMemberID] = map[string]struct{}{}
+	}
+	s.memberWorkspaceAccess[resolvedMemberID][resolvedWorkspaceID] = struct{}{}
+}
+
+func (s *MemoryStore) defaultAccessibleWorkspaceForMemberLocked(memberID string) string {
+	if s.memberHasWorkspaceAccessLocked(memberID, s.defaultWorkspaceID) {
+		return s.defaultWorkspaceID
+	}
+	for _, workspace := range s.workspaces {
+		if s.memberHasWorkspaceAccessLocked(memberID, workspace.ID) {
+			return workspace.ID
+		}
+	}
+	return ""
+}
+
 func (s *MemoryStore) normalizeWorkspaceIDLocked(workspaceID string) string {
 	resolved := strings.TrimSpace(workspaceID)
 	if resolved == "" {
@@ -2335,6 +2564,10 @@ func (s *MemoryStore) WorkspaceIDForRoom(roomID string) (string, bool) {
 func (s *MemoryStore) WorkspaceIDForTask(taskID string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.workspaceIDForTaskLocked(taskID)
+}
+
+func (s *MemoryStore) workspaceIDForTaskLocked(taskID string) (string, bool) {
 	for _, task := range s.tasks {
 		if task.ID == taskID {
 			return task.WorkspaceID, true
@@ -2625,8 +2858,6 @@ func (s *MemoryStore) refreshAgentSessionStateLocked(sessionIndex int, resultMes
 				break
 			}
 		}
-	case s.hasOpenAgentWaitForSessionLocked(session.ID):
-		session.Status = "waiting_reply"
 	case s.nextQueuedAgentTurnIDForSessionLocked(session.ID) != "":
 		session.Status = "queued"
 		session.CurrentTurnID = s.nextQueuedAgentTurnIDForSessionLocked(session.ID)
@@ -2738,25 +2969,10 @@ func (s *MemoryStore) postRoomMessageEffectsLocked(roomID string, message core.M
 	affected := make([]core.ActionEntity, 0, 8)
 	excludedAgentIDs := make(map[string]struct{})
 
-	if wait, ok := s.markAgentWaitingLocked(roomID, message); ok {
-		affected = append(affected,
-			core.ActionEntity{Type: "agent_session", ID: wait.SessionID},
-			core.ActionEntity{Type: "agent_wait", ID: wait.ID},
-		)
-	}
-
 	if handoff, turn, ok := s.enqueueAgentHandoffLocked(roomID, message); ok {
 		excludedAgentIDs[turn.AgentID] = struct{}{}
 		affected = append(affected,
 			core.ActionEntity{Type: "handoff_record", ID: handoff.ID},
-			core.ActionEntity{Type: "agent_turn", ID: turn.ID},
-		)
-	}
-
-	if session, turn, ok := s.resumeWaitingAgentFromMessageLocked(roomID, message); ok {
-		excludedAgentIDs[turn.AgentID] = struct{}{}
-		affected = append(affected,
-			core.ActionEntity{Type: "agent_session", ID: session.ID},
 			core.ActionEntity{Type: "agent_turn", ID: turn.ID},
 		)
 	}
@@ -2772,55 +2988,20 @@ func (s *MemoryStore) postRoomMessageEffectsLocked(roomID string, message core.M
 	return affected
 }
 
-func (s *MemoryStore) markAgentWaitingLocked(roomID string, message core.Message) (core.AgentWait, bool) {
-	if message.ActorType != "agent" || strings.TrimSpace(message.Kind) != "clarification_request" {
-		return core.AgentWait{}, false
-	}
-
-	agent, ok := s.findAgentByActorLocked(message.ActorName)
-	if !ok {
-		return core.AgentWait{}, false
-	}
-
-	sessionIndex := s.ensureAgentSessionLocked(roomID, agent.ID)
-	for i := range s.agentWaits {
-		if s.agentWaits[i].SessionID == s.agentSessions[sessionIndex].ID && s.agentWaits[i].Status == "waiting_reply" {
-			s.agentWaits[i].BlockingMessageID = message.ID
-			s.agentWaits[i].CreatedAt = time.Now().UTC().Format(time.RFC3339)
-			s.agentWaits[i].ResolvedAt = ""
-			s.agentSessions[sessionIndex].LastMessageID = message.ID
-			s.refreshAgentSessionStateLocked(sessionIndex, message.ID)
-			return s.agentWaits[i], true
-		}
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	s.nextAgentWaitID++
-	wait := core.AgentWait{
-		ID:                fmt.Sprintf("agent_wait_%03d", s.nextAgentWaitID),
-		SessionID:         s.agentSessions[sessionIndex].ID,
-		RoomID:            roomID,
-		AgentID:           agent.ID,
-		BlockingMessageID: message.ID,
-		Status:            "waiting_reply",
-		CreatedAt:         now,
-	}
-	s.agentWaits = append(s.agentWaits, wait)
-	s.agentSessions[sessionIndex].LastMessageID = message.ID
-	s.refreshAgentSessionStateLocked(sessionIndex, message.ID)
-	return wait, true
-}
-
 func (s *MemoryStore) enqueueAgentHandoffLocked(roomID string, message core.Message) (core.HandoffRecord, core.AgentTurn, bool) {
 	if message.ActorType != "agent" || strings.TrimSpace(message.Kind) != "handoff" {
 		return core.HandoffRecord{}, core.AgentTurn{}, false
 	}
 
-	fromAgent, ok := s.findAgentByActorLocked(message.ActorName)
+	room, ok := s.findRoomByIDLocked(roomID)
 	if !ok {
 		return core.HandoffRecord{}, core.AgentTurn{}, false
 	}
-	targetAgent, ok := s.findMentionedAgentLocked(message.Body)
+	fromAgent, ok := s.findAgentByActorInWorkspaceLocked(room.WorkspaceID, message.ActorName)
+	if !ok {
+		return core.HandoffRecord{}, core.AgentTurn{}, false
+	}
+	targetAgent, ok := s.findMentionedAgentInWorkspaceLocked(room.WorkspaceID, message.Body)
 	if !ok || targetAgent.ID == fromAgent.ID {
 		return core.HandoffRecord{}, core.AgentTurn{}, false
 	}
@@ -2846,31 +3027,6 @@ func (s *MemoryStore) enqueueAgentHandoffLocked(roomID string, message core.Mess
 	s.agentSessions[fromSessionIndex].LastMessageID = message.ID
 	s.refreshAgentSessionStateLocked(fromSessionIndex, message.ID)
 	return record, turn, true
-}
-
-func (s *MemoryStore) resumeWaitingAgentFromMessageLocked(roomID string, message core.Message) (core.AgentSession, core.AgentTurn, bool) {
-	if message.ActorType == "system" || !isParticipantInstructionMessageKind(message.Kind) {
-		return core.AgentSession{}, core.AgentTurn{}, false
-	}
-
-	waitIndex, ok := s.findResolvableAgentWaitIndexLocked(roomID, message)
-	if !ok {
-		return core.AgentSession{}, core.AgentTurn{}, false
-	}
-
-	wait := s.agentWaits[waitIndex]
-	sessionIndex, ok := s.agentSessionIndexByIDLocked(wait.SessionID)
-	if !ok {
-		return core.AgentSession{}, core.AgentTurn{}, false
-	}
-
-	turn := s.createAgentTurnLocked(sessionIndex, roomID, wait.AgentID, message.ID, "clarification_followup")
-	now := time.Now().UTC().Format(time.RFC3339)
-	s.agentWaits[waitIndex].Status = "resolved"
-	s.agentWaits[waitIndex].ResolvedAt = now
-	s.agentSessions[sessionIndex].LastMessageID = message.ID
-	s.refreshAgentSessionStateLocked(sessionIndex, message.ID)
-	return s.agentSessions[sessionIndex], turn, true
 }
 
 func (s *MemoryStore) enqueueVisibleAgentTurnsFromMessageLocked(roomID string, message core.Message, excludedAgentIDs map[string]struct{}) ([]core.AgentSession, []core.AgentTurn) {
@@ -2901,8 +3057,12 @@ func (s *MemoryStore) enqueueVisibleAgentTurnsFromMessageLocked(roomID string, m
 }
 
 func (s *MemoryStore) resolveVisibleReplyAgentsLocked(roomID string, message core.Message, excludedAgentIDs map[string]struct{}) []core.Agent {
-	if room, ok := s.findRoomByIDLocked(roomID); ok && room.Kind == "direct_message" {
-		if agent, ok := s.findAgentByIDLocked(room.DirectAgentID); ok {
+	room, ok := s.findRoomByIDLocked(roomID)
+	if !ok {
+		return nil
+	}
+	if room.Kind == "direct_message" {
+		if agent, ok := s.findAgentByIDInWorkspaceLocked(room.WorkspaceID, room.DirectAgentID); ok {
 			return s.filterVisibleReplyAgentsLocked([]core.Agent{agent}, message, excludedAgentIDs)
 		}
 		return nil
@@ -2917,15 +3077,19 @@ func (s *MemoryStore) resolveVisibleReplyAgentsLocked(roomID string, message cor
 	}
 
 	legacyTargets := make([]core.Agent, 0, 1)
-	if agent, ok := s.findMentionedAgentLocked(message.Body); ok {
+	if agent, ok := s.findMentionedAgentInWorkspaceLocked(room.WorkspaceID, message.Body); ok {
 		legacyTargets = append(legacyTargets, agent)
-	} else if agent, ok := s.selectVisibleReplyAgentLocked(roomID); ok {
+	} else if agent, ok := s.selectVisibleReplyAgentLocked(room.WorkspaceID, roomID); ok {
 		legacyTargets = append(legacyTargets, agent)
 	}
 	return s.filterVisibleReplyAgentsLocked(legacyTargets, message, excludedAgentIDs)
 }
 
 func (s *MemoryStore) joinedRoomAgentsLocked(roomID string) []core.Agent {
+	room, ok := s.findRoomByIDLocked(roomID)
+	if !ok {
+		return nil
+	}
 	agents := make([]core.Agent, 0, len(s.agentSessions))
 	seen := make(map[string]struct{})
 	for _, session := range s.agentSessions {
@@ -2935,7 +3099,7 @@ func (s *MemoryStore) joinedRoomAgentsLocked(roomID string) []core.Agent {
 		if _, ok := seen[session.AgentID]; ok {
 			continue
 		}
-		agent, ok := s.findAgentByIDLocked(session.AgentID)
+		agent, ok := s.findAgentByIDInWorkspaceLocked(room.WorkspaceID, session.AgentID)
 		if !ok {
 			continue
 		}
@@ -2952,8 +3116,11 @@ func (s *MemoryStore) filterVisibleReplyAgentsLocked(candidates []core.Agent, me
 
 	senderAgentID := ""
 	if message.ActorType == "agent" {
-		if agent, ok := s.findAgentByActorLocked(message.ActorName); ok {
-			senderAgentID = agent.ID
+		for _, candidate := range candidates {
+			if agent, ok := s.findAgentByActorInWorkspaceLocked(candidate.WorkspaceID, message.ActorName); ok {
+				senderAgentID = agent.ID
+				break
+			}
 		}
 	}
 
@@ -3004,13 +3171,12 @@ func (s *MemoryStore) ensureAgentSessionLocked(roomID, agentID string) int {
 		}
 	}
 
-	s.nextAgentSessionID++
-	sessionID := fmt.Sprintf("agent_session_%03d", s.nextAgentSessionID)
+	sessionID := newUUIDString()
 	session := core.AgentSession{
 		ID:               sessionID,
 		RoomID:           roomID,
 		AgentID:          agentID,
-		ProviderThreadID: fmt.Sprintf("provider_thread_%s", sessionID),
+		ProviderThreadID: newUUIDString(),
 		Status:           "idle",
 		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
@@ -3028,9 +3194,6 @@ func (s *MemoryStore) findAgentSessionByRoomAndAgentLocked(roomID, agentID strin
 }
 
 func (s *MemoryStore) validateRoomAgentRemovalLocked(session core.AgentSession) error {
-	if s.hasOpenAgentWaitForSessionLocked(session.ID) {
-		return fmt.Errorf("%w: agent is waiting on a room reply in this room", ErrConflict)
-	}
 	if s.hasQueuedHandoffForSessionLocked(session.ID) {
 		return fmt.Errorf("%w: agent has a queued handoff in this room", ErrConflict)
 	}
@@ -3049,8 +3212,6 @@ func (s *MemoryStore) validateRoomAgentRemovalLocked(session core.AgentSession) 
 
 func wakeupModeForIntent(intentType string) string {
 	switch strings.TrimSpace(intentType) {
-	case "clarification_followup":
-		return "clarification_followup"
 	case "handoff_response":
 		return "handoff_response"
 	case "visible_message_response":
@@ -3078,7 +3239,7 @@ func (s *MemoryStore) buildEventFrameLocked(roomID, triggerMessageID, intentType
 	if room.IssueID != "" {
 		currentTarget = fmt.Sprintf("issue:%s/room:%s", room.IssueID, roomID)
 	} else if room.Kind == "direct_message" && strings.TrimSpace(room.DirectAgentID) != "" {
-		currentTarget = fmt.Sprintf("agent:%s/room:%s", room.DirectAgentID, roomID)
+		currentTarget = fmt.Sprintf("direct_message_room:%s", roomID)
 	}
 
 	contextSummary := fmt.Sprintf("Respond in %s for trigger message %s.", currentTarget, triggerMessageID)
@@ -3109,14 +3270,42 @@ func (s *MemoryStore) nextAgentTurnSequenceLocked(sessionID string) int {
 	return sequence
 }
 
-func (s *MemoryStore) nextAgentIDLocked() string {
+func (s *MemoryStore) nextAgentUUIDLocked() string {
 	for {
-		s.nextAgentID++
-		candidate := fmt.Sprintf("agent_%03d", s.nextAgentID)
+		candidate := newUUIDString()
 		if _, ok := s.findAgentByIDLocked(candidate); !ok {
 			return candidate
 		}
 	}
+}
+
+func validateAgentName(name string) error {
+	normalizedName := strings.TrimSpace(name)
+	if normalizedName == "" {
+		return fmt.Errorf("%w: name is required", ErrConflict)
+	}
+	for _, r := range normalizedName {
+		switch {
+		case r == '_':
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+		default:
+			return fmt.Errorf("%w: agent name may only contain letters, digits, and underscore", ErrConflict)
+		}
+	}
+	return nil
+}
+
+func newUUIDString() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		fallback := time.Now().UTC().UnixNano()
+		for i := 0; i < 8; i++ {
+			value[i] = byte(fallback >> (8 * (7 - i)))
+		}
+	}
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16])
 }
 
 func (s *MemoryStore) findAgentByIDLocked(agentID string) (core.Agent, bool) {
@@ -3126,6 +3315,60 @@ func (s *MemoryStore) findAgentByIDLocked(agentID string) (core.Agent, bool) {
 		}
 	}
 	return core.Agent{}, false
+}
+
+func normalizeAgentNameKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func (s *MemoryStore) agentsForWorkspaceLocked(workspaceID string) []core.Agent {
+	agents := make([]core.Agent, 0, len(s.agents))
+	for _, agent := range s.agents {
+		if agent.WorkspaceID != workspaceID {
+			continue
+		}
+		agents = append(agents, agent)
+	}
+	return agents
+}
+
+func (s *MemoryStore) findAgentByIDInWorkspaceLocked(workspaceID, agentID string) (core.Agent, bool) {
+	agent, ok := s.findAgentByIDLocked(agentID)
+	if !ok || agent.WorkspaceID != workspaceID {
+		return core.Agent{}, false
+	}
+	return agent, true
+}
+
+func (s *MemoryStore) findAgentByNameLocked(name, excludingAgentID string) (core.Agent, bool) {
+	normalizedName := normalizeAgentNameKey(name)
+	if normalizedName == "" {
+		return core.Agent{}, false
+	}
+	for _, agent := range s.agents {
+		if agent.ID == excludingAgentID {
+			continue
+		}
+		if normalizeAgentNameKey(agent.Name) == normalizedName {
+			return agent, true
+		}
+	}
+	return core.Agent{}, false
+}
+
+func (s *MemoryStore) resolveAgentReferenceInWorkspaceLocked(workspaceID, agentRef string) (core.Agent, bool) {
+	resolved := strings.TrimSpace(agentRef)
+	if resolved == "" {
+		return core.Agent{}, false
+	}
+	if agent, ok := s.findAgentByIDInWorkspaceLocked(workspaceID, resolved); ok {
+		return agent, true
+	}
+	agent, ok := s.findAgentByNameLocked(resolved, "")
+	if !ok || agent.WorkspaceID != workspaceID {
+		return core.Agent{}, false
+	}
+	return agent, true
 }
 
 func (s *MemoryStore) findDirectMessageRoomLocked(workspaceID, agentID string) (core.RoomSummary, bool) {
@@ -3138,6 +3381,9 @@ func (s *MemoryStore) findDirectMessageRoomLocked(workspaceID, agentID string) (
 }
 
 func (s *MemoryStore) ensureDirectMessageRoomLocked(workspaceID string, agent core.Agent) core.RoomSummary {
+	if agent.WorkspaceID != workspaceID {
+		return core.RoomSummary{}
+	}
 	if room, ok := s.findDirectMessageRoomLocked(workspaceID, agent.ID); ok {
 		return room
 	}
@@ -3156,23 +3402,50 @@ func (s *MemoryStore) ensureDirectMessageRoomLocked(workspaceID string, agent co
 }
 
 func (s *MemoryStore) ensureDirectMessageRoomsForWorkspaceLocked(workspaceID string) {
-	for _, agent := range s.agents {
+	for _, agent := range s.agentsForWorkspaceLocked(workspaceID) {
 		s.ensureDirectMessageRoomLocked(workspaceID, agent)
 	}
 }
 
-func (s *MemoryStore) renameDirectMessageRoomsLocked(agentID, title string) {
+func (s *MemoryStore) ensureWorkspaceDefaultDiscussionAgentSessionsLocked(workspaceID string) {
+	roomID, ok := s.workspacePrimaryDiscussionRoomIDLocked(workspaceID)
+	if !ok {
+		return
+	}
+	for _, agent := range s.agentsForWorkspaceLocked(workspaceID) {
+		sessionIndex := s.ensureAgentSessionLocked(roomID, agent.ID)
+		s.agentSessions[sessionIndex].JoinedRoom = true
+		if strings.TrimSpace(s.agentSessions[sessionIndex].Status) == "" {
+			s.agentSessions[sessionIndex].Status = "idle"
+		}
+		if strings.TrimSpace(s.agentSessions[sessionIndex].UpdatedAt) == "" {
+			s.agentSessions[sessionIndex].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+	}
+}
+
+func (s *MemoryStore) workspacePrimaryDiscussionRoomIDLocked(workspaceID string) (string, bool) {
+	resolvedWorkspaceID := s.normalizeWorkspaceIDLocked(workspaceID)
+	for _, room := range s.rooms {
+		if room.WorkspaceID == resolvedWorkspaceID && room.Kind == "discussion" && strings.EqualFold(strings.TrimSpace(room.Title), "all") {
+			return room.ID, true
+		}
+	}
+	return "", false
+}
+
+func (s *MemoryStore) renameDirectMessageRoomsLocked(workspaceID, agentID, title string) {
 	for i := range s.rooms {
-		if s.rooms[i].Kind == "direct_message" && s.rooms[i].DirectAgentID == agentID {
+		if s.rooms[i].WorkspaceID == workspaceID && s.rooms[i].Kind == "direct_message" && s.rooms[i].DirectAgentID == agentID {
 			s.rooms[i].Title = title
 		}
 	}
 }
 
-func (s *MemoryStore) deleteDirectMessageRoomsLocked(agentID string) {
+func (s *MemoryStore) deleteDirectMessageRoomsLocked(workspaceID, agentID string) {
 	filteredRooms := s.rooms[:0]
 	for _, room := range s.rooms {
-		if room.Kind == "direct_message" && room.DirectAgentID == agentID {
+		if room.WorkspaceID == workspaceID && room.Kind == "direct_message" && room.DirectAgentID == agentID {
 			delete(s.messagesByRoom, room.ID)
 			continue
 		}
@@ -3200,11 +3473,6 @@ func (s *MemoryStore) agentDeleteConflictReasonLocked(agentID string) (string, b
 	for _, turn := range s.agentTurns {
 		if turn.AgentID == agentID {
 			return fmt.Sprintf("agent is referenced by agent turn %s", turn.ID), true
-		}
-	}
-	for _, wait := range s.agentWaits {
-		if wait.AgentID == agentID {
-			return fmt.Sprintf("agent is referenced by agent wait %s", wait.ID), true
 		}
 	}
 	for _, handoff := range s.handoffRecords {
@@ -3238,12 +3506,15 @@ func (s *MemoryStore) agentSessionIndexByIDLocked(sessionID string) (int, bool) 
 	return 0, false
 }
 
-func (s *MemoryStore) findAgentByActorLocked(actorName string) (core.Agent, bool) {
+func (s *MemoryStore) findAgentByActorInWorkspaceLocked(workspaceID, actorName string) (core.Agent, bool) {
 	normalizedActor := normalizeMentionToken(actorName)
 	if normalizedActor == "" {
 		return core.Agent{}, false
 	}
 	for _, agent := range s.agents {
+		if agent.WorkspaceID != workspaceID {
+			continue
+		}
 		if normalizedActor == normalizeMentionToken(agent.ID) || normalizedActor == normalizeMentionToken(agent.Name) {
 			return agent, true
 		}
@@ -3251,7 +3522,18 @@ func (s *MemoryStore) findAgentByActorLocked(actorName string) (core.Agent, bool
 	return core.Agent{}, false
 }
 
-func (s *MemoryStore) findMentionedAgentLocked(body string) (core.Agent, bool) {
+func (s *MemoryStore) resolveDisplayActorNameInWorkspaceLocked(workspaceID, actorID string) string {
+	displayActor := strings.TrimSpace(actorID)
+	if displayActor == "" {
+		return "Someone"
+	}
+	if agent, ok := s.findAgentByActorInWorkspaceLocked(workspaceID, actorID); ok {
+		return agent.Name
+	}
+	return displayActor
+}
+
+func (s *MemoryStore) findMentionedAgentInWorkspaceLocked(workspaceID, body string) (core.Agent, bool) {
 	for _, token := range strings.Fields(body) {
 		if !strings.HasPrefix(token, "@") {
 			continue
@@ -3261,6 +3543,9 @@ func (s *MemoryStore) findMentionedAgentLocked(body string) (core.Agent, bool) {
 			continue
 		}
 		for _, agent := range s.agents {
+			if agent.WorkspaceID != workspaceID {
+				continue
+			}
 			if normalized == normalizeMentionToken(agent.ID) || normalized == normalizeMentionToken(agent.Name) {
 				return agent, true
 			}
@@ -3269,23 +3554,23 @@ func (s *MemoryStore) findMentionedAgentLocked(body string) (core.Agent, bool) {
 	return core.Agent{}, false
 }
 
-func (s *MemoryStore) selectVisibleReplyAgentLocked(roomID string) (core.Agent, bool) {
-	if agent, ok := s.findMostRecentlyUpdatedSessionAgentLocked(roomID); ok {
+func (s *MemoryStore) selectVisibleReplyAgentLocked(workspaceID, roomID string) (core.Agent, bool) {
+	if agent, ok := s.findMostRecentlyUpdatedSessionAgentLocked(workspaceID, roomID); ok {
 		return agent, true
 	}
-	if agent, ok := s.findMostRecentAgentSpeakerLocked(roomID); ok {
+	if agent, ok := s.findMostRecentAgentSpeakerLocked(workspaceID, roomID); ok {
 		return agent, true
 	}
-	if agent, ok := s.findMostRecentlyActiveAgentLocked(); ok {
+	if agent, ok := s.findMostRecentlyActiveAgentLocked(workspaceID); ok {
 		return agent, true
 	}
-	for _, agent := range s.agents {
+	for _, agent := range s.agentsForWorkspaceLocked(workspaceID) {
 		return agent, true
 	}
 	return core.Agent{}, false
 }
 
-func (s *MemoryStore) findMostRecentlyUpdatedSessionAgentLocked(roomID string) (core.Agent, bool) {
+func (s *MemoryStore) findMostRecentlyUpdatedSessionAgentLocked(workspaceID, roomID string) (core.Agent, bool) {
 	bestUpdatedAt := ""
 	bestAgent := core.Agent{}
 	found := false
@@ -3293,7 +3578,7 @@ func (s *MemoryStore) findMostRecentlyUpdatedSessionAgentLocked(roomID string) (
 		if session.RoomID != roomID {
 			continue
 		}
-		agent, ok := s.findAgentByActorLocked(session.AgentID)
+		agent, ok := s.findAgentByActorInWorkspaceLocked(workspaceID, session.AgentID)
 		if !ok {
 			continue
 		}
@@ -3306,20 +3591,20 @@ func (s *MemoryStore) findMostRecentlyUpdatedSessionAgentLocked(roomID string) (
 	return bestAgent, found
 }
 
-func (s *MemoryStore) findMostRecentAgentSpeakerLocked(roomID string) (core.Agent, bool) {
+func (s *MemoryStore) findMostRecentAgentSpeakerLocked(workspaceID, roomID string) (core.Agent, bool) {
 	for i := len(s.messagesByRoom[roomID]) - 1; i >= 0; i-- {
 		message := s.messagesByRoom[roomID][i]
 		if message.ActorType != "agent" {
 			continue
 		}
-		if agent, ok := s.findAgentByActorLocked(message.ActorName); ok {
+		if agent, ok := s.findAgentByActorInWorkspaceLocked(workspaceID, message.ActorName); ok {
 			return agent, true
 		}
 	}
 	return core.Agent{}, false
 }
 
-func (s *MemoryStore) findMostRecentlyActiveAgentLocked() (core.Agent, bool) {
+func (s *MemoryStore) findMostRecentlyActiveAgentLocked(workspaceID string) (core.Agent, bool) {
 	bestCreatedAt := ""
 	bestAgent := core.Agent{}
 	found := false
@@ -3328,7 +3613,7 @@ func (s *MemoryStore) findMostRecentlyActiveAgentLocked() (core.Agent, bool) {
 			if message.ActorType != "agent" {
 				continue
 			}
-			agent, ok := s.findAgentByActorLocked(message.ActorName)
+			agent, ok := s.findAgentByActorInWorkspaceLocked(workspaceID, message.ActorName)
 			if !ok {
 				continue
 			}
@@ -3340,52 +3625,6 @@ func (s *MemoryStore) findMostRecentlyActiveAgentLocked() (core.Agent, bool) {
 		}
 	}
 	return bestAgent, found
-}
-
-func (s *MemoryStore) findResolvableAgentWaitIndexLocked(roomID string, message core.Message) (int, bool) {
-	candidateAgentID := ""
-	if agent, ok := s.findMentionedAgentLocked(message.Body); ok {
-		candidateAgentID = agent.ID
-	}
-	actorAgentID := ""
-	if message.ActorType == "agent" {
-		if actor, ok := s.findAgentByActorLocked(message.ActorName); ok {
-			actorAgentID = actor.ID
-		}
-	}
-
-	matchIndex := -1
-	openCount := 0
-	for i := len(s.agentWaits) - 1; i >= 0; i-- {
-		wait := s.agentWaits[i]
-		if wait.RoomID != roomID || wait.Status != "waiting_reply" {
-			continue
-		}
-		if actorAgentID != "" && wait.AgentID == actorAgentID {
-			continue
-		}
-		openCount++
-		if candidateAgentID != "" && wait.AgentID == candidateAgentID {
-			return i, true
-		}
-		if matchIndex == -1 {
-			matchIndex = i
-		}
-	}
-
-	if candidateAgentID == "" && openCount == 1 && matchIndex >= 0 {
-		return matchIndex, true
-	}
-	return -1, false
-}
-
-func (s *MemoryStore) hasOpenAgentWaitForSessionLocked(sessionID string) bool {
-	for _, wait := range s.agentWaits {
-		if wait.SessionID == sessionID && wait.Status == "waiting_reply" {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *MemoryStore) hasQueuedHandoffForSessionLocked(sessionID string) bool {
@@ -3482,16 +3721,6 @@ func (s *MemoryStore) agentTurnsForRoom(roomID string) []core.AgentTurn {
 		}
 	}
 	return turns
-}
-
-func (s *MemoryStore) agentWaitsForRoom(roomID string) []core.AgentWait {
-	waits := make([]core.AgentWait, 0)
-	for _, wait := range s.agentWaits {
-		if wait.RoomID == roomID {
-			waits = append(waits, wait)
-		}
-	}
-	return waits
 }
 
 func (s *MemoryStore) handoffRecordsForRoom(roomID string) []core.HandoffRecord {

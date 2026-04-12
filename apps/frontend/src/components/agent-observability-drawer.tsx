@@ -1,8 +1,10 @@
 "use client";
 
 import { AgentObservabilitySurface } from "@/components/agent-observability-panel";
+import type { Agent } from "@/lib/types";
 
 type AgentObservabilityDrawerProps = {
+  agents: Agent[];
   sessionToken: string;
   openAgentId: string | null;
   onOpenAgentIdChange: (agentId: string | null) => void;
@@ -10,6 +12,7 @@ type AgentObservabilityDrawerProps = {
 };
 
 export function AgentObservabilityDrawer({
+  agents,
   sessionToken,
   openAgentId,
   onOpenAgentIdChange,
@@ -29,6 +32,7 @@ export function AgentObservabilityDrawer({
             <AgentObservabilitySurface
               agentId={openAgentId}
               sessionToken={sessionToken}
+              agents={agents}
               refreshKey={refreshKey}
               showCloseButton
               onClose={() => onOpenAgentIdChange(null)}

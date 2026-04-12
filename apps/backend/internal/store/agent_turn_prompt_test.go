@@ -79,12 +79,12 @@ func TestBuildAgentTurnInstructionUsesChatFirstPrompt(t *testing.T) {
 	})
 
 	for _, expected := range []string{
-		"KIND: <message|clarification_request|handoff|summary|no_response>",
+		"RESULT: <done|handoff|no_response>",
 		"生命周期：",
 		"这个工作区会在同一个 OpenShock agent session 的后续回合之间持续复用",
 		"工作区约定：",
 		"深入思考前先阅读 MEMORY.md",
-		"阅读 CURRENT_TURN.md，确认本回合的精确触发原因和回复契约",
+		"阅读 CURRENT_TURN.md，确认本回合的精确触发原因和当前事实快照",
 		"notes/room-context.md",
 		"notes/work-log.md",
 		"请在结束前更新 MEMORY.md",
@@ -92,28 +92,42 @@ func TestBuildAgentTurnInstructionUsesChatFirstPrompt(t *testing.T) {
 		"`openshock`",
 		"openshock task create --issue issue_101",
 		"openshock task claim --task <task_id> --actor-id agent_shell",
+		"openshock send-message --room room_001 --body",
+		"openshock task status set --task <task_id> --status in_progress --actor-id agent_shell",
+		"openshock run create --task <task_id> --actor-id agent_shell",
+		"openshock git request-merge --task <task_id> --actor-id agent_shell",
+		"openshock git approve-merge --task <task_id> --actor-id agent_shell",
 		"openshock run create --task <task_id> --actor-id agent_shell",
 		"openshock git request-merge --task <task_id> --actor-id agent_shell",
 		"openshock git approve-merge --task <task_id> --actor-id agent_shell",
 		"openshock delivery request --issue issue_101 --actor-id agent_shell",
+		"高频用法速查：",
 		"唤醒模式：direct_message。",
 		"该模式下的第一步：",
 		"先判断这条消息是否需要你可见地回复。",
+		"如果当前触发主要是在找别的 agent，而你没有新增价值，默认使用 `no_response`。",
+		"如果你只是学到了一点稳定上下文，但不需要改变房间里的共享认知，就只更新 MEMORY.md，不要发送可见消息。",
+		"不要把“我先看一下”、“我先确认一下”、“我先复核一下”这类内部思考过程发到房间里。",
+		"openshock send-message --room room_001 --body",
+		"`send-message` 只发送需要告知相关人的事实、结论、阻塞或下一步。",
+		"普通可见消息不会从最终 `RESULT` 自动转发到房间。",
 		"自然语言",
 		"回复契约：",
 		"身份约定：",
-		"你的稳定 OpenShock agent id 是 `agent_shell`。",
-		"你在房间界面里的显示名是 `Shell_Runner`。",
-		"这两个标签指向的是同一个 agent，也就是你。",
+		"你在房间界面里的名字是 `Shell_Runner`。",
 		"Agent Prompt：",
 		"执行型工程师，适合承担具体实现和命令执行工作，习惯边做边验证。",
+		"这是你的职责边界，不只是风格建议。",
 		"当前 Issue：issue_101 | Fix memory leak in observer pipeline | status=in_progress | priority=urgent",
 		"默认 Repo：/tmp/openshock-repo",
 		"task_guard | Add retention guard around handoff queue | status=in_progress | assignee=agent_shell | branch=issue-101/task-guard | 1 run",
-		"run_guard_01 | task=task_guard | status=approval_required | agent=agent_shell | branch=issue-101/task-guard",
+		"run_guard_01 | task=task_guard | status=approval_required | branch=issue-101/task-guard",
 		"Integration Branch：issue-101/integration | status=integrating | merged=task_diag",
 		"merge_101 | task=task_guard | status=queued | issue-101/task-guard -> issue-101/integration",
 		"触发消息中的 mention 信号：@agent_shell",
+		"不要假设存在 `openshock issue show`、`openshock agent list` 之类未声明的只读命令。",
+		"不要把 `openshock --help` 当成默认第一步",
+		"--assignee-agent-id <agent_id>",
 	} {
 		if !strings.Contains(instruction, expected) {
 			t.Fatalf("expected instruction to contain %q, got:\n%s", expected, instruction)
@@ -121,38 +135,6 @@ func TestBuildAgentTurnInstructionUsesChatFirstPrompt(t *testing.T) {
 	}
 	if strings.Contains(instruction, "plan|") {
 		t.Fatalf("did not expect old plan-based reply format in instruction:\n%s", instruction)
-	}
-}
-
-func TestBuildAgentTurnInstructionClarificationFollowupMode(t *testing.T) {
-	instruction := buildAgentTurnInstruction(core.AgentTurnExecution{
-		Turn: core.AgentTurn{
-			ID:         "turn_002",
-			RoomID:     "room_001",
-			AgentID:    "agent_shell",
-			IntentType: "clarification_followup",
-			WakeupMode: "clarification_followup",
-		},
-		AgentName:   "Shell_Runner",
-		AgentPrompt: "执行型工程师。",
-		Room:        core.RoomSummary{ID: "room_001", Title: "Announcements"},
-		TriggerMessage: core.Message{
-			ID:        "msg_002",
-			ActorType: "member",
-			ActorName: "Sarah",
-			Kind:      "message",
-			Body:      "可以改 billing guard，继续。",
-		},
-	})
-
-	for _, expected := range []string{
-		"唤醒模式：clarification_followup。",
-		"另一位参与者正在回应你之前提出的阻塞性澄清问题",
-		"除非旧阻塞仍未解决，否则不要重复原来的阻塞点。",
-	} {
-		if !strings.Contains(instruction, expected) {
-			t.Fatalf("expected clarification prompt to contain %q, got:\n%s", expected, instruction)
-		}
 	}
 }
 

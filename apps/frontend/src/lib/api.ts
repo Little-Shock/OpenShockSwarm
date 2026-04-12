@@ -12,6 +12,7 @@ import type {
   InboxResponse,
   IssueDetailResponse,
   RoomDetailResponse,
+  RoomReadResponse,
   TaskBoardResponse,
   WorkspaceResponse,
   WorkspacesResponse,
@@ -99,7 +100,6 @@ function normalizeRoomDetailResponse(room: RoomDetailResponse): RoomDetailRespon
     agentTurns: room.agentTurns ?? [],
     agentTurnOutputChunks: room.agentTurnOutputChunks ?? [],
     agentTurnToolCalls: room.agentTurnToolCalls ?? [],
-    agentWaits: room.agentWaits ?? [],
     handoffRecords: room.handoffRecords ?? [],
     tasks: room.tasks ?? [],
     runs: room.runs ?? [],
@@ -122,7 +122,6 @@ function normalizeAgentDetailResponse(detail: AgentDetailResponse): AgentDetailR
     agentTurns: detail.agentTurns ?? [],
     agentTurnOutputChunks: detail.agentTurnOutputChunks ?? [],
     agentTurnToolCalls: detail.agentTurnToolCalls ?? [],
-    agentWaits: detail.agentWaits ?? [],
     handoffRecords: detail.handoffRecords ?? [],
   };
 }
@@ -177,7 +176,6 @@ export function getAgents(options?: APIRequestOptions) {
 
 export function createAgent(
   payload: {
-    id: string;
     name: string;
     prompt: string;
   },
@@ -229,6 +227,18 @@ export function getIssue(issueId: string, options?: APIRequestOptions) {
 
 export function getRoom(roomId: string, options?: APIRequestOptions) {
   return request<RoomDetailResponse>(`/api/v1/rooms/${roomId}`, options).then(normalizeRoomDetailResponse);
+}
+
+export function markRoomRead(
+  roomId: string,
+  payload: { messageId: string },
+  options?: APIRequestOptions,
+) {
+  return request<RoomReadResponse>(`/api/v1/rooms/${roomId}/read`, {
+    ...options,
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getTaskBoard(options?: APIRequestOptions) {

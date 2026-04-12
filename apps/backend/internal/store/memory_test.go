@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -41,15 +42,21 @@ func mustCreateTestAgents(t *testing.T, s *MemoryStore, agentIDs ...string) {
 		case "agent_guardian":
 			name = "Guardian_Bot"
 		case "agent_systems":
-			name = "Systems-Agent-01"
+			name = "Systems_Agent_01"
 		case "agent_lead":
 			name = "Lead_Architect"
 		}
 
-		if _, err := s.CreateAgent(agentID, name, "test fixture prompt"); err != nil {
+		if _, err := s.CreateAgentWithID(agentID, name, "test fixture prompt"); err != nil {
 			t.Fatalf("create test agent %s returned error: %v", agentID, err)
 		}
 	}
+}
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+func looksLikeUUID(value string) bool {
+	return uuidPattern.MatchString(strings.ToLower(strings.TrimSpace(value)))
 }
 
 func TestNewEmptyMemoryStoreStartsWithDefaultWorkspaceDiscussionRooms(t *testing.T) {
@@ -147,6 +154,58 @@ func TestCreateWorkspaceCreatesScopedDefaultRooms(t *testing.T) {
 	}
 }
 
+func TestWorkspaceScopedAgentsStayIsolatedBetweenWorkspaces(t *testing.T) {
+	s := NewMemoryStore()
+
+	beta, err := s.CreateWorkspace("Beta Ops")
+	if err != nil {
+		t.Fatalf("create workspace returned error: %v", err)
+	}
+	alphaAgent, err := s.CreateAgentInWorkspace("ws_01", "alpha_agent", "alpha prompt")
+	if err != nil {
+		t.Fatalf("create default workspace agent returned error: %v", err)
+	}
+	betaAgent, err := s.CreateAgentInWorkspace(beta.ID, "beta_agent", "beta prompt")
+	if err != nil {
+		t.Fatalf("create beta workspace agent returned error: %v", err)
+	}
+
+	alphaBootstrap := s.BootstrapForWorkspace("ws_01")
+	if len(alphaBootstrap.Agents) != 1 || alphaBootstrap.Agents[0].ID != alphaAgent.ID {
+		t.Fatalf("expected default workspace bootstrap to only include its agent, got %#v", alphaBootstrap.Agents)
+	}
+	if len(alphaBootstrap.DirectRooms) != 1 || alphaBootstrap.DirectRooms[0].DirectAgentID != alphaAgent.ID {
+		t.Fatalf("expected default workspace direct rooms to stay scoped, got %#v", alphaBootstrap.DirectRooms)
+	}
+
+	betaBootstrap := s.BootstrapForWorkspace(beta.ID)
+	if len(betaBootstrap.Agents) != 1 || betaBootstrap.Agents[0].ID != betaAgent.ID {
+		t.Fatalf("expected beta workspace bootstrap to only include its agent, got %#v", betaBootstrap.Agents)
+	}
+	if len(betaBootstrap.DirectRooms) != 1 || betaBootstrap.DirectRooms[0].DirectAgentID != betaAgent.ID {
+		t.Fatalf("expected beta workspace direct rooms to stay scoped, got %#v", betaBootstrap.DirectRooms)
+	}
+}
+
+func TestCreateTaskRejectsAgentFromAnotherWorkspace(t *testing.T) {
+	s := NewMemoryStore()
+
+	beta, err := s.CreateWorkspace("Beta Ops")
+	if err != nil {
+		t.Fatalf("create workspace returned error: %v", err)
+	}
+	if _, err := s.CreateAgentInWorkspace("ws_01", "alpha_agent", "alpha prompt"); err != nil {
+		t.Fatalf("create default workspace agent returned error: %v", err)
+	}
+
+	createIssueResp := s.CreateIssueInWorkspace(beta.ID, "Beta Issue", "beta summary", "medium")
+	issueID := createIssueResp.AffectedEntities[0].ID
+
+	if _, err := s.CreateTask(issueID, "Cross-space task", "should fail", "alpha_agent"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected cross-workspace assignee to be rejected, got %v", err)
+	}
+}
+
 func TestNewMemoryStoreIncludesDirectRoomsForWorkspaceAgents(t *testing.T) {
 	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
 
@@ -173,6 +232,32 @@ func TestNewMemoryStoreIncludesDirectRoomsForWorkspaceAgents(t *testing.T) {
 		}
 		if room.Title != agent.Name {
 			t.Fatalf("expected direct room title %q for agent %s, got %#v", agent.Name, agent.ID, room)
+		}
+	}
+}
+
+func TestAllRoomIncludesAllWorkspaceAgentsCreatedLater(t *testing.T) {
+	s := NewMemoryStore()
+	mustCreateTestAgents(t, s, "agent_shell", "agent_guardian", "agent_systems")
+
+	detail, err := s.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	if len(detail.AgentSessions) != 3 {
+		t.Fatalf("expected all room to include every created agent, got %#v", detail.AgentSessions)
+	}
+
+	seen := make(map[string]bool, len(detail.AgentSessions))
+	for _, session := range detail.AgentSessions {
+		if !session.JoinedRoom {
+			t.Fatalf("expected all room session to be joined, got %#v", session)
+		}
+		seen[session.AgentID] = true
+	}
+	for _, agentID := range []string{"agent_shell", "agent_guardian", "agent_systems"} {
+		if !seen[agentID] {
+			t.Fatalf("expected agent %s in all room, got %#v", agentID, detail.AgentSessions)
 		}
 	}
 }
@@ -232,8 +317,8 @@ func TestBootstrapUnreadCountsTrackRoomReadStatePerSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("room detail returned error: %v", err)
 	}
-	if detail.Room.UnreadCount != 0 {
-		t.Fatalf("expected active room to be marked read in detail response, got %#v", detail.Room)
+	if detail.Room.UnreadCount != 1 {
+		t.Fatalf("expected room detail to preserve unread count until explicit mark read, got %#v", detail.Room)
 	}
 
 	after := s.BootstrapForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, auth.Session.ID)
@@ -241,8 +326,8 @@ func TestBootstrapUnreadCountsTrackRoomReadStatePerSession(t *testing.T) {
 	for _, room := range after.Rooms {
 		roomUnread[room.ID] = room.UnreadCount
 	}
-	if roomUnread["room_001"] != 0 {
-		t.Fatalf("expected room_001 to become read, got %#v", after.Rooms)
+	if roomUnread["room_001"] != 1 {
+		t.Fatalf("expected room_001 to remain unread after opening detail, got %#v", after.Rooms)
 	}
 	if roomUnread["room_002"] != 1 {
 		t.Fatalf("expected room_002 unread count to remain unchanged, got %#v", after.Rooms)
@@ -256,8 +341,139 @@ func TestBootstrapUnreadCountsTrackRoomReadStatePerSession(t *testing.T) {
 	for _, room := range afterNewMessage.Rooms {
 		roomUnread[room.ID] = room.UnreadCount
 	}
+	if roomUnread["room_001"] != 2 {
+		t.Fatalf("expected unopened unread backlog plus new message to remain unread, got %#v", afterNewMessage.Rooms)
+	}
+}
+
+func TestMarkRoomReadForSessionClearsUnreadCount(t *testing.T) {
+	s := NewMemoryStore()
+
+	auth, err := s.RegisterMember("sarah", "Sarah", "password123")
+	if err != nil {
+		t.Fatalf("register member returned error: %v", err)
+	}
+
+	before := s.BootstrapForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, auth.Session.ID)
+	roomUnread := map[string]int{}
+	for _, room := range before.Rooms {
+		roomUnread[room.ID] = room.UnreadCount
+	}
 	if roomUnread["room_001"] != 1 {
-		t.Fatalf("expected room_001 to become unread again after a new message, got %#v", afterNewMessage.Rooms)
+		t.Fatalf("expected room_001 to start unread, got %#v", before.Rooms)
+	}
+
+	detail, err := s.RoomDetailForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, "room_001", auth.Session.ID)
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+
+	room, err := s.MarkRoomReadForWorkspaceAndSession(
+		auth.Session.ActiveWorkspaceID,
+		"room_001",
+		auth.Session.ID,
+		detail.Messages[len(detail.Messages)-1].ID,
+	)
+	if err != nil {
+		t.Fatalf("mark room read returned error: %v", err)
+	}
+	if room.UnreadCount != 0 {
+		t.Fatalf("expected marked room to be read immediately, got %#v", room)
+	}
+
+	after := s.BootstrapForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, auth.Session.ID)
+	roomUnread = map[string]int{}
+	for _, room := range after.Rooms {
+		roomUnread[room.ID] = room.UnreadCount
+	}
+	if roomUnread["room_001"] != 0 {
+		t.Fatalf("expected room_001 unread count to clear after explicit mark read, got %#v", after.Rooms)
+	}
+}
+
+func TestMarkRoomReadForSessionDoesNotSkipNewerMessages(t *testing.T) {
+	s := NewMemoryStore()
+
+	auth, err := s.RegisterMember("sarah", "Sarah", "password123")
+	if err != nil {
+		t.Fatalf("register member returned error: %v", err)
+	}
+
+	detail, err := s.RoomDetailForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, "room_001", auth.Session.ID)
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	lastVisibleMessageID := detail.Messages[len(detail.Messages)-1].ID
+
+	if _, err := s.PostRoomMessage("room_001", "agent", "agent_shell", "message", "这里有一条更晚的新消息。"); err != nil {
+		t.Fatalf("post room message returned error: %v", err)
+	}
+
+	room, err := s.MarkRoomReadForWorkspaceAndSession(
+		auth.Session.ActiveWorkspaceID,
+		"room_001",
+		auth.Session.ID,
+		lastVisibleMessageID,
+	)
+	if err != nil {
+		t.Fatalf("mark room read returned error: %v", err)
+	}
+	if room.UnreadCount != 1 {
+		t.Fatalf("expected newer message to remain unread, got %#v", room)
+	}
+}
+
+func TestMarkRoomReadForSessionDoesNotMoveCursorBackward(t *testing.T) {
+	s := NewMemoryStore()
+
+	auth, err := s.RegisterMember("sarah", "Sarah", "password123")
+	if err != nil {
+		t.Fatalf("register member returned error: %v", err)
+	}
+
+	detail, err := s.RoomDetailForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, "room_001", auth.Session.ID)
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	initialMessageID := detail.Messages[len(detail.Messages)-1].ID
+
+	if _, err := s.PostRoomMessage("room_001", "agent", "agent_shell", "message", "第二条消息。"); err != nil {
+		t.Fatalf("post second room message returned error: %v", err)
+	}
+	if _, err := s.PostRoomMessage("room_001", "agent", "agent_shell", "message", "第三条消息。"); err != nil {
+		t.Fatalf("post third room message returned error: %v", err)
+	}
+
+	updatedDetail, err := s.RoomDetailForWorkspaceAndSession(auth.Session.ActiveWorkspaceID, "room_001", auth.Session.ID)
+	if err != nil {
+		t.Fatalf("updated room detail returned error: %v", err)
+	}
+	newestMessageID := updatedDetail.Messages[len(updatedDetail.Messages)-1].ID
+
+	room, err := s.MarkRoomReadForWorkspaceAndSession(
+		auth.Session.ActiveWorkspaceID,
+		"room_001",
+		auth.Session.ID,
+		newestMessageID,
+	)
+	if err != nil {
+		t.Fatalf("mark newest room read returned error: %v", err)
+	}
+	if room.UnreadCount != 0 {
+		t.Fatalf("expected newest message cursor to clear unread count, got %#v", room)
+	}
+
+	room, err = s.MarkRoomReadForWorkspaceAndSession(
+		auth.Session.ActiveWorkspaceID,
+		"room_001",
+		auth.Session.ID,
+		initialMessageID,
+	)
+	if err != nil {
+		t.Fatalf("mark older room read returned error: %v", err)
+	}
+	if room.UnreadCount != 0 {
+		t.Fatalf("expected older read receipt to be ignored after newer cursor, got %#v", room)
 	}
 }
 
@@ -348,20 +564,19 @@ func TestAgentCatalogCRUD(t *testing.T) {
 	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
 
 	created, err := s.CreateAgent(
-		"agent_research",
-		"Research Partner",
+		"research_partner",
 		"会先整理问题背景、已有结论和不确定项，再把信息压缩成结构化判断，适合承担调研和分析型任务。",
 	)
 	if err != nil {
 		t.Fatalf("create agent returned error: %v", err)
 	}
-	if created.ID != "agent_research" || created.Prompt == "" {
+	if !looksLikeUUID(created.ID) || created.Name != "research_partner" || created.Prompt == "" {
 		t.Fatalf("unexpected created agent payload: %#v", created)
 	}
 
 	updated, err := s.UpdateAgent(
 		created.ID,
-		"Research Partner",
+		"research_partner",
 		"更新后的 agent prompt 应该被完整保留，便于在前端以多行方式展示和编辑。",
 	)
 	if err != nil {
@@ -379,6 +594,84 @@ func TestAgentCatalogCRUD(t *testing.T) {
 		if agent.ID == created.ID {
 			t.Fatalf("expected deleted agent to be absent, got %#v", agent)
 		}
+	}
+}
+
+func TestCreateAgentAutoJoinsWorkspaceDefaultDiscussionRoom(t *testing.T) {
+	s := NewMemoryStore()
+
+	created, err := s.CreateAgent("research_partner", "prompt")
+	if err != nil {
+		t.Fatalf("create agent returned error: %v", err)
+	}
+
+	detail, err := s.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	if len(detail.AgentSessions) != 1 {
+		t.Fatalf("expected default room to gain one auto-joined session, got %#v", detail.AgentSessions)
+	}
+	session := detail.AgentSessions[0]
+	if session.AgentID != created.ID || !session.JoinedRoom || session.Status != "idle" {
+		t.Fatalf("expected created agent to auto-join default room, got %#v", session)
+	}
+}
+
+func TestCreateAgentInWorkspaceAutoJoinsWorkspaceDefaultDiscussionRoom(t *testing.T) {
+	s := NewMemoryStore()
+
+	workspace, err := s.CreateWorkspace("Beta Ops")
+	if err != nil {
+		t.Fatalf("create workspace returned error: %v", err)
+	}
+	created, err := s.CreateAgentInWorkspace(workspace.ID, "beta_agent", "prompt")
+	if err != nil {
+		t.Fatalf("create workspace agent returned error: %v", err)
+	}
+
+	bootstrap := s.BootstrapForWorkspace(workspace.ID)
+	detail, err := s.RoomDetailForWorkspace(workspace.ID, bootstrap.DefaultRoomID)
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	if len(detail.AgentSessions) != 1 {
+		t.Fatalf("expected workspace default room to gain one auto-joined session, got %#v", detail.AgentSessions)
+	}
+	session := detail.AgentSessions[0]
+	if session.AgentID != created.ID || !session.JoinedRoom || session.Status != "idle" {
+		t.Fatalf("expected created workspace agent to auto-join default room, got %#v", session)
+	}
+}
+
+func TestAgentCatalogRejectsDuplicateNames(t *testing.T) {
+	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
+
+	if _, err := s.CreateAgent("Shell_Runner", "another prompt"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected duplicate create name conflict, got %v", err)
+	}
+
+	if _, err := s.UpdateAgent("agent_guardian", "Shell_Runner", "updated prompt"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected duplicate update name conflict, got %v", err)
+	}
+}
+
+func TestAgentCatalogRejectsInvalidOrRenamedNames(t *testing.T) {
+	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
+
+	if _, err := s.CreateAgent("research partner", "prompt"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected whitespace name conflict, got %v", err)
+	}
+	if _, err := s.CreateAgent("research-partner", "prompt"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected punctuation name conflict, got %v", err)
+	}
+
+	created, err := s.CreateAgent("research_partner", "prompt")
+	if err != nil {
+		t.Fatalf("create agent returned error: %v", err)
+	}
+	if _, err := s.UpdateAgent(created.ID, "renamed_partner", "next prompt"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected rename conflict, got %v", err)
 	}
 }
 
@@ -415,7 +708,7 @@ func TestAddAgentToRoomCreatesIdleSessionAndSystemMessage(t *testing.T) {
 	s := NewMemoryStore()
 	mustCreateTestAgents(t, s, "agent_shell")
 
-	resp, err := s.AddAgentToRoom("room_001", "agent_shell", "Sarah")
+	resp, err := s.AddAgentToRoom("room_002", "agent_shell", "Sarah")
 	if err != nil {
 		t.Fatalf("add agent to room returned error: %v", err)
 	}
@@ -423,7 +716,7 @@ func TestAddAgentToRoomCreatesIdleSessionAndSystemMessage(t *testing.T) {
 		t.Fatalf("expected room_agent_joined, got %#v", resp)
 	}
 
-	detail, err := s.RoomDetail("room_001")
+	detail, err := s.RoomDetail("room_002")
 	if err != nil {
 		t.Fatalf("room detail returned error: %v", err)
 	}
@@ -443,10 +736,10 @@ func TestAddAgentToRoomIsIdempotentForExistingSession(t *testing.T) {
 	s := NewMemoryStore()
 	mustCreateTestAgents(t, s, "agent_shell")
 
-	if _, err := s.AddAgentToRoom("room_001", "agent_shell", "Sarah"); err != nil {
+	if _, err := s.AddAgentToRoom("room_002", "agent_shell", "Sarah"); err != nil {
 		t.Fatalf("first add agent to room returned error: %v", err)
 	}
-	resp, err := s.AddAgentToRoom("room_001", "agent_shell", "Sarah")
+	resp, err := s.AddAgentToRoom("room_002", "agent_shell", "Sarah")
 	if err != nil {
 		t.Fatalf("second add agent to room returned error: %v", err)
 	}
@@ -454,7 +747,7 @@ func TestAddAgentToRoomIsIdempotentForExistingSession(t *testing.T) {
 		t.Fatalf("expected room_agent_already_joined, got %#v", resp)
 	}
 
-	detail, err := s.RoomDetail("room_001")
+	detail, err := s.RoomDetail("room_002")
 	if err != nil {
 		t.Fatalf("room detail returned error: %v", err)
 	}
@@ -830,7 +1123,7 @@ func TestRoomExplicitInstructionKindCreatesAgentTurn(t *testing.T) {
 	}
 }
 
-func TestAgentClarificationInstructionRequeuesTurn(t *testing.T) {
+func TestAgentQuestionMessageCreatesOrdinaryFollowupTurn(t *testing.T) {
 	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
 
 	initial := mustPostRoomMessage(t, s, "room_001", "member", "Sarah", "message", "@agent_shell 请先看一下这个问题。")
@@ -838,9 +1131,9 @@ func TestAgentClarificationInstructionRequeuesTurn(t *testing.T) {
 		t.Fatalf("expected initial message to succeed, got %#v", initial)
 	}
 
-	agentReply := mustPostRoomMessage(t, s, "room_001", "agent", "agent_shell", "clarification_request", "我需要先确认是否允许改动 billing guard。")
+	agentReply := mustPostRoomMessage(t, s, "room_001", "agent", "agent_shell", "message", "我先确认一下：这里是否允许改动 billing guard？")
 	if agentReply.ResultCode != "room_message_posted" {
-		t.Fatalf("expected clarification request to succeed, got %#v", agentReply)
+		t.Fatalf("expected agent message to succeed, got %#v", agentReply)
 	}
 
 	followup := mustPostRoomMessage(t, s, "room_001", "member", "Sarah", "instruction", "可以改 billing guard，继续。")
@@ -853,20 +1146,14 @@ func TestAgentClarificationInstructionRequeuesTurn(t *testing.T) {
 		t.Fatalf("room detail returned error after followup: %v", err)
 	}
 	if len(detail.AgentTurns) != 2 {
-		t.Fatalf("expected followup to queue a second turn, got %#v", detail.AgentTurns)
+		t.Fatalf("expected ordinary follow-up turn after participant reply, got %#v", detail.AgentTurns)
 	}
-	if detail.AgentTurns[1].IntentType != "clarification_followup" || detail.AgentTurns[1].Status != "queued" {
-		t.Fatalf("unexpected followup turn payload: %#v", detail.AgentTurns[1])
-	}
-	if detail.AgentTurns[1].WakeupMode != "clarification_followup" {
-		t.Fatalf("expected clarification_followup wakeup mode, got %#v", detail.AgentTurns[1])
-	}
-	if detail.AgentWaits[0].Status != "resolved" {
-		t.Fatalf("expected wait to resolve after participant instruction reply, got %#v", detail.AgentWaits[0])
+	if detail.AgentTurns[1].IntentType != "visible_message_response" || detail.AgentTurns[1].WakeupMode != "direct_message" {
+		t.Fatalf("expected ordinary direct-message wakeup semantics, got %#v", detail.AgentTurns[1])
 	}
 }
 
-func TestAgentClarificationRequestWaitsAndHumanReplyRequeuesTurn(t *testing.T) {
+func TestAgentQuestionMessageKeepsSessionInNormalFlow(t *testing.T) {
 	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
 
 	initial := mustPostRoomMessage(t, s, "room_001", "member", "Sarah", "message", "@agent_shell 请先看一下这个问题。")
@@ -874,48 +1161,21 @@ func TestAgentClarificationRequestWaitsAndHumanReplyRequeuesTurn(t *testing.T) {
 		t.Fatalf("expected initial message to succeed, got %#v", initial)
 	}
 
-	agentReply := mustPostRoomMessage(t, s, "room_001", "agent", "agent_shell", "clarification_request", "我需要先确认是否允许改动 billing guard。")
+	agentReply := mustPostRoomMessage(t, s, "room_001", "agent", "agent_shell", "message", "我先确认一下：这里是否允许改动 billing guard？")
 	if agentReply.ResultCode != "room_message_posted" {
-		t.Fatalf("expected clarification request to succeed, got %#v", agentReply)
+		t.Fatalf("expected agent message to succeed, got %#v", agentReply)
 	}
 
 	detail, err := s.RoomDetail("room_001")
 	if err != nil {
 		t.Fatalf("room detail returned error: %v", err)
 	}
-	if len(detail.AgentWaits) != 1 {
-		t.Fatalf("expected one agent wait, got %#v", detail.AgentWaits)
+	if len(detail.AgentSessions) != 1 {
+		t.Fatalf("expected one agent session, got %#v", detail.AgentSessions)
 	}
-	if detail.AgentWaits[0].Status != "waiting_reply" {
-		t.Fatalf("expected waiting_reply status, got %#v", detail.AgentWaits[0])
-	}
-	if detail.AgentSessions[0].Status != "waiting_reply" {
-		t.Fatalf("expected session to wait for a room reply, got %#v", detail.AgentSessions[0])
-	}
-
-	followup := mustPostRoomMessage(t, s, "room_001", "member", "Sarah", "message", "可以改 billing guard，继续。")
-	if followup.ResultCode != "room_message_posted" {
-		t.Fatalf("expected participant followup to succeed, got %#v", followup)
-	}
-
-	detail, err = s.RoomDetail("room_001")
-	if err != nil {
-		t.Fatalf("room detail returned error after followup: %v", err)
-	}
-	if len(detail.AgentTurns) != 2 {
-		t.Fatalf("expected followup to queue a second turn, got %#v", detail.AgentTurns)
-	}
-	if detail.AgentTurns[1].IntentType != "clarification_followup" || detail.AgentTurns[1].Status != "queued" {
-		t.Fatalf("unexpected followup turn payload: %#v", detail.AgentTurns[1])
-	}
-	if detail.AgentTurns[1].WakeupMode != "clarification_followup" {
-		t.Fatalf("expected clarification_followup wakeup mode, got %#v", detail.AgentTurns[1])
-	}
-	if detail.AgentWaits[0].Status != "resolved" {
-		t.Fatalf("expected wait to resolve after room reply, got %#v", detail.AgentWaits[0])
-	}
-	if detail.AgentSessions[0].Status != "queued" {
-		t.Fatalf("expected session to requeue after room reply, got %#v", detail.AgentSessions[0])
+	switch detail.AgentSessions[0].Status {
+	case "blocked", "handoff_requested":
+		t.Fatalf("did not expect ordinary question message to leave session in exceptional state, got %#v", detail.AgentSessions[0])
 	}
 }
 
@@ -953,7 +1213,7 @@ func TestAgentHandoffCreatesTargetAgentTurn(t *testing.T) {
 	}
 }
 
-func TestCompleteAgentTurnPreservesWaitingHumanSessionState(t *testing.T) {
+func TestCompleteAgentTurnWithQuestionMessageLeavesSessionCompleted(t *testing.T) {
 	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
 
 	mustPostRoomMessage(t, s, "room_001", "member", "Sarah", "message", "@agent_shell 请先看一下这个问题。")
@@ -969,7 +1229,7 @@ func TestCompleteAgentTurnPreservesWaitingHumanSessionState(t *testing.T) {
 		t.Fatal("expected queued agent turn to be claimed")
 	}
 
-	reply := mustPostRoomMessage(t, s, "room_001", "agent", "agent_shell", "clarification_request", "请先确认是否可以动 billing guard。")
+	reply := mustPostRoomMessage(t, s, "room_001", "agent", "agent_shell", "message", "请先确认是否可以动 billing guard。")
 	messageID := ""
 	for _, entity := range reply.AffectedEntities {
 		if entity.Type == "message" {
@@ -978,10 +1238,10 @@ func TestCompleteAgentTurnPreservesWaitingHumanSessionState(t *testing.T) {
 		}
 	}
 	if messageID == "" {
-		t.Fatalf("expected clarification response to create message entity, got %#v", reply.AffectedEntities)
+		t.Fatalf("expected agent response to create message entity, got %#v", reply.AffectedEntities)
 	}
 
-	if _, err := s.CompleteAgentTurn(execution.Turn.ID, runtime.ID, messageID, ""); err != nil {
+	if _, err := s.CompleteAgentTurn(execution.Turn.ID, runtime.ID, messageID, "", false); err != nil {
 		t.Fatalf("complete agent turn returned error: %v", err)
 	}
 
@@ -989,8 +1249,38 @@ func TestCompleteAgentTurnPreservesWaitingHumanSessionState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("room detail returned error: %v", err)
 	}
-	if len(detail.AgentSessions) != 1 || detail.AgentSessions[0].Status != "waiting_reply" {
-		t.Fatalf("expected waiting_reply session after completion, got %#v", detail.AgentSessions)
+	if len(detail.AgentSessions) != 1 || detail.AgentSessions[0].Status != "completed" {
+		t.Fatalf("expected completed session after ordinary agent reply, got %#v", detail.AgentSessions)
+	}
+}
+
+func TestCompleteAgentTurnCanClearPersistedAppServerThreadID(t *testing.T) {
+	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
+
+	mustPostRoomMessage(t, s, "room_001", "member", "Sarah", "message", "@agent_shell 帮我再看一下。")
+	runtime, err := s.RegisterRuntime("Test Runtime", "codex", 1)
+	if err != nil {
+		t.Fatalf("register runtime returned error: %v", err)
+	}
+	execution, claimed, err := s.ClaimNextQueuedAgentTurn(runtime.ID)
+	if err != nil {
+		t.Fatalf("claim agent turn returned error: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected queued agent turn to be claimed")
+	}
+
+	sessionIndex, ok := s.agentSessionIndexByIDLocked(execution.Session.ID)
+	if !ok {
+		t.Fatalf("expected session %s to exist", execution.Session.ID)
+	}
+	s.agentSessions[sessionIndex].AppServerThreadID = "thread_stale_001"
+
+	if _, err := s.CompleteAgentTurn(execution.Turn.ID, runtime.ID, "", "", true); err != nil {
+		t.Fatalf("complete agent turn returned error: %v", err)
+	}
+	if s.agentSessions[sessionIndex].AppServerThreadID != "" {
+		t.Fatalf("expected app-server thread id to be cleared, got %#v", s.agentSessions[sessionIndex])
 	}
 }
 
@@ -1143,7 +1433,7 @@ func TestAgentTurnOutputEventAppendsOutputChunks(t *testing.T) {
 	if execution.AgentPrompt == "" {
 		t.Fatalf("expected claimed turn to expose agent prompt, got %#v", execution)
 	}
-	if !strings.Contains(execution.Instruction, "你的稳定 OpenShock agent id 是 `agent_shell`。") {
+	if !strings.Contains(execution.Instruction, "你在房间界面里的名字是 `Shell_Runner`。") {
 		t.Fatalf("expected claimed turn to expose backend-built instruction, got %#v", execution)
 	}
 	if !strings.Contains(execution.Instruction, execution.AgentPrompt) {
@@ -1305,7 +1595,7 @@ func TestClaimNextQueuedAgentTurnSerializesSessionClaims(t *testing.T) {
 		t.Fatal("expected same session follow-up turn to wait until the active turn completes")
 	}
 
-	if _, err := s.CompleteAgentTurn(firstExecution.Turn.ID, runtime.ID, "", ""); err != nil {
+	if _, err := s.CompleteAgentTurn(firstExecution.Turn.ID, runtime.ID, "", "", false); err != nil {
 		t.Fatalf("complete first turn returned error: %v", err)
 	}
 
@@ -1447,7 +1737,7 @@ func TestClaimNextQueuedRunWaitsForActiveAgentSessionWork(t *testing.T) {
 		t.Fatal("expected run to wait while the same agent session already has active Codex work")
 	}
 
-	if _, err := s.CompleteAgentTurn(turnExecution.Turn.ID, runtime.ID, "", ""); err != nil {
+	if _, err := s.CompleteAgentTurn(turnExecution.Turn.ID, runtime.ID, "", "", false); err != nil {
 		t.Fatalf("complete agent turn returned error: %v", err)
 	}
 	if _, _, claimed, err := s.ClaimNextQueuedRun(runtime.ID); err != nil {
@@ -1483,6 +1773,26 @@ func TestSetTaskStatusUpdatesEditableTaskState(t *testing.T) {
 	}
 }
 
+func TestSetTaskStatusSystemMessageUsesAgentDisplayName(t *testing.T) {
+	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
+
+	if _, err := s.SetTaskStatus("task_guard", "in_progress", "agent_shell"); err != nil {
+		t.Fatalf("set task status returned error: %v", err)
+	}
+
+	detail, err := s.IssueDetail("issue_101")
+	if err != nil {
+		t.Fatalf("issue detail returned error: %v", err)
+	}
+	lastMessage := detail.Messages[len(detail.Messages)-1]
+	if strings.Contains(lastMessage.Body, "agent_shell") {
+		t.Fatalf("expected system message to avoid agent id, got %#v", lastMessage)
+	}
+	if !strings.Contains(lastMessage.Body, "Shell_Runner set task") {
+		t.Fatalf("expected system message to use agent display name, got %#v", lastMessage)
+	}
+}
+
 func TestBuildRunInstructionIncludesTaskStatusCommands(t *testing.T) {
 	instruction := buildRunInstruction(core.Task{
 		ID:              "task_guard",
@@ -1515,6 +1825,23 @@ func TestPostRoomMessageRejectsUnknownTarget(t *testing.T) {
 
 	if _, err := s.PostRoomMessage("room_missing", "member", "Sarah", "message", "有人吗？"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for unknown room target, got %v", err)
+	}
+}
+
+func TestPostRoomMessageStoresAgentDisplayName(t *testing.T) {
+	s := NewMemoryStoreFromSnapshot(scenario.Snapshot())
+
+	if _, err := s.PostRoomMessage("room_001", "agent", "agent_shell", "message", "我先同步一下当前进度。"); err != nil {
+		t.Fatalf("post room message returned error: %v", err)
+	}
+
+	detail, err := s.RoomDetail("room_001")
+	if err != nil {
+		t.Fatalf("room detail returned error: %v", err)
+	}
+	lastMessage := detail.Messages[len(detail.Messages)-1]
+	if lastMessage.ActorName != "Shell_Runner" {
+		t.Fatalf("expected agent display name Shell_Runner, got %#v", lastMessage)
 	}
 }
 

@@ -152,6 +152,29 @@ func (a *API) workspaceIDFromRequest(r *http.Request) string {
 	return a.store.WorkspaceID()
 }
 
+func (a *API) workspaceIDForActionTarget(req core.ActionRequest) (string, bool) {
+	switch strings.TrimSpace(req.TargetType) {
+	case "workspace":
+		workspaceID := strings.TrimSpace(req.TargetID)
+		return workspaceID, workspaceID != ""
+	case "room":
+		return a.store.WorkspaceIDForRoom(req.TargetID)
+	case "issue":
+		return a.store.WorkspaceIDForIssue(req.TargetID)
+	case "task":
+		return a.store.WorkspaceIDForTask(req.TargetID)
+	case "run":
+		return a.store.WorkspaceIDForRun(req.TargetID)
+	case "merge_attempt":
+		return a.store.WorkspaceIDForMergeAttempt(req.TargetID)
+	case "delivery_pr":
+		if issueID, ok := a.store.IssueIDForDeliveryPR(req.TargetID); ok {
+			return a.store.WorkspaceIDForIssue(issueID)
+		}
+	}
+	return "", false
+}
+
 func sessionTokenFromRequest(r *http.Request) string {
 	if token := strings.TrimSpace(r.Header.Get(sessionHeaderName)); token != "" {
 		return token
