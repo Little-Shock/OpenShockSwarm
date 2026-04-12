@@ -210,11 +210,12 @@
   - [x] 高价值 memory item 已可经人工 review 提升为 `Skill` / `Policy`，并回写 `notes/skills.md`、`notes/policies.md`
   - [x] memory center 现在还会暴露 `workspace-file / search-sidecar / external-persistent` provider binding truth，并把 `read/write scopes / recall / retention / sharing / last-check / degraded fallback` 同步进 `/memory` 与 next-run preview
   - [x] `/memory` 现在还支持逐 provider health check / recovery，把 failure count、next action、activity timeline 与 reload persistence 收成正式产品真相
+  - [x] room-auto handoff 发生后，session next-run preview 现在也会围当前 owner 与 provider summary 一起前滚；reload 后不会再回落到 stale reviewer prompt
 - 当前 GAP:
   - [ ] 更重的后台整理任务（去重、压缩、打标签、TTL）仍未完成
   - [ ] 真实 remote external durable adapter 仍未完成；当前 external provider 虽可恢复到 local relay stub，但不会假装已经接上真实外部数据面
   - [ ] Agent 级 memory binding / recall policy / next-run preview 已可编辑，但跨 Agent 的更重治理、批量策略和后台编排仍留后续
-- 对应 Test Cases: `TC-019` `TC-023` `TC-036` `TC-085` `TC-086`
+- 对应 Test Cases: `TC-019` `TC-023` `TC-036` `TC-085` `TC-086` `TC-088`
 
 ### CHK-11 工作流 H: 邀请、通知与恢复触达
 
@@ -455,8 +456,9 @@
   - [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
   - [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
   - [x] room 当前 owner 的 auto-handoff 连续性也已补 targeted restart 回归；最新接手者会随 durable state 一起恢复，不再依赖进程内临时顺序
+  - [x] memory provider preview 的当前 owner / provider summary 也已补 reload continuity 回归；`session-runtime` 不会在重启后漂回旧 owner prompt
   - [x] workspace plan / usage / retention 现在也直接从同一份 durable snapshot 投影到 `/settings`、room workbench 与 run detail
-- 对应 Test Cases: `TC-040` `TC-085` `TC-086` `TC-087`
+- 对应 Test Cases: `TC-040` `TC-085` `TC-086` `TC-087` `TC-088`
 
 ---
 

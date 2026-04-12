@@ -1225,3 +1225,18 @@
   5. 回读 room / mailbox / state，确认公开消息不泄露 `SEND_PUBLIC_MESSAGE` 或 `OPENSHOCK_HANDOFF:` 内部协议。
 - 预期结果: 顺序交接后的当前 owner 必须始终以 `run.Owner -> issue.Owner -> room.Topic.Owner` 为准；auto-followup 与重启恢复后的下一轮消息都要路由给最新 owner，且公开房间不泄露内部协议。
 - 业务结论: 2026 年 4 月 12 日新增 `TestRoomMessageStreamSequentialAutoHandoffsPersistCurrentOwnerAcrossRestart`、`TestRoomAutoHandoffClarificationFollowupSurvivesRestart` 与 `TestResolveRoomTurnAgentPrefersCurrentOwnerOverStaleRecentRunIDs`，把 `A -> B -> C` 顺序交接、当前 owner 的 provider / identity / prompt scaffold 路由，以及 handoff 后 clarification wait 在 store reload / server restart 后的 resume continuity 一起锁进 `go test ./apps/server/internal/api`。同日 `node ./scripts/headed-multi-agent-movie-studio.mjs --report output/testing/headed-multi-agent-movie-studio-report.md` 产出新的有头报告，记录 `星野产品 -> 折光交互 -> 青岚策展` 的公开协作链、Mailbox walkthrough、最终 owner 上下文与 protocol leak probe 全部 `PASS`，因此这条跨交接/恢复连续体验证当前转为 `Pass`。
+
+## TC-088 Memory Provider Preview Owner Continuity
+
+- 业务目标: 确认 memory provider binding 开启后，session next-run preview 会同时跟随当前 owner 与 provider health truth 前滚；发生 room-auto handoff 和 store/server reload 后，也不会掉回 stale recent-run actor 或旧 prompt。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-10` `CHK-22`
+- 前置条件: 已启用 `workspace-file / search-sidecar / external-persistent` provider binding，且 room-auto handoff 可以把 `room / run / issue` owner 切到新的 Agent。
+- 测试步骤:
+  1. 开启 memory provider binding，确认 preview 已出现 provider summary 和 degraded/healthy health note。
+  2. 在 `room-runtime` 依次执行 `Codex Dockmaster -> Claude Review Runner -> Memory Clerk` 两次 room-auto handoff。
+  3. 读取 `session-runtime` 的 memory preview，确认 prompt summary 已切到 `Memory Clerk`，同时继续保留 search/external provider 的当前 health note。
+  4. reload store/server 后再次读取 `session-runtime` preview，确认 owner、prompt scaffold 和 provider summary 继续保持同一份 durable truth。
+  5. 验证 preview 不再出现 `Claude Review Runner` 的 stale prompt scaffold。
+- 预期结果: memory preview 必须围当前 owner 与 provider binding 的组合真相前滚；handoff 和重启后既不能把 agent prompt 漂回旧 owner，也不能丢失 provider orchestration/health 摘要。
+- 业务结论: 2026 年 4 月 12 日新增 `TestMemoryProviderPreviewFollowsCurrentOwnerAcrossHandoffReload` 与 `TestMemoryCenterProviderPreviewTracksCurrentOwnerAcrossHandoffReload`，把 `provider binding -> room-auto handoff -> session-runtime preview -> reload` 这条跨链回归同时锁进 `store` 与 `/v1/memory-center` contract。当前 targeted `go test ./apps/server/internal/store` 与 `go test ./apps/server/internal/api` 已覆盖 `Memory Clerk` 当前 owner、provider degraded summary 和 reload 后不回落到 stale Claude prompt，因此这条 memory/provider continuity 用例当前转为 `Pass`。

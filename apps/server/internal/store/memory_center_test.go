@@ -134,6 +134,129 @@ func TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemoryCenterPreviewPrefersCurrentOwnerOverStaleRecentRunAgent(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, _, _, err := s.UpdateMemoryPolicy(MemoryPolicyInput{
+		Mode:                     memoryPolicyModeGovernedFirst,
+		IncludeRoomNotes:         true,
+		IncludeDecisionLedger:    true,
+		IncludeAgentMemory:       true,
+		IncludePromotedArtifacts: true,
+		MaxItems:                 8,
+		UpdatedBy:                "Larkspur",
+	}); err != nil {
+		t.Fatalf("UpdateMemoryPolicy() error = %v", err)
+	}
+	if _, _, _, err := s.UpdateMemoryProviders(sampleMemoryProviderBindings(), "Larkspur"); err != nil {
+		t.Fatalf("UpdateMemoryProviders() error = %v", err)
+	}
+	if _, _, _, err := s.RecoverMemoryProvider(memoryProviderKindSearchSidecar, "Larkspur"); err != nil {
+		t.Fatalf("RecoverMemoryProvider(search-sidecar) error = %v", err)
+	}
+	if _, _, _, err := s.RecoverMemoryProvider(memoryProviderKindExternalPersistent, "Larkspur"); err != nil {
+		t.Fatalf("RecoverMemoryProvider(external-persistent) error = %v", err)
+	}
+
+	if _, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "先接住交互收口",
+		Summary:     "请先把交互语气和漏项收一下。",
+		Kind:        handoffKindRoomAuto,
+	}); err != nil {
+		t.Fatalf("CreateHandoff(codex->claude room-auto) error = %v", err)
+	}
+
+	if _, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-claude-review-runner",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "继续收记忆和验收点",
+		Summary:     "请把影片资料、验收点和记忆写回一起收口。",
+		Kind:        handoffKindRoomAuto,
+	}); err != nil {
+		t.Fatalf("CreateHandoff(claude->memory room-auto) error = %v", err)
+	}
+
+	snapshot := s.Snapshot()
+	runtimeRoom := findRoomByID(snapshot, "room-runtime")
+	if runtimeRoom == nil || runtimeRoom.Topic.Owner != "Memory Clerk" {
+		t.Fatalf("runtime room = %#v, want current owner Memory Clerk after second handoff", runtimeRoom)
+	}
+	runtimeRun := findRunByID(snapshot, "run_runtime_01")
+	if runtimeRun == nil || runtimeRun.Owner != "Memory Clerk" {
+		t.Fatalf("runtime run = %#v, want current owner Memory Clerk after second handoff", runtimeRun)
+	}
+
+	center := s.MemoryCenter()
+	preview := findMemoryPreviewBySession(center.Previews, "session-runtime")
+	if preview == nil {
+		t.Fatalf("session-runtime preview missing: %#v", center.Previews)
+	}
+	if !strings.Contains(preview.PromptSummary, "Memory Clerk") {
+		t.Fatalf("preview summary = %q, want current owner Memory Clerk", preview.PromptSummary)
+	}
+	if !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) {
+		t.Fatalf("preview items = %#v, want current owner Memory Clerk memory path", preview.Items)
+	}
+	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusHealthy {
+		t.Fatalf("preview search provider = %#v, want healthy provider for current owner preview", got)
+	}
+	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindExternalPersistent); got == nil || got.Status != memoryProviderStatusHealthy {
+		t.Fatalf("preview external provider = %#v, want healthy provider for current owner preview", got)
+	}
+	if !strings.Contains(preview.PromptSummary, "把 next-run injection、promotion 和 version audit 保持成可解释真值。") {
+		t.Fatalf("preview summary = %q, want Memory Clerk prompt scaffold", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Search sidecar index ready") {
+		t.Fatalf("preview summary = %q, want recovered search-sidecar note", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+		t.Fatalf("preview summary = %q, want recovered external provider note", preview.PromptSummary)
+	}
+	if strings.Contains(preview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+		t.Fatalf("preview summary = %q, should not fall back to stale Claude Review Runner prompt", preview.PromptSummary)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload) error = %v", err)
+	}
+	reloadedPreview := findMemoryPreviewBySession(reloaded.MemoryCenter().Previews, "session-runtime")
+	if reloadedPreview == nil {
+		t.Fatalf("reloaded session-runtime preview missing: %#v", reloaded.MemoryCenter().Previews)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Memory Clerk") {
+		t.Fatalf("reloaded preview summary = %q, want persisted current owner Memory Clerk", reloadedPreview.PromptSummary)
+	}
+	if !previewContainsPath(reloadedPreview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) {
+		t.Fatalf("reloaded preview items = %#v, want persisted current owner Memory Clerk memory path", reloadedPreview.Items)
+	}
+	if got := findMemoryProviderByKind(reloadedPreview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusHealthy {
+		t.Fatalf("reloaded preview search provider = %#v, want persisted healthy provider", got)
+	}
+	if got := findMemoryProviderByKind(reloadedPreview.Providers, memoryProviderKindExternalPersistent); got == nil || got.Status != memoryProviderStatusHealthy {
+		t.Fatalf("reloaded preview external provider = %#v, want persisted healthy provider", got)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Search sidecar index ready") {
+		t.Fatalf("reloaded preview summary = %q, want persisted recovered search-sidecar note", reloadedPreview.PromptSummary)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+		t.Fatalf("reloaded preview summary = %q, want persisted recovered external provider note", reloadedPreview.PromptSummary)
+	}
+	if strings.Contains(reloadedPreview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+		t.Fatalf("reloaded preview summary = %q, should not fall back to stale Claude Review Runner prompt", reloadedPreview.PromptSummary)
+	}
+}
+
 func TestMemoryCleanupPrunesStaleQueueAndKeepsPromotionPathLive(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
@@ -374,6 +497,93 @@ func TestMemoryProviderBindingsPersistAndAnnotatePromptSummary(t *testing.T) {
 	}
 	if got := findMemoryProviderByKind(reloadedCenter.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusDegraded || got.NextAction == "" {
 		t.Fatalf("reloaded search provider = %#v, want degraded binding with recovery guidance", got)
+	}
+}
+
+func TestMemoryProviderPreviewFollowsCurrentOwnerAcrossHandoffReload(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, _, _, err := s.UpdateMemoryProviders(sampleMemoryProviderBindings(), "Larkspur"); err != nil {
+		t.Fatalf("UpdateMemoryProviders() error = %v", err)
+	}
+
+	if _, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "先接住交互收口",
+		Summary:     "请先把交互语气和漏项收一下。",
+		Kind:        handoffKindRoomAuto,
+	}); err != nil {
+		t.Fatalf("CreateHandoff(codex->claude room-auto) error = %v", err)
+	}
+
+	if _, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-claude-review-runner",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "继续收记忆和验收点",
+		Summary:     "请把影片资料、验收点和记忆写回一起收口。",
+		Kind:        handoffKindRoomAuto,
+	}); err != nil {
+		t.Fatalf("CreateHandoff(claude->memory room-auto) error = %v", err)
+	}
+
+	center := s.MemoryCenter()
+	preview := findMemoryPreviewBySession(center.Previews, "session-runtime")
+	if preview == nil {
+		t.Fatalf("session-runtime preview missing: %#v", center.Previews)
+	}
+	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusDegraded {
+		t.Fatalf("preview search provider = %#v, want degraded after binding", got)
+	}
+	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindExternalPersistent); got == nil || got.Status != memoryProviderStatusDegraded {
+		t.Fatalf("preview external provider = %#v, want degraded after binding", got)
+	}
+	if !strings.Contains(preview.PromptSummary, "Memory Clerk") {
+		t.Fatalf("preview summary = %q, want current owner Memory Clerk", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "把 next-run injection、promotion 和 version audit 保持成可解释真值。") {
+		t.Fatalf("preview summary = %q, want Memory Clerk prompt scaffold", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Search Sidecar") || !strings.Contains(preview.PromptSummary, "External Persistent Memory") {
+		t.Fatalf("preview summary missing provider labels:\n%s", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Local recall index is missing.") || !strings.Contains(preview.PromptSummary, "External durable adapter stub is not configured.") {
+		t.Fatalf("preview summary missing provider degraded notes:\n%s", preview.PromptSummary)
+	}
+	if strings.Contains(preview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+		t.Fatalf("preview summary = %q, should not fall back to stale Claude Review Runner prompt", preview.PromptSummary)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload) error = %v", err)
+	}
+	reloadedPreview := findMemoryPreviewBySession(reloaded.MemoryCenter().Previews, "session-runtime")
+	if reloadedPreview == nil {
+		t.Fatalf("reloaded session-runtime preview missing: %#v", reloaded.MemoryCenter().Previews)
+	}
+	if got := findMemoryProviderByKind(reloadedPreview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusDegraded {
+		t.Fatalf("reloaded preview search provider = %#v, want persisted degraded provider", got)
+	}
+	if got := findMemoryProviderByKind(reloadedPreview.Providers, memoryProviderKindExternalPersistent); got == nil || got.Status != memoryProviderStatusDegraded {
+		t.Fatalf("reloaded preview external provider = %#v, want persisted degraded provider", got)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Memory Clerk") {
+		t.Fatalf("reloaded preview summary = %q, want persisted current owner Memory Clerk", reloadedPreview.PromptSummary)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Search Sidecar") || !strings.Contains(reloadedPreview.PromptSummary, "External Persistent Memory") {
+		t.Fatalf("reloaded preview summary missing provider labels:\n%s", reloadedPreview.PromptSummary)
+	}
+	if strings.Contains(reloadedPreview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+		t.Fatalf("reloaded preview summary = %q, should not fall back to stale Claude Review Runner prompt", reloadedPreview.PromptSummary)
 	}
 }
 

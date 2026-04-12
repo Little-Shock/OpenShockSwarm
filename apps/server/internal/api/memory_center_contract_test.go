@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -511,6 +512,127 @@ func TestMemoryCenterProviderHealthRoutesRecoverDurableBindings(t *testing.T) {
 	if !strings.Contains(preview.PromptSummary, "Search sidecar index ready") ||
 		!strings.Contains(preview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
 		t.Fatalf("prompt summary missing recovery truth:\n%s", preview.PromptSummary)
+	}
+}
+
+func TestMemoryCenterProviderPreviewTracksCurrentOwnerAcrossHandoffReload(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+	s, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+
+	updateResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/providers",
+		`{"providers":[
+			{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."},
+			{"id":"search-sidecar","kind":"search-sidecar","label":"Search Sidecar","enabled":true,"readScopes":["workspace","issue-room","decision-ledger","promoted-ledger"],"writeScopes":[],"recallPolicy":"search-on-demand","retentionPolicy":"短期 query cache。","sharingPolicy":"workspace-query-only","summary":"Use local recall index before full scan."},
+			{"id":"external-persistent","kind":"external-persistent","label":"External Persistent Memory","enabled":true,"readScopes":["workspace","agent","user"],"writeScopes":["agent","user"],"recallPolicy":"promote-approved-only","retentionPolicy":"长期保留审核通过的 durable memory。","sharingPolicy":"explicit-share-only","summary":"Forward approved memories to an external durable sink."}
+		]}`,
+	)
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers status = %d, want %d", updateResp.StatusCode, http.StatusOK)
+	}
+
+	if _, _, err := s.CreateHandoff(store.MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "先接住交互收口",
+		Summary:     "请先把交互语气和漏项收一下。",
+		Kind:        "room-auto",
+	}); err != nil {
+		t.Fatalf("CreateHandoff(codex->claude room-auto) error = %v", err)
+	}
+
+	if _, _, err := s.CreateHandoff(store.MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-claude-review-runner",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "继续收记忆和验收点",
+		Summary:     "请把影片资料、验收点和记忆写回一起收口。",
+		Kind:        "room-auto",
+	}); err != nil {
+		t.Fatalf("CreateHandoff(claude->memory room-auto) error = %v", err)
+	}
+
+	centerResp, err := http.Get(server.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center error = %v", err)
+	}
+	defer centerResp.Body.Close()
+	if centerResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center status = %d, want %d", centerResp.StatusCode, http.StatusOK)
+	}
+
+	var center store.MemoryCenter
+	decodeJSON(t, centerResp, &center)
+	preview := findPreviewBySession(center.Previews, "session-runtime")
+	if preview == nil {
+		t.Fatalf("session-runtime preview missing: %#v", center.Previews)
+	}
+	if got := findProviderByKind(preview.Providers, "search-sidecar"); got == nil || got.Status != "degraded" {
+		t.Fatalf("preview search provider = %#v, want degraded before recovery", got)
+	}
+	if got := findProviderByKind(preview.Providers, "external-persistent"); got == nil || got.Status != "degraded" {
+		t.Fatalf("preview external provider = %#v, want degraded before recovery", got)
+	}
+	if !strings.Contains(preview.PromptSummary, "Memory Clerk") {
+		t.Fatalf("preview summary = %q, want current owner Memory Clerk", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "把 next-run injection、promotion 和 version audit 保持成可解释真值。") {
+		t.Fatalf("preview summary = %q, want Memory Clerk prompt scaffold", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Search Sidecar") || !strings.Contains(preview.PromptSummary, "External Persistent Memory") {
+		t.Fatalf("preview summary missing provider labels:\n%s", preview.PromptSummary)
+	}
+	if strings.Contains(preview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+		t.Fatalf("preview summary = %q, should not fall back to stale Claude Review Runner prompt", preview.PromptSummary)
+	}
+
+	server.Close()
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedServer := httptest.NewServer(New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer reloadedServer.Close()
+
+	reloadedResp, err := http.Get(reloadedServer.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center after reload error = %v", err)
+	}
+	defer reloadedResp.Body.Close()
+	if reloadedResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center after reload status = %d, want %d", reloadedResp.StatusCode, http.StatusOK)
+	}
+
+	var reloadedCenter store.MemoryCenter
+	decodeJSON(t, reloadedResp, &reloadedCenter)
+	reloadedPreview := findPreviewBySession(reloadedCenter.Previews, "session-runtime")
+	if reloadedPreview == nil {
+		t.Fatalf("reloaded session-runtime preview missing: %#v", reloadedCenter.Previews)
+	}
+	if got := findProviderByKind(reloadedPreview.Providers, "search-sidecar"); got == nil || got.Status != "degraded" {
+		t.Fatalf("reloaded preview search provider = %#v, want persisted degraded provider", got)
+	}
+	if got := findProviderByKind(reloadedPreview.Providers, "external-persistent"); got == nil || got.Status != "degraded" {
+		t.Fatalf("reloaded preview external provider = %#v, want persisted degraded provider", got)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Memory Clerk") {
+		t.Fatalf("reloaded preview summary = %q, want persisted current owner Memory Clerk", reloadedPreview.PromptSummary)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Search Sidecar") || !strings.Contains(reloadedPreview.PromptSummary, "External Persistent Memory") {
+		t.Fatalf("reloaded preview summary missing provider labels:\n%s", reloadedPreview.PromptSummary)
+	}
+	if strings.Contains(reloadedPreview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+		t.Fatalf("reloaded preview summary = %q, should not fall back to stale Claude Review Runner prompt", reloadedPreview.PromptSummary)
 	}
 }
 
