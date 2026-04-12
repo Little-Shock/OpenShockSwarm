@@ -24,6 +24,7 @@ type ExecRequest struct {
 	RunID          string `json:"runId,omitempty"`
 	SessionID      string `json:"sessionId,omitempty"`
 	RoomID         string `json:"roomId,omitempty"`
+	ResumeSession  bool   `json:"resumeSession,omitempty"`
 }
 
 type DaemonExecResponse struct {

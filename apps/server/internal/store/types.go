@@ -802,23 +802,24 @@ type PullRequestRemoteSnapshot struct {
 }
 
 type Session struct {
-	ID           string   `json:"id"`
-	IssueKey     string   `json:"issueKey"`
-	RoomID       string   `json:"roomId"`
-	TopicID      string   `json:"topicId"`
-	ActiveRunID  string   `json:"activeRunId"`
-	Status       string   `json:"status"`
-	FollowThread bool     `json:"followThread"`
-	ControlNote  string   `json:"controlNote,omitempty"`
-	Runtime      string   `json:"runtime"`
-	Machine      string   `json:"machine"`
-	Provider     string   `json:"provider"`
-	Branch       string   `json:"branch"`
-	Worktree     string   `json:"worktree"`
-	WorktreePath string   `json:"worktreePath"`
-	Summary      string   `json:"summary"`
-	UpdatedAt    string   `json:"updatedAt"`
-	MemoryPaths  []string `json:"memoryPaths"`
+	ID              string   `json:"id"`
+	IssueKey        string   `json:"issueKey"`
+	RoomID          string   `json:"roomId"`
+	TopicID         string   `json:"topicId"`
+	ActiveRunID     string   `json:"activeRunId"`
+	Status          string   `json:"status"`
+	FollowThread    bool     `json:"followThread"`
+	ContinuityReady bool     `json:"continuityReady,omitempty"`
+	ControlNote     string   `json:"controlNote,omitempty"`
+	Runtime         string   `json:"runtime"`
+	Machine         string   `json:"machine"`
+	Provider        string   `json:"provider"`
+	Branch          string   `json:"branch"`
+	Worktree        string   `json:"worktree"`
+	WorktreePath    string   `json:"worktreePath"`
+	Summary         string   `json:"summary"`
+	UpdatedAt       string   `json:"updatedAt"`
+	MemoryPaths     []string `json:"memoryPaths"`
 }
 
 type AuthSession struct {

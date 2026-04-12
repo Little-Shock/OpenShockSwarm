@@ -94,6 +94,37 @@ func TestBuildCommandCodexUsesOutputFile(t *testing.T) {
 	}
 }
 
+func TestBuildCommandCodexResumeUsesLastSessionInLane(t *testing.T) {
+	req := ExecRequest{
+		Provider:      "codex",
+		Prompt:        "Continue from the current lane",
+		Cwd:           t.TempDir(),
+		ResumeSession: true,
+	}
+
+	plan, err := buildCommand(req)
+	if err != nil {
+		t.Fatalf("buildCommand() error = %v", err)
+	}
+	defer os.Remove(plan.outputFile)
+
+	wantPrefix := []string{"codex", "exec", "resume", "--last"}
+	for index, want := range wantPrefix {
+		if plan.command[index] != want {
+			t.Fatalf("resume command prefix = %#v, want %#v", plan.command, wantPrefix)
+		}
+	}
+	if containsArg(plan.command, "--sandbox") {
+		t.Fatalf("resume command = %#v, should not contain unsupported --sandbox flag", plan.command)
+	}
+	if containsArg(plan.command, "-C") {
+		t.Fatalf("resume command = %#v, should rely on cmd.Dir instead of -C", plan.command)
+	}
+	if !containsArg(plan.command, "--output-last-message") {
+		t.Fatalf("resume command = %#v, want --output-last-message", plan.command)
+	}
+}
+
 func TestBuildCommandNormalizesProviderLabels(t *testing.T) {
 	claudePlan, err := buildCommand(ExecRequest{
 		Provider: "Claude Code CLI",

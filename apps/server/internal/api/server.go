@@ -546,6 +546,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		snapshot := s.store.Snapshot()
 		provider := resolveExecProvider(snapshot, req.Provider)
+		execPrompt := buildRoomExecPrompt(snapshot, roomID, provider, prompt)
 		if blocked := execProviderPreflightMessage("讨论间消息", snapshot, provider); blocked != "" {
 			nextState, appendErr := s.store.AppendConversationFailure(roomID, prompt, blocked)
 			if appendErr != nil {
@@ -557,7 +558,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleRoomMessageStream(w, r, roomID, ExecRequest{
 			Provider:       provider,
-			Prompt:         prompt,
+			Prompt:         execPrompt,
 			Cwd:            req.Cwd,
 			TimeoutSeconds: roomStreamExecTimeoutSeconds,
 		}, prompt)
@@ -585,6 +586,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		snapshot := s.store.Snapshot()
 		provider := resolveExecProvider(snapshot, req.Provider)
+		execPrompt := buildRoomExecPrompt(snapshot, roomID, provider, prompt)
 		if blocked := execProviderPreflightMessage("讨论间消息", snapshot, provider); blocked != "" {
 			nextState, appendErr := s.store.AppendConversationFailure(roomID, prompt, blocked)
 			if appendErr != nil {
@@ -597,7 +599,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 
 		payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
 			Provider:       provider,
-			Prompt:         prompt,
+			Prompt:         execPrompt,
 			Cwd:            req.Cwd,
 			TimeoutSeconds: roomMessageExecTimeoutSeconds,
 		})
@@ -637,7 +639,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		nextState, err := s.store.AppendConversation(roomID, prompt, strings.TrimSpace(payload.Output))
+		nextState, err := s.store.AppendConversation(roomID, prompt, strings.TrimSpace(payload.Output), provider)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -1644,7 +1646,7 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		finalOutput = strings.TrimSpace(stderrBuilder.String())
 	}
 
-	nextState, appendErr := s.store.AppendConversation(roomID, prompt, finalOutput)
+	nextState, appendErr := s.store.AppendConversation(roomID, prompt, finalOutput, req.Provider)
 	if appendErr != nil {
 		_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: appendErr.Error()})
 		return
@@ -1746,6 +1748,66 @@ func buildRuntimeSelectionResponse(snapshot store.State, fallbackDaemonURL strin
 		PairingStatus:     snapshot.Workspace.PairingStatus,
 		Runtimes:          snapshot.Machines,
 	}
+}
+
+func buildRoomExecPrompt(snapshot store.State, roomID, provider, userPrompt string) string {
+	room, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return userPrompt
+	}
+
+	var builder strings.Builder
+	builder.WriteString("你正在 OpenShock 的讨论间里继续当前工作线程。\n")
+	builder.WriteString("请把这次消息视为同一条 room / run / worktree 的后续，不要重置上下文。\n\n")
+	builder.WriteString("当前上下文：\n")
+	builder.WriteString(fmt.Sprintf("- 房间：%s (%s)\n", defaultString(strings.TrimSpace(room.Title), roomID), roomID))
+	builder.WriteString(fmt.Sprintf("- Topic：%s\n", defaultString(strings.TrimSpace(room.Topic.Title), defaultString(strings.TrimSpace(room.Topic.Summary), "未命名话题"))))
+	builder.WriteString(fmt.Sprintf("- Issue：%s | %s | owner=%s | state=%s\n", issue.Key, issue.Title, issue.Owner, issue.State))
+	builder.WriteString(fmt.Sprintf("- Run：%s | status=%s | provider=%s | branch=%s | worktree=%s\n", run.ID, run.Status, defaultString(strings.TrimSpace(run.Provider), provider), run.Branch, run.Worktree))
+	if worktreePath := strings.TrimSpace(run.WorktreePath); worktreePath != "" {
+		builder.WriteString(fmt.Sprintf("- 工作目录：%s\n", worktreePath))
+	}
+
+	if recent := buildRoomPromptHistory(snapshot.RoomMessages[roomID], 6); recent != "" {
+		builder.WriteString("\n最近对话：\n")
+		builder.WriteString(recent)
+	}
+
+	builder.WriteString("\n本轮用户消息：\n")
+	builder.WriteString(strings.TrimSpace(userPrompt))
+	builder.WriteString("\n\n回复要求：\n")
+	builder.WriteString("- 直接用简洁中文回复当前消息。\n")
+	builder.WriteString("- 默认沿用当前 room、run、branch 和 worktree 推进。\n")
+	builder.WriteString("- 不要输出心理活动、系统旁白或自我解释。\n")
+	builder.WriteString("- 如果信息不足，只问最小必要的澄清问题；否则直接推进。\n")
+	if normalizeProviderID(provider) == "codex" {
+		builder.WriteString("- 如果需要改代码或执行命令，默认围绕当前工作目录继续进行。\n")
+	}
+	return builder.String()
+}
+
+func buildRoomPromptHistory(messages []store.Message, limit int) string {
+	if len(messages) == 0 || limit <= 0 {
+		return ""
+	}
+	start := len(messages) - limit
+	if start < 0 {
+		start = 0
+	}
+	var builder strings.Builder
+	for _, message := range messages[start:] {
+		speaker := defaultString(strings.TrimSpace(message.Speaker), defaultString(strings.TrimSpace(message.Role), "unknown"))
+		builder.WriteString(fmt.Sprintf("- %s[%s]: %s\n", speaker, message.Role, compactPromptLine(message.Message)))
+	}
+	return builder.String()
+}
+
+func compactPromptLine(text string) string {
+	line := strings.TrimSpace(strings.NewReplacer("\n", " / ", "\r", " ", "\t", " ").Replace(text))
+	if len(line) <= 220 {
+		return line
+	}
+	return strings.TrimSpace(line[:217]) + "..."
 }
 
 func (s *Server) daemonURLForRoom(roomID string) (string, error) {

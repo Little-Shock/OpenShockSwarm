@@ -51,6 +51,7 @@ type ExecRequest struct {
 	RunID          string `json:"runId,omitempty"`
 	SessionID      string `json:"sessionId,omitempty"`
 	RoomID         string `json:"roomId,omitempty"`
+	ResumeSession  bool   `json:"resumeSession,omitempty"`
 }
 
 type ExecResponse struct {
@@ -671,6 +672,19 @@ func buildCommand(req ExecRequest) (execPlan, error) {
 			return execPlan{}, err
 		}
 		_ = outputFile.Close()
+		if shouldResumeCodexSession(req) {
+			return execPlan{
+				command: []string{
+					"codex", "exec", "resume",
+					"--last",
+					"--skip-git-repo-check",
+					"--output-last-message", outputFile.Name(),
+					req.Prompt,
+				},
+				outputFile:  outputFile.Name(),
+				cleanupFile: true,
+			}, nil
+		}
 		return execPlan{
 			command: []string{
 				"codex", "exec", req.Prompt,
@@ -683,6 +697,10 @@ func buildCommand(req ExecRequest) (execPlan, error) {
 			cleanupFile: true,
 		}, nil
 	}
+}
+
+func shouldResumeCodexSession(req ExecRequest) bool {
+	return req.ResumeSession && strings.TrimSpace(req.Cwd) != ""
 }
 
 func normalizedProviderID(value string) string {

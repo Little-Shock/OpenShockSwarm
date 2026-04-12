@@ -23,6 +23,12 @@ func New(path, workspaceRoot string) (*Store, error) {
 			return nil, err
 		}
 		s.hydrateMissingDefaults()
+		s.mu.Lock()
+		if err := s.ensureFreshOnboardingMaterializationLocked(); err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		s.mu.Unlock()
 		if err := s.ensureFilesystemArtifacts(); err != nil {
 			return nil, err
 		}
@@ -37,6 +43,9 @@ func New(path, workspaceRoot string) (*Store, error) {
 	s.hydrateMissingDefaults()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.ensureFreshOnboardingMaterializationLocked(); err != nil {
+		return nil, err
+	}
 	if err := s.ensureFilesystemArtifactsLocked(); err != nil {
 		return nil, err
 	}
@@ -477,8 +486,24 @@ func (s *Store) updateAgentStateLocked(owner, state, mood string) {
 }
 
 func (s *Store) updateSessionLocked(runID string, mutate func(*Session)) {
+	roomID := ""
+	for index := range s.state.Runs {
+		if s.state.Runs[index].ID == runID {
+			roomID = s.state.Runs[index].RoomID
+			break
+		}
+	}
 	for index := range s.state.Sessions {
 		if s.state.Sessions[index].ActiveRunID == runID {
+			mutate(&s.state.Sessions[index])
+			return
+		}
+	}
+	if strings.TrimSpace(roomID) == "" {
+		return
+	}
+	for index := range s.state.Sessions {
+		if s.state.Sessions[index].RoomID == roomID {
 			mutate(&s.state.Sessions[index])
 			return
 		}

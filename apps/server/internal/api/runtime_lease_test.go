@@ -15,17 +15,19 @@ import (
 
 func TestRoomMessageRouteUsesRunWorktreePathAndLeaseMetadata(t *testing.T) {
 	root := t.TempDir()
-	var seen ExecRequest
+	var seen []ExecRequest
 
 	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/exec" {
 			http.NotFound(w, r)
 			return
 		}
-		if err := json.NewDecoder(r.Body).Decode(&seen); err != nil {
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode exec payload: %v", err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"provider": seen.Provider, "output": "lease-ok"})
+		seen = append(seen, req)
+		writeJSON(w, http.StatusOK, map[string]any{"provider": req.Provider, "output": "lease-ok"})
 	}))
 	defer daemon.Close()
 
@@ -49,12 +51,45 @@ func TestRoomMessageRouteUsesRunWorktreePathAndLeaseMetadata(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("room message status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-
-	if seen.Cwd != lanePath {
-		t.Fatalf("daemon cwd = %q, want %q", seen.Cwd, lanePath)
+	sessionAfterFirst := findSessionByID(s.Snapshot(), created.SessionID)
+	if sessionAfterFirst == nil || !sessionAfterFirst.ContinuityReady {
+		t.Fatalf("session after first message = %#v, want continuity ready before second turn", sessionAfterFirst)
 	}
-	if seen.LeaseID != created.SessionID || seen.RunID != created.RunID || seen.RoomID != created.RoomID {
-		t.Fatalf("lease metadata = %#v, want session/run/room from created lane", seen)
+
+	secondBody, err := json.Marshal(map[string]any{
+		"provider": "codex",
+		"prompt":   "continue the current lane",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(second) error = %v", err)
+	}
+	secondResp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader(secondBody))
+	if err != nil {
+		t.Fatalf("POST second room message error = %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusOK {
+		t.Fatalf("second room message status = %d, want %d", secondResp.StatusCode, http.StatusOK)
+	}
+
+	if len(seen) != 2 {
+		t.Fatalf("daemon requests = %#v, want 2 payloads", seen)
+	}
+	if seen[0].Cwd != lanePath {
+		t.Fatalf("first daemon cwd = %q, want %q", seen[0].Cwd, lanePath)
+	}
+	if seen[0].LeaseID != created.SessionID || seen[0].RunID != created.RunID || seen[0].RoomID != created.RoomID {
+		t.Fatalf("first lease metadata = %#v, want session/run/room from created lane", seen[0])
+	}
+	if seen[0].ResumeSession {
+		t.Fatalf("first daemon request = %#v, should not resume before a successful room turn", seen[0])
+	}
+	if !seen[1].ResumeSession {
+		t.Fatalf("second daemon request = %#v, want resumeSession=true after prior successful turn", seen[1])
+	}
+	session := findSessionByID(s.Snapshot(), created.SessionID)
+	if session == nil || !session.ContinuityReady {
+		t.Fatalf("session continuity = %#v, want continuity ready after successful room turn", session)
 	}
 }
 

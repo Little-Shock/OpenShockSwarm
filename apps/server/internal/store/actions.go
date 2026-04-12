@@ -909,7 +909,41 @@ func sessionSpeakerLabel(auth AuthSnapshot) string {
 	return "我"
 }
 
-func (s *Store) AppendConversation(roomID, prompt, output string) (State, error) {
+func normalizeConversationProvider(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(trimmed, "claude"):
+		return "claude"
+	case strings.Contains(trimmed, "codex"):
+		return "codex"
+	default:
+		return trimmed
+	}
+}
+
+func conversationProviderLabel(value, fallback string) string {
+	switch normalizeConversationProvider(defaultString(value, fallback)) {
+	case "claude":
+		return "Claude Code CLI"
+	case "codex":
+		return "Codex CLI"
+	default:
+		return defaultString(strings.TrimSpace(value), strings.TrimSpace(fallback))
+	}
+}
+
+func conversationProviderTool(value string) string {
+	switch normalizeConversationProvider(value) {
+	case "claude":
+		return "claude-code"
+	case "codex":
+		return "codex"
+	default:
+		return defaultString(strings.TrimSpace(value), "local-cli")
+	}
+}
+
+func (s *Store) AppendConversation(roomID, prompt, output, provider string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -924,6 +958,8 @@ func (s *Store) AppendConversation(roomID, prompt, output string) (State, error)
 		strings.TrimSpace(s.state.Runs[runIndex].Owner),
 		defaultString(strings.TrimSpace(s.state.Issues[issueIndex].Owner), defaultString(strings.TrimSpace(s.state.Rooms[roomIndex].Topic.Owner), "当前智能体")),
 	)
+	providerLabel := conversationProviderLabel(provider, s.state.Runs[runIndex].Provider)
+	providerTool := conversationProviderTool(providerLabel)
 	humanMessage := Message{ID: fmt.Sprintf("%s-human-%d", roomID, time.Now().UnixNano()), Speaker: humanSpeaker, Role: "human", Tone: "human", Message: prompt, Time: now}
 	agentText := defaultString(strings.TrimSpace(output), "已收到，但这次没有可展示的文本输出。")
 	agentMessage := Message{ID: fmt.Sprintf("%s-agent-%d", roomID, time.Now().UnixNano()), Speaker: agentSpeaker, Role: "agent", Tone: "agent", Message: agentText, Time: now}
@@ -935,16 +971,24 @@ func (s *Store) AppendConversation(roomID, prompt, output string) (State, error)
 	s.state.Rooms[roomIndex].Topic.Summary = agentText
 	s.state.Issues[issueIndex].State = "running"
 	s.state.Runs[runIndex].Status = "running"
+	s.state.Runs[runIndex].Provider = defaultString(strings.TrimSpace(providerLabel), s.state.Runs[runIndex].Provider)
 	s.state.Runs[runIndex].StartedAt = now
 	s.state.Runs[runIndex].Duration = "实时"
 	s.state.Runs[runIndex].Summary = agentText
 	s.state.Runs[runIndex].NextAction = "继续在讨论间追加约束或验收标准。"
 	s.state.Runs[runIndex].Stdout = append(s.state.Runs[runIndex].Stdout, fmt.Sprintf("[%s] %s", now, agentText))
-	s.state.Runs[runIndex].ToolCalls = append(s.state.Runs[runIndex].ToolCalls, ToolCall{ID: fmt.Sprintf("%s-tool-%d", s.state.Runs[runIndex].ID, len(s.state.Runs[runIndex].ToolCalls)+1), Tool: "claude-code", Summary: "讨论间对话已同步到本地 CLI", Result: "成功"})
+	s.state.Runs[runIndex].ToolCalls = append(s.state.Runs[runIndex].ToolCalls, ToolCall{
+		ID:      fmt.Sprintf("%s-tool-%d", s.state.Runs[runIndex].ID, len(s.state.Runs[runIndex].ToolCalls)+1),
+		Tool:    providerTool,
+		Summary: fmt.Sprintf("讨论间对话已同步到 %s", defaultString(strings.TrimSpace(providerLabel), "本地 CLI")),
+		Result:  "成功",
+	})
 	s.state.Runs[runIndex].Timeline = append(s.state.Runs[runIndex].Timeline, RunEvent{ID: fmt.Sprintf("%s-ev-%d", s.state.Runs[runIndex].ID, len(s.state.Runs[runIndex].Timeline)+1), Label: "已收到新指令并返回结果", At: now, Tone: "lime"})
 	s.updateAgentStateLocked(s.state.Issues[issueIndex].Owner, "running", "正在处理讨论间新指令")
 	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
 		item.Status = "running"
+		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
+		item.ContinuityReady = true
 		item.Summary = agentText
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	})

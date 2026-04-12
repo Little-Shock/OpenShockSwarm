@@ -58,11 +58,13 @@ func attachRoomRuntimeLease(req *ExecRequest, snapshot store.State, roomID, work
 		req.RunID = defaultString(strings.TrimSpace(req.RunID), lease.RunID)
 		req.SessionID = defaultString(strings.TrimSpace(req.SessionID), lease.SessionID)
 		req.RoomID = defaultString(strings.TrimSpace(req.RoomID), lease.RoomID)
+		attachRoomConversationContinuity(req, snapshot, roomID)
 		return
 	}
 	if strings.TrimSpace(req.Cwd) == "" {
 		req.Cwd = workspaceRoot
 	}
+	attachRoomConversationContinuity(req, snapshot, roomID)
 }
 
 func findRoomRuntimeLease(snapshot store.State, roomID string) (store.RuntimeLease, bool) {
@@ -83,6 +85,37 @@ func findRunRuntimeLease(snapshot store.State, runID string) (store.RuntimeLease
 		return lease, true
 	}
 	return store.RuntimeLease{}, false
+}
+
+func attachRoomConversationContinuity(req *ExecRequest, snapshot store.State, roomID string) {
+	if req == nil || normalizeProviderID(req.Provider) != "codex" || strings.TrimSpace(req.Cwd) == "" {
+		return
+	}
+	session, ok := findRoomConversationSession(snapshot, roomID, req.SessionID)
+	if !ok || !session.ContinuityReady {
+		return
+	}
+	if normalizeProviderID(session.Provider) != normalizeProviderID(req.Provider) {
+		return
+	}
+	req.ResumeSession = true
+}
+
+func findRoomConversationSession(snapshot store.State, roomID, sessionID string) (store.Session, bool) {
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	if trimmedSessionID != "" {
+		for _, session := range snapshot.Sessions {
+			if session.ID == trimmedSessionID {
+				return session, true
+			}
+		}
+	}
+	for _, session := range snapshot.Sessions {
+		if session.RoomID == roomID {
+			return session, true
+		}
+	}
+	return store.Session{}, false
 }
 
 func buildConflictRoomMessage(prefix string, err error) string {

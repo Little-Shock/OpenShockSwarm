@@ -369,8 +369,8 @@ func TestCreateIssueFailsOverToLeastLoadedRuntimeWhenPreferredRuntimeIsOffline(t
 	if failoverRun.Runtime != "shock-spare" || failoverRun.Machine != "shock-spare" {
 		t.Fatalf("failover runtime = %#v, want shock-spare", failoverRun)
 	}
-	if !strings.Contains(failoverRun.NextAction, "failover") {
-		t.Fatalf("run next action = %q, want failover wording", failoverRun.NextAction)
+	if !strings.Contains(failoverRun.NextAction, "已切换到 shock-spare") {
+		t.Fatalf("run next action = %q, want failover switch wording", failoverRun.NextAction)
 	}
 	if len(failoverRun.Timeline) < 2 || failoverRun.Timeline[1].Label != "Runtime 已 failover 到 shock-spare" {
 		t.Fatalf("run timeline = %#v, want failover event", failoverRun.Timeline)
@@ -383,8 +383,8 @@ func TestCreateIssueFailsOverToLeastLoadedRuntimeWhenPreferredRuntimeIsOffline(t
 			break
 		}
 	}
-	if failoverSession == nil || !strings.Contains(failoverSession.Summary, "failover") {
-		t.Fatalf("failover session = %#v, want failover summary", failoverSession)
+	if failoverSession == nil || !strings.Contains(failoverSession.Summary, "已切换到 shock-spare") {
+		t.Fatalf("failover session = %#v, want runtime switch summary", failoverSession)
 	}
 }
 
@@ -602,7 +602,7 @@ func TestAppendConversationWritesWorkspaceMemoryArtifacts(t *testing.T) {
 		t.Fatalf("AttachLane() error = %v", err)
 	}
 
-	if _, err := s.AppendConversation(result.RoomID, "Need a durable writeback", "Conversation synced into file memory."); err != nil {
+	if _, err := s.AppendConversation(result.RoomID, "Need a durable writeback", "Conversation synced into file memory.", "codex"); err != nil {
 		t.Fatalf("AppendConversation() error = %v", err)
 	}
 
@@ -683,7 +683,7 @@ func TestMemorySubsystemTracksVersionsAndGovernance(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AttachLane() error = %v", err)
 	}
-	if _, err := s.AppendConversation(result.RoomID, "Need versioned audit", "Conversation synced into governed file memory."); err != nil {
+	if _, err := s.AppendConversation(result.RoomID, "Need versioned audit", "Conversation synced into governed file memory.", "codex"); err != nil {
 		t.Fatalf("AppendConversation() error = %v", err)
 	}
 
