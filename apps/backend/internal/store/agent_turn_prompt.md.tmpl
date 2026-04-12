@@ -9,6 +9,9 @@
     - 用 notes/room-context.md 查看可持续复用的房间上下文，用 notes/work-log.md 查看最近回合记录。
     - 如果你需要原始 session 包络，可查看 SESSION.json。
 - 阅读 CURRENT_TURN.md，确认本回合的精确触发原因和当前事实快照。
+- 默认只关注你自己的当前 room workspace 和当前 agent 的 MEMORY.md。
+- 不要主动浏览 `agents/` 目录下其他 agent 的空间，也不要为了找上下文去遍历其他 room workspace。
+- 除非用户明确要求，或当前回合必须排查系统级问题且你会在回复里说明原因，否则不要扩大读取范围。
 - 如果你学到了应该延续到下一回合的稳定上下文，请在结束前更新 MEMORY.md。
 系统工作流约定：
 不要把 `openshock --help` 当成默认第一步；只有当需求明显超出这里列出的能力时，再查对应子命令的 `--help`。
