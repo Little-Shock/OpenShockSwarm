@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
-**版本:** 1.25
-**更新日期:** 2026 年 4 月 11 日
+**版本:** 1.26
+**更新日期:** 2026 年 4 月 12 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -1210,3 +1210,18 @@
   6. 切到 `session-memory` preview，并 reload 页面，确认 provider health summary / next action / activity timeline 保持。
 - 预期结果: provider 缺少依赖时必须 fail loud；恢复后必须回到同一份 durable truth，并被 preview / prompt summary / reload 后的页面继续读到。
 - 业务结论: 2026 年 4 月 11 日 `TKT-97` 新增 `POST /v1/memory-center/providers/check`、`POST /v1/memory-center/providers/:id/recover`、`/memory` provider health timeline 与 `pnpm test:headed-memory-provider-health-recovery`。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-memory-provider-health-recovery.md` 已记录 `degraded -> check -> recover -> workspace drift -> dependent degrade -> recover -> preview -> reload` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestMemoryProviderBindingsPersistAndAnnotatePromptSummary|TestMemoryProviderHealthCheckAndRecoveryLifecycle" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMemoryCenterProviderRoutesExposeDurableProviderBindings|TestMemoryCenterProviderHealthRoutesRecoverDurableBindings|TestMutationRoutesRequireActiveAuthSession|TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations|TestViewerRoleCannotMutateProtectedSurfaces" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-memory-provider-health-recovery.mjs` 已锁住 health/recovery contract、前端构建和 headed script 合法性，因此这条 provider health/recovery 用例当前转为 `Pass`。
+
+## TC-087 Multi-Agent Sequential Owner Continuity / Restart Resume
+
+- 业务目标: 确认多智能体 room-auto 协作在 `A -> B -> C` 顺序交接后，当前 owner、provider 路由和公开发言都继续锚定最新接手者；即使 server/store 重启，也不会掉回 stale recent-run actor。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21` `CHK-22`
+- 前置条件: 存在至少 3 个 Agent、room-auto handoff contract、durable store 持久化，以及可重放的 headed multi-agent 场景。
+- 测试步骤:
+  1. 让 Agent A 在 room 内公开收需求，并自动交棒给 Agent B。
+  2. 再发送下一条房间消息，确认当前轮由 Agent B 回应，并继续自动交棒给 Agent C。
+  3. 检查第二次 auto-followup 的 provider 与 prompt identity 是否都切到 Agent C，而不是沿用 Agent B 的 stale `RecentRunIDs`。
+  4. 重启 store / server 后再次发送 room 消息，确认当前 owner、provider 路由、公开消息 speaker 仍然保持在 Agent C。
+  5. 回读 room / mailbox / state，确认公开消息不泄露 `SEND_PUBLIC_MESSAGE` 或 `OPENSHOCK_HANDOFF:` 内部协议。
+- 预期结果: 顺序交接后的当前 owner 必须始终以 `run.Owner -> issue.Owner -> room.Topic.Owner` 为准；auto-followup 与重启恢复后的下一轮消息都要路由给最新 owner，且公开房间不泄露内部协议。
+- 业务结论: 2026 年 4 月 12 日新增 `TestRoomMessageRouteSequentialAutoHandoffUsesCurrentOwnerOnSecondTurn`、`TestRoomMessageRouteClarificationWaitSurvivesStoreReload` 与 `TestResolveRoomTurnAgentPrefersCurrentOwnerOverStaleRecentRunIDs`，把 `A -> B -> C` 顺序交接、当前 owner prompt/provider 路由，以及 clarification wait 在 store reload 后的 resume continuity 一起锁进 `go test ./apps/server/internal/api`。同日 `node ./scripts/headed-multi-agent-movie-studio.mjs --report output/testing/headed-multi-agent-movie-studio-report.md` 产出新的有头报告，记录 `星野产品 -> 折光交互 -> 青岚策展` 的公开协作链、Mailbox walkthrough、最终 owner 上下文与 protocol leak probe 全部 `PASS`；`pnpm test:headed-run-history-resume-context -- --report output/testing/headed-run-history-resume-context-report.md` 也重新验证了 run history / resume context 的 headed 恢复链，因此这条跨交接/恢复连续体验证当前转为 `Pass`。

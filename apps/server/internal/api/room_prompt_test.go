@@ -35,6 +35,23 @@ func TestBuildRoomExecPromptIncludesRoomRunAndRecentContext(t *testing.T) {
 			State:  "running",
 			RoomID: "room-runtime",
 		}},
+		Agents: []store.Agent{
+			{
+				ID:                 "agent-codex-dockmaster",
+				Name:               "Codex Dockmaster",
+				Role:               "Platform Architect",
+				Lane:               "OPS-12",
+				ProviderPreference: "codex",
+				Prompt:             "优先收紧 continuity 和运行链路，不要空谈。",
+			},
+			{
+				ID:                 "agent-claude-review-runner",
+				Name:               "Claude Review Runner",
+				Role:               "Review Runner",
+				Lane:               "OPS-19",
+				ProviderPreference: "claude",
+			},
+		},
 		RoomMessages: map[string][]store.Message{
 			"room-runtime": {
 				{Speaker: "Larkspur", Role: "human", Message: "先把 continuity 做扎实。"},
@@ -51,16 +68,41 @@ func TestBuildRoomExecPromptIncludesRoomRunAndRecentContext(t *testing.T) {
 		"- Topic：Pairing Recovery",
 		"- Issue：OPS-12 | Recover runtime continuity | owner=Codex Dockmaster | state=running",
 		"- Run：run_runtime_01 | status=running | provider=Codex CLI | branch=feat/runtime-continuity | worktree=wt-runtime-continuity",
+		"- 当前接手：Codex Dockmaster | role=Platform Architect | lane=OPS-12 | provider=codex",
+		"- 当前智能体要求：优先收紧 continuity 和运行链路，不要空谈。",
 		"- 工作目录：/tmp/runtime-continuity",
 		"- Larkspur[human]: 先把 continuity 做扎实。",
 		"- Codex Dockmaster[agent]: 我已经接到当前 worktree，会继续沿着这条 lane 推进。",
 		"本轮用户消息：",
 		"继续把 session continuity 做实",
+		"- 先在内部判断这条消息是否需要公开回复、是否需要你接手，再决定输出。",
+		"- 公开消息只能通过 SEND_PUBLIC_MESSAGE 这个封装返回；不要把正文裸写出来。",
+		"- 先判断这条消息是否真的需要一个可见回复。",
+		"- 默认控制在 3 到 6 句；先直接回答，再补下一步。",
+		"- 除非用户明确要求，不要长篇分点，不要复述系统背景。",
+		"- 如果要回复，第一句必须像团队成员在聊天里说话，不要写成报告。",
+		"- 如果本轮要接手、推进或同步结果，在第一句自然说清楚，不要写内部思考过程。",
+		"- 本轮请以 Codex Dockmaster 的身份回应，不要替多个智能体同时发言。",
+		"SEND_PUBLIC_MESSAGE",
+		"KIND: message | summary | clarification_request | handoff | no_response",
+		"CLAIM: keep | take",
+		"- 如果这轮其实不需要你可见回复，就返回 SEND_PUBLIC_MESSAGE，KIND: no_response，BODY 留空。",
+		"- 如果你要回复，就返回 SEND_PUBLIC_MESSAGE，KIND: message，然后在 BODY 写自然中文；系统只会展示 BODY。",
+		"- 如果你只缺一个继续推进所必需的信息，就返回 KIND: clarification_request，然后在 BODY 里只问那一个问题。",
+		"- 如果你只是做简短收尾或状态同步，就返回 KIND: summary，然后在 BODY 里写简短同步。",
+		"- 只有你准备继续承担这条房间后续工作时，才把 CLAIM 设为 take；只是被点名答一句时保持 CLAIM: keep。",
+		"- 如果要把当前线程交给别人继续，也可以返回 KIND: handoff，然后在 BODY 里用 @agent_id 点名接手人；系统会自动把它记成正式交接。",
+		"- 如果这轮应该交给别的智能体继续，在正文最后单独追加一行：OPENSHOCK_HANDOFF: <agent_id> | <title> | <summary>",
+		"  - agent-claude-review-runner | Claude Review Runner | Review Runner | lane=OPS-19",
+		"- 不要把打算做的事说成已经做完。",
 		"如果需要改代码或执行命令，默认围绕当前工作目录继续进行。",
 	} {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("expected room prompt to contain %q, got:\n%s", expected, prompt)
 		}
+	}
+	if strings.Contains(prompt, "agent-codex-dockmaster | Codex Dockmaster") {
+		t.Fatalf("room prompt should not include current owner in handoff catalog, got:\n%s", prompt)
 	}
 }
 
@@ -68,5 +110,388 @@ func TestBuildRoomExecPromptFallsBackToRawPromptWhenRoomMissing(t *testing.T) {
 	raw := "只回复一句话"
 	if got := buildRoomExecPrompt(store.State{}, "missing-room", "codex", raw); got != raw {
 		t.Fatalf("buildRoomExecPrompt() = %q, want %q", got, raw)
+	}
+}
+
+func TestBuildRoomExecPromptIncludesClarificationFollowupHint(t *testing.T) {
+	snapshot := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			Title:    "Runtime Lane",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				Owner: "Codex Dockmaster",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:     "run_runtime_01",
+			RoomID: "room-runtime",
+			Owner:  "Codex Dockmaster",
+		}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			Owner:  "Codex Dockmaster",
+			State:  "paused",
+			RoomID: "room-runtime",
+		}},
+		Agents: []store.Agent{{
+			ID:   "agent-codex-dockmaster",
+			Name: "Codex Dockmaster",
+		}},
+		RoomMessages: map[string][]store.Message{
+			"room-runtime": {
+				{Speaker: "Codex Dockmaster", Role: "agent", Tone: "blocked", Message: "请先确认是否允许我改 billing guard。"},
+			},
+		},
+	}
+
+	prompt := buildRoomExecPrompt(snapshot, "room-runtime", "codex", "可以改，只限当前 guard。")
+	for _, expected := range []string{
+		"当前触发提醒：",
+		"- 你上一轮刚提出过阻塞性澄清，先判断这条新消息是否已经补齐关键信息。",
+		"- 如果阻塞已解除，不要重复原问题，直接继续推进。",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected clarification followup prompt to contain %q, got:\n%s", expected, prompt)
+		}
+	}
+}
+
+func TestBuildRoomExecPromptUsesExplicitRoomWaitForClarificationFollowup(t *testing.T) {
+	snapshot := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			Title:    "Runtime Lane",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				Owner: "Codex Dockmaster",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:       "run_runtime_01",
+			RoomID:   "room-runtime",
+			Owner:    "Codex Dockmaster",
+			Provider: "Codex CLI",
+		}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			Owner:  "Codex Dockmaster",
+			State:  "paused",
+			RoomID: "room-runtime",
+		}},
+		Agents: []store.Agent{{
+			ID:                 "agent-codex-dockmaster",
+			Name:               "Codex Dockmaster",
+			Role:               "Architect",
+			Lane:               "OPS-12",
+			ProviderPreference: "codex",
+		}},
+		RoomMessages: map[string][]store.Message{
+			"room-runtime": {
+				{ID: "msg-clarify", Speaker: "Codex Dockmaster", Role: "agent", Tone: "blocked", Message: "请先确认是否允许我改 billing guard。"},
+				{ID: "msg-system", Speaker: "System", Role: "system", Tone: "system", Message: "系统记录：等待人工补充。"},
+			},
+		},
+		RoomAgentWaits: []store.RoomAgentWait{{
+			ID:                "room-wait-1",
+			RoomID:            "room-runtime",
+			AgentID:           "agent-codex-dockmaster",
+			Agent:             "Codex Dockmaster",
+			BlockingMessageID: "msg-clarify",
+			Status:            "waiting_reply",
+			CreatedAt:         "2026-04-12T00:00:00Z",
+		}},
+	}
+
+	agent, wakeupMode, ok := resolveRoomTurnAgent(snapshot, "room-runtime", "可以改，只限当前 guard。")
+	if !ok || wakeupMode != "clarification_followup" || agent.Name != "Codex Dockmaster" {
+		t.Fatalf("resolveRoomTurnAgent() = (%#v, %q, %v), want Codex clarification followup", agent, wakeupMode, ok)
+	}
+
+	prompt := buildRoomExecPrompt(snapshot, "room-runtime", "codex", "可以改，只限当前 guard。")
+	for _, expected := range []string{
+		"当前触发提醒：",
+		"- 你上一轮刚提出过阻塞性澄清，先判断这条新消息是否已经补齐关键信息。",
+		"- 如果阻塞已解除，不要重复原问题，直接继续推进。",
+		"- 本轮请以 Codex Dockmaster 的身份回应，不要替多个智能体同时发言。",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected explicit room wait prompt to contain %q, got:\n%s", expected, prompt)
+		}
+	}
+}
+
+func TestBuildRoomExecPromptIncludesMentionResponseHint(t *testing.T) {
+	snapshot := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			Title:    "Runtime Lane",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				Owner: "Codex Dockmaster",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:       "run_runtime_01",
+			RoomID:   "room-runtime",
+			Owner:    "Codex Dockmaster",
+			Provider: "Codex CLI",
+		}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			Owner:  "Codex Dockmaster",
+			RoomID: "room-runtime",
+		}},
+		Agents: []store.Agent{
+			{
+				ID:                 "agent-codex-dockmaster",
+				Name:               "Codex Dockmaster",
+				Role:               "Architect",
+				Lane:               "OPS-12",
+				ProviderPreference: "codex",
+			},
+			{
+				ID:                 "agent-claude-review-runner",
+				Name:               "Claude Review Runner",
+				Role:               "Review Runner",
+				Lane:               "OPS-19",
+				ProviderPreference: "claude",
+			},
+		},
+	}
+
+	prompt := buildRoomExecPrompt(snapshot, "room-runtime", "claude", "@agent-claude-review-runner 帮我继续复核恢复链路。")
+	for _, expected := range []string{
+		"- 当前接手：Codex Dockmaster | role=Architect | lane=OPS-12 | provider=codex",
+		"- 本轮响应：Claude Review Runner | role=Review Runner | lane=OPS-19 | provider=claude",
+		"当前触发提醒：",
+		"- 这条消息明确点名了 Claude Review Runner，默认由他直接回应。",
+		"- 被点名不等于自动接手；只有准备继续负责后续工作时，才显式 CLAIM: take。",
+		"- 本轮请以 Claude Review Runner 的身份回应，不要替多个智能体同时发言。",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected mention-response prompt to contain %q, got:\n%s", expected, prompt)
+		}
+	}
+}
+
+func TestResolveRoomExecProviderPrefersCurrentOwnerAgent(t *testing.T) {
+	state := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				Owner: "Claude Review Runner",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:     "run_runtime_01",
+			RoomID: "room-runtime",
+			Owner:  "Claude Review Runner",
+		}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			Owner:  "Claude Review Runner",
+			RoomID: "room-runtime",
+		}},
+		Agents: []store.Agent{
+			{
+				ID:                 "agent-claude-review-runner",
+				Name:               "Claude Review Runner",
+				ProviderPreference: "claude",
+				RecentRunIDs:       []string{"run_runtime_01"},
+			},
+			{
+				ID:                 "agent-codex-dockmaster",
+				Name:               "Codex Dockmaster",
+				ProviderPreference: "codex",
+			},
+		},
+		Workspace: store.WorkspaceSnapshot{
+			PairedRuntime: "shock-main",
+		},
+		Runtimes: []store.RuntimeRecord{{
+			ID:          "shock-main",
+			Machine:     "shock-main",
+			State:       "online",
+			DetectedCLI: []string{"codex", "claude"},
+			Providers: []store.RuntimeProvider{
+				{ID: "codex", Label: "Codex CLI", Ready: true},
+				{ID: "claude", Label: "Claude", Ready: true},
+			},
+		}},
+	}
+
+	if got := resolveRoomExecProvider(state, "room-runtime", ""); got != "claude" {
+		t.Fatalf("resolveRoomExecProvider() = %q, want claude", got)
+	}
+}
+
+func TestResolveRoomTurnExecProviderPrefersMentionedAgent(t *testing.T) {
+	state := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				Owner: "Codex Dockmaster",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:     "run_runtime_01",
+			RoomID: "room-runtime",
+			Owner:  "Codex Dockmaster",
+		}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			Owner:  "Codex Dockmaster",
+			RoomID: "room-runtime",
+		}},
+		Agents: []store.Agent{
+			{
+				ID:                 "agent-codex-dockmaster",
+				Name:               "Codex Dockmaster",
+				ProviderPreference: "codex",
+			},
+			{
+				ID:                 "agent-claude-review-runner",
+				Name:               "Claude Review Runner",
+				ProviderPreference: "claude",
+			},
+		},
+		Workspace: store.WorkspaceSnapshot{
+			PairedRuntime: "shock-main",
+		},
+		Runtimes: []store.RuntimeRecord{{
+			ID:          "shock-main",
+			Machine:     "shock-main",
+			State:       "online",
+			DetectedCLI: []string{"codex", "claude"},
+			Providers: []store.RuntimeProvider{
+				{ID: "codex", Label: "Codex CLI", Ready: true},
+				{ID: "claude", Label: "Claude", Ready: true},
+			},
+		}},
+	}
+
+	if got := resolveRoomTurnExecProvider(state, "room-runtime", "", "@agent-claude-review-runner 你来复核。"); got != "claude" {
+		t.Fatalf("resolveRoomTurnExecProvider() = %q, want claude for mentioned agent", got)
+	}
+}
+
+func TestResolveRoomTurnAgentPrefersCurrentOwnerOverStaleRecentRunIDs(t *testing.T) {
+	state := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				Owner: "青岚策展",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:     "run_runtime_01",
+			RoomID: "room-runtime",
+			Owner:  "青岚策展",
+		}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			Owner:  "青岚策展",
+			RoomID: "room-runtime",
+		}},
+		Agents: []store.Agent{
+			{
+				ID:                 "agent-claude-review-runner",
+				Name:               "折光交互",
+				ProviderPreference: "claude",
+				RecentRunIDs:       []string{"run_runtime_01"},
+			},
+			{
+				ID:                 "agent-memory-clerk",
+				Name:               "青岚策展",
+				ProviderPreference: "codex",
+				RecentRunIDs:       []string{"run_runtime_01"},
+			},
+		},
+	}
+
+	agent, wakeupMode, ok := resolveRoomTurnAgent(state, "room-runtime", "继续把影片资料和验收点收一下。")
+	if !ok || wakeupMode != "direct_message" || agent.Name != "青岚策展" {
+		t.Fatalf("resolveRoomTurnAgent() = (%#v, %q, %v), want 青岚策展 direct owner", agent, wakeupMode, ok)
+	}
+
+	prompt := buildRoomExecPrompt(state, "room-runtime", "codex", "继续把影片资料和验收点收一下。")
+	if !strings.Contains(prompt, "- 本轮请以 青岚策展 的身份回应，不要替多个智能体同时发言。") {
+		t.Fatalf("expected room prompt to prefer current owner, got:\n%s", prompt)
+	}
+}
+
+func TestParseRoomResponseDirectivesSupportsReplyEnvelope(t *testing.T) {
+	directives := parseRoomResponseDirectives("SEND_PUBLIC_MESSAGE\nKIND: message\nCLAIM: keep\nBODY:\n我先接住这一拍。\nOPENSHOCK_HANDOFF: agent-claude-review-runner | 继续复核 | 请补最后确认。")
+	if directives.ReplyKind != "message" || directives.SuppressReply {
+		t.Fatalf("directives = %#v, want message envelope", directives)
+	}
+	if directives.ClaimMode != "keep" {
+		t.Fatalf("claim mode = %q, want keep", directives.ClaimMode)
+	}
+	if directives.DisplayOutput != "我先接住这一拍。" {
+		t.Fatalf("display output = %q, want stripped body", directives.DisplayOutput)
+	}
+	if directives.Handoff == nil || directives.Handoff.ToAgentID != "agent-claude-review-runner" {
+		t.Fatalf("handoff = %#v, want parsed handoff", directives.Handoff)
+	}
+}
+
+func TestParseRoomResponseDirectivesSupportsNoResponse(t *testing.T) {
+	directives := parseRoomResponseDirectives("SEND_PUBLIC_MESSAGE\nKIND: no_response\nBODY:")
+	if directives.ReplyKind != "no_response" || !directives.SuppressReply {
+		t.Fatalf("directives = %#v, want suppress no_response", directives)
+	}
+	if directives.DisplayOutput != "" || directives.Handoff != nil {
+		t.Fatalf("directives = %#v, want empty visible output", directives)
+	}
+}
+
+func TestParseRoomResponseDirectivesSupportsCaseInsensitiveEnvelope(t *testing.T) {
+	directives := parseRoomResponseDirectives("send_public_message\nkind: SuMmArY\nclaim: TaKe\nbody: 先同步当前结论。")
+	if directives.ReplyKind != "summary" || directives.SuppressReply {
+		t.Fatalf("directives = %#v, want normalized summary envelope", directives)
+	}
+	if directives.ClaimMode != "take" {
+		t.Fatalf("claim mode = %q, want take", directives.ClaimMode)
+	}
+	if directives.DisplayOutput != "先同步当前结论。" {
+		t.Fatalf("display output = %q, want case-insensitive body parse", directives.DisplayOutput)
+	}
+}
+
+func TestInferRoomHandoffDirectiveFromVisibleBody(t *testing.T) {
+	snapshot := store.State{
+		Rooms: []store.Room{{ID: "room-runtime", IssueKey: "OPS-12", RunID: "run_runtime_01"}},
+		Runs:  []store.Run{{ID: "run_runtime_01", RoomID: "room-runtime", Owner: "Codex Dockmaster"}},
+		Issues: []store.Issue{{
+			Key:    "OPS-12",
+			RoomID: "room-runtime",
+			Owner:  "Codex Dockmaster",
+		}},
+		Agents: []store.Agent{
+			{ID: "agent-codex-dockmaster", Name: "Codex Dockmaster"},
+			{ID: "agent-claude-review-runner", Name: "Claude Review Runner"},
+		},
+	}
+
+	directive, ok := inferRoomHandoffDirective(snapshot, "room-runtime", "@agent-claude-review-runner 你接着复核恢复链路和副作用。")
+	if !ok {
+		t.Fatalf("inferRoomHandoffDirective() = false, want true")
+	}
+	if directive.ToAgentID != "agent-claude-review-runner" {
+		t.Fatalf("directive = %#v, want target agent", directive)
+	}
+	if !strings.Contains(directive.Summary, "复核恢复链路") || strings.Contains(directive.Summary, "@agent-claude-review-runner") {
+		t.Fatalf("directive = %#v, want cleaned summary", directive)
 	}
 }

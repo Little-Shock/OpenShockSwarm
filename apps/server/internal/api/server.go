@@ -130,7 +130,7 @@ type PairingStatusResponse struct {
 const (
 	channelMessageExecTimeoutSeconds = 90
 	roomMessageExecTimeoutSeconds    = 45
-	roomStreamExecTimeoutSeconds     = 90
+	roomStreamExecTimeoutSeconds     = 45
 	defaultExecTimeoutSeconds        = 90
 )
 
@@ -545,7 +545,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		snapshot := s.store.Snapshot()
-		provider := resolveExecProvider(snapshot, req.Provider)
+		provider := resolveRoomTurnExecProvider(snapshot, roomID, req.Provider, prompt)
 		execPrompt := buildRoomExecPrompt(snapshot, roomID, provider, prompt)
 		if blocked := execProviderPreflightMessage("讨论间消息", snapshot, provider); blocked != "" {
 			nextState, appendErr := s.store.AppendConversationFailure(roomID, prompt, blocked)
@@ -585,7 +585,7 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		snapshot := s.store.Snapshot()
-		provider := resolveExecProvider(snapshot, req.Provider)
+		provider := resolveRoomTurnExecProvider(snapshot, roomID, req.Provider, prompt)
 		execPrompt := buildRoomExecPrompt(snapshot, roomID, provider, prompt)
 		if blocked := execProviderPreflightMessage("讨论间消息", snapshot, provider); blocked != "" {
 			nextState, appendErr := s.store.AppendConversationFailure(roomID, prompt, blocked)
@@ -639,12 +639,24 @@ func (s *Server) handleRoomRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		nextState, err := s.store.AppendConversation(roomID, prompt, strings.TrimSpace(payload.Output), provider)
+		directives := parseRoomResponseDirectives(strings.TrimSpace(payload.Output))
+		replySpeaker := roomReplySpeaker(snapshot, roomID, prompt)
+		var nextState store.State
+		if directives.SuppressReply {
+			nextState, err = s.store.AppendConversationWithoutVisibleReply(roomID, prompt, provider)
+		} else if directives.ReplyKind == "clarification_request" {
+			nextState, err = s.store.AppendClarificationRequest(roomID, prompt, replySpeaker, directives.DisplayOutput, provider)
+		} else if directives.ReplyKind == "summary" {
+			nextState, err = s.store.AppendConversationSummary(roomID, prompt, replySpeaker, directives.DisplayOutput, provider)
+		} else {
+			nextState, err = s.store.AppendConversationAsAgent(roomID, prompt, replySpeaker, directives.DisplayOutput, provider)
+		}
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"output": payload.Output, "state": nextState})
+		nextState = s.applyRoomResponseDirectives(nextState, nextState, roomID, replySpeaker, provider, directives)
+		writeJSON(w, http.StatusOK, map[string]any{"output": directives.DisplayOutput, "state": nextState})
 		return
 	}
 
@@ -1645,13 +1657,28 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 	if finalOutput == "" {
 		finalOutput = strings.TrimSpace(stderrBuilder.String())
 	}
+	directives := parseRoomResponseDirectives(finalOutput)
 
-	nextState, appendErr := s.store.AppendConversation(roomID, prompt, finalOutput, req.Provider)
+	var (
+		nextState store.State
+		appendErr error
+	)
+	replySpeaker := roomReplySpeaker(s.store.Snapshot(), roomID, prompt)
+	if directives.SuppressReply {
+		nextState, appendErr = s.store.AppendConversationWithoutVisibleReply(roomID, prompt, req.Provider)
+	} else if directives.ReplyKind == "clarification_request" {
+		nextState, appendErr = s.store.AppendClarificationRequest(roomID, prompt, replySpeaker, directives.DisplayOutput, req.Provider)
+	} else if directives.ReplyKind == "summary" {
+		nextState, appendErr = s.store.AppendConversationSummary(roomID, prompt, replySpeaker, directives.DisplayOutput, req.Provider)
+	} else {
+		nextState, appendErr = s.store.AppendConversationAsAgent(roomID, prompt, replySpeaker, directives.DisplayOutput, req.Provider)
+	}
 	if appendErr != nil {
 		_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "error", Error: appendErr.Error()})
 		return
 	}
-	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: finalOutput, State: &nextState})
+	nextState = s.applyRoomResponseDirectives(nextState, nextState, roomID, replySpeaker, req.Provider, directives)
+	_ = writeNDJSON(w, flusher, DaemonStreamEvent{Type: "state", Output: directives.DisplayOutput, State: &nextState})
 }
 
 func (s *Server) forwardGetJSON(w http.ResponseWriter, url string) {
@@ -1755,6 +1782,8 @@ func buildRoomExecPrompt(snapshot store.State, roomID, provider, userPrompt stri
 	if !ok {
 		return userPrompt
 	}
+	ownerAgent, hasOwnerAgent := findRoomOwnerAgent(snapshot, roomID)
+	turnAgent, wakeupMode, hasTurnAgent := resolveRoomTurnAgent(snapshot, roomID, userPrompt)
 
 	var builder strings.Builder
 	builder.WriteString("你正在 OpenShock 的讨论间里继续当前工作线程。\n")
@@ -1764,6 +1793,18 @@ func buildRoomExecPrompt(snapshot store.State, roomID, provider, userPrompt stri
 	builder.WriteString(fmt.Sprintf("- Topic：%s\n", defaultString(strings.TrimSpace(room.Topic.Title), defaultString(strings.TrimSpace(room.Topic.Summary), "未命名话题"))))
 	builder.WriteString(fmt.Sprintf("- Issue：%s | %s | owner=%s | state=%s\n", issue.Key, issue.Title, issue.Owner, issue.State))
 	builder.WriteString(fmt.Sprintf("- Run：%s | status=%s | provider=%s | branch=%s | worktree=%s\n", run.ID, run.Status, defaultString(strings.TrimSpace(run.Provider), provider), run.Branch, run.Worktree))
+	if hasOwnerAgent {
+		builder.WriteString(fmt.Sprintf("- 当前接手：%s | role=%s | lane=%s | provider=%s\n", ownerAgent.Name, defaultString(strings.TrimSpace(ownerAgent.Role), "未定义"), defaultString(strings.TrimSpace(ownerAgent.Lane), issue.Key), defaultString(strings.TrimSpace(ownerAgent.ProviderPreference), defaultString(strings.TrimSpace(ownerAgent.Provider), provider))))
+		if text := strings.TrimSpace(ownerAgent.Prompt); text != "" {
+			builder.WriteString(fmt.Sprintf("- 当前智能体要求：%s\n", compactPromptLine(text)))
+		}
+		if text := strings.TrimSpace(ownerAgent.OperatingInstructions); text != "" {
+			builder.WriteString(fmt.Sprintf("- 执行边界：%s\n", compactPromptLine(text)))
+		}
+	}
+	if hasTurnAgent && (!hasOwnerAgent || turnAgent.ID != ownerAgent.ID) {
+		builder.WriteString(fmt.Sprintf("- 本轮响应：%s | role=%s | lane=%s | provider=%s\n", turnAgent.Name, defaultString(strings.TrimSpace(turnAgent.Role), "未定义"), defaultString(strings.TrimSpace(turnAgent.Lane), issue.Key), defaultString(strings.TrimSpace(turnAgent.ProviderPreference), defaultString(strings.TrimSpace(turnAgent.Provider), provider))))
+	}
 	if worktreePath := strings.TrimSpace(run.WorktreePath); worktreePath != "" {
 		builder.WriteString(fmt.Sprintf("- 工作目录：%s\n", worktreePath))
 	}
@@ -1772,18 +1813,132 @@ func buildRoomExecPrompt(snapshot store.State, roomID, provider, userPrompt stri
 		builder.WriteString("\n最近对话：\n")
 		builder.WriteString(recent)
 	}
+	if hint := buildRoomWakeupHint(snapshot, roomID, wakeupMode, turnAgent, ownerAgent); hint != "" {
+		builder.WriteString("\n当前触发提醒：\n")
+		builder.WriteString(hint)
+	}
 
 	builder.WriteString("\n本轮用户消息：\n")
 	builder.WriteString(strings.TrimSpace(userPrompt))
 	builder.WriteString("\n\n回复要求：\n")
-	builder.WriteString("- 直接用简洁中文回复当前消息。\n")
+	builder.WriteString("- 先在内部判断这条消息是否需要公开回复、是否需要你接手，再决定输出。\n")
+	builder.WriteString("- 公开消息只能通过 SEND_PUBLIC_MESSAGE 这个封装返回；不要把正文裸写出来。\n")
+	builder.WriteString("- 先判断这条消息是否真的需要一个可见回复。\n")
+	builder.WriteString("- 默认控制在 3 到 6 句；先直接回答，再补下一步。\n")
+	builder.WriteString("- 除非用户明确要求，不要长篇分点，不要复述系统背景。\n")
+	builder.WriteString("- 如果要回复，第一句必须像团队成员在聊天里说话，不要写成报告。\n")
+	builder.WriteString("- 如果本轮要接手、推进或同步结果，在第一句自然说清楚，不要写内部思考过程。\n")
 	builder.WriteString("- 默认沿用当前 room、run、branch 和 worktree 推进。\n")
+	if hasTurnAgent {
+		builder.WriteString(fmt.Sprintf("- 本轮请以 %s 的身份回应，不要替多个智能体同时发言。\n", turnAgent.Name))
+	} else if hasOwnerAgent {
+		builder.WriteString(fmt.Sprintf("- 以 %s 的身份继续当前房间，不要替多个智能体同时发言。\n", ownerAgent.Name))
+	}
 	builder.WriteString("- 不要输出心理活动、系统旁白或自我解释。\n")
+	builder.WriteString("- 标准格式如下：\n")
+	builder.WriteString("  SEND_PUBLIC_MESSAGE\n")
+	builder.WriteString("  KIND: message | summary | clarification_request | handoff | no_response\n")
+	builder.WriteString("  CLAIM: keep | take\n")
+	builder.WriteString("  BODY:\n")
+	builder.WriteString("  <只放准备公开发到房间的正文>\n")
+	builder.WriteString("- 如果这轮其实不需要你可见回复，就返回 SEND_PUBLIC_MESSAGE，KIND: no_response，BODY 留空。\n")
+	builder.WriteString("- 如果你要回复，就返回 SEND_PUBLIC_MESSAGE，KIND: message，然后在 BODY 写自然中文；系统只会展示 BODY。\n")
+	builder.WriteString("- 如果你只缺一个继续推进所必需的信息，就返回 KIND: clarification_request，然后在 BODY 里只问那一个问题。\n")
+	builder.WriteString("- 如果你只是做简短收尾或状态同步，就返回 KIND: summary，然后在 BODY 里写简短同步。\n")
+	builder.WriteString("- 只有你准备继续承担这条房间后续工作时，才把 CLAIM 设为 take；只是被点名答一句时保持 CLAIM: keep。\n")
 	builder.WriteString("- 如果信息不足，只问最小必要的澄清问题；否则直接推进。\n")
+	builder.WriteString("- 不要把打算做的事说成已经做完。\n")
+	if handoffCatalog := buildRoomHandoffCatalog(snapshot, roomID); handoffCatalog != "" {
+		builder.WriteString("- 如果要把当前线程交给别人继续，也可以返回 KIND: handoff，然后在 BODY 里用 @agent_id 点名接手人；系统会自动把它记成正式交接。\n")
+		builder.WriteString("- 如果这轮应该交给别的智能体继续，在正文最后单独追加一行：OPENSHOCK_HANDOFF: <agent_id> | <title> | <summary>\n")
+		builder.WriteString("- 可交棒对象：\n")
+		builder.WriteString(handoffCatalog)
+	}
 	if normalizeProviderID(provider) == "codex" {
 		builder.WriteString("- 如果需要改代码或执行命令，默认围绕当前工作目录继续进行。\n")
 	}
 	return builder.String()
+}
+
+func buildRoomWakeupHint(snapshot store.State, roomID, wakeupMode string, turnAgent, ownerAgent store.Agent) string {
+	switch strings.TrimSpace(wakeupMode) {
+	case "mention_response":
+		name := strings.TrimSpace(turnAgent.Name)
+		if name == "" {
+			name = defaultString(strings.TrimSpace(ownerAgent.Name), "当前智能体")
+		}
+		return fmt.Sprintf("- 这条消息明确点名了 %s，默认由他直接回应。\n- 被点名不等于自动接手；只有准备继续负责后续工作时，才显式 CLAIM: take。\n- 如果没有真实阻塞，不要把消息再转成旁白或代答。", name)
+	case "clarification_followup":
+		if _, ok := findOpenRoomClarificationWaitByAgent(snapshot, roomID, turnAgent.ID); ok {
+			return "- 你上一轮刚提出过阻塞性澄清，先判断这条新消息是否已经补齐关键信息。\n- 如果阻塞已解除，不要重复原问题，直接继续推进。"
+		}
+		messages := snapshot.RoomMessages[roomID]
+		if len(messages) == 0 {
+			return ""
+		}
+		last := messages[len(messages)-1]
+		if last.Role != "agent" || last.Tone != "blocked" {
+			return ""
+		}
+		turnName := strings.TrimSpace(turnAgent.Name)
+		if turnName != "" && !strings.EqualFold(strings.TrimSpace(last.Speaker), turnName) {
+			return ""
+		}
+		return "- 你上一轮刚提出过阻塞性澄清，先判断这条新消息是否已经补齐关键信息。\n- 如果阻塞已解除，不要重复原问题，直接继续推进。"
+	default:
+		return ""
+	}
+}
+
+func buildRoomHandoffCatalog(snapshot store.State, roomID string) string {
+	_, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return ""
+	}
+	currentOwner := defaultString(strings.TrimSpace(run.Owner), strings.TrimSpace(issue.Owner))
+
+	var builder strings.Builder
+	for _, agent := range snapshot.Agents {
+		if strings.TrimSpace(agent.ID) == "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(agent.ID), currentOwner) || strings.EqualFold(strings.TrimSpace(agent.Name), currentOwner) {
+			continue
+		}
+		builder.WriteString(fmt.Sprintf("  - %s | %s | %s | lane=%s\n", agent.ID, agent.Name, agent.Role, agent.Lane))
+	}
+	return builder.String()
+}
+
+func findRoomOwnerAgent(snapshot store.State, roomID string) (store.Agent, bool) {
+	room, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return store.Agent{}, false
+	}
+	for _, owner := range []string{
+		strings.TrimSpace(run.Owner),
+		strings.TrimSpace(issue.Owner),
+		strings.TrimSpace(room.Topic.Owner),
+	} {
+		if owner == "" {
+			continue
+		}
+		for _, agent := range snapshot.Agents {
+			if agent.ID == owner || strings.EqualFold(strings.TrimSpace(agent.Name), owner) {
+				return agent, true
+			}
+		}
+	}
+	if strings.TrimSpace(run.ID) != "" {
+		for _, agent := range snapshot.Agents {
+			for _, runID := range agent.RecentRunIDs {
+				if runID == run.ID {
+					return agent, true
+				}
+			}
+		}
+	}
+	return store.Agent{}, false
 }
 
 func buildRoomPromptHistory(messages []store.Message, limit int) string {
@@ -1808,6 +1963,413 @@ func compactPromptLine(text string) string {
 		return line
 	}
 	return strings.TrimSpace(line[:217]) + "..."
+}
+
+type roomResponseDirectives struct {
+	DisplayOutput string
+	Handoff       *roomHandoffDirective
+	ClaimMode     string
+	ReplyKind     string
+	SuppressReply bool
+}
+
+type roomHandoffDirective struct {
+	ToAgentID string
+	Title     string
+	Summary   string
+}
+
+func parseRoomResponseDirectives(output string) roomResponseDirectives {
+	replyKind, body, claimMode, hasEnvelope := parseRoomReplyEnvelope(output)
+	if hasEnvelope {
+		output = body
+	}
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	filtered := make([]string, 0, len(lines))
+	var handoff *roomHandoffDirective
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			filtered = append(filtered, line)
+			continue
+		}
+		if directive, ok := parseRoomHandoffDirective(trimmed); ok {
+			handoff = &directive
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+
+	return roomResponseDirectives{
+		DisplayOutput: strings.TrimSpace(strings.Join(filtered, "\n")),
+		Handoff:       handoff,
+		ClaimMode:     claimMode,
+		ReplyKind:     replyKind,
+		SuppressReply: replyKind == "no_response",
+	}
+}
+
+func parseRoomReplyEnvelope(output string) (string, string, string, bool) {
+	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(output), "\r\n", "\n"), "\n")
+	if len(lines) == 0 {
+		return "", "", "", false
+	}
+
+	start := 0
+	first := strings.TrimSpace(lines[0])
+	if strings.EqualFold(first, "SEND_PUBLIC_MESSAGE") {
+		start = 1
+	} else if !strings.HasPrefix(strings.ToLower(first), "kind:") {
+		return "", output, "", false
+	}
+
+	kind := ""
+	claim := ""
+	bodyLineIndex := -1
+	bodyHead := ""
+
+	for index := start; index < len(lines); index += 1 {
+		line := strings.TrimSpace(lines[index])
+		switch {
+		case strings.HasPrefix(strings.ToLower(line), "kind:"):
+			kind = normalizeRoomReplyKind(strings.TrimSpace(line[len("KIND:"):]))
+		case strings.HasPrefix(strings.ToLower(line), "claim:"):
+			claim = normalizeRoomClaimMode(strings.TrimSpace(line[len("CLAIM:"):]))
+		case strings.HasPrefix(strings.ToLower(line), "body:"):
+			bodyLineIndex = index
+			bodyHead = strings.TrimSpace(line[len("BODY:"):])
+			index = len(lines)
+		}
+	}
+	if kind == "" || bodyLineIndex == -1 {
+		return "", output, "", false
+	}
+	bodyLines := make([]string, 0, len(lines)-bodyLineIndex)
+	if bodyHead != "" {
+		bodyLines = append(bodyLines, bodyHead)
+	}
+	bodyLines = append(bodyLines, lines[bodyLineIndex+1:]...)
+	return kind, strings.TrimSpace(strings.Join(bodyLines, "\n")), claim, true
+}
+
+func normalizeRoomReplyKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "message", "clarification_request", "handoff", "summary", "no_response":
+		return strings.ToLower(strings.TrimSpace(kind))
+	default:
+		return ""
+	}
+}
+
+func normalizeRoomClaimMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "keep":
+		return "keep"
+	case "take":
+		return "take"
+	default:
+		return ""
+	}
+}
+
+func parseRoomHandoffDirective(line string) (roomHandoffDirective, bool) {
+	const prefix = "OPENSHOCK_HANDOFF:"
+	if !strings.HasPrefix(strings.TrimSpace(line), prefix) {
+		return roomHandoffDirective{}, false
+	}
+	parts := strings.Split(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), prefix)), "|")
+	if len(parts) != 3 {
+		return roomHandoffDirective{}, false
+	}
+	directive := roomHandoffDirective{
+		ToAgentID: strings.TrimSpace(parts[0]),
+		Title:     strings.TrimSpace(parts[1]),
+		Summary:   strings.TrimSpace(parts[2]),
+	}
+	if directive.ToAgentID == "" || directive.Title == "" || directive.Summary == "" {
+		return roomHandoffDirective{}, false
+	}
+	return directive, true
+}
+
+func (s *Server) applyRoomResponseDirectives(current store.State, snapshot store.State, roomID, replySpeaker, provider string, directives roomResponseDirectives) store.State {
+	if directives.ClaimMode == "take" && directives.Handoff == nil && directives.ReplyKind != "handoff" {
+		if nextState, err := s.store.ClaimRoomOwnership(roomID, replySpeaker, provider); err == nil {
+			current = nextState
+			snapshot = nextState
+		}
+	}
+	handoff := directives.Handoff
+	if handoff == nil && directives.ReplyKind == "handoff" {
+		if inferred, ok := inferRoomHandoffDirective(snapshot, roomID, directives.DisplayOutput); ok {
+			handoff = &inferred
+		}
+	}
+	if handoff == nil {
+		return current
+	}
+	handoffInput, ok := buildRoomAutoHandoffInput(snapshot, roomID, replySpeaker, *handoff)
+	if !ok {
+		return current
+	}
+	nextState, _, err := s.store.CreateHandoff(handoffInput)
+	if err != nil {
+		return current
+	}
+	nextState = s.continueRoomAutoHandoff(nextState, roomID, handoff.Title)
+	return nextState
+}
+
+func buildRoomAutoHandoffInput(snapshot store.State, roomID, fromAgentName string, directive roomHandoffDirective) (store.MailboxCreateInput, bool) {
+	room, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return store.MailboxCreateInput{}, false
+	}
+	fromAgentID, ok := findAgentIDByName(snapshot.Agents, defaultString(strings.TrimSpace(fromAgentName), defaultString(strings.TrimSpace(run.Owner), defaultString(strings.TrimSpace(issue.Owner), strings.TrimSpace(room.Topic.Owner)))))
+	if !ok {
+		return store.MailboxCreateInput{}, false
+	}
+	toAgentID, ok := findAgentIDByIDOrName(snapshot.Agents, directive.ToAgentID)
+	if !ok || toAgentID == fromAgentID {
+		return store.MailboxCreateInput{}, false
+	}
+	return store.MailboxCreateInput{
+		RoomID:      roomID,
+		FromAgentID: fromAgentID,
+		ToAgentID:   toAgentID,
+		Title:       directive.Title,
+		Summary:     directive.Summary,
+		Kind:        "room-auto",
+	}, true
+}
+
+func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTitle string) store.State {
+	room, _, _, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return snapshot
+	}
+	if strings.TrimSpace(room.Topic.Owner) == "" {
+		return snapshot
+	}
+
+	provider := resolveRoomExecProvider(snapshot, roomID, "")
+	if blocked := execProviderPreflightMessage("讨论间自动接棒", snapshot, provider); blocked != "" {
+		message := fmt.Sprintf("%s 已接棒，但当前无法继续执行：%s", room.Topic.Owner, blocked)
+		nextState, err := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
+		if err != nil {
+			return snapshot
+		}
+		return nextState
+	}
+
+	followupPrompt := buildRoomAutoFollowupPrompt(room.Topic.Owner, handoffTitle)
+	execPrompt := buildRoomExecPrompt(snapshot, roomID, provider, followupPrompt)
+	payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
+		Provider:       provider,
+		Prompt:         execPrompt,
+		TimeoutSeconds: roomMessageExecTimeoutSeconds,
+	})
+	if err != nil {
+		message := fmt.Sprintf("%s 已接棒，但继续推进失败：%s", room.Topic.Owner, execFailureMessage("讨论间自动接棒", err))
+		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
+		if appendErr != nil {
+			return snapshot
+		}
+		return nextState
+	}
+
+	directives := parseRoomResponseDirectives(strings.TrimSpace(payload.Output))
+	if strings.TrimSpace(directives.DisplayOutput) == "" {
+		return snapshot
+	}
+	var nextState store.State
+	if directives.ReplyKind == "clarification_request" {
+		nextState, err = s.store.AppendAgentClarificationRequest(roomID, room.Topic.Owner, directives.DisplayOutput, provider)
+	} else if directives.ReplyKind == "summary" {
+		nextState, err = s.store.AppendAgentRoomSummary(roomID, room.Topic.Owner, directives.DisplayOutput, provider)
+	} else {
+		nextState, err = s.store.AppendAgentRoomMessage(roomID, room.Topic.Owner, directives.DisplayOutput, provider)
+	}
+	if err != nil {
+		return snapshot
+	}
+	return nextState
+}
+
+func buildRoomAutoFollowupPrompt(ownerName, handoffTitle string) string {
+	return fmt.Sprintf(
+		"你刚刚已经接住当前房间的正式交棒，主题是「%s」。请直接以 %s 的身份继续推进：先自然说明你已接手和当前判断，再给接下来一步。默认 2 到 4 句，除非真的阻塞，不要提问；这轮不要继续转交别人。",
+		defaultString(strings.TrimSpace(handoffTitle), "继续当前房间"),
+		defaultString(strings.TrimSpace(ownerName), "当前接手智能体"),
+	)
+}
+
+func roomReplySpeaker(snapshot store.State, roomID, userPrompt string) string {
+	if agent, _, ok := resolveRoomTurnAgent(snapshot, roomID, userPrompt); ok {
+		return agent.Name
+	}
+	room, run, issue, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok {
+		return "当前智能体"
+	}
+	return defaultString(strings.TrimSpace(run.Owner), defaultString(strings.TrimSpace(issue.Owner), defaultString(strings.TrimSpace(room.Topic.Owner), "当前智能体")))
+}
+
+func resolveRoomTurnAgent(snapshot store.State, roomID, userPrompt string) (store.Agent, string, bool) {
+	if agent, ok := findRoomClarificationAgent(snapshot, roomID, userPrompt); ok {
+		return agent, "clarification_followup", true
+	}
+	if targetAgentID, _, ok := findMentionedAgentID(snapshot.Agents, userPrompt); ok {
+		for _, agent := range snapshot.Agents {
+			if agent.ID == targetAgentID {
+				return agent, "mention_response", true
+			}
+		}
+	}
+	if agent, ok := findRoomOwnerAgent(snapshot, roomID); ok {
+		return agent, "direct_message", true
+	}
+	return store.Agent{}, "direct_message", false
+}
+
+func findRoomClarificationAgent(snapshot store.State, roomID, userPrompt string) (store.Agent, bool) {
+	if wait, ok := findResolvableRoomClarificationWait(snapshot, roomID, userPrompt); ok {
+		for _, agent := range snapshot.Agents {
+			if strings.EqualFold(strings.TrimSpace(agent.ID), strings.TrimSpace(wait.AgentID)) {
+				return agent, true
+			}
+		}
+		for _, agent := range snapshot.Agents {
+			if strings.EqualFold(strings.TrimSpace(agent.Name), strings.TrimSpace(wait.Agent)) {
+				return agent, true
+			}
+		}
+	}
+
+	messages := snapshot.RoomMessages[roomID]
+	if len(messages) == 0 {
+		return store.Agent{}, false
+	}
+	last := messages[len(messages)-1]
+	if last.Role != "agent" || last.Tone != "blocked" {
+		return store.Agent{}, false
+	}
+	for _, agent := range snapshot.Agents {
+		if strings.EqualFold(strings.TrimSpace(agent.Name), strings.TrimSpace(last.Speaker)) || strings.EqualFold(strings.TrimSpace(agent.ID), strings.TrimSpace(last.Speaker)) {
+			return agent, true
+		}
+	}
+	return store.Agent{}, false
+}
+
+func findResolvableRoomClarificationWait(snapshot store.State, roomID, userPrompt string) (store.RoomAgentWait, bool) {
+	candidateAgentID := ""
+	if id, _, ok := findMentionedAgentID(snapshot.Agents, userPrompt); ok {
+		candidateAgentID = id
+	}
+
+	matchIndex := -1
+	openCount := 0
+	for index := len(snapshot.RoomAgentWaits) - 1; index >= 0; index-- {
+		wait := snapshot.RoomAgentWaits[index]
+		if wait.RoomID != roomID || wait.Status != "waiting_reply" {
+			continue
+		}
+		openCount++
+		if candidateAgentID != "" && wait.AgentID == candidateAgentID {
+			return wait, true
+		}
+		if matchIndex == -1 {
+			matchIndex = index
+		}
+	}
+
+	if candidateAgentID == "" && openCount == 1 && matchIndex >= 0 {
+		return snapshot.RoomAgentWaits[matchIndex], true
+	}
+	return store.RoomAgentWait{}, false
+}
+
+func findOpenRoomClarificationWaitByAgent(snapshot store.State, roomID, agentID string) (store.RoomAgentWait, bool) {
+	for index := len(snapshot.RoomAgentWaits) - 1; index >= 0; index-- {
+		wait := snapshot.RoomAgentWaits[index]
+		if wait.RoomID != roomID || wait.Status != "waiting_reply" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(wait.AgentID), strings.TrimSpace(agentID)) {
+			return wait, true
+		}
+	}
+	return store.RoomAgentWait{}, false
+}
+
+func inferRoomHandoffDirective(snapshot store.State, roomID, body string) (roomHandoffDirective, bool) {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		return roomHandoffDirective{}, false
+	}
+	targetAgentID, mentionLabel, ok := findMentionedAgentID(snapshot.Agents, trimmed)
+	if !ok {
+		return roomHandoffDirective{}, false
+	}
+	summary := strings.TrimSpace(strings.ReplaceAll(trimmed, mentionLabel, ""))
+	summary = strings.Trim(summary, " ，。,:;!?\t\r\n")
+	if summary == "" {
+		summary = "请继续接手当前房间。"
+	}
+	title := summary
+	if runes := []rune(title); len(runes) > 24 {
+		title = string(runes[:24]) + "…"
+	}
+	return roomHandoffDirective{
+		ToAgentID: targetAgentID,
+		Title:     defaultString(title, "继续接手当前房间"),
+		Summary:   summary,
+	}, true
+}
+
+func findMentionedAgentID(agents []store.Agent, body string) (string, string, bool) {
+	for _, token := range strings.Fields(body) {
+		if !strings.HasPrefix(token, "@") {
+			continue
+		}
+		label := strings.Trim(token, " \t\r\n,.;:!?()[]{}<>\"'，。；：！？、】【")
+		candidate := strings.TrimPrefix(label, "@")
+		if candidate == "" {
+			continue
+		}
+		if id, ok := findAgentIDByIDOrName(agents, candidate); ok {
+			return id, label, true
+		}
+	}
+	return "", "", false
+}
+
+func findAgentIDByName(agents []store.Agent, name string) (string, bool) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", false
+	}
+	for _, agent := range agents {
+		if strings.EqualFold(strings.TrimSpace(agent.Name), trimmed) {
+			return agent.ID, true
+		}
+	}
+	return "", false
+}
+
+func findAgentIDByIDOrName(agents []store.Agent, value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	for _, agent := range agents {
+		if agent.ID == trimmed || strings.EqualFold(strings.TrimSpace(agent.Name), trimmed) {
+			return agent.ID, true
+		}
+	}
+	return "", false
 }
 
 func (s *Server) daemonURLForRoom(roomID string) (string, error) {
@@ -2023,6 +2585,38 @@ func resolveExecProvider(state store.State, requested string) string {
 	}
 
 	return "codex"
+}
+
+func resolveRoomExecProvider(state store.State, roomID, requested string) string {
+	requestedProvider := normalizeProviderID(requested)
+	if requestedProvider != "" {
+		return requestedProvider
+	}
+	if agent, ok := findRoomOwnerAgent(state, roomID); ok {
+		provider := normalizeProviderID(defaultString(strings.TrimSpace(agent.ProviderPreference), strings.TrimSpace(agent.Provider)))
+		if provider != "" {
+			if runtimeProviderReady(state, provider) || runtimeSupportsProvider(state, provider) {
+				return provider
+			}
+		}
+	}
+	return resolveExecProvider(state, requested)
+}
+
+func resolveRoomTurnExecProvider(state store.State, roomID, requested, userPrompt string) string {
+	requestedProvider := normalizeProviderID(requested)
+	if requestedProvider != "" {
+		return requestedProvider
+	}
+	if agent, _, ok := resolveRoomTurnAgent(state, roomID, userPrompt); ok {
+		provider := normalizeProviderID(defaultString(strings.TrimSpace(agent.ProviderPreference), strings.TrimSpace(agent.Provider)))
+		if provider != "" {
+			if runtimeProviderReady(state, provider) || runtimeSupportsProvider(state, provider) {
+				return provider
+			}
+		}
+	}
+	return resolveRoomExecProvider(state, roomID, requested)
 }
 
 func preferredExecProvider(state store.State) string {

@@ -1,7 +1,7 @@
 # OpenShock Product Checklist
 
-**版本:** 1.27
-**更新日期:** 2026 年 4 月 11 日
+**版本:** 1.28
+**更新日期:** 2026 年 4 月 12 日
 **关联文档:** [PRD](./PRD.md) · [Phase 0 MVP](./Phase0-MVP.md) · [Execution Tickets](./Execution-Tickets.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -430,12 +430,15 @@
   - [x] `workspace.governance.escalationSla.rollup` 现在还会把整个 workspace 里仍在冒烟的 room 收成同一份 cross-room rollup；`/mailbox` 与 `/agents` 会同时显示 `room / status / count / latest escalation / deep-link`，不再只盯当前 room
   - [x] `/mailbox` 的 pure governed selection 现在会读正式 routing policy，显示 `Governed Batch Policy`，并允许 `Batch Complete + Auto-Advance` 在同一条 batch queue 里顺序收口多条 governed handoff，同时只物化一条 next-lane followup
   - [x] cross-room rollup 现在还会补 `current owner / current lane / next governed route` 元数据；`/mailbox` 可直接从 `ready` room 上 `Create Governed Handoff`，`/agents` 会镜像同一条 room-level route truth
+  - [x] room-auto 的顺序交接当前已补专门回归：`A -> B -> C` 时，第二次 auto-followup 会围最新 owner 路由，不再因为 stale `RecentRunIDs` 把 provider、identity prompt 或 agent prompt scaffold 锚回上一位 Agent
+  - [x] 当前 owner 的 room continuity 也已补重启恢复回归；store / server reload 后，下一条房间消息仍会继续路由给最新接手者，而不是掉回旧 owner 或旧 provider
   - [x] PR detail 现在也已升级成 single delivery contract：release gate、operator handoff note、delivery template 与 evidence bundle 可在同页复核
   - [x] `/settings` 现在可直接编辑 team topology，并把 lane / role / default agent / handoff path 写回 durable workspace truth；`/setup` `/mailbox` `/agents` 会继续读取同一份配置，且已补 Windows Chrome 有头证据
   - [x] `/settings` 当前已改成 `core settings -> advanced governance / credentials / notifications` 的信息层级；高频路径先看 workspace/member 真值，重治理能力继续保留在高级区
 - 当前 GAP:
   - [ ] 更重的 multi-room dependency graph、cross-room auto-closeout 和跨 room 依赖治理仍留后续；当前已不再缺“当前 room ledger 的 bulk closeout”“policy-based batch orchestration”“显式 escalation queue”“跨 room escalation rollup”以及“room-level governed create action”
-- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081` `TC-082` `TC-083` `TC-084`
+  - [ ] `handoff -> clarification wait -> memory preview/provider choice -> restart resume` 这条跨链连续性还没有被一条完整回归完全锁死；目前已补 `顺序 handoff + restart owner continuity`，但 clarification/memory 两段仍要继续收紧
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081` `TC-082` `TC-083` `TC-084` `TC-087`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -451,16 +454,17 @@
   - [x] workspace / member preference、GitHub identity 与既有 agent profile edit 现在可回到统一 durable store / database schema
   - [x] onboarding progress、template selection、repo binding snapshot、GitHub installation snapshot 已经回到同一份 state/store 真相
   - [x] restart / 换设备后的 config recovery 已有 browser + API 级验证
+  - [x] room 当前 owner 的 auto-handoff 连续性也已补 targeted restart 回归；最新接手者会随 durable state 一起恢复，不再依赖进程内临时顺序
   - [x] workspace plan / usage / retention 现在也直接从同一份 durable snapshot 投影到 `/settings`、room workbench 与 run detail
-- 对应 Test Cases: `TC-040` `TC-085` `TC-086`
+- 对应 Test Cases: `TC-040` `TC-085` `TC-086` `TC-087`
 
 ---
 
 ## 四、近期收口顺序
 
-1. 继续补 `CHK-10` 的后台记忆整理、真实 remote external provider adapter，以及更深的 memory compaction / retention automation。
-2. 再推进 `CHK-21` 更重的 multi-room dependency graph、cross-room auto-closeout 与跨 Agent closeout orchestration。
-3. 持续做跨页面前端细节回扫，但不再把 `CHK-16` 回写成未完成。
+1. 先补 `CHK-21` `CHK-22` 的跨链连续性回归，把 `handoff -> clarification -> memory preview/provider -> restart resume` 串成一条真正完整的 TDD 验证链。
+2. 再推进 `CHK-10` 的后台记忆整理、真实 remote external provider adapter，以及更深的 memory compaction / retention automation。
+3. 然后继续做 `CHK-21` 更重的 multi-room dependency graph、cross-room auto-closeout 与跨 Agent closeout orchestration。
 
 ---
 

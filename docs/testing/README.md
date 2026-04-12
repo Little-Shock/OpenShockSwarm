@@ -1,5 +1,7 @@
 # Testing Docs
 
+- [Headed Movie Site Multi-Agent Report 2026-04-12](../../output/testing/headed-multi-agent-movie-studio-report.md)
+  - 本轮新增的多智能体顺序交接有头报告，覆盖 `星野产品 -> 折光交互 -> 青岚策展` 的 room-auto 协作链、Mailbox walkthrough、最终 owner 上下文与 protocol leak probe
 - [Test Report 2026-04-11 Windows Chrome Identity Template Recovery Journey](./Test-Report-2026-04-11-windows-chrome-identity-template-recovery-journey.md)
   - `TKT-44` 的 Windows Chrome 有头报告，覆盖 `/settings` identity template chain 与 `/access` invite / verify / reset / blocked recovery 同链路回放
 - [Test Report 2026-04-11 Windows Chrome Restricted Sandbox Policy](./Test-Report-2026-04-11-windows-chrome-restricted-sandbox-policy.md)
@@ -205,6 +207,8 @@
   - 验证 `/memory` 的 provider binding、degraded fallback note、next-run preview provider projection 与 reload persistence
 - `pnpm test:headed-memory-provider-health-recovery`
   - 验证 provider 的 health check、manual recovery、dependency degrade propagation、preview projection 与 reload persistence
+- `node ./scripts/headed-multi-agent-movie-studio.mjs --report output/testing/headed-multi-agent-movie-studio-report.md`
+  - 验证 `A -> B -> C` 顺序 room-auto handoff、当前 owner continuity、Mailbox walkthrough，以及公开房间不泄露 `SEND_PUBLIC_MESSAGE` / `OPENSHOCK_HANDOFF:` 内部协议
 - `pnpm test:headed-memory-viewer-correction-forget`
   - 验证 memory detail 的 correction / forget mutation、version audit 与 recall preview removal
 - `pnpm test:headed-stop-resume-follow-thread`
