@@ -441,8 +441,9 @@
   - [x] `/settings` 当前已改成 `core settings -> advanced governance / credentials / notifications` 的信息层级；高频路径先看 workspace/member 真值，重治理能力继续保留在高级区
 - 当前 GAP:
   - [ ] 更重的 multi-room dependency graph、cross-room auto-closeout 和跨 room 依赖治理仍留后续；当前已不再缺“当前 room ledger 的 bulk closeout”“policy-based batch orchestration”“显式 escalation queue”“跨 room escalation rollup”以及“room-level governed create action”
-  - [ ] `handoff -> clarification wait -> memory preview/provider choice -> restart resume` 这条跨链连续性还没有被一条完整回归完全锁死；目前已补 `顺序 handoff + clarification wait + restart owner continuity`，并新增 claim discipline / auto-handoff speech compression 回归，但 memory/provider 这段仍要继续收紧
-- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081` `TC-082` `TC-083` `TC-084` `TC-087` `TC-089` `TC-090`
+  - [x] `handoff -> clarification wait -> memory preview/provider choice -> restart resume` 这条跨链连续性现在已有单条 API 回归锁住；阻塞澄清期间 `/v1/memory-center` preview 会跟随 current owner/provider truth，reload 后也不会回退
+  - [ ] `run detail/history -> memory preview current owner -> final response aggregation` 还没有被一条完整回归串起来；下一步要继续收紧 room/run/governance 三个面上的最终对外真相
+- 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081` `TC-082` `TC-083` `TC-084` `TC-087` `TC-089` `TC-090` `TC-091`
 
 ### CHK-22 配置持久化、数据库与恢复真相
 
@@ -467,7 +468,7 @@
 
 ## 四、近期收口顺序
 
-1. 先补 `CHK-21` `CHK-22` 的跨链连续性回归，把 `handoff -> clarification -> memory preview/provider -> restart resume` 串成一条真正完整的 TDD 验证链。
+1. 先补 `run detail/history -> memory preview current owner -> final response aggregation` 的跨面连续性回归，把 room / run / governance 三个面上的最终对外真相彻底锁成一条。
 2. 再推进 `CHK-10` 的后台记忆整理、真实 remote external provider adapter，以及更深的 memory compaction / retention automation。
 3. 然后继续做 `CHK-21` 更重的 multi-room dependency graph、cross-room auto-closeout 与跨 Agent closeout orchestration。
 

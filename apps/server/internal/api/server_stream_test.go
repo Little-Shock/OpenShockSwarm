@@ -1600,6 +1600,200 @@ func TestRoomAutoHandoffClarificationFollowupSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+	var execRequests []ExecRequest
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode exec payload: %v", err)
+		}
+		execRequests = append(execRequests, req)
+
+		switch len(execRequests) {
+		case 1:
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "我先收一下当前范围。\nOPENSHOCK_HANDOFF: agent-claude-review-runner | 继续复核 rollout 范围 | 请先确认 rollout 范围。",
+				Duration: "0.5s",
+			})
+		case 2:
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "claude",
+				Command:  []string{"claude", "--print"},
+				Output:   "KIND: clarification_request\nBODY:\n请先确认 rollout 范围。",
+				Duration: "0.4s",
+			})
+		case 3:
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "claude",
+				Command:  []string{"claude", "--print"},
+				Output:   "我收到 rollout 范围了，接着把复核结果补齐。",
+				Duration: "0.4s",
+			})
+		default:
+			t.Fatalf("unexpected exec request count: %d", len(execRequests))
+		}
+	}))
+	defer daemon.Close()
+
+	s, server := newContractTestServer(t, root, daemon.URL)
+	updateResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/providers",
+		`{"providers":[
+			{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."},
+			{"id":"search-sidecar","kind":"search-sidecar","label":"Search Sidecar","enabled":true,"readScopes":["workspace","issue-room","decision-ledger","promoted-ledger"],"writeScopes":[],"recallPolicy":"search-on-demand","retentionPolicy":"短期 query cache。","sharingPolicy":"workspace-query-only","summary":"Use local recall index before full scan."},
+			{"id":"external-persistent","kind":"external-persistent","label":"External Persistent Memory","enabled":true,"readScopes":["workspace","agent","user"],"writeScopes":["agent","user"],"recallPolicy":"promote-approved-only","retentionPolicy":"长期保留审核通过的 durable memory。","sharingPolicy":"explicit-share-only","summary":"Forward approved memories to an external durable sink."}
+		]}`,
+	)
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers status = %d, want %d", updateResp.StatusCode, http.StatusOK)
+	}
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Clarification Memory Preview Restart", "Codex Dockmaster")
+
+	firstResp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader([]byte(`{"prompt":"继续推进当前 rollout。"}`)))
+	if err != nil {
+		t.Fatalf("POST first room message error = %v", err)
+	}
+	defer firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusOK {
+		t.Fatalf("first status = %d, want %d", firstResp.StatusCode, http.StatusOK)
+	}
+
+	var firstPayload struct {
+		Output string      `json:"output"`
+		State  store.State `json:"state"`
+	}
+	decodeJSON(t, firstResp, &firstPayload)
+
+	if len(execRequests) != 2 {
+		t.Fatalf("exec requests = %#v, want handoff + clarification followup", execRequests)
+	}
+	firstRoom := findRoomByID(firstPayload.State, created.RoomID)
+	firstRun := findRunByID(firstPayload.State, created.RunID)
+	var firstIssue *store.Issue
+	if firstRoom != nil {
+		firstIssue = findIssueByKey(firstPayload.State, firstRoom.IssueKey)
+	}
+	if firstRoom == nil || firstRoom.Topic.Owner != "Claude Review Runner" || firstRoom.Topic.Status != "paused" {
+		t.Fatalf("first room = %#v, want paused Claude owner after handoff clarification", firstRoom)
+	}
+	if firstRun == nil || firstRun.Owner != "Claude Review Runner" || firstRun.Status != "paused" {
+		t.Fatalf("first run = %#v, want paused Claude owner after handoff clarification", firstRun)
+	}
+	if firstIssue == nil || firstIssue.Owner != "Claude Review Runner" || firstIssue.State != "paused" {
+		t.Fatalf("first issue = %#v, want paused Claude owner after handoff clarification", firstIssue)
+	}
+
+	checkPreview := func(t *testing.T, serverURL string) {
+		t.Helper()
+		centerResp, err := http.Get(serverURL + "/v1/memory-center")
+		if err != nil {
+			t.Fatalf("GET /v1/memory-center error = %v", err)
+		}
+		defer centerResp.Body.Close()
+		if centerResp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /v1/memory-center status = %d, want %d", centerResp.StatusCode, http.StatusOK)
+		}
+
+		var center store.MemoryCenter
+		decodeJSON(t, centerResp, &center)
+		preview := findPreviewBySession(center.Previews, created.SessionID)
+		if preview == nil {
+			t.Fatalf("preview missing for session %q: %#v", created.SessionID, center.Previews)
+		}
+		if got := findProviderByKind(preview.Providers, "search-sidecar"); got == nil || got.Status != "degraded" {
+			t.Fatalf("preview search provider = %#v, want degraded", got)
+		}
+		if got := findProviderByKind(preview.Providers, "external-persistent"); got == nil || got.Status != "degraded" {
+			t.Fatalf("preview external provider = %#v, want degraded", got)
+		}
+		if !strings.Contains(preview.PromptSummary, "Claude Review Runner") {
+			t.Fatalf("preview summary = %q, want current owner Claude Review Runner", preview.PromptSummary)
+		}
+		if !strings.Contains(preview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+			t.Fatalf("preview summary = %q, want Claude Review Runner prompt scaffold", preview.PromptSummary)
+		}
+		if !strings.Contains(preview.PromptSummary, "Search Sidecar") || !strings.Contains(preview.PromptSummary, "External Persistent Memory") {
+			t.Fatalf("preview summary missing provider labels:\n%s", preview.PromptSummary)
+		}
+		if strings.Contains(preview.PromptSummary, "把 next-run injection、promotion 和 version audit 保持成可解释真值。") {
+			t.Fatalf("preview summary = %q, should not drift to Memory Clerk", preview.PromptSummary)
+		}
+	}
+
+	checkPreview(t, server.URL)
+	server.Close()
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedServer := httptest.NewServer(New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+	defer reloadedServer.Close()
+
+	checkPreview(t, reloadedServer.URL)
+
+	secondResp, err := http.Post(reloadedServer.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader([]byte(`{"prompt":"rollout 只限当前 landing 页和详情页。"}`)))
+	if err != nil {
+		t.Fatalf("POST second room message error = %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusOK {
+		t.Fatalf("second status = %d, want %d", secondResp.StatusCode, http.StatusOK)
+	}
+
+	var secondPayload struct {
+		Output string      `json:"output"`
+		State  store.State `json:"state"`
+	}
+	decodeJSON(t, secondResp, &secondPayload)
+
+	if len(execRequests) != 3 {
+		t.Fatalf("exec requests after restart = %#v, want resumed clarification followup", execRequests)
+	}
+	if secondPayload.Output != "我收到 rollout 范围了，接着把复核结果补齐。" {
+		t.Fatalf("second payload output = %q, want resumed Claude reply", secondPayload.Output)
+	}
+	secondRoom := findRoomByID(secondPayload.State, created.RoomID)
+	secondRun := findRunByID(secondPayload.State, created.RunID)
+	var secondIssue *store.Issue
+	if secondRoom != nil {
+		secondIssue = findIssueByKey(secondPayload.State, secondRoom.IssueKey)
+	}
+	if secondRoom == nil || secondRoom.Topic.Owner != "Claude Review Runner" || secondRoom.Topic.Status != "running" {
+		t.Fatalf("second room = %#v, want running Claude owner after restart followup", secondRoom)
+	}
+	if secondRun == nil || secondRun.Owner != "Claude Review Runner" || secondRun.Status != "running" {
+		t.Fatalf("second run = %#v, want running Claude owner after restart followup", secondRun)
+	}
+	if secondIssue == nil || secondIssue.Owner != "Claude Review Runner" || secondIssue.State != "running" {
+		t.Fatalf("second issue = %#v, want running Claude owner after restart followup", secondIssue)
+	}
+	for _, wait := range secondPayload.State.RoomAgentWaits {
+		if wait.RoomID == created.RoomID && wait.AgentID == "agent-claude-review-runner" && wait.Status != "resolved" {
+			t.Fatalf("room waits = %#v, want resolved Claude wait after restart followup", secondPayload.State.RoomAgentWaits)
+		}
+	}
+
+	checkPreview(t, reloadedServer.URL)
+}
+
 func TestRoomMessageStreamSequentialAutoHandoffsPersistCurrentOwnerAcrossRestart(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

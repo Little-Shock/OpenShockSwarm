@@ -1271,3 +1271,47 @@
   5. 对 room state 做 protocol leak probe，确认公开消息不泄露 `SEND_PUBLIC_MESSAGE` 或 `OPENSHOCK_HANDOFF:` 内部协议。
 - 预期结果: auto-handoff 的自动续写应更短、更直接、更像房间里的自然同步；若接棒方选择静默内部推进，公开房间里不应再多出一条系统旁白，同时 owner continuity、Mailbox/memory continuity 与 protocol hygiene 不得回退。
 - 业务结论: 2026 年 4 月 12 日新增 `TestBuildRoomAutoFollowupPromptPrefersSilentContinuation` 与 `TestRoomAutoHandoffFollowupSupportsNoResponseEnvelope`，把 auto-followup prompt 收紧为“优先静默继续，公开回复时只保留当前判断 + 下一步”，并验证 `no_response` 时不会再在 room transcript 里补一条冗余的 `已接棒` system narration。同日重新执行 `node ./scripts/headed-multi-agent-movie-studio.mjs --report output/testing/headed-multi-agent-movie-studio-report.md`，继续给出 `VERDICT: PASS`，覆盖 `星野产品 -> 折光交互 -> 青岚策展` 的顺序交接、Mailbox walkthrough、`/memory` preview continuity 和 protocol leak probe，因此这条公开发言纪律用例当前转为 `Pass`。
+
+## TC-091 Clarification Wait Memory Preview Resume Continuity
+
+- 业务目标: 确认 room-auto handoff 进入 clarification wait 后，`/v1/memory-center` 的 session preview 仍围当前 owner 与 provider binding 前滚；store/server restart 以及用户补充信息后的 resumed reply 都不会把 preview 漂回旧 owner。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21` `CHK-22`
+- 前置条件: room message route 已支持 formal handoff + clarification wait；`/v1/memory-center/providers` 可写入 durable provider binding；store/server 支持 reload/restart。
+- 测试步骤:
+  1. 通过 room message 触发 `Codex Dockmaster -> Claude Review Runner` 的 room-auto handoff，并让 Claude 返回 `clarification_request`。
+  2. 在 clarification wait 状态下读取 `/v1/memory-center`，确认当前 session preview 已切到 `Claude Review Runner`，并继续带着 Search/External provider summary。
+  3. reload store/server 后再次读取 `/v1/memory-center`，确认 preview 仍围当前 owner 和 provider degraded summary。
+  4. 发送补充信息让 Claude 恢复继续推进，再次读取 `/v1/memory-center`。
+- 预期结果: clarification wait、restart 和 resumed reply 三个阶段里，memory preview 都必须围当前 owner 与 provider binding 的同一份 durable truth 前滚；不能掉回旧 owner、旧 prompt scaffold 或丢失 provider summary。
+- 业务结论: 2026 年 4 月 12 日新增 `TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart`，把 `room-auto handoff -> clarification wait -> /v1/memory-center preview -> restart -> resumed room reply` 这条 API 连续性锁进 `go test ./apps/server/internal/api`。当前回归已验证 preview 在三次读取中都保持 `Claude Review Runner` current owner、Search/External degraded provider summary，并在补充信息后继续由 Claude 恢复推进，因此这条 clarification/memory/restart continuity 用例当前转为 `Pass`。
+
+## TC-091 Clarification Wait Memory Preview Resume Continuity
+
+- 业务目标: 确认 room-auto handoff 进入 clarification wait 后，`/v1/memory-center` 的 session preview/provider 仍围当前等待中的 owner 前滚；store/server reload 后不漂移，且在下一条房间消息恢复执行后继续保持同一位 owner。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21` `CHK-22`
+- 前置条件: 已启用 memory provider binding；room message route 支持 `room-auto handoff -> clarification_request`；store/server 可被 reload 并继续用同一份 state。
+- 测试步骤:
+  1. 开启 `workspace-file / search-sidecar / external-persistent` provider binding，并发送一条会触发 `Codex Dockmaster -> Claude Review Runner` auto-handoff 的 room message。
+  2. 让 followup owner 返回 `KIND: clarification_request`，确认 `room / run / issue` 进入 `paused`，当前 owner 切到 `Claude Review Runner`。
+  3. 读取 `/v1/memory-center`，确认对应 session preview 的 prompt summary 已切到 `Claude Review Runner`，同时继续保留 provider degraded summary。
+  4. reload store/server 后再次读取 `/v1/memory-center`，确认 preview 仍锚定同一位等待中的 owner，不回落到旧 owner 或其他 agent prompt。
+  5. 再发送一条补齐澄清的信息，确认 room resume 后当前 owner 继续是 `Claude Review Runner`，且 `/v1/memory-center` preview/provider 继续保持同一份 durable truth。
+- 预期结果: `handoff -> clarification wait -> memory preview/provider -> restart -> room resume` 必须形成一条连续真相；等待中的当前 owner、provider summary 和恢复后的下一轮路由都不能漂移。
+- 业务结论: 2026 年 4 月 12 日新增 `TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart`，把 room route、clarification wait、`/v1/memory-center` preview/provider、reload/restart 和下一轮 room resume 串成一条单独回归。当前 targeted `go test ./apps/server/internal/api -run 'TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart'` 已通过，因此这条跨链连续性当前转为 `Pass`。
+
+## TC-091 Clarification Wait Memory Preview Resume Continuity
+
+- 业务目标: 确认 `room auto-handoff -> clarification wait -> /v1/memory-center preview/provider -> store/server reload -> 下一轮 room message resume` 这整条连续体围同一 current owner 前滚，不会在阻塞态或重启后掉回旧 owner / 旧 prompt / 旧 provider 视图。
+- 当前执行状态: Pass
+- 对应 Checklist: `CHK-21` `CHK-22`
+- 前置条件: room-auto handoff contract、clarification wait contract、memory provider binding 与 reload/restart 恢复基线已存在。
+- 测试步骤:
+  1. 为当前工作区开启 `workspace-file / search-sidecar / external-persistent` provider binding。
+  2. 在 room 中发送一条消息，让当前 owner 公开交棒给次级 Agent；自动 followup 立即返回 `KIND: clarification_request`。
+  3. 读取 `/v1/memory-center`，确认当前 session preview 已切到新的 waiting owner，并同时带出 provider degraded/health truth。
+  4. reload store/server 后再次读取 `/v1/memory-center`，确认 preview 仍锚定同一 waiting owner 和同一组 provider summary。
+  5. 再向同一 room 补充澄清信息，确认下一轮继续路由给 waiting owner，且 `/v1/memory-center` preview 继续保持同一 current owner。
+- 预期结果: clarification wait 期间和 restart 之后，room route、memory preview、provider summary、owner truth 必须保持同一份 durable continuity；不能因为 reload/restart 掉回旧 owner、旧 prompt scaffold 或旧 provider 视图。
+- 业务结论: 2026 年 4 月 12 日新增 `TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart`，把 `正式交棒 -> 阻塞澄清 -> /v1/memory-center preview -> reload -> 恢复回复` 这条跨链回归正式锁进 `go test ./apps/server/internal/api`。同轮还复跑了 `TestRoomAutoHandoffClarificationFollowupSurvivesRestart`、`TestRoomMessageRouteClarificationWaitSurvivesStoreReload`、`TestMemoryCenterProviderPreviewTracksCurrentOwnerAcrossHandoffReload` 与 `TestMemoryProviderPreviewFollowsCurrentOwnerAcrossHandoffReload`，因此这条 room/memory/restart 连续性当前转为 `Pass`。
