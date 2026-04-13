@@ -7,10 +7,11 @@ import type { AuthDevice, AuthSession, WorkspaceMember, WorkspaceRole } from "@/
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { buildFirstStartJourney, type FirstStartJourneyStepStatus } from "@/lib/first-start-journey";
 import { usePhaseZeroState } from "@/lib/live-phase0";
+import { permissionLabel } from "@/lib/session-authz";
 
 const MEMBER_STATUS_OPTIONS = [
   { value: "active", label: "在线成员", summary: "成员已可正常登录并使用对应角色权限。" },
-  { value: "invited", label: "待接受", summary: "邀请已发出，成员下次登录时会从 invited 进入 active。" },
+  { value: "invited", label: "待接受", summary: "邀请已发出，成员接受后就会进入正常可用状态。" },
   { value: "suspended", label: "已暂停", summary: "成员会保留在列表中，但无法登录和继续使用。" },
 ] as const;
 
@@ -52,11 +53,11 @@ function sessionStatusTone(session: AuthSession) {
 function roleLabel(role: string | undefined) {
   switch (role) {
     case "owner":
-      return "Owner";
+      return "所有者";
     case "member":
-      return "Member";
+      return "成员";
     case "viewer":
-      return "Viewer";
+      return "访客";
     default:
       return "未分配";
   }
@@ -120,6 +121,8 @@ function onboardingStatusLabel(status?: string) {
       return "已完成";
     case "in_progress":
       return "进行中";
+    case "ready":
+      return "待收口";
     case "not_started":
       return "未开始";
     default:
@@ -160,7 +163,7 @@ function AccessStateNotice({
 function PermissionChip({ permission }: { permission: string }) {
   return (
     <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]">
-      {permission}
+      {permissionLabel(permission)}
     </span>
   );
 }
@@ -253,7 +256,7 @@ function PermissionProbe({
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{summary}</p>
       <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">所需权限</p>
-        <p className="mt-2 text-sm leading-6">{permission}</p>
+        <p className="mt-2 text-sm leading-6">{permissionLabel(permission)}</p>
       </div>
     </Link>
   );
@@ -352,7 +355,7 @@ function InviteMemberPanel({
             onChange={(event) => setEmail(event.target.value)}
             disabled={!manageAllowed || pending}
             className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-            placeholder="reviewer@openshock.dev"
+            placeholder="teammate@company.com"
             required
           />
           <input
@@ -362,7 +365,7 @@ function InviteMemberPanel({
             onChange={(event) => setName(event.target.value)}
             disabled={!manageAllowed || pending}
             className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60"
-            placeholder="Reviewer"
+            placeholder="显示名"
           />
           <select
             data-testid="access-invite-role"
@@ -714,7 +717,7 @@ function SessionActionPanel({
         </form>
 
         <div className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">quick switch</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">快速切换</p>
           <h3 className="mt-2 font-display text-2xl font-bold">快速切换成员</h3>
           <div className="mt-4 grid gap-3">
             {members.map((member) => (
@@ -749,7 +752,7 @@ function SessionActionPanel({
       <div className="mt-5 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">当前会话真值</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">当前会话</p>
             <h3 className="mt-2 font-display text-2xl font-bold">当前登录态和权限清单</h3>
           </div>
           <span data-testid="access-session-role" className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
@@ -854,8 +857,8 @@ function IdentityRecoveryPanel({
     <Panel tone={sessionIsActive(session) ? "white" : "paper"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">身份恢复链路</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">把设备认证、验证、重置和会话恢复收成同一条产品流</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">身份恢复</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">处理邮箱验证、设备授权和登录恢复</h2>
         </div>
         <span
           data-testid="access-recovery-status"
@@ -933,7 +936,7 @@ function IdentityRecoveryPanel({
                 value={resetEmail}
                 onChange={(event) => setResetEmail(event.target.value)}
                 className="w-full rounded-[10px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none"
-                placeholder="member@openshock.dev"
+                placeholder="you@company.com"
               />
               <input
                 data-testid="access-complete-reset-device-label"
@@ -1283,7 +1286,7 @@ export function LiveAccessContextRail() {
         items={[
           { label: "登录", value: loading ? "同步中" : "同步失败" },
           { label: "角色", value: loading ? "同步中" : "同步失败" },
-          { label: "Members", value: loading ? "同步中" : "同步失败" },
+          { label: "成员", value: loading ? "同步中" : "同步失败" },
           { label: "权限", value: loading ? "同步中" : "同步失败" },
         ]}
       />
@@ -1301,8 +1304,8 @@ export function LiveAccessContextRail() {
         { label: "登录", value: `${sessionStatusLabel(session)} / ${valueOrPlaceholder(session.email, "未登录")}` },
         { label: "恢复", value: recoveryStatusLabel(session.recoveryStatus) },
         { label: "设备", value: deviceAuthLabel(session.deviceAuthStatus) },
-        { label: "成员", value: `${state.auth.members.length} 人 / ${ownerCount} 位 owner` },
-        { label: "模板", value: `${valueOrPlaceholder(state.workspace.onboarding.templateId, "未选模板")} / ${valueOrPlaceholder(state.workspace.onboarding.status, "未声明")}` },
+        { label: "成员", value: `${state.auth.members.length} 人 / ${ownerCount} 位所有者` },
+        { label: "模板", value: `${valueOrPlaceholder(state.workspace.onboarding.templateId, "未选模板")} / ${onboardingStatusLabel(state.workspace.onboarding.status)}` },
         { label: "下一步", value: `${journey.nextLabel} / ${journey.nextHref}` },
         { label: "权限", value: `${session.permissions.length} 项` },
       ]}
@@ -1358,9 +1361,12 @@ export function LiveAccessOverview() {
       {!accessReady || !onboardingDone ? <IdentityRecoveryPanel session={session} members={members} devices={devices} /> : null}
       <FirstStartJourneyPanel />
 
-      <details className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-        <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.72)]">
-          切换成员与高级信息
+      <details data-testid="access-advanced-details" className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <summary
+          data-testid="access-advanced-toggle"
+          className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.72)]"
+        >
+          切换成员和更多设置
         </summary>
         <div className="mt-4 space-y-4">
           {accessReady ? <SessionActionPanel session={session} members={members} /> : null}
@@ -1425,8 +1431,11 @@ export function LiveAccessOverview() {
         </div>
       </details>
 
-      <details className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-        <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.72)]">
+      <details data-testid="access-member-admin-details" className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+        <summary
+          data-testid="access-member-admin-toggle"
+          className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.72)]"
+        >
           邀请成员与角色管理
         </summary>
         <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_1.08fr]">

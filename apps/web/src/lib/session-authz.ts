@@ -18,6 +18,10 @@ const permissionLabels: Record<string, string> = {
   "workspace.manage": "修改工作区治理配置",
 };
 
+export function permissionLabel(permission: string) {
+  return permissionLabels[permission] ?? permission;
+}
+
 export function sessionIsActive(session: AuthSession | null | undefined) {
   return session?.status === "active";
 }
@@ -33,8 +37,23 @@ export function permissionStatus(session: AuthSession | null | undefined, permis
   return hasSessionPermission(session, permission) ? "allowed" : "blocked";
 }
 
+export function permissionStatusSurfaceLabel(status: PermissionStatus | "syncing" | "sync_failed") {
+  switch (status) {
+    case "syncing":
+      return "同步中";
+    case "sync_failed":
+      return "读取失败";
+    case "allowed":
+      return "可操作";
+    case "blocked":
+      return "无权限";
+    default:
+      return "未登录";
+  }
+}
+
 export function permissionBoundaryCopy(session: AuthSession | null | undefined, permission: string) {
-  const action = permissionLabels[permission] ?? permission;
+  const action = permissionLabel(permission);
   if (!sessionIsActive(session)) {
     return `当前还没登录。先去“访问与身份”完成登录，再继续${action}。`;
   }

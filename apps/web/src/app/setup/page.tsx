@@ -6,6 +6,7 @@ import { LiveRolloutParityConsole } from "@/components/live-rollout-parity-conso
 import {
   LiveSetupContextRail,
   LiveSetupOverview,
+  OnboardingStudioPanel,
 } from "@/components/live-setup-views";
 import { RepoBindingConsole } from "@/components/repo-binding-console";
 import { LiveRuntimeProvider } from "@/lib/live-runtime";
@@ -23,8 +24,9 @@ export default function SetupPage() {
         contextBody={<LiveSetupContextRail />}
       >
         <div className="space-y-4">
+          <OnboardingStudioPanel />
           <LiveSetupOverview />
-          <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-yellow)]">
+          <details data-testid="setup-repo-section" className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-yellow)]">
             <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
               展开仓库与远端
             </summary>
@@ -33,7 +35,7 @@ export default function SetupPage() {
               <GitHubConnectionConsole />
             </div>
           </details>
-          <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-pink)]">
+          <details data-testid="setup-runtime-section" className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-pink)]">
             <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
               展开运行环境
             </summary>
@@ -41,7 +43,7 @@ export default function SetupPage() {
               <LiveBridgeConsole />
             </div>
           </details>
-          <details className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-lime)]">
+          <details data-testid="setup-diagnostics-section" className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white px-5 py-4 shadow-[6px_6px_0_0_var(--shock-lime)]">
             <summary className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
               展开诊断对账
             </summary>

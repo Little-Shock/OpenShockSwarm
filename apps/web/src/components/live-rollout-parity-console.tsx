@@ -214,7 +214,7 @@ export function LiveRolloutParityConsole() {
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前首屏</p>
           <p className="mt-2 font-display text-xl font-semibold">
-            {formatBranchRoute(snapshot?.current.branch, snapshot?.current.startRoute, "待返回当前真值")}
+            {formatBranchRoute(snapshot?.current.branch, snapshot?.current.startRoute, "待返回当前配置")}
           </p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
             {valueOrFallback(snapshot?.current.firstScreenStatus, "未知")} · {valueOrFallback(snapshot?.current.homeRoute, "未返回首页路由")}
@@ -223,7 +223,7 @@ export function LiveRolloutParityConsole() {
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">实时首屏</p>
           <p className="mt-2 font-display text-xl font-semibold">
-            {formatBranchRoute(snapshot?.actual.state.branch, actualFirstScreenRoute(snapshot), "待返回实时真值")}
+            {formatBranchRoute(snapshot?.actual.state.branch, actualFirstScreenRoute(snapshot), "待返回实时配置")}
           </p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
             引导 {valueOrFallback(snapshot?.actual.state.onboardingStatus, "未知")}
@@ -235,7 +235,7 @@ export function LiveRolloutParityConsole() {
             {endpointStatus(snapshot?.actual.liveService, "服务可用")} / {endpointStatus(snapshot?.actual.experienceMetrics, "指标可用")}
           </p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-            {valueOrFallback(snapshot?.actual.liveService.branch, snapshot?.actual.state.repo ? snapshot.actual.state.repo : "等待路由真值")}
+            {valueOrFallback(snapshot?.actual.liveService.branch, snapshot?.actual.state.repo ? snapshot.actual.state.repo : "等待路由信息")}
           </p>
         </div>
       </div>

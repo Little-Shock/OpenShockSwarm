@@ -6,6 +6,8 @@ const CONTROL_API_BASE =
   "http://127.0.0.1:8080";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 function buildTargetURL(request: NextRequest, path: string[]) {
   const normalizedBase = CONTROL_API_BASE.endsWith("/")

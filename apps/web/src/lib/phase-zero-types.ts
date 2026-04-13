@@ -441,7 +441,7 @@ export type Message = {
   id: string;
   speaker: string;
   role: "human" | "agent" | "system";
-  tone: "human" | "agent" | "blocked" | "system";
+  tone: "human" | "agent" | "paper" | "blocked" | "system";
   message: string;
   time: string;
 };

@@ -25,11 +25,11 @@ export default async function PullRequestPage({
     });
     const payload = (await response.json()) as PullRequestDetail & { error?: string };
     if (!response.ok) {
-      throw new Error(payload.error || `request failed: ${response.status}`);
+      throw new Error(payload.error || `拉取请求详情读取失败：${response.status}`);
     }
     detail = payload;
   } catch (detailError) {
-    error = detailError instanceof Error ? detailError.message : "detail fetch failed";
+    error = detailError instanceof Error ? detailError.message : "拉取请求详情读取失败";
   }
 
   return <PullRequestDetailView detail={detail} error={error} />;

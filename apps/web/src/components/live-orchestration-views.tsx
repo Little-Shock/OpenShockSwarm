@@ -78,21 +78,21 @@ function pullRequestStatusLabel(status: PullRequest["status"]) {
 function governanceStatusLabel(status: string) {
   switch (status) {
     case "active":
-      return "active";
+      return "进行中";
     case "ready":
-      return "ready";
+      return "就绪";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "done":
-      return "done";
+      return "完成";
     case "required":
-      return "required";
+      return "需要处理";
     case "watch":
-      return "watch";
+      return "关注";
     case "draft":
-      return "draft";
+      return "草稿";
     default:
-      return "pending";
+      return "等待中";
   }
 }
 
@@ -120,12 +120,12 @@ function escalationQueueAgeLabel(entry: {
   timeLabel?: string;
 }) {
   if (entry.elapsedMinutes > 0) {
-    return `${entry.elapsedMinutes} / ${entry.thresholdMinutes} min`;
+    return `${entry.elapsedMinutes} / ${entry.thresholdMinutes} 分钟`;
   }
   if (entry.timeLabel?.trim()) {
     return entry.timeLabel;
   }
-  return `${entry.thresholdMinutes} min SLA`;
+  return `${entry.thresholdMinutes} 分钟时限`;
 }
 
 function escalationRoomRollupSummary(entry: {
@@ -134,45 +134,73 @@ function escalationRoomRollupSummary(entry: {
 }) {
   const activeCount = Math.max(0, entry.escalationCount - entry.blockedCount);
   if (entry.blockedCount > 0 && activeCount > 0) {
-    return `${entry.escalationCount} items · ${entry.blockedCount} blocked · ${activeCount} active`;
+    return `${entry.escalationCount} 项 · ${entry.blockedCount} 项阻塞 · ${activeCount} 项处理中`;
   }
   if (entry.blockedCount > 0) {
-    return `${entry.escalationCount} items · ${entry.blockedCount} blocked`;
+    return `${entry.escalationCount} 项 · ${entry.blockedCount} 项阻塞`;
   }
-  return `${entry.escalationCount} items · all active`;
+  return `${entry.escalationCount} 项 · 全部处理中`;
 }
 
 function plannerQueueStatusLabel(status: string) {
   switch (status) {
     case "queued":
-      return "queued";
+      return "排队中";
     case "running":
-      return "running";
+      return "执行中";
     case "review":
-      return "review";
+      return "评审中";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "paused":
-      return "paused";
+      return "已暂停";
     case "done":
-      return "done";
+      return "完成";
     default:
-      return "pending";
+      return "等待中";
   }
 }
 
 function plannerAutoMergeLabel(status: string) {
   switch (status) {
     case "ready":
-      return "ready";
+      return "就绪";
     case "approval_required":
-      return "approval required";
+      return "需要审批";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "merged":
-      return "merged";
+      return "已合并";
     default:
-      return "unavailable";
+      return "暂不可用";
+  }
+}
+
+function runtimeStateLabel(state: string) {
+  switch (state) {
+    case "busy":
+      return "忙碌";
+    case "online":
+      return "在线";
+    case "offline":
+      return "离线";
+    default:
+      return state || "待同步";
+  }
+}
+
+function runtimePairingStateLabel(state: string) {
+  switch (state) {
+    case "paired":
+      return "已配对";
+    case "degraded":
+      return "连接不稳定";
+    case "pending":
+      return "等待接入";
+    case "unpaired":
+      return "未配对";
+    default:
+      return state || "待同步";
   }
 }
 
@@ -186,13 +214,13 @@ function runtimeTone(runtime: RuntimeRegistryRecord) {
 function runtimeSchedulerStrategyLabel(strategy: string) {
   switch (strategy) {
     case "selected_runtime":
-      return "沿用 Selection";
+      return "沿用已选机器";
     case "agent_preference":
-      return "按 Owner 偏好";
+      return "按智能体偏好";
     case "least_loaded":
-      return "按 Lease 压力";
+      return "按当前占用";
     case "failover":
-      return "自动 Failover";
+      return "自动切换";
     default:
       return "待调度";
   }
@@ -350,13 +378,13 @@ function autoMergeSummary(
         };
       case "ready":
         return {
-          headline: "可进入 merge guard",
+          headline: "满足自动合并条件",
           detail: guard.reason,
           tone: "bg-[var(--shock-lime)]",
         };
       default:
         return {
-          headline: "guard 未就绪",
+          headline: "条件未就绪",
           detail: guard.reason,
           tone: "bg-white",
         };
@@ -408,8 +436,8 @@ function autoMergeSummary(
   }
 
   return {
-    headline: "等待人工合并门",
-    detail: "前台先把 auto-merge 候选面与人工闸门摆明，不伪造实际 merge 控制。",
+    headline: "等待人工确认",
+    detail: "这里会先把自动合并条件和人工确认节点展示清楚，避免误以为已经自动完成。",
     tone: "bg-white",
   };
 }
@@ -457,21 +485,23 @@ function AgentLaneCard({
           <p className="mt-2 text-sm leading-6">{agent.lane}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">Provider / Model</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">供应商 / 模型</p>
           <p className="mt-2 text-sm leading-6">{agent.providerPreference} / {agent.modelPreference}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">Runtime 偏好</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">机器偏好</p>
           <p className="mt-2 text-sm leading-6">
             {agent.runtimePreference}
-            {preferredRuntime ? ` · ${preferredRuntime.state}/${preferredRuntime.pairingState}` : " · 未命中 registry"}
+            {preferredRuntime
+              ? ` · ${runtimeStateLabel(preferredRuntime.state)} / ${runtimePairingStateLabel(preferredRuntime.pairingState)}`
+              : " · 未匹配到已连接机器"}
           </p>
         </div>
       </div>
       <div className="mt-4 space-y-2">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">最近执行</p>
         {recentRuns.length === 0 ? (
-          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有 recent run truth。</p>
+          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前还没有最近执行记录。</p>
         ) : (
           recentRuns.slice(0, 2).map((run) => {
             const room = rooms.find((candidate) => candidate.id === run.roomId);
@@ -496,7 +526,7 @@ function AgentLaneCard({
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-          {relatedInbox.length} orchestration gates
+          {relatedInbox.length} 条待处理节点
         </span>
         {agent.memorySpaces.map((space) => (
           <span
@@ -513,7 +543,7 @@ function AgentLaneCard({
 
 function PlannerQueueCard({ item }: { item: PlannerQueueItem }) {
   const ownerLabel = item.agentName ? `${item.owner} · ${item.agentName}` : item.owner;
-  const worktreeLabel = item.worktreePath?.trim() || "等待当前 runtime lane attach";
+  const worktreeLabel = item.worktreePath?.trim() || "等待当前运行环境接入";
 
   return (
     <article
@@ -538,7 +568,7 @@ function PlannerQueueCard({ item }: { item: PlannerQueueItem }) {
       <p className="mt-3 text-sm leading-6">{item.summary}</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">assignment</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">分配情况</p>
           <p
             data-testid={`orchestration-planner-queue-owner-${item.sessionId}`}
             className="mt-2 text-sm leading-6"
@@ -546,27 +576,27 @@ function PlannerQueueCard({ item }: { item: PlannerQueueItem }) {
             {ownerLabel}
           </p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            provider: {item.provider || "待整理 provider"} · runtime: {item.runtime || "待整理 runtime"}
+            服务商：{item.provider || "待整理"} · 运行环境：{item.runtime || "待整理"}
           </p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">lane continuity</p>
-          <p className="mt-2 text-sm leading-6">machine: {item.machine || "待整理 machine"}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">接续信息</p>
+          <p className="mt-2 text-sm leading-6">机器：{item.machine || "待整理"}</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{worktreeLabel}</p>
         </div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">planner gates</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">前置检查</p>
             <span className="rounded-full border border-[var(--shock-ink)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-              {item.gates.length} visible
+              {item.gates.length} 条
             </span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {item.gates.length === 0 ? (
               <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                no gate
+                当前无检查
               </span>
             ) : (
               item.gates.map((gate, index) => (
@@ -590,7 +620,7 @@ function PlannerQueueCard({ item }: { item: PlannerQueueItem }) {
             plannerAutoMergeTone(item.autoMerge.status)
           )}
         >
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-70">auto-merge guard</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-70">自动合并门槛</p>
           <p
             data-testid={`orchestration-planner-queue-auto-merge-${item.sessionId}`}
             className="mt-2 font-display text-xl font-bold"
@@ -617,7 +647,7 @@ function PlannerQueueCard({ item }: { item: PlannerQueueItem }) {
           href={`/runs/${item.runId}`}
           className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--shock-ink)]"
         >
-          查看 Run
+          查看执行
         </Link>
       </div>
     </article>
@@ -633,10 +663,10 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            First-Instruction Replay
+            协作回放
           </p>
           <h3 className="mt-2 font-display text-3xl font-bold">
-            issue 创建后的 owner / reviewer / tester loop 现在同页可回放
+            新事项从分工到交付的过程现在可以同页回看
           </h3>
           <p
             data-testid="orchestration-governance-summary"
@@ -654,34 +684,34 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <MetricTile
-          label="Open Handoffs"
+          label="待交接"
           value={`${governance.stats.openHandoffs}`}
-          detail="formal request / ack / block / complete 会继续围同一份 orchestration truth 聚合。"
+          detail="请求、接手、阻塞和完成会继续围绕同一条协作链路汇总。"
         />
         <MetricTile
-          label="Blocked Escalations"
+          label="阻塞升级"
           value={`${governance.stats.blockedEscalations}`}
-          detail="blocked escalation 会直接抬到当前 page，不再只藏在 inbox 或 prompt 里。"
+          detail="被卡住的升级会直接显示在这里，不再只藏在消息里。"
         />
         <MetricTile
-          label="Review Gates"
+          label="待评审"
           value={`${governance.stats.reviewGates}`}
-          detail="review / exact-head verdict 继续和 planner queue、PR、mailbox 同步出现。"
+          detail="评审结论会和调度队列、合并状态、消息中心一起同步。"
         />
         <MetricTile
-          label="Human Override"
+          label="人工接管"
           value={`${governance.stats.humanOverrideGates}`}
-          detail="人工 override 数量会和当前 loop 的 escalation / approval truth 一起前滚。"
+          detail="人工接管数量会和当前协作里的升级、审批一起更新。"
         />
         <MetricTile
-          label="SLA Breaches"
+          label="超时事项"
           value={`${governance.stats.slaBreaches}`}
-          detail="超时或 overdue 的多 Agent escalation 会直接抬到治理快照里。"
+          detail="超时的协作事项会直接抬到治理快照里。"
         />
         <MetricTile
-          label="Aggregation Sources"
+          label="汇总来源"
           value={`${governance.stats.aggregationSources}`}
-          detail="最终响应当前到底吃了多少条 live source，不再只停在一段总结文案。"
+          detail="最终回复到底汇总了多少路信息，这里会直接展示。"
         />
       </div>
       <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -690,12 +720,12 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                  governed topology
+                  当前分工
                 </p>
-                <h4 className="mt-2 font-display text-2xl font-bold">team lanes 直接贴当前 loop 真值</h4>
+                <h4 className="mt-2 font-display text-2xl font-bold">团队分工直接贴当前协作状态</h4>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {governance.teamTopology.length} lanes
+                {governance.teamTopology.length} 条分工
               </span>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -726,14 +756,14 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                  governed replay
+                  关键流程
                 </p>
                 <h4 className="mt-2 font-display text-2xl font-bold">
-                  {"issue -> handoff -> review -> test -> final response"}
+                  {"事项创建 -> 交接 -> 评审 -> 测试 -> 最终回复"}
                 </h4>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {governance.walkthrough.length} steps
+                {governance.walkthrough.length} 步
               </span>
             </div>
             <div className="mt-4 grid gap-3 xl:grid-cols-5">
@@ -753,7 +783,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                     </span>
                     {step.href ? (
                       <Link href={step.href} className="font-mono text-[10px] uppercase tracking-[0.16em] underline">
-                        open
+                        打开
                       </Link>
                     ) : null}
                   </div>
@@ -766,12 +796,12 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                  routing / escalation / notification
+                  路由 / 升级 / 通知
                 </p>
-                <h4 className="mt-2 font-display text-2xl font-bold">多 Agent policy 不再只存在脑补里</h4>
+                <h4 className="mt-2 font-display text-2xl font-bold">协作规则和通知一页看清</h4>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {governance.routingPolicy.defaultRoute || "route pending"}
+                {governance.routingPolicy.defaultRoute || "等待路由"}
               </span>
             </div>
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -793,19 +823,19 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
               </div>
               <div className="space-y-3">
                 <Panel tone={governanceTone(governance.escalationSla.status)} className="!p-3.5">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">escalation sla</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">升级时限</p>
                   <p className="mt-2 font-display text-[22px] font-bold leading-7">
-                    {governance.escalationSla.timeoutMinutes} min / {governance.escalationSla.retryBudget} retry
+                    {governance.escalationSla.timeoutMinutes} 分钟 / {governance.escalationSla.retryBudget} 次重试
                   </p>
                   <p className="mt-2 text-sm leading-6">{governance.escalationSla.summary}</p>
                   {governance.escalationSla.nextEscalation ? (
                     <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
-                      next: {governance.escalationSla.nextEscalation}
+                      下一次升级：{governance.escalationSla.nextEscalation}
                     </p>
                   ) : null}
                   <div className="mt-3 space-y-2">
                     {escalationQueue.length === 0 ? (
-                      <p className="text-sm leading-6 opacity-70">当前没有 active escalation queue。</p>
+                      <p className="text-sm leading-6 opacity-70">当前没有待升级事项。</p>
                     ) : (
                       escalationQueue.map((entry) => (
                         <div
@@ -844,7 +874,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                               href={entry.href}
                               className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                             >
-                              Open Escalation
+                              打开升级事项
                             </Link>
                           ) : null}
                         </div>
@@ -853,14 +883,14 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                   </div>
                   <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">cross-room rollup</p>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">跨讨论汇总</p>
                       <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
-                        {escalationRollup.length} rooms
+                        {escalationRollup.length} 个讨论
                       </span>
                     </div>
                     <div className="mt-3 space-y-2">
                       {escalationRollup.length === 0 ? (
-                        <p className="text-sm leading-6 opacity-70">当前没有跨 room escalation rollup。</p>
+                        <p className="text-sm leading-6 opacity-70">当前没有跨讨论汇总。</p>
                       ) : (
                         escalationRollup.map((entry) => (
                           <div
@@ -873,18 +903,18 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                                 <p className="font-display text-lg font-semibold">{entry.roomTitle}</p>
                                 <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
                                   {escalationRoomRollupSummary(entry)}
-                                  {entry.latestSource ? ` · latest ${entry.latestSource}` : ""}
+                                  {entry.latestSource ? ` · 最近来源 ${entry.latestSource}` : ""}
                                 </p>
                                 {(entry.currentOwner || entry.currentLane) ? (
                                   <div className="mt-2 flex flex-wrap gap-2">
                                     {entry.currentOwner ? (
                                       <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-                                        owner {entry.currentOwner}
+                                        当前负责人 {entry.currentOwner}
                                       </span>
                                     ) : null}
                                     {entry.currentLane ? (
                                       <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-                                        lane {entry.currentLane}
+                                        当前分工 {entry.currentLane}
                                       </span>
                                     ) : null}
                                   </div>
@@ -912,7 +942,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                               <div className="mt-3 rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div>
-                                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">next governed route</p>
+                                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">下一步建议</p>
                                     {entry.nextRouteLabel ? <p className="mt-2 font-display text-base font-semibold">{entry.nextRouteLabel}</p> : null}
                                   </div>
                                   <span
@@ -937,7 +967,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                                     href={entry.nextRouteHref}
                                     className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                                   >
-                                    Open Next Route
+                                    打开下一步
                                   </Link>
                                 ) : null}
                               </div>
@@ -947,7 +977,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                                 href={entry.href}
                                 className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                               >
-                                Open Room Escalations
+                                查看该讨论
                               </Link>
                             ) : null}
                           </div>
@@ -957,9 +987,9 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                   </div>
                 </Panel>
                 <Panel tone={governanceTone(governance.notificationPolicy.status)} className="!p-3.5">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">notification policy</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">通知策略</p>
                   <p className="mt-2 font-display text-[22px] font-bold leading-7">
-                    {governance.notificationPolicy.browserPush || "browser push pending"}
+                    {governance.notificationPolicy.browserPush || "等待通知策略"}
                   </p>
                   <p className="mt-2 text-sm leading-6">{governance.notificationPolicy.summary}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -981,7 +1011,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
         <div className="space-y-4">
           <Panel tone={governanceTone(governance.humanOverride.status)}>
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              human override
+              人工接管
             </p>
             <p
               data-testid="orchestration-governance-human-override"
@@ -995,14 +1025,14 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                 href={governance.humanOverride.href}
                 className="mt-4 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
               >
-                打开 override lane
+                打开接管链路
               </Link>
             ) : null}
           </Panel>
 
           <Panel tone={governanceTone(governance.responseAggregation.status)}>
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              response aggregation
+              回复聚合
             </p>
             <p
               data-testid="orchestration-governance-response-aggregation"
@@ -1013,7 +1043,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             <p className="mt-3 text-sm leading-6">{governance.responseAggregation.summary}</p>
             {governance.responseAggregation.aggregator ? (
               <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">
-                aggregator: {governance.responseAggregation.aggregator}
+                聚合负责人：{governance.responseAggregation.aggregator}
               </p>
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
@@ -1028,7 +1058,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             </div>
             {(governance.responseAggregation.decisionPath ?? []).length > 0 ? (
               <div className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">decision path</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">决策路径</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {(governance.responseAggregation.decisionPath ?? []).map((item) => (
                     <span
@@ -1043,7 +1073,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             ) : null}
             {(governance.responseAggregation.overrideTrace ?? []).length > 0 ? (
               <div className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">override trace</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">接管记录</p>
                 <div className="mt-2 space-y-2">
                   {(governance.responseAggregation.overrideTrace ?? []).map((item, index) => (
                     <p key={`${item}-${index}`} className="text-sm leading-6">
@@ -1077,7 +1107,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
 
           <Panel tone="white">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              governance rules
+              协作规则
             </p>
             <div className="mt-3 space-y-2">
               {governance.handoffRules.map((rule) => (
@@ -1095,7 +1125,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                   <p className="mt-2 text-sm leading-6">{rule.summary}</p>
                   {rule.href ? (
                     <Link href={rule.href} className="mt-3 inline-flex font-mono text-[10px] uppercase tracking-[0.16em] underline">
-                      open
+                      打开
                     </Link>
                   ) : null}
                 </div>
@@ -1154,26 +1184,25 @@ export function LiveOrchestrationBoard({
   return (
     <div className="space-y-4">
       <Panel tone="yellow">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Orchestration Board</p>
-        <h2 className="mt-3 font-display text-4xl font-bold">把 planner dispatch、治理回放和 merge guard 收进同一个前台</h2>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">协作总览</p>
+        <h2 className="mt-3 font-display text-4xl font-bold">把智能体协作、调度和合并状态放到一个面板里</h2>
         <p className="mt-3 max-w-4xl text-base leading-7">
-          这层直接拼当前 live `agents / runs / runtimes / leases / inbox / pullRequests / sessions / planner queue / governance`
-          真值，让 issue 创建后的 assignment、blocked escalation、human override 和 final response 不再散落在不同页面。
+          这里集中显示当前智能体、执行、运行环境、待处理事项和调度状态，方便快速判断哪里在推进、哪里需要人接手。
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <MetricTile label="Running Agents" value={String(runningAgents.length)} detail="当前正在占用调度泳道的公民数" />
-          <MetricTile label="Blocked Agents" value={String(blockedAgents.length)} detail="等待人类决策或外部输入的公民数" />
-          <MetricTile label="Busy Runtimes" value={String(busyRuntimes.length)} detail="当前被占用或处于压力态的 runtime 数" />
-          <MetricTile label="Planner Queue" value={String(plannerQueue.length)} detail="当前 `/v1/planner/queue` 公开的 dispatch item 数" />
-          <MetricTile label="Active Sessions" value={String(sessions.length)} detail="当前控制面公开的 session / queue 对象数" />
-          <MetricTile label="Active Leases" value={String(activeLeases.length)} detail="当前仍持有 worktree/runtime lane 的会话数" />
+          <MetricTile label="执行中智能体" value={String(runningAgents.length)} detail="当前正在处理任务的智能体数量" />
+          <MetricTile label="阻塞中的智能体" value={String(blockedAgents.length)} detail="等待人类决策或外部输入的智能体数量" />
+          <MetricTile label="繁忙机器" value={String(busyRuntimes.length)} detail="当前正在被占用的运行环境数量" />
+          <MetricTile label="调度队列" value={String(plannerQueue.length)} detail="等待分配或继续推进的事项数量" />
+          <MetricTile label="活动会话" value={String(sessions.length)} detail="当前仍在占用上下文的会话数量" />
+          <MetricTile label="有效占用" value={String(activeLeases.length)} detail="当前仍持有运行环境或工作树的会话数量" />
         </div>
         <div className="mt-4 rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Scheduler Truth</p>
-          <p className="mt-2 text-base leading-7">{scheduler.summary || "当前还没有 scheduler truth。"}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">调度摘要</p>
+          <p className="mt-2 text-base leading-7">{scheduler.summary || "当前还没有可用的调度摘要。"}</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            strategy: {runtimeSchedulerStrategyLabel(scheduler.strategy)} · next lane:{" "}
-            {scheduler.assignedMachine || scheduler.assignedRuntime || "未分配"} · merge candidates: {mergeCandidates.length}
+            策略：{runtimeSchedulerStrategyLabel(scheduler.strategy)} · 下一分配：
+            {" "}{scheduler.assignedMachine || scheduler.assignedRuntime || "未分配"} · 待处理合并：{mergeCandidates.length}
           </p>
         </div>
       </Panel>
@@ -1182,11 +1211,11 @@ export function LiveOrchestrationBoard({
         <Panel tone="paper">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Planner Lanes</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">协作泳道</p>
               <h3 className="mt-3 font-display text-3xl font-bold">调度泳道</h3>
             </div>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-              {agents.length} citizens visible
+              {agents.length} 位智能体
             </span>
           </div>
           <div className="mt-5 grid gap-4 xl:grid-cols-3">
@@ -1204,8 +1233,8 @@ export function LiveOrchestrationBoard({
                 </div>
                 {column.agents.length === 0 ? (
                   <SurfaceNotice
-                    title={`暂无${column.title}公民`}
-                    message="当前这一列还没有命中 live lane；一旦 planner queue 或 handoff 前滚，新的 owner / reviewer / tester 状态会直接在这里展开。"
+                    title={`暂无${column.title}智能体`}
+                    message="当前这一列还没有对应数据；新的分配或交接一发生，就会直接显示在这里。"
                   />
                 ) : (
                   column.agents.map((agent) => (
@@ -1226,11 +1255,11 @@ export function LiveOrchestrationBoard({
 
         <div className="space-y-4">
           <Panel tone="lime">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Runtime Lease Surface</p>
-            <h3 className="mt-3 font-display text-3xl font-bold">runtime / lease 压力</h3>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">运行环境压力</p>
+            <h3 className="mt-3 font-display text-3xl font-bold">机器占用与切换压力</h3>
             <div className="mt-5 space-y-3">
               {runtimes.length === 0 ? (
-                <SurfaceNotice title="当前没有 runtime truth" message="等 server 返回 runtime registry 后，这里会继续展开 lease 与 failover 真值。" />
+                <SurfaceNotice title="当前还没有运行环境状态" message="等服务端返回机器列表后，这里会显示占用、切换和恢复情况。" />
               ) : (
                 runtimes.map((runtime) => {
                   const candidate =
@@ -1256,21 +1285,23 @@ export function LiveOrchestrationBoard({
                           <h4 className="mt-2 font-display text-2xl font-bold">{runtime.machine}</h4>
                         </div>
                         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--shock-ink)]">
-                          {assigned ? "next lane" : `${runtime.state} / ${runtime.pairingState}`}
+                          {assigned
+                            ? "下一优先机器"
+                            : `${runtimeStateLabel(runtime.state)} / ${runtimePairingStateLabel(runtime.pairingState)}`}
                         </span>
                       </div>
                       <p className="mt-3 text-sm leading-6">
-                        daemon: {runtime.daemonUrl || "未上报"} · providers: {(runtime.providers ?? []).map((provider: RuntimeProviderRecord) => provider.label).join(" / ") || "未上报"}
+                        连接地址：{runtime.daemonUrl || "未上报"} · 服务商：{(runtime.providers ?? []).map((provider: RuntimeProviderRecord) => provider.label).join(" / ") || "未上报"}
                       </p>
                       <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-                        active lease: {runtimeLeaseCount} · schedulable: {candidate?.schedulable ? "yes" : "no"} · strategy:{" "}
+                        当前占用：{runtimeLeaseCount} · 可调度：{candidate?.schedulable ? "是" : "否"} · 当前策略：
                         {runtimeSchedulerStrategyLabel(scheduler.strategy)}
                       </p>
                       {recovery?.summary ? (
                         <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]">{recovery.summary}</p>
                       ) : null}
                       {recovery?.note ? (
-                        <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">recovery: {recovery.note}</p>
+                        <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">恢复建议：{recovery.note}</p>
                       ) : null}
                       {candidate?.reason ? (
                         <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{candidate.reason}</p>
@@ -1283,27 +1314,27 @@ export function LiveOrchestrationBoard({
           </Panel>
 
           <Panel tone="white">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Planner Queue</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">调度队列</p>
             <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="font-display text-3xl font-bold">调度队列</h3>
                 <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                  这里直接读 `/v1/planner/queue`，把 issue 创建后的 assignment、gate、review decision 和 auto-merge guard 摆成当前可见 truth。
+                  这里会显示待分配、进行中、待评审的事项，以及负责人、前置检查和合并条件。
                 </p>
               </div>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {plannerQueue.length} items
+                {plannerQueue.length} 条事项
               </span>
             </div>
             <div className="mt-5 space-y-3">
               {plannerLoading ? (
-                <SurfaceNotice title="正在同步 planner queue" message="等待 `/v1/planner/queue` 返回当前 dispatch visible truth。" />
+                <SurfaceNotice title="正在同步调度队列" message="正在拉取当前事项的分配与推进状态。" />
               ) : plannerError ? (
-                <SurfaceNotice title="planner queue 同步失败" message={plannerError} />
+                <SurfaceNotice title="调度队列同步失败" message={plannerError} />
               ) : plannerQueue.length === 0 ? (
                 <SurfaceNotice
-                  title="当前 planner queue 为空"
-                  message="新 issue 一旦进入 session / assignment 主链，这里会直接出现当前 dispatch item，而不是退回静态说明。"
+                  title="当前没有待调度事项"
+                  message="新事项一进入协作链路，这里就会直接出现对应的分配与推进状态。"
                 />
               ) : (
                 plannerQueue.map((item) => <PlannerQueueCard key={item.sessionId} item={item} />)
@@ -1316,18 +1347,18 @@ export function LiveOrchestrationBoard({
       <GovernanceReplaySurface governance={governance} />
 
       <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Auto-merge Guard</p>
-        <h3 className="mt-3 font-display text-3xl font-bold">auto-merge 候选与人工闸门</h3>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">合并候选</p>
+        <h3 className="mt-3 font-display text-3xl font-bold">自动合并条件与人工确认</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-3 text-sm leading-6 text-white/82">
-          <p>approval gates: {approvalGates.length}</p>
-          <p>blocked gates: {blockedGates.length}</p>
-          <p>open review candidates: {mergeCandidates.length}</p>
+          <p>待批准：{approvalGates.length}</p>
+          <p>已阻塞：{blockedGates.length}</p>
+          <p>待判断合并：{mergeCandidates.length}</p>
         </div>
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           {mergeCandidates.length === 0 ? (
             <SurfaceNotice
-              title="当前没有待判断的 merge 候选"
-              message="一旦 planner queue 命中 PR，这里会直接把 exact-head merge guard 与人工 gate 拼到同一块前台。"
+              title="当前没有待判断的合并候选"
+              message="一旦事项进入合并阶段，这里会同时显示自动合并条件和人工确认节点。"
             />
           ) : (
             mergeCandidates.map((pullRequest) => {
@@ -1361,7 +1392,7 @@ export function LiveOrchestrationBoard({
                       href={`/runs/${pullRequest.runId}`}
                       className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--shock-ink)]"
                     >
-                      查看 Run
+                      查看执行
                     </Link>
                     <span
                       className={cn(
@@ -1369,7 +1400,7 @@ export function LiveOrchestrationBoard({
                         plannerAutoMergeTone(plannerGuardByPullRequestId.get(pullRequest.id)?.status ?? "unavailable")
                       )}
                     >
-                      guard: {plannerAutoMergeLabel(plannerGuardByPullRequestId.get(pullRequest.id)?.status ?? "unavailable")}
+                      合并条件：{plannerAutoMergeLabel(plannerGuardByPullRequestId.get(pullRequest.id)?.status ?? "unavailable")}
                     </span>
                   </div>
                 </article>
@@ -1407,16 +1438,16 @@ export function AgentControlSurface({
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <Panel tone="paper">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Agent Control Surface</p>
-        <h3 className="mt-3 font-display text-3xl font-bold">控制按钮先显式 fail-closed</h3>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">智能体控制</p>
+        <h3 className="mt-3 font-display text-3xl font-bold">高风险动作先保持只读</h3>
         <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-          前台先把 scheduler / failover truth 摆出来，但真正的 pause / reassign / auto-merge action 仍继续保持 fail-closed；这里不伪造可点就生效的按钮。
+          这里会先把调度、切换和恢复状态展示清楚，但暂停、改派和自动合并这类高风险动作仍保持只读，不伪造可点即生效的按钮。
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {[
-            { label: "暂停调度", detail: "当前仍保持 fail-closed，避免伪造 planner mutation" },
-            { label: "切换 runtime", detail: "自动 scheduler / failover 已 live；手动 override 继续留后续" },
-            { label: "申请 auto-merge", detail: "merge guard 与 destructive boundary 继续留人工 gate" },
+            { label: "暂停调度", detail: "当前仍保持只读，避免伪造调度变更。" },
+            { label: "切换运行环境", detail: "自动切换已经生效；手动改派仍留在后续。" },
+            { label: "申请自动合并", detail: "合并门槛与高风险边界仍保留人工确认。" },
           ].map((action) => (
             <button
               key={action.label}
@@ -1433,7 +1464,7 @@ export function AgentControlSurface({
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">当前人工闸门</p>
             {relatedInbox.length === 0 ? (
-              <p className="mt-2 text-sm leading-6">当前没有命中这位公民的 inbox gate。</p>
+              <p className="mt-2 text-sm leading-6">当前没有命中这位智能体的待处理节点。</p>
             ) : (
               <div className="mt-3 space-y-2">
                 {relatedInbox.map((item) => (
@@ -1450,13 +1481,16 @@ export function AgentControlSurface({
             )}
           </div>
           <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">相关 PR / runtime</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">相关 PR 与运行环境</p>
             <p className="mt-2 text-sm leading-6">
-              runtime: {runtime ? `${runtime.machine} · ${runtime.state}/${runtime.pairingState}` : "当前未命中 runtime registry"}
+              运行环境：
+              {runtime
+                ? `${runtime.machine} · ${runtimeStateLabel(runtime.state)} / ${runtimePairingStateLabel(runtime.pairingState)}`
+                : "当前没有匹配到运行环境"}
             </p>
             <div className="mt-3 space-y-2">
               {relatedPullRequests.length === 0 ? (
-                <p className="text-sm leading-6">当前还没有命中这位公民最近 run 的 PR truth。</p>
+                <p className="text-sm leading-6">当前还没有这位智能体最近执行对应的 PR 记录。</p>
               ) : (
                 relatedPullRequests.map((pullRequest) => (
                   <Link
@@ -1477,10 +1511,10 @@ export function AgentControlSurface({
       </Panel>
 
       <Panel tone="lime">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Control Readiness</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">控制概览</p>
         <div className="mt-4 space-y-3">
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">最近 Run</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">最近执行</p>
             <p className="mt-2 text-sm leading-6">{runsForAgent.length} 条</p>
           </div>
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
@@ -1488,11 +1522,11 @@ export function AgentControlSurface({
             <p className="mt-2 text-sm leading-6">{relatedInbox.length} 条</p>
           </div>
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Auto-merge 候选</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">合并候选</p>
             <p className="mt-2 text-sm leading-6">{relatedPullRequests.length} 条</p>
           </div>
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这位公民当前的 runtime / lease / merge gate 都已可见，但动作入口仍保持 fail-closed，避免把后续手动 override / merge 权限借写成已完成。
+            这位智能体当前的机器占用、人工确认和合并状态都已可见；高风险操作仍保持只读，避免误触。
           </p>
         </div>
       </Panel>

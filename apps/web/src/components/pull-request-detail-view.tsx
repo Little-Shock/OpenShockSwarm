@@ -18,7 +18,7 @@ import type {
   PullRequestDeliveryTemplate,
   PullRequestDetail,
 } from "@/lib/phase-zero-types";
-import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus, permissionStatusSurfaceLabel } from "@/lib/session-authz";
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -666,7 +666,7 @@ function DeliveryThreadActionSurface({ detail }: { detail: PullRequestDetail }) 
 
   const authSession = state.auth.session;
   const canMutate = hasSessionPermission(authSession, "run.execute");
-  const mutationStatus = loading ? "同步中" : error ? "同步失败" : permissionStatus(authSession, "run.execute");
+  const mutationStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(authSession, "run.execute");
   const mutationBoundary = permissionBoundaryCopy(authSession, "run.execute");
 
   const parentHandoff = detail.delivery.delegation.handoffId
@@ -729,7 +729,7 @@ function DeliveryThreadActionSurface({ detail }: { detail: PullRequestDetail }) 
         <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
           <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">操作权限</p>
           <p data-testid="pull-request-thread-action-gate" className="mt-1.5 font-display text-[18px] font-semibold">
-            {isRefreshing ? "刷新中" : mutationStatus}
+            {isRefreshing ? "刷新中" : permissionStatusSurfaceLabel(mutationStatus)}
           </p>
         </div>
       </div>

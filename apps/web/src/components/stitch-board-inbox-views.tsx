@@ -16,7 +16,7 @@ import {
 } from "@/lib/phase-zero-types";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useQuickSearchController } from "@/lib/quick-search";
-import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus, permissionStatusSurfaceLabel } from "@/lib/session-authz";
 
 type MailboxAdvanceAction = "acknowledged" | "blocked" | "comment" | "completed";
 type MailboxCommentActorMode = "from" | "to";
@@ -43,9 +43,9 @@ function mailboxKindLabel(kind?: AgentHandoff["kind"]) {
     case "governed":
       return "自动交接";
     case "delivery-closeout":
-      return "交付交接";
+      return "交付收尾";
     case "delivery-reply":
-      return "交接回复";
+      return "收尾回复";
     default:
       return "手动交接";
   }
@@ -114,6 +114,21 @@ function boardStateLabel(state: Issue["state"]) {
       return "已完成";
     default:
       return "状态";
+  }
+}
+
+function boardCreatePermissionLabel(status: "syncing" | "sync_failed" | "allowed" | "blocked" | "signed_out") {
+  switch (status) {
+    case "syncing":
+      return "同步中";
+    case "sync_failed":
+      return "读取失败";
+    case "allowed":
+      return "可创建";
+    case "blocked":
+      return "无权限";
+    default:
+      return "未登录";
   }
 }
 
@@ -363,7 +378,7 @@ export function StitchBoardView() {
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("把当前任务推进成 PR");
-  const [summary, setSummary] = useState("直接从讨论创建 PR，并同步回评审和合并状态。");
+  const [summary, setSummary] = useState("直接从讨论起一条事项，后续在讨论间持续推进。");
   const session = state.auth.session;
   const canCreateIssue = hasSessionPermission(session, "issue.create");
   const createIssueStatus = loading ? "syncing" : error ? "sync_failed" : permissionStatus(session, "issue.create");
@@ -408,7 +423,7 @@ export function StitchBoardView() {
       : null,
     sourceIssue
       ? {
-          label: "看 Issue",
+          label: "看事项",
           href: `/issues/${sourceIssue.key}`,
           testID: "board-context-issue-link",
           tone: "bg-white",
@@ -467,8 +482,8 @@ export function StitchBoardView() {
           <WorkspaceStatusStrip workspaceName={workspaceName} disconnected={disconnected} />
           <StitchTopBar
             eyebrow="任务板"
-            title="Board"
-            description="这里只负责排优先级和看推进节奏，真正的讨论、执行和追问仍然回到 room。"
+            title="任务板"
+            description="这里只看优先级和推进状态，真正的讨论、执行和追问都回到讨论间。"
             searchPlaceholder="搜索事项 / 讨论 / 智能体"
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
           />
@@ -483,7 +498,7 @@ export function StitchBoardView() {
                     {sourceRoom
                       ? `当前从 ${sourceRoom.title} 回到任务板排优先级，处理完可以直接回讨论继续推进。`
                       : sourceIssue
-                        ? `当前从 ${sourceIssue.key} 进入任务板，处理完可以直接回原位置继续。`
+                        ? `当前从 ${sourceIssue.key} 进入任务板，处理完可以直接回原事项继续。`
                         : "当前任务板带着来源上下文打开，处理完请直接回原页面。"}
                   </p>
                 </div>
@@ -508,22 +523,22 @@ export function StitchBoardView() {
           <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-3">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                open lanes {String(openLaneCount).padStart(2, "0")}
+                进行中事项 {String(openLaneCount).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                review {String(reviewLaneCount).padStart(2, "0")}
+                待评审 {String(reviewLaneCount).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                blocked {String(blockedLaneCount).padStart(2, "0")}
+                阻塞 {String(blockedLaneCount).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
                 在线智能体 {String(activeAgents).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
-                PR {String(livePullRequests.length).padStart(2, "0")}
+                关联 PR {String(livePullRequests.length).padStart(2, "0")}
               </span>
               <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.64)]">
-                连接 {loading || error ? "更新中" : state.workspace.lastPairedAt || "未连接"}
+                最近连接 {loading || error ? "更新中" : state.workspace.lastPairedAt || "未连接"}
               </span>
             </div>
           </div>
@@ -538,7 +553,7 @@ export function StitchBoardView() {
               ) : error ? (
                 <SurfaceStateMessage title="任务板同步失败" message={error} />
               ) : liveIssues.length === 0 ? (
-                <SurfaceStateMessage title="当前还没有任务卡" message="创建第一条事项后，这里会显示对应内容。" />
+                <SurfaceStateMessage title="当前还没有事项" message="先新建一条事项，或从讨论间带着上下文回到这里排优先级。" />
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   {displayColumns.map((column) => (
@@ -548,9 +563,9 @@ export function StitchBoardView() {
                     >
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="font-display text-lg font-bold uppercase italic">{column.title}</h3>
+                          <h3 className="font-display text-lg font-bold">{column.title}</h3>
                           <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">
-                            {column.cards.length > 0 ? "有内容" : "空"}
+                            {column.cards.length > 0 ? "有事项" : "空列"}
                           </p>
                         </div>
                         <span className="rounded-[8px] border-2 border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[9px]">
@@ -582,7 +597,7 @@ export function StitchBoardView() {
                               </div>
                             </div>
                             <p className="mt-3 truncate font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.54)]">
-                              {roomMap.get(card.roomId)?.title ?? "关联讨论间"}
+                              来自 {roomMap.get(card.roomId)?.title ?? "关联讨论间"}
                             </p>
                             <h4 className="mt-3 text-sm font-semibold leading-6">{card.title}</h4>
                             <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
@@ -606,7 +621,7 @@ export function StitchBoardView() {
                                 data-testid={`board-card-issue-${card.key}`}
                                 className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                               >
-                                看 Issue
+                                看事项
                               </Link>
                             </div>
                           </article>
@@ -621,19 +636,19 @@ export function StitchBoardView() {
             <aside className="hidden min-h-0 border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:block">
               <div className="h-full overflow-y-auto p-4">
                 <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white p-4 shadow-[var(--shock-shadow-sm)]">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">new issue room</p>
-                  <h3 className="mt-2 font-display text-[24px] font-bold leading-none">起一条新讨论</h3>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">快速新建</p>
+                  <h3 className="mt-2 font-display text-[24px] font-bold leading-none">起一条新事项</h3>
                   <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
-                    新需求先在这里起卡，真正的沟通、追问和交付闭环都回到 room 里完成。
+                    先把事项建出来，再进入讨论间继续沟通、拆解和交付。
                   </p>
                   <div className="mt-4 space-y-3">
-                    <input data-testid="board-create-issue-title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!canCreateIssue} className="w-full rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求标题" />
-                    <textarea data-testid="board-create-issue-summary" value={summary} onChange={(event) => setSummary(event.target.value)} disabled={!canCreateIssue} className="min-h-[120px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="需求摘要" />
+                    <input data-testid="board-create-issue-title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!canCreateIssue} className="w-full rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="事项标题" />
+                    <textarea data-testid="board-create-issue-summary" value={summary} onChange={(event) => setSummary(event.target.value)} disabled={!canCreateIssue} className="min-h-[120px] w-full rounded-[14px] border-2 border-[var(--shock-ink)] px-3 py-3 text-sm outline-none disabled:opacity-60" placeholder="一句话说明要推进什么" />
                     <button data-testid="board-create-issue-submit" onClick={handleCreateIssue} disabled={creating || !canCreateIssue} className="w-full rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] shadow-[var(--shock-shadow-sm)] disabled:opacity-60">
-                      {creating ? "创建中..." : "创建并进入讨论间"}
+                      {creating ? "创建中..." : "创建后进入讨论间"}
                     </button>
                     <p data-testid="board-create-issue-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                      {createIssueStatus}
+                      {boardCreatePermissionLabel(createIssueStatus)}
                     </p>
                   </div>
                 </div>
@@ -676,8 +691,8 @@ export function StitchInboxView() {
   const [composeRoomId, setComposeRoomId] = useState("");
   const [composeFromAgentId, setComposeFromAgentId] = useState("");
   const [composeToAgentId, setComposeToAgentId] = useState("");
-  const [composeTitle, setComposeTitle] = useState("把 fresh head reviewer lane 交给下一位 Agent");
-  const [composeSummary, setComposeSummary] = useState("请你接住 current exact-head reviewer lane，并在 mailbox 里显式回写 blocked / complete。");
+  const [composeTitle, setComposeTitle] = useState("把当前任务交给下一位智能体");
+  const [composeSummary, setComposeSummary] = useState("请继续处理这条任务，并在交接箱里更新进展或结果。");
   const [creatingHandoff, setCreatingHandoff] = useState(false);
   const [handoffNotes, setHandoffNotes] = useState<Record<string, string>>({});
   const [mailboxCommentActors, setMailboxCommentActors] = useState<Record<string, string>>({});
@@ -703,8 +718,8 @@ export function StitchInboxView() {
       return {
         fromAgentId: governedSuggestion.fromAgentId ?? "",
         toAgentId: governedSuggestion.toAgentId ?? "",
-        title: governedSuggestion.draftTitle ?? "把 governed lane 交给下一位 Agent",
-        summary: governedSuggestion.draftSummary ?? "按当前治理链继续推进下一棒。",
+        title: governedSuggestion.draftTitle ?? "把当前流程交给下一位智能体",
+        summary: governedSuggestion.draftSummary ?? "请按当前分工继续推进这条任务。",
       };
     }
     const room = state.rooms.find((candidate) => candidate.id === roomId);
@@ -716,8 +731,8 @@ export function StitchInboxView() {
     return {
       fromAgentId,
       toAgentId,
-      title: "把 fresh head reviewer lane 交给下一位 Agent",
-      summary: "请你接住 current exact-head reviewer lane，并在 mailbox 里显式回写 blocked / complete。",
+      title: "把当前任务交给下一位智能体",
+      summary: "请继续处理这条任务，并在交接箱里更新进展或结果。",
     };
   }, [governedSuggestion.draftSummary, governedSuggestion.draftTitle, governedSuggestion.fromAgentId, governedSuggestion.roomId, governedSuggestion.status, governedSuggestion.toAgentId, state.agents, state.rooms]);
 
@@ -739,8 +754,8 @@ export function StitchInboxView() {
     }
     setComposeFromAgentId(governedSuggestion.fromAgentId ?? "");
     setComposeToAgentId(governedSuggestion.toAgentId ?? "");
-    setComposeTitle(governedSuggestion.draftTitle ?? "把 governed lane 交给下一位 Agent");
-    setComposeSummary(governedSuggestion.draftSummary ?? "按当前治理链继续推进下一棒。");
+    setComposeTitle(governedSuggestion.draftTitle ?? "把当前流程交给下一位智能体");
+    setComposeSummary(governedSuggestion.draftSummary ?? "请按当前分工继续推进这条任务。");
   }
 
   function governedComposeInput() {
@@ -890,8 +905,8 @@ export function StitchInboxView() {
     setCreatingHandoff(true);
     try {
       await createHandoff(input);
-      setComposeTitle("把 fresh head reviewer lane 交给下一位 Agent");
-      setComposeSummary("请你接住 current exact-head reviewer lane，并在 mailbox 里显式回写 blocked / complete。");
+      setComposeTitle("把当前任务交给下一位智能体");
+      setComposeSummary("请继续处理这条任务，并在交接箱里更新进展或结果。");
     } catch (handoffError) {
       setMailboxError({
         id: "compose",
@@ -1413,7 +1428,7 @@ export function StitchInboxView() {
                         data-testid="mailbox-compose-authz"
                         className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
                       >
-                        {loading ? "syncing" : permissionStatus(session, "run.execute")}
+                        {permissionStatusSurfaceLabel(loading ? "syncing" : permissionStatus(session, "run.execute"))}
                       </span>
                     </div>
                     <div className="mt-4 space-y-3">

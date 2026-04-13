@@ -6,7 +6,7 @@ type RoomMessage = {
   id: string;
   speaker: string;
   role: "human" | "agent" | "system";
-  tone: "human" | "agent" | "blocked" | "system";
+  tone: "human" | "agent" | "paper" | "blocked" | "system";
   message: string;
   time: string;
 };
@@ -47,7 +47,7 @@ function roleLabel(role: RoomMessage["role"]) {
     case "human":
       return "人类";
     case "agent":
-      return "Agent";
+      return "助手";
     default:
       return "系统";
   }
@@ -67,7 +67,7 @@ export function ClaudeAgentConsole({
   const [error, setError] = useState<string | null>(null);
 
   const helperPrompt = useMemo(
-    () => `你是 OpenShock 里的虚拟 Agent「Claude 作战员」。
+    () => `你是 OpenShock 里的房间助手。
 你当前在一个 Discuss Room 中协作，请用简洁、明确、偏执行的中文回答。
 
 Room: ${roomTitle}
@@ -115,12 +115,12 @@ Topic Summary: ${topicSummary}
 
       const payload = (await response.json()) as ExecPayload;
       if (!response.ok) {
-        throw new Error(payload.error || `Claude bridge failed: ${response.status}`);
+        throw new Error(payload.error || `房间助手暂时不可用：${response.status}`);
       }
 
       const agentMessage: RoomMessage = {
         id: `agent-${Date.now()}`,
-        speaker: "Claude 作战员",
+        speaker: "房间助手",
         role: "agent",
         tone: "agent",
         message: payload.output.trim() || "我收到了，但这次没有产出可显示的文本。",
@@ -129,7 +129,7 @@ Topic Summary: ${topicSummary}
 
       setMessages((current) => [...current, agentMessage]);
     } catch (submitError) {
-      const message = submitError instanceof Error ? submitError.message : "Claude 连接失败";
+      const message = submitError instanceof Error ? submitError.message : "房间助手连接失败";
       setError(message);
       setMessages((current) => [
         ...current,
@@ -138,7 +138,7 @@ Topic Summary: ${topicSummary}
           speaker: "系统",
           role: "system",
           tone: "blocked",
-          message: `Claude 没有顺利回应：${message}`,
+          message: `这次没有顺利收到回复：${message}`,
           time: nowLabel(),
         },
       ]);
@@ -152,7 +152,7 @@ Topic Summary: ${topicSummary}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-            讨论间 / Claude
+            讨论间 / 助手
           </p>
           <h3 className="mt-2 font-display text-2xl font-bold">讨论间对话</h3>
         </div>
@@ -191,7 +191,7 @@ Topic Summary: ${topicSummary}
       <form onSubmit={handleSubmit} className="mt-4 space-y-3">
         <label className="block">
           <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-            发给 Claude 作战员
+            输入消息
           </span>
           <textarea
             value={draft}
@@ -208,10 +208,10 @@ Topic Summary: ${topicSummary}
             disabled={loading}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-ink)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-white transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Claude 思考中..." : "发送到房间"}
+            {loading ? "正在回复..." : "发送"}
           </button>
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.58)]">
-            这条消息会走 {"`server -> daemon -> claude --bare`"}
+            发送后会直接追加到当前讨论。
           </p>
         </div>
 

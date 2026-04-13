@@ -37,9 +37,9 @@ export function sandboxPolicyDraft(profile: SandboxProfile, fields: {
 export function sandboxProfileLabel(profile?: string) {
   switch (profile) {
     case "restricted":
-      return "Restricted";
+      return "受限";
     case "trusted":
-      return "Trusted";
+      return "宽松";
     default:
       return "待同步";
   }
@@ -54,7 +54,7 @@ export function sandboxDecisionLabel(status?: SandboxDecisionStatus | string) {
     case "approval_required":
       return "需要批准";
     case "overridden":
-      return "已 override";
+      return "已人工放行";
     case "idle":
       return "待检查";
     default:
@@ -79,11 +79,11 @@ export function sandboxDecisionTone(status?: SandboxDecisionStatus | string): "w
 export function sandboxActionKindLabel(kind?: SandboxActionKind | string) {
   switch (kind) {
     case "command":
-      return "Command";
+      return "命令";
     case "network":
-      return "Network";
+      return "网络";
     case "tool":
-      return "Tool";
+      return "工具";
     default:
       return "未声明";
   }
@@ -92,13 +92,13 @@ export function sandboxActionKindLabel(kind?: SandboxActionKind | string) {
 export function sandboxPolicySummary(policy: SandboxPolicy) {
   const parts = [sandboxProfileLabel(policy.profile)];
   if ((policy.allowedHosts ?? []).length > 0) {
-    parts.push(`hosts ${(policy.allowedHosts ?? []).length}`);
+    parts.push(`主机 ${(policy.allowedHosts ?? []).length}`);
   }
   if ((policy.allowedCommands ?? []).length > 0) {
-    parts.push(`commands ${(policy.allowedCommands ?? []).length}`);
+    parts.push(`命令 ${(policy.allowedCommands ?? []).length}`);
   }
   if ((policy.allowedTools ?? []).length > 0) {
-    parts.push(`tools ${(policy.allowedTools ?? []).length}`);
+    parts.push(`工具 ${(policy.allowedTools ?? []).length}`);
   }
   return parts.join(" / ");
 }

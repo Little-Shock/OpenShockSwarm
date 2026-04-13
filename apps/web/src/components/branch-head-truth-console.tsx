@@ -249,12 +249,12 @@ export function BranchHeadTruthConsole() {
       const response = await fetch(`${API_BASE}/v1/workspace/branch-head-truth`, { cache: "no-store" });
       const payload = (await response.json()) as BranchHeadTruthSnapshot & { error?: string };
       if (!response.ok) {
-        throw new Error(payload.error || `统一真值探测失败：${response.status}`);
+        throw new Error(payload.error || `仓库对齐信息读取失败：${response.status}`);
       }
       setSnapshot(normalizeBranchHeadTruthSnapshot(payload));
       setError(null);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "统一真值探测失败");
+      setError(fetchError instanceof Error ? fetchError.message : "仓库对齐信息读取失败");
     } finally {
       setLoading(false);
     }
@@ -284,8 +284,8 @@ export function BranchHeadTruthConsole() {
     <section data-testid="setup-branch-head-truth" className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-pink)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">统一真值</p>
-          <h3 className="mt-2 font-display text-3xl font-bold">仓库 / GitHub / 运行环境 分支与工作区真值</h3>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">仓库对齐</p>
+          <h3 className="mt-2 font-display text-3xl font-bold">查看仓库、GitHub 和本地运行环境是否一致</h3>
         </div>
         <span
           data-testid="setup-branch-head-truth-status"
@@ -299,7 +299,7 @@ export function BranchHeadTruthConsole() {
       </div>
 
       <p data-testid="setup-branch-head-truth-summary" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-        {snapshot?.summary ?? "等待统一路由返回仓库绑定、GitHub 探测、当前检出、实时服务与工作区真值。"}
+        {snapshot?.summary ?? "正在读取当前仓库绑定、GitHub 连接、本地检出和实时服务状态。"}
       </p>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -324,7 +324,7 @@ export function BranchHeadTruthConsole() {
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前检出</p>
           <p className="mt-2 font-display text-xl font-semibold">
-            {formatBranchHead(snapshot?.checkout.branch, snapshot?.checkout.head, "等待检出真值")}
+            {formatBranchHead(snapshot?.checkout.branch, snapshot?.checkout.head, "正在读取当前检出分支")}
           </p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
             {snapshot?.checkout.dirty ? `未清理 (${snapshot.checkout.dirtyEntries})` : "干净"} · {valueOrFallback(snapshot?.checkout.worktreePath, "未返回工作区")}
@@ -333,7 +333,7 @@ export function BranchHeadTruthConsole() {
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">实时服务</p>
           <p className="mt-2 font-display text-xl font-semibold">
-            {formatBranchHead(snapshot?.liveService.branch, snapshot?.liveService.head, snapshot?.liveService.managed ? "待返回实时头指针" : "未托管")}
+            {formatBranchHead(snapshot?.liveService.branch, snapshot?.liveService.head, snapshot?.liveService.managed ? "正在读取实时服务分支" : "未托管")}
           </p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
             {snapshot?.liveService.managed ? valueOrFallback(snapshot?.liveService.owner, "未知负责人") : valueOrFallback(snapshot?.liveService.status, "未托管")}
@@ -361,7 +361,7 @@ export function BranchHeadTruthConsole() {
             </div>
           ) : (
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
-              当前没有分支、头指针或工作区漂移信号。
+              当前没有检测到分支或工作区不一致。
             </p>
           )}
           {snapshot?.githubProbeError ? (
@@ -395,18 +395,18 @@ export function BranchHeadTruthConsole() {
                       )}
                     >
                       <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{worktree.current ? "当前工作区" : "关联工作区"}</p>
-                      <p className="mt-2 text-sm leading-6">{formatBranchHead(worktree.branch, worktree.head, "当前工作区分支和头指针正在整理中。")}</p>
+                      <p className="mt-2 text-sm leading-6">{formatBranchHead(worktree.branch, worktree.head, "当前工作区分支信息正在读取中。")}</p>
                       <p className="mt-1 font-mono text-xs leading-6 break-all text-[color:rgba(24,20,14,0.72)]">{worktree.path}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">当前没有可见的关联工作区真值。</p>
+                <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">当前还没有可见的关联工作区。</p>
               )}
             </div>
             <div className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">实时控制</p>
-              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]">{valueOrFallback(snapshot?.liveService.message, "等待实时服务真值。")}</p>
+              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.82)]">{valueOrFallback(snapshot?.liveService.message, "正在读取实时服务状态。")}</p>
               <p className="mt-3 font-mono text-xs leading-6 break-all text-[color:rgba(24,20,14,0.72)]">
                 {valueOrFallback(snapshot?.liveService.workspaceRoot, "未返回实时工作目录")}
               </p>
@@ -429,7 +429,7 @@ export function BranchHeadTruthConsole() {
           disabled={loading}
           className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? "探测中..." : "重新探测统一真值"}
+          {loading ? "刷新中..." : "刷新仓库对齐状态"}
         </button>
       </div>
 

@@ -213,19 +213,6 @@ type SidebarDeskEntry = {
   selected: boolean;
 };
 
-function profileEntryTone(tone: SidebarProfileEntry["tone"]) {
-  switch (tone) {
-    case "yellow":
-      return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
-    case "pink":
-      return "bg-[var(--shock-pink)] text-white";
-    case "lime":
-      return "bg-[var(--shock-lime)] text-[var(--shock-ink)]";
-    default:
-      return "bg-white text-[var(--shock-ink)]";
-  }
-}
-
 function profileEntryBadgeTone(id: SidebarProfileEntry["id"]) {
   switch (id) {
     case "human":
@@ -234,17 +221,6 @@ function profileEntryBadgeTone(id: SidebarProfileEntry["id"]) {
       return "bg-[var(--shock-cyan)] text-[var(--shock-ink)]";
     case "agent":
       return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
-  }
-}
-
-function profileEntryTypeLabel(id: SidebarProfileEntry["id"]) {
-  switch (id) {
-    case "human":
-      return "成员";
-    case "machine":
-      return "机器";
-    case "agent":
-      return "智能体";
   }
 }
 
@@ -324,7 +300,6 @@ export function StitchSidebar({
   followedThreads,
   savedLaterItems,
   rooms,
-  agents,
   workspaceName,
   workspaceSubtitle,
   selectedChannelId,
@@ -341,11 +316,7 @@ export function StitchSidebar({
   const followedList = followedThreads ?? [];
   const savedList = savedLaterItems ?? [];
   const roomList = rooms ?? [];
-  const agentList = agents ?? [];
   const openInboxCount = inboxCount ?? 0;
-  const runningAgents = agentList.filter((agent) => agent.state === "running").length;
-  const blockedAgents = agentList.filter((agent) => agent.state === "blocked").length;
-  const selectedRoom = selectedRoomId ? roomList.find((room) => room.id === selectedRoomId) : undefined;
   const shellProfiles = profileEntries ?? [];
   const deskEntries: SidebarDeskEntry[] = [
     ...dmList.map((dm) => ({
@@ -384,10 +355,6 @@ export function StitchSidebar({
       selected: selectedSavedLaterId === item.id,
     })),
   ];
-  const selectedWorkspaceLabel = selectedRoom
-    ? `${selectedRoom.issueKey} · ${roomStatusLabel(selectedRoom.topic.status)}`
-    : workspaceSubtitle || "本地优先协作台";
-
   return (
     <aside className="hidden h-full min-w-0 w-full flex-col border-r-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] md:flex">
       <div className="border-b-2 border-[var(--shock-ink)] px-2 py-2">
@@ -560,25 +527,24 @@ export function StitchSidebar({
       </div>
 
       <div className="border-t-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-2">
-        <Link
-          href="/inbox"
-          className={cn(
-            "flex min-h-[44px] items-center justify-between gap-2 rounded-[14px] border-2 px-2.5 py-2 text-sm shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
-            active === "inbox" ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white" : "bg-white"
-          )}
-        >
-          <span className="flex items-center gap-2 font-medium">
-            <InboxIcon />
-            收件箱
-          </span>
-          <span className="font-mono text-[10px]">{openInboxCount}</span>
-        </Link>
-
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <Link
+            href="/inbox"
+            className={cn(
+              "flex min-h-[44px] items-center justify-between gap-2 rounded-[14px] border-2 px-2.5 py-2 text-sm shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
+              active === "inbox" ? "border-[var(--shock-ink)] bg-[var(--shock-pink)] text-white" : "bg-white"
+            )}
+          >
+            <span className="flex items-center gap-2 font-medium">
+              <InboxIcon />
+              收件箱
+            </span>
+            <span className="font-mono text-[10px]">{openInboxCount}</span>
+          </Link>
           <Link
             href="/board"
             className={cn(
-              "inline-flex min-h-[44px] flex-1 items-center justify-between rounded-[14px] border-2 px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
+              "inline-flex min-h-[44px] items-center justify-between rounded-[14px] border-2 px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shock-yellow)]",
               active === "board" ? "border-[var(--shock-ink)] bg-white" : "bg-[var(--shock-paper)]"
             )}
           >
@@ -588,21 +554,6 @@ export function StitchSidebar({
             </span>
             <span>{roomList.length}</span>
           </Link>
-          <span className="inline-flex min-h-[40px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]">
-            {runningAgents} 在线
-          </span>
-          <span className="inline-flex min-h-[40px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]">
-            {blockedAgents} 阻塞
-          </span>
-        </div>
-
-        <div className="mt-2 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-2.5 py-2.5 shadow-[var(--shock-shadow-sm)]">
-          <p className="truncate font-display text-[14px] font-bold leading-none">
-            {selectedRoom?.title || workspaceName || "OpenShock"}
-          </p>
-          <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
-            {selectedWorkspaceLabel}
-          </p>
         </div>
 
         {shellProfiles.length > 0 ? (
@@ -628,14 +579,6 @@ export function StitchSidebar({
                     {entry.status}
                   </p>
                 </div>
-                <span
-                  className={cn(
-                    "rounded-full border border-[var(--shock-ink)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em]",
-                    profileEntryTone(entry.tone)
-                  )}
-                >
-                  {profileEntryTypeLabel(entry.id)}
-                </span>
               </Link>
             ))}
           </div>

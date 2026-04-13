@@ -5,6 +5,40 @@ const LIVE_TRUTH_E2E_RESIDUE = /\bE2E\b.*\b20\d{6,}\b/i;
 const LIVE_TRUTH_PLACEHOLDER_RESIDUE = /\bplaceholder\b|\bfixture\b|\btest-only\b/i;
 const LIVE_TRUTH_MOCK_RESIDUE = /本地 mock|还在 mock|mock 频道|mock room|mock 卡片|mock issue|mock run|mock agent|mock workspace/;
 const LIVE_TRUTH_INTERNAL_PATH_RESIDUE = /[A-Za-z]:\\|\/tmp\/openshock|\/home\/lark\/OpenShock|\.openshock-worktrees|\.slock\//;
+const CUSTOMER_FACING_LITERAL_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
+  ["@Codex Dockmaster", "@主执行智能体"],
+  ["Claude Review Runner", "评审智能体"],
+  ["Codex Dockmaster", "主执行智能体"],
+  ["Memory Clerk", "记忆智能体"],
+  ["Spec Captain", "需求智能体"],
+  ["Build Pilot", "开发智能体"],
+  ["Review Runner", "评审智能体"],
+  ["QA Relay", "测试智能体"],
+  ["Lead Operator", "总控智能体"],
+  ["Field Collector", "一线采集"],
+  ["Research Lead", "研究负责人"],
+  ["Peer Reviewer", "交叉复核"],
+  ["Publisher", "发布收尾"],
+  ["Synthesizer", "归纳智能体"],
+  ["Collector", "采集智能体"],
+  ["Architect", "架构"],
+  ["Developer", "开发"],
+  ["Reviewer", "评审"],
+  ["PM", "产品"],
+  ["QA", "测试"],
+  ["exact-head verdict", "精确审阅结论"],
+  ["verify / release evidence", "验证 / 发布证据"],
+  ["scope / final response", "目标收敛 / 最终回复"],
+  ["shape / split", "拆解 / 分派"],
+  ["issue -> branch", "事项 -> 分支"],
+  ["review / blocker", "评审 / 阻塞"],
+  ["test / release gate", "测试 / 发布闸口"],
+  ["scope / final synthesis", "范围 / 最终结论"],
+  ["intake -> evidence", "接收 -> 证据"],
+  ["evidence -> synthesis", "证据 -> 归纳"],
+  ["review / publish", "复核 / 发布"],
+  ["publish / closeout", "发布 / 收尾"],
+];
 
 type WorkspaceSnapshot = PhaseZeroState["workspace"];
 type Channel = PhaseZeroState["channels"][number];
@@ -34,12 +68,12 @@ type PlannerQueueRecord = PlannerQueueItem;
 
 export function buildBoardColumns(issueList: Issue[]) {
   return [
-    { title: "Backlog", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
-    { title: "Todo", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
-    { title: "In Progress", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
-    { title: "Paused", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "paused") },
-    { title: "In Review", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
-    { title: "Done", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
+    { title: "阻塞排队", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "blocked") },
+    { title: "待处理", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "queued") },
+    { title: "进行中", accent: "var(--shock-yellow)", cards: issueList.filter((issue) => issue.state === "running") },
+    { title: "已暂停", accent: "var(--shock-paper)", cards: issueList.filter((issue) => issue.state === "paused") },
+    { title: "待评审", accent: "var(--shock-lime)", cards: issueList.filter((issue) => issue.state === "review") },
+    { title: "已完成", accent: "white", cards: issueList.filter((issue) => issue.state === "done") },
   ];
 }
 
@@ -192,7 +226,50 @@ function sanitizeWorkspace(workspace: WorkspaceSnapshot): WorkspaceSnapshot {
     deviceAuth: sanitizeDisplayText(workspace.deviceAuth, "当前设备认证状态正在整理中。"),
     browserPush: sanitizeDisplayText(workspace.browserPush, "当前浏览器推送策略正在整理中。"),
     memoryMode: sanitizeDisplayText(workspace.memoryMode, "当前记忆模式正在整理中。"),
+    repoBinding: {
+      ...workspace.repoBinding,
+      repo: sanitizeDisplayText(workspace.repoBinding?.repo ?? "", "当前仓库真值正在整理中。"),
+      repoUrl: sanitizeDisplayText(workspace.repoBinding?.repoUrl ?? "", ""),
+      branch: sanitizeDisplayText(workspace.repoBinding?.branch ?? "", "待整理分支"),
+      provider: sanitizeDisplayText(workspace.repoBinding?.provider ?? "", "待整理仓库提供方"),
+      bindingStatus: sanitizeDisplayText(workspace.repoBinding?.bindingStatus ?? "", ""),
+      authMode: sanitizeDisplayText(workspace.repoBinding?.authMode ?? "", ""),
+      detectedAt: sanitizeDisplayText(workspace.repoBinding?.detectedAt ?? "", ""),
+      syncedAt: sanitizeDisplayText(workspace.repoBinding?.syncedAt ?? "", ""),
+    },
+    githubInstallation: {
+      ...workspace.githubInstallation,
+      provider: sanitizeDisplayText(workspace.githubInstallation?.provider ?? "", ""),
+      preferredAuthMode: sanitizeDisplayText(workspace.githubInstallation?.preferredAuthMode ?? "", ""),
+      installationId: sanitizeDisplayText(workspace.githubInstallation?.installationId ?? "", ""),
+      installationUrl: sanitizeDisplayText(workspace.githubInstallation?.installationUrl ?? "", ""),
+      missing: sanitizeTextLines(workspace.githubInstallation?.missing ?? [], ""),
+      connectionMessage: sanitizeDisplayText(workspace.githubInstallation?.connectionMessage ?? "", ""),
+      syncedAt: sanitizeDisplayText(workspace.githubInstallation?.syncedAt ?? "", ""),
+    },
+    onboarding: sanitizeWorkspaceOnboarding(workspace.onboarding),
     governance: sanitizeWorkspaceGovernance(workspace.governance),
+  };
+}
+
+function sanitizeWorkspaceOnboarding(onboarding: WorkspaceSnapshot["onboarding"]): WorkspaceSnapshot["onboarding"] {
+  return {
+    ...onboarding,
+    status: sanitizeDisplayText(onboarding?.status ?? "", ""),
+    templateId: sanitizeDisplayText(onboarding?.templateId ?? "", ""),
+    currentStep: sanitizeDisplayText(onboarding?.currentStep ?? "", ""),
+    completedSteps: sanitizeTextLines(onboarding?.completedSteps ?? [], ""),
+    resumeUrl: sanitizeDisplayText(onboarding?.resumeUrl ?? "", ""),
+    updatedAt: sanitizeDisplayText(onboarding?.updatedAt ?? "", ""),
+    materialization: {
+      ...onboarding?.materialization,
+      label: sanitizeDisplayText(onboarding?.materialization?.label ?? "", ""),
+      channels: sanitizeTextLines(onboarding?.materialization?.channels ?? [], ""),
+      roles: sanitizeTextLines(onboarding?.materialization?.roles ?? [], ""),
+      agents: sanitizeTextLines(onboarding?.materialization?.agents ?? [], ""),
+      notificationPolicy: sanitizeDisplayText(onboarding?.materialization?.notificationPolicy ?? "", ""),
+      notes: sanitizeTextLines(onboarding?.materialization?.notes ?? [], ""),
+    },
   };
 }
 
@@ -537,6 +614,7 @@ function sanitizeWorkspaceGovernance(
 function sanitizeChannel(channel: Channel): Channel {
   return {
     ...channel,
+    name: sanitizeDisplayText(channel.name, "待整理频道"),
     summary: sanitizeDisplayText(channel.summary, "当前频道摘要正在整理中。"),
     purpose: sanitizeDisplayText(channel.purpose, "当前频道说明正在整理中。"),
   };
@@ -585,6 +663,9 @@ function sanitizeIssue(issue: LiveIssue): LiveIssue {
     ...issue,
     title: sanitizeDisplayText(issue.title, "待整理任务"),
     summary: sanitizeDisplayText(issue.summary, "这条任务的上下文正在整理，先回到讨论间查看当前真实状态。"),
+    owner: sanitizeDisplayText(issue.owner, "当前负责人正在整理中。"),
+    checklist: sanitizeTextLines(issue.checklist, "当前事项清单正在整理中。"),
+    pullRequest: sanitizeDisplayText(issue.pullRequest, "待整理 PR"),
   };
 }
 
@@ -600,7 +681,8 @@ function sanitizeRoom(room: Room): Room {
 function sanitizeTopic(topic: Topic): Topic {
   return {
     ...topic,
-    title: sanitizeDisplayText(topic.title, "待整理 Topic"),
+    title: sanitizeDisplayText(topic.title, "待整理话题"),
+    owner: sanitizeDisplayText(topic.owner, "当前负责人正在整理中。"),
     summary: sanitizeDisplayText(topic.summary, "当前 Topic 的摘要正在整理中。"),
   };
 }
@@ -608,9 +690,11 @@ function sanitizeTopic(topic: Topic): Topic {
 function sanitizeRun(run: Run): Run {
   return {
     ...run,
+    provider: sanitizeDisplayText(run.provider, ""),
     branch: sanitizeDisplayText(run.branch, "待整理分支"),
     worktree: sanitizeDisplayText(run.worktree, "当前 worktree 名称正在整理中。"),
     worktreePath: sanitizeDisplayText(run.worktreePath ?? "", "当前 worktree 路径正在整理中。"),
+    owner: sanitizeDisplayText(run.owner, "当前负责人正在整理中。"),
     summary: sanitizeDisplayText(run.summary, "当前 Run 正在整理执行摘要。"),
     nextAction: sanitizeDisplayText(run.nextAction, "等待当前执行真相同步。"),
     pullRequest: sanitizeDisplayText(run.pullRequest, "待整理 PR"),
@@ -668,9 +752,29 @@ function sanitizeRunEvent(event: RunEvent): RunEvent {
 function sanitizeAgent(agent: Agent): Agent {
   return {
     ...agent,
+    name: sanitizeDisplayText(agent.name, "OpenShock 智能体"),
     description: sanitizeDisplayText(agent.description, "当前智能体摘要正在整理中。"),
     lane: sanitizeDisplayText(agent.lane, "待整理泳道"),
+    role: sanitizeDisplayText(agent.role, "当前角色正在整理中。"),
+    prompt: sanitizeDisplayText(agent.prompt, "当前智能体提示词正在整理中。"),
+    operatingInstructions: sanitizeDisplayText(agent.operatingInstructions, "当前操作说明正在整理中。"),
+    provider: sanitizeDisplayText(agent.provider, ""),
+    providerPreference: sanitizeDisplayText(agent.providerPreference, ""),
+    runtimePreference: sanitizeDisplayText(agent.runtimePreference, ""),
+    recallPolicy: sanitizeDisplayText(agent.recallPolicy, ""),
+    memorySpaces: sanitizeTextLines(agent.memorySpaces, ""),
     credentialProfileIds: sanitizeTextLines(agent.credentialProfileIds ?? [], ""),
+    profileAudit: agent.profileAudit.map((entry) => ({
+      ...entry,
+      updatedBy: sanitizeDisplayText(entry.updatedBy, "系统"),
+      summary: sanitizeDisplayText(entry.summary, "当前档案变更摘要正在整理中。"),
+      changes: entry.changes.map((change) => ({
+        ...change,
+        field: sanitizeDisplayText(change.field, "字段"),
+        previous: sanitizeDisplayText(change.previous, ""),
+        current: sanitizeDisplayText(change.current, ""),
+      })),
+    })),
   };
 }
 
@@ -694,9 +798,12 @@ function sanitizeInboxItem(item: InboxItem): InboxItem {
 function sanitizePullRequest(item: PullRequest): PullRequest {
   return {
     ...item,
+    label: sanitizeDisplayText(item.label, "待整理 PR"),
     title: sanitizeDisplayText(item.title, "待整理 PR"),
     branch: sanitizeDisplayText(item.branch, "待整理分支"),
     baseBranch: sanitizeDisplayText(item.baseBranch ?? "", "当前 base 分支正在整理中。"),
+    author: sanitizeDisplayText(item.author, "当前作者正在整理中。"),
+    provider: sanitizeDisplayText(item.provider ?? "", ""),
     reviewSummary: sanitizeDisplayText(item.reviewSummary, "当前 review 摘要正在整理中。"),
     conversation: item.conversation?.map(sanitizePullRequestConversationEntry),
   };
@@ -738,6 +845,7 @@ function sanitizeSession(session: Session): Session {
   return {
     ...session,
     controlNote: sanitizeDisplayText(session.controlNote ?? "", "当前控制说明正在整理中。"),
+    provider: sanitizeDisplayText(session.provider, ""),
     branch: sanitizeDisplayText(session.branch, "待整理分支"),
     worktree: sanitizeDisplayText(session.worktree, "当前 worktree 名称正在整理中。"),
     worktreePath: sanitizeDisplayText(session.worktreePath, "当前 worktree 路径正在整理中。"),
@@ -791,6 +899,19 @@ function sanitizeMemoryArtifact(item: MemoryArtifact): MemoryArtifact {
     scope: sanitizeDisplayText(item.scope, "memory:current"),
     path: sanitizeDisplayText(item.path, "notes/current-artifact.md"),
     summary: sanitizeDisplayText(item.summary, "当前记忆摘要正在整理中。"),
+    latestSource: sanitizeDisplayText(item.latestSource ?? "", ""),
+    latestActor: sanitizeDisplayText(item.latestActor ?? "", ""),
+    lastCorrectionBy: sanitizeDisplayText(item.lastCorrectionBy ?? "", ""),
+    lastCorrectionNote: sanitizeDisplayText(item.lastCorrectionNote ?? "", ""),
+    forgottenBy: sanitizeDisplayText(item.forgottenBy ?? "", ""),
+    forgetReason: sanitizeDisplayText(item.forgetReason ?? "", ""),
+    governance: item.governance
+      ? {
+          ...item.governance,
+          mode: sanitizeDisplayText(item.governance.mode ?? "", ""),
+          escalation: sanitizeDisplayText(item.governance.escalation ?? "", ""),
+        }
+      : item.governance,
   };
 }
 
@@ -821,7 +942,19 @@ function sanitizeDisplayText(value: string, fallback: string) {
   if (!trimmed) {
     return trimmed;
   }
-  return looksLikeLiveTruthLeak(trimmed) ? fallback : trimmed;
+  const rewritten = rewriteCustomerFacingText(trimmed);
+  return looksLikeLiveTruthLeak(rewritten) ? fallback : rewritten;
+}
+
+export function rewriteCustomerFacingText(value: string) {
+  if (!value) {
+    return value;
+  }
+  let next = value;
+  for (const [from, to] of CUSTOMER_FACING_LITERAL_REPLACEMENTS) {
+    next = next.split(from).join(to);
+  }
+  return next;
 }
 
 function looksLikeLiveTruthLeak(value: string) {

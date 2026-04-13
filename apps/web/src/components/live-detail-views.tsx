@@ -39,6 +39,10 @@ import type {
 type PanelTone = "white" | "paper" | "yellow" | "lime" | "pink" | "ink";
 const CONTROL_API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 
+function requestErrorMessage(status: number, fallback?: string) {
+  return fallback && fallback.trim() ? fallback : `读取失败，请稍后重试。状态码 ${status}`;
+}
+
 function priorityLabel(priority: Issue["priority"]) {
   switch (priority) {
     case "critical":
@@ -148,7 +152,7 @@ async function readRunHistoryPage(limit: number, cursor?: string) {
   });
   const payload = (await response.json()) as RunHistoryPage & { error?: string };
   if (!response.ok) {
-    throw new Error(payload.error || `request failed: ${response.status}`);
+    throw new Error(requestErrorMessage(response.status, payload.error));
   }
   return sanitizeRunHistoryPage(payload);
 }
@@ -160,7 +164,7 @@ async function readPlannerQueue() {
   const payload = (await response.json()) as PlannerQueueItem[] | { error?: string };
   if (!response.ok) {
     const message = Array.isArray(payload) ? undefined : payload.error;
-    throw new Error(message || `request failed: ${response.status}`);
+    throw new Error(requestErrorMessage(response.status, message));
   }
   return sanitizePlannerQueue(Array.isArray(payload) ? payload : []);
 }
@@ -174,7 +178,7 @@ async function readRuntimeReplayEvidence(runId: string) {
   }
   const payload = (await response.json()) as RuntimeReplayEvidencePacket & { error?: string };
   if (!response.ok) {
-    throw new Error(payload.error || `request failed: ${response.status}`);
+    throw new Error(requestErrorMessage(response.status, payload.error));
   }
   return payload;
 }
@@ -202,13 +206,13 @@ function LiveStateNotice({
 function handoffStatusLabel(status: AgentHandoff["status"]) {
   switch (status) {
     case "acknowledged":
-      return "ack";
+      return "已接手";
     case "blocked":
-      return "blocked";
+      return "阻塞";
     case "completed":
-      return "done";
+      return "已完成";
     default:
-      return "requested";
+      return "待接手";
   }
 }
 
@@ -236,22 +240,22 @@ function AgentMailboxPanel({
     <Panel tone="paper">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">Mailbox Ledger</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接记录</p>
           <h3 className="mt-2 font-display text-2xl font-bold">
-            {handoffs.length} 条 formal handoff
+            {handoffs.length} 条交接任务
           </h3>
         </div>
         <Link
           href={`/mailbox?agentId=${agentId}`}
           className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
         >
-          打开 Mailbox
+          打开交接箱
         </Link>
       </div>
       <div className="mt-4 space-y-3">
         {handoffs.length === 0 ? (
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            当前这位 Agent 还没有挂住 formal handoff。后续一旦被 request / ack / blocked / complete 命中，这里会直接显示 ledger。
+            当前还没有需要这位智能体继续跟进的交接任务。后续一有新交接，这里会直接显示。
           </p>
         ) : (
           handoffs.slice(0, 3).map((handoff) => (
@@ -314,9 +318,9 @@ function RunCredentialScopePanel({
     setSuccess(null);
     try {
       await onUpdate(run.id, { credentialProfileIds: draft });
-      setSuccess("run-scope credential binding 已写回。");
+      setSuccess("本次执行的凭据绑定已保存。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "run credential binding failed");
+      setError(mutationError instanceof Error ? mutationError.message : "执行凭据绑定保存失败");
     } finally {
       setPending(false);
     }
@@ -326,41 +330,41 @@ function RunCredentialScopePanel({
     <Panel tone="paper" className="shadow-[6px_6px_0_0_var(--shock-lime)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">credential scope</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">执行凭据</p>
           <h3 className="mt-2 font-display text-3xl font-bold">当前执行可用的凭据</h3>
         </div>
         <span
           data-testid="run-credential-effective-count"
           className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
         >
-          {profiles.length} effective
+          {profiles.length} 条生效
         </span>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Agent</p>
-          <p className="mt-2 font-display text-xl font-semibold">{agent?.name ?? "未命中 agent truth"}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">智能体</p>
+          <p className="mt-2 font-display text-xl font-semibold">{agent?.name ?? "未匹配到智能体"}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Workspace Default</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">工作区默认</p>
           <p className="mt-2 font-display text-xl font-semibold">{state.credentials.filter((profile) => profile.workspaceDefault).length}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Agent Bound</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">智能体已绑定</p>
           <p className="mt-2 font-display text-xl font-semibold">{agent?.credentialProfileIds?.length ?? 0}</p>
         </div>
         <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Run Bound</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">本次执行已绑定</p>
           <p className="mt-2 font-display text-xl font-semibold">{run.credentialProfileIds?.length ?? 0}</p>
         </div>
       </div>
 
       <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Effective Profiles</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">当前生效</p>
         <div data-testid="run-credential-effective-labels" className="mt-3 flex flex-wrap gap-2">
           {profiles.length === 0 ? (
-            <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前 run 还没有命中任何 credential scope。</span>
+            <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">当前执行还没有命中任何凭据范围。</span>
           ) : (
             profiles.map((profile) => (
               <span key={profile.id} className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
@@ -370,18 +374,18 @@ function RunCredentialScopePanel({
           )}
         </div>
         <p data-testid="run-credential-audit" className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-          最近一次 secret consume：
+          最近一次使用：
           {profiles.find((profile) => profile.lastUsedAt)?.lastUsedAt
-            ? `${profiles.find((profile) => profile.lastUsedAt)?.lastUsedBy ?? "System"} @ ${formatCredentialTimestamp(profiles.find((profile) => profile.lastUsedAt)?.lastUsedAt)}`
+            ? `${profiles.find((profile) => profile.lastUsedAt)?.lastUsedBy ?? "系统"} @ ${formatCredentialTimestamp(profiles.find((profile) => profile.lastUsedAt)?.lastUsedAt)}`
             : " 尚未记录"}
         </p>
       </div>
 
       <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">Run Override</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">本次覆盖</p>
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
-            {canEdit ? "run.execute" : "read only"}
+            {canEdit ? "可修改" : "只读"}
           </span>
         </div>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -397,7 +401,7 @@ function RunCredentialScopePanel({
               <span>
                 <span className="block font-semibold">{profile.label}</span>
                 <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-                  {profile.secretKind} · {profile.workspaceDefault ? "workspace default" : "optional override"}
+                  {profile.secretKind} · {profile.workspaceDefault ? "工作区默认" : "可选覆盖"}
                 </span>
               </span>
             </label>
@@ -411,7 +415,7 @@ function RunCredentialScopePanel({
             disabled={!canEdit || pending}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "写回中..." : "写回 Run Scope"}
+            {pending ? "写回中..." : "保存本次执行绑定"}
           </button>
           {success ? <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{success}</span> : null}
           {error ? <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.92)]">{error}</span> : null}
@@ -459,9 +463,9 @@ function RoomSnapshotCard({
       </div>
       <p className="mt-2.5 text-sm leading-6">{room.summary}</p>
       <div className="mt-4 grid gap-2 md:grid-cols-3">
-        <FactTile label="当前 Topic" value={room.topic.title} />
+        <FactTile label="当前话题" value={room.topic.title} />
         <FactTile label="负责人" value={room.topic.owner} />
-        <FactTile label="Run" value={run?.id ?? room.runId} />
+        <FactTile label="当前执行" value={run?.id ?? room.runId} />
       </div>
       <div className="mt-2 grid gap-2 md:grid-cols-3">
         <FactTile label="任务卡" value={`${room.boardCount} 张`} />
@@ -479,14 +483,14 @@ function RoomSnapshotCard({
           href={`/topics/${room.topic.id}`}
           className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
-          查看 Topic
+          查看话题
         </Link>
         {run ? (
           <Link
             href={`/runs/${run.id}`}
             className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
-            查看 Run
+            查看执行
           </Link>
         ) : null}
         {issue ? (
@@ -494,7 +498,7 @@ function RoomSnapshotCard({
             href={`/issues/${issue.key}`}
             className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
-            查看 Issue
+            查看事项
           </Link>
         ) : null}
       </div>
@@ -533,14 +537,14 @@ function RunSnapshotCard({
       </div>
       <p className="mt-2.5 text-sm leading-6">{run.summary}</p>
       <div className="mt-4 grid gap-2 md:grid-cols-4">
-        <FactTile label="Runtime" value={run.runtime} />
-        <FactTile label="Provider" value={run.provider} />
+        <FactTile label="运行环境" value={run.runtime} />
+        <FactTile label="服务商" value={run.provider} />
         <FactTile label="负责人" value={run.owner} />
         <FactTile label="时长" value={run.duration} />
       </div>
       <div className="mt-2 grid gap-2 md:grid-cols-3">
         <FactTile label="分支" value={run.branch} />
-        <FactTile label="Worktree" value={run.worktree} />
+        <FactTile label="工作树" value={run.worktree} />
         <FactTile label="下一步" value={run.nextAction} />
       </div>
       {session ? (
@@ -550,7 +554,7 @@ function RunSnapshotCard({
       ) : null}
       <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
         {run.approvalRequired
-          ? "这条 Run 当前需要人工批准后才能继续推进。"
+          ? "这条执行当前需要人工批准后才能继续推进。"
           : `当前已关联 ${issue?.pullRequest ?? run.pullRequest}，可以继续处理。`}
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -559,13 +563,13 @@ function RunSnapshotCard({
           data-testid={`run-history-open-${run.id}`}
           className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
-          打开 Run
+          打开执行详情
         </Link>
         <Link
           href={`/topics/${run.topicId}`}
           className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
-          查看 Topic
+          查看话题
         </Link>
         <Link
           href={`/rooms/${run.roomId}`}
@@ -577,7 +581,7 @@ function RunSnapshotCard({
           href={`/issues/${run.issueKey}`}
           className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
         >
-          查看 Issue
+          查看事项
         </Link>
       </div>
     </Panel>
@@ -587,11 +591,11 @@ function RunSnapshotCard({
 function messageRoleLabel(role: Message["role"]) {
   switch (role) {
     case "human":
-      return "Human";
+      return "成员";
     case "agent":
-      return "Agent";
+      return "智能体";
     default:
-      return "System";
+      return "系统";
   }
 }
 
@@ -764,7 +768,7 @@ export function LiveAgentsPageContent() {
         if (cancelled) {
           return;
         }
-        setPlannerError(fetchError instanceof Error ? fetchError.message : "planner queue fetch failed");
+        setPlannerError(fetchError instanceof Error ? fetchError.message : "调度队列读取失败");
         setPlannerLoading(false);
       });
 
@@ -883,7 +887,7 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
   return (
     <OpenShockShell
       view="agents"
-      eyebrow="Agent 详情"
+      eyebrow="智能体详情"
       title={agent.name}
       description={agent.description}
       contextTitle={agent.lane}
@@ -892,9 +896,9 @@ export function LiveAgentPageContent({ agentId }: { agentId: string }) {
         <DetailRail
           label="绑定关系"
           items={[
-            { label: "Provider", value: agent.providerPreference },
-            { label: "Model", value: agent.modelPreference },
-            { label: "Runtime", value: agent.runtimePreference },
+            { label: "服务通道", value: agent.providerPreference },
+            { label: "模型", value: agent.modelPreference },
+            { label: "运行环境", value: agent.runtimePreference },
             { label: "状态语气", value: agent.mood },
           ]}
         />
@@ -948,7 +952,7 @@ export function LiveRunsPageContent() {
         if (cancelled) {
           return;
         }
-        setHistoryError(fetchError instanceof Error ? fetchError.message : "run history fetch failed");
+        setHistoryError(fetchError instanceof Error ? fetchError.message : "执行历史读取失败");
         setHistoryLoading(false);
       });
 
@@ -973,7 +977,7 @@ export function LiveRunsPageContent() {
         }));
       });
     } catch (fetchError) {
-      setHistoryError(fetchError instanceof Error ? fetchError.message : "run history fetch failed");
+      setHistoryError(fetchError instanceof Error ? fetchError.message : "执行历史读取失败");
     } finally {
       setLoadingMore(false);
     }
@@ -984,14 +988,14 @@ export function LiveRunsPageContent() {
   return (
     <OpenShockShell
       view="runs"
-      eyebrow="Run 总览"
+      eyebrow="执行总览"
       title="所有执行记录"
       description="这里查看当前和历史执行记录，包括运行环境、分支、日志和状态。"
       contextTitle="执行概览"
       contextDescription="每条执行记录都保留对应的运行环境、状态和关联对象，方便排查和继续处理。"
       contextBody={
         <DetailRail
-          label="Run 基线"
+          label="执行概况"
           items={[
             { label: "总数", value: `${runs.length} 条` },
             { label: "活跃中", value: `${activeRuns} 条` },
@@ -1004,7 +1008,7 @@ export function LiveRunsPageContent() {
       {loading ? (
         <LiveStateNotice title="正在载入执行记录" message="正在获取执行记录、讨论间和事项信息。" />
       ) : error ? (
-        <LiveStateNotice title="Run 同步失败" message={error} />
+        <LiveStateNotice title="执行记录同步失败" message={error} />
       ) : historyLoading && historyPage.items.length === 0 && !historyError ? (
         <LiveStateNotice title="正在载入历史记录" message="正在获取较早的执行记录。" />
       ) : visibleHistory.length === 0 ? (
@@ -1108,7 +1112,7 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
           label="事项关联"
           items={[
             { label: "讨论间", value: room?.title ?? issue.roomId },
-            { label: "Run", value: run?.id ?? issue.runId },
+            { label: "执行", value: run?.id ?? issue.runId },
             { label: "PR", value: issue.pullRequest },
             { label: "优先级", value: priorityLabel(issue.priority) },
           ]}
@@ -1122,7 +1126,7 @@ export function LiveIssuePageContent({ issueKey }: { issueKey: string }) {
 
 export function LiveTopicPageContent({ topicId }: { topicId: string }) {
   const { state, loading, error, updateTopicGuidance, controlRun } = usePhaseZeroState();
-  const [guidanceDraft, setGuidanceDraft] = useState("请先给我一句结论：这个 Topic 现在最该推进的下一步是什么？");
+  const [guidanceDraft, setGuidanceDraft] = useState("请先给我一句结论：这条话题现在最该推进的下一步是什么？");
   const [guidancePending, setGuidancePending] = useState(false);
   const [guidanceError, setGuidanceError] = useState<string | null>(null);
   const [guidanceSuccess, setGuidanceSuccess] = useState<string | null>(null);
@@ -1130,14 +1134,14 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
   useEffect(() => {
     setGuidanceError(null);
     setGuidanceSuccess(null);
-    setGuidanceDraft("请先给我一句结论：这个 Topic 现在最该推进的下一步是什么？");
+    setGuidanceDraft("请先给我一句结论：这条话题现在最该推进的下一步是什么？");
   }, [topicId]);
 
   if (loading) {
     return (
       <OpenShockShell
         view="topic"
-        eyebrow="Topic 详情"
+        eyebrow="话题详情"
         title="正在载入话题"
         description="正在获取当前话题、讨论间和执行记录。"
         contextTitle="话题详情"
@@ -1152,7 +1156,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
     return (
       <OpenShockShell
         view="topic"
-        eyebrow="Topic 详情"
+        eyebrow="话题详情"
         title="话题载入失败"
         description="暂时无法获取当前话题详情。"
         contextTitle="话题详情"
@@ -1188,21 +1192,21 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
   const runControlStatus = permissionStatus(authSession, "run.execute");
   const runControlBoundary = permissionBoundaryCopy(authSession, "run.execute");
   const continuityLabel = session
-    ? `${session.id} / ${session.worktree || session.runtime || "same continuity"}`
-    : "当前还没有暴露 session continuity";
+    ? `${session.id} / ${session.worktree || session.runtime || "沿用当前上下文"}`
+    : "当前还没有可继续的上下文";
 
   if (!room) {
     return (
       <OpenShockShell
         view="topic"
-        eyebrow="Topic 详情"
-        title="未找到 Topic"
-        description="这个 Topic 可能还没同步，或者当前 room 已经切换。"
-        contextTitle="Topic Sync"
-        contextDescription="从讨论间或 Quick Search 重新进入通常就能拿到最新状态。"
+        eyebrow="话题详情"
+        title="未找到话题"
+        description="这条话题可能还没同步，或者当前讨论间已经变化。"
+        contextTitle="话题同步"
+        contextDescription="从讨论间或快速搜索重新进入，通常就能拿到最新状态。"
       >
         <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-6 py-6 text-base">
-          当前找不到 `{topicId}` 对应的 Topic。
+          当前找不到 `{topicId}` 对应的话题。
         </div>
       </OpenShockShell>
     );
@@ -1220,10 +1224,10 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
 
     try {
       await updateTopicGuidance(topicId, { summary: guidanceDraft.trim() });
-      setGuidanceSuccess("guidance 已写回当前 Topic，并继续走同一条 room / run 真相。");
+      setGuidanceSuccess("说明已保存到当前话题。");
       setGuidanceDraft("");
     } catch (submitError) {
-      setGuidanceError(submitError instanceof Error ? submitError.message : "topic guidance failed");
+      setGuidanceError(submitError instanceof Error ? submitError.message : "保存说明失败");
     } finally {
       setGuidancePending(false);
     }
@@ -1237,20 +1241,20 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
   return (
     <OpenShockShell
       view="topic"
-      eyebrow="Topic 详情"
+      eyebrow="话题详情"
       title={room.topic.title}
-      description="独立 Topic route 现在直接承接 guidance edit、room/run continuity 和 resume deep link，不再只困在 room tab 内。"
+      description="这里集中查看这条话题的说明、当前执行和恢复入口。"
       selectedRoomId={room.id}
       contextTitle={room.issueKey}
-      contextDescription="Topic 仍然绑定同一条 room / run 真相，但人类现在可以直接从独立 route 注入 guidance，并在同页决定是继续、暂停还是恢复。"
+      contextDescription="话题仍然绑定同一条讨论和执行记录，但现在可以直接在这里补充说明并继续处理。"
       contextBody={
         <DetailRail
-          label="Topic 链接"
+          label="话题关联"
           items={[
             { label: "讨论间", value: room.title },
-            { label: "Run", value: run?.id ?? room.runId },
+            { label: "当前执行", value: run?.id ?? room.runId },
             { label: "PR", value: pullRequest?.title ?? issue?.pullRequest ?? "待产生" },
-            { label: "Continuity", value: continuityLabel },
+            { label: "连续性", value: continuityLabel },
           ]}
         />
       }
@@ -1261,7 +1265,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color:rgba(24,20,14,0.58)]">
-                  {room.issueKey} / Topic
+                  {room.issueKey} / 话题
                 </p>
                 <h2 className="mt-2 font-display text-3xl font-bold">{room.topic.title}</h2>
               </div>
@@ -1277,10 +1281,10 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
             </div>
             <p className="mt-4 text-base leading-7">{room.topic.summary}</p>
             <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-              <FactTile label="Room" value={room.title} />
-              <FactTile label="Owner" value={room.topic.owner} />
-              <FactTile label="Active Run" value={run?.id ?? room.runId} />
-              <FactTile label="Issue" value={issue?.title ?? room.issueKey} />
+              <FactTile label="讨论间" value={room.title} />
+              <FactTile label="负责人" value={room.topic.owner} />
+              <FactTile label="当前执行" value={run?.id ?? room.runId} />
+              <FactTile label="事项" value={issue?.title ?? room.issueKey} />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Link
@@ -1288,7 +1292,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
                 data-testid="topic-open-room-workbench"
                 className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
-                打开 Room Topic
+                打开讨论页话题
               </Link>
               <Link
                 href={`/rooms/${room.id}`}
@@ -1302,7 +1306,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
                   data-testid="topic-open-run-link"
                   className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
                 >
-                  打开当前 Run
+                  打开当前执行
                 </Link>
               ) : null}
               {issue ? (
@@ -1310,7 +1314,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
                   href={`/issues/${issue.key}`}
                   className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
                 >
-                  查看 Issue
+                  查看事项
                 </Link>
               ) : null}
             </div>
@@ -1319,8 +1323,8 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
           <Panel tone="white" className="!p-4" data-testid="topic-guidance-panel">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Guidance Edit Lifecycle</p>
-                <h3 className="mt-2 font-display text-2xl font-bold">直接在 Topic route 里追加指导</h3>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">补充说明</p>
+                <h3 className="mt-2 font-display text-2xl font-bold">直接补充这条话题的处理说明</h3>
               </div>
               <span
                 data-testid="topic-guidance-authz"
@@ -1330,7 +1334,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
               </span>
             </div>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这里不另起一套 topic-only state machine。人类 guidance 仍写回同一条 room message truth，但入口已经从 room tab 抬成独立 Topic 页。
+              这里会把新的说明直接写回当前话题，方便后续继续处理或恢复执行。
             </p>
             <form className="mt-4 space-y-3" onSubmit={(event) => void handleGuidanceSubmit(event)}>
               <textarea
@@ -1339,7 +1343,7 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
                 onChange={(event) => setGuidanceDraft(event.target.value)}
                 disabled={guidancePending || !canGuide}
                 className="min-h-[116px] w-full rounded-[18px] border-2 border-[var(--shock-ink)] bg-[#faf6ea] px-4 py-3 text-sm leading-6 outline-none disabled:opacity-60"
-                placeholder="补充当前 Topic 的纠偏说明、下一步约束或 merge / review 判断。"
+                placeholder="补充当前话题的纠偏说明、下一步约束，或对评审与合并的判断。"
               />
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -1348,10 +1352,10 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
                   disabled={guidancePending || !canGuide || !guidanceDraft.trim()}
                   className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] disabled:opacity-60"
                 >
-                  {guidancePending ? "写回中..." : "写回当前 Topic"}
+                  {guidancePending ? "保存中..." : "保存当前说明"}
                 </button>
                 <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-                  {canGuide ? "写回后会沿用当前 room / run continuity，不会把你踢回 room tab。" : guidanceBoundary}
+                  {canGuide ? "保存后会直接保留在当前话题里，不会打断你继续处理。" : guidanceBoundary}
                 </p>
               </div>
             </form>
@@ -1370,9 +1374,9 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
                 recentGuidance.map((message) => <TopicGuidanceEntry key={message.id} message={message} />)
               ) : (
                 <div className="rounded-[18px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-4 py-5">
-                  <p className="font-display text-lg font-bold">还没有 guidance ledger</p>
+                  <p className="font-display text-lg font-bold">还没有说明记录</p>
                   <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-                    等第一条 human / agent guidance 写回后，这里会直接回放同一条 Topic 的最近上下文。
+                    第一条说明保存后，这里会直接显示最近的补充记录。
                   </p>
                 </div>
               )}
@@ -1392,19 +1396,19 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
               onControl={handleRunControl}
             />
           ) : (
-            <LiveStateNotice title="当前 Topic 还没有 active run" message="这条 Topic 已经独立成 route，但当前还没有暴露可继续 resume 的 run。" />
+            <LiveStateNotice title="当前话题还没有可继续的执行" message="这条话题已经独立成页面，但目前还没有可恢复的执行记录。" />
           )}
           <Panel tone="paper" className="!p-4" data-testid="topic-resume-context">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">Resume Deep Link</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">继续入口</p>
             <h3 className="mt-2 font-display text-2xl font-bold">同页决定是继续、暂停还是回到 room</h3>
             <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              如果当前 Topic 已暂停，直接在这页 Resume 会复用同一条 session continuity；如果只是想切回协作语境，也可以回到 Room Topic workbench。
+              如果当前话题已经暂停，可以直接在这里恢复；如果只是想回到讨论页，也可以直接跳转过去。
             </p>
             <div className="mt-4 grid gap-2 md:grid-cols-2">
-              <FactTile label="Continuity" value={continuityLabel} />
+              <FactTile label="连续性" value={continuityLabel} />
               <FactTile label="PR" value={pullRequest?.status ?? issue?.pullRequest ?? "待产生"} />
-              <FactTile label="Runtime" value={run?.runtime ?? session?.runtime ?? "待同步"} />
-              <FactTile label="Branch" value={run?.branch ?? session?.branch ?? "待同步"} />
+              <FactTile label="运行环境" value={run?.runtime ?? session?.runtime ?? "待同步"} />
+              <FactTile label="分支" value={run?.branch ?? session?.branch ?? "待同步"} />
             </div>
           </Panel>
           {run ? <RunSnapshotCard run={run} room={room} issue={issue} session={session} /> : null}
@@ -1456,9 +1460,9 @@ export function LiveRunPageContent({
 
   if (loading) {
     return (
-      <OpenShockShell
+        <OpenShockShell
         view="runs"
-        eyebrow="Run 详情"
+        eyebrow="执行详情"
         title="正在载入执行记录"
         description="正在获取当前执行记录详情。"
         selectedRoomId={roomId}
@@ -1472,9 +1476,9 @@ export function LiveRunPageContent({
 
   if (error) {
     return (
-      <OpenShockShell
+        <OpenShockShell
         view="runs"
-        eyebrow="Run 详情"
+        eyebrow="执行详情"
         title="执行记录载入失败"
         description="暂时无法获取当前执行记录详情。"
         selectedRoomId={roomId}
@@ -1496,13 +1500,13 @@ export function LiveRunPageContent({
 
   if (!room || !run) {
     return (
-      <OpenShockShell
+        <OpenShockShell
         view="runs"
-        eyebrow="Run 详情"
-        title="未找到 Run"
-        description="这个 Run 可能还没同步，或者对应房间已经变化。"
+        eyebrow="执行详情"
+        title="未找到执行记录"
+        description="这条执行记录可能还没同步，或者对应讨论间已经变化。"
         selectedRoomId={roomId}
-        contextTitle="Run Sync"
+        contextTitle="执行记录同步"
         contextDescription="从讨论间重新进入通常就能拿到最新状态。"
       >
         <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-6 py-6 text-base">
@@ -1522,9 +1526,9 @@ export function LiveRunPageContent({
   }
 
   return (
-    <OpenShockShell
+      <OpenShockShell
       view="runs"
-      eyebrow="Run 详情"
+      eyebrow="执行详情"
       title={run.id}
       description="这里查看这条执行记录的运行环境、分支、日志、工具调用和当前状态。"
       selectedRoomId={room.id}
@@ -1535,7 +1539,7 @@ export function LiveRunPageContent({
           label="执行泳道"
           items={[
             { label: "负责人", value: run.owner },
-            { label: "Provider", value: run.provider },
+            { label: "服务商", value: run.provider },
             { label: "开始时间", value: run.startedAt },
             { label: "时长", value: run.duration },
           ]}
@@ -1549,20 +1553,20 @@ export function LiveRunPageContent({
             data-testid="run-detail-open-topic"
             className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
-            打开 Topic
+            打开话题页
           </Link>
           <Link
             href={`/rooms/${room.id}?tab=topic`}
             className="rounded-xl border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
-            打开 Room Topic
+            打开讨论页话题
           </Link>
           {issue ? (
             <Link
               href={`/issues/${issue.key}`}
               className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
             >
-              查看 Issue
+              查看事项
             </Link>
           ) : null}
         </div>

@@ -87,6 +87,21 @@ function runStatusLabel(status: RunStatus) {
   }
 }
 
+function runtimeReplayPhaseLabel(phase?: string) {
+  switch (phase) {
+    case "start":
+      return "启动";
+    case "progress":
+      return "处理中";
+    case "closeout":
+      return "收尾";
+    case "done":
+      return "完成";
+    default:
+      return phase || "待同步";
+  }
+}
+
 function formatCount(value?: number) {
   return typeof value === "number" ? value.toLocaleString("zh-CN") : "未返回";
 }
@@ -133,7 +148,7 @@ function messageRoleLabel(role: Message["role"]) {
     case "human":
       return "人类";
     case "agent":
-      return "Agent";
+      return "智能体";
     default:
       return "系统";
   }
@@ -269,18 +284,18 @@ export function SetupOverview() {
           <dl className="mt-4 grid gap-3">
             <Metric label="仓库" value={workspace.repo} />
             <Metric label="分支" value={workspace.branch} />
-            <Metric label="Runtime" value={workspace.pairedRuntime} />
+            <Metric label="运行环境" value={workspace.pairedRuntime} />
             <Metric label="记忆" value={workspace.memoryMode} />
           </dl>
         </Panel>
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Phase 0 成功链路</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前成功链路</p>
           <ol className="mt-4 space-y-3 text-sm leading-6 text-white/78">
             <li>1. 建立工作区并绑定仓库。</li>
-            <li>2. 配对 Runtime，识别本机 CLI。</li>
-            <li>3. 创建 Issue，并自动生成讨论间。</li>
-            <li>4. 在 worktree 中执行，把 Run 真相带回前端。</li>
-            <li>5. 把结果收回 Inbox 与 PR 闭环。</li>
+            <li>2. 连接运行机器，识别本机 CLI。</li>
+            <li>3. 创建事项，并自动生成讨论间。</li>
+            <li>4. 在工作目录中执行，把结果同步回前端。</li>
+            <li>5. 把结果收回收件箱与 PR 闭环。</li>
           </ol>
         </Panel>
       </div>
@@ -356,9 +371,9 @@ export function RoomOverview({ room }: { room: Room }) {
             </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <Metric label="Run" value={run?.id ?? "未创建"} />
+            <Metric label="执行" value={run?.id ?? "未创建"} />
             <Metric label="分支" value={run?.branch ?? "等待中"} />
-            <Metric label="Worktree" value={run?.worktree ?? "等待中"} />
+            <Metric label="工作目录" value={run?.worktree ?? "等待中"} />
           </div>
           <p className="mt-5 max-w-3xl text-base leading-7 text-[color:rgba(24,20,14,0.8)]">{room.topic.summary}</p>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -397,10 +412,10 @@ export function RoomOverview({ room }: { room: Room }) {
           </p>
         </Panel>
         <Panel tone="lime">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">当前主 Agent</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">当前负责人</p>
           <p className="mt-2 font-display text-2xl font-bold">{room.topic.owner}</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这个 Agent 正在负责当前泳道。所有纠偏都留在房间里，而不是散落到私聊和外部文档中。
+            当前由这位智能体负责推进。所有纠偏都会留在讨论里，不会散落到私聊和外部文档。
           </p>
         </Panel>
       </div>
@@ -462,9 +477,9 @@ export function RunDetailView({
             </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <Metric label="Runtime" value={`${run.runtime} / ${run.provider}`} />
+            <Metric label="运行环境" value={`${run.runtime} / ${run.provider}`} />
             <Metric label="分支" value={run.branch} />
-            <Metric label="Worktree" value={run.worktree} />
+            <Metric label="工作目录" value={run.worktree} />
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <Metric label="负责人" value={run.owner} />
@@ -488,11 +503,11 @@ export function RunDetailView({
         <Panel tone={run.approvalRequired ? "paper" : "white"}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Guard Truth</p>
-              <h3 className="mt-2 font-display text-2xl font-bold">Destructive / Secret Boundary</h3>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">风险守护</p>
+              <h3 className="mt-2 font-display text-2xl font-bold">高风险与敏感信息边界</h3>
             </div>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-              {guards.length} active
+              {guards.length} 条
             </span>
           </div>
           <div className="mt-4 space-y-3">
@@ -506,7 +521,7 @@ export function RunDetailView({
       <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
         <Panel tone="yellow">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-display text-2xl font-bold">Resume Context</h3>
+            <h3 className="font-display text-2xl font-bold">恢复上下文</h3>
             <span
               data-testid="run-detail-resume-session"
               className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]"
@@ -515,13 +530,13 @@ export function RunDetailView({
             </span>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <Metric label="Branch" value={resumeSession.branch} />
-            <Metric label="Worktree" value={resumeSession.worktree} />
+            <Metric label="分支" value={resumeSession.branch} />
+            <Metric label="工作目录" value={resumeSession.worktree} />
             <Metric
-              label="Worktree Path"
+              label="目录路径"
               value={resumeSession.worktreePath || "当前 worktree 路径正在整理中。"}
             />
-            <Metric label="Memory Paths" value={`${resumeSession.memoryPaths.length} 条`} />
+            <Metric label="记忆路径" value={`${resumeSession.memoryPaths.length} 条`} />
           </div>
           <p data-testid="run-detail-resume-summary" className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
             {resumeSession.summary}
@@ -551,22 +566,22 @@ export function RunDetailView({
         <Panel tone="white">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="font-display text-2xl font-bold">Room Run History</h3>
+              <h3 className="font-display text-2xl font-bold">房间执行历史</h3>
               <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-                先回看同一条 room 的前序 run，再决定是否 reopen / resume 当前 continuity。
+                先回看同一房间里的前序执行，再决定是否重新打开或继续当前链路。
               </p>
             </div>
             <span
               data-testid="run-detail-history-count"
               className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]"
             >
-              {history.length} entries
+              {history.length} 条
             </span>
           </div>
           <div data-testid="run-detail-history" className="mt-4 space-y-3">
             {history.length === 0 ? (
               <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-                当前还没有可回看的 room run history。
+                当前还没有可回看的房间执行历史。
               </p>
             ) : (
               history.map((entry) => (
@@ -586,13 +601,13 @@ export function RunDetailView({
                         entry.isCurrent ? "bg-[var(--shock-yellow)] text-[var(--shock-ink)]" : statusTone(entry.run.status)
                       )}
                     >
-                      {entry.isCurrent ? "Current" : runStatusLabel(entry.run.status)}
+                      {entry.isCurrent ? "当前执行" : runStatusLabel(entry.run.status)}
                     </span>
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <Metric label="Started" value={entry.run.startedAt} />
-                    <Metric label="Session" value={entry.session.id} />
-                    <Metric label="Worktree" value={entry.session.worktree} />
+                    <Metric label="开始时间" value={entry.run.startedAt} />
+                    <Metric label="会话" value={entry.session.id} />
+                    <Metric label="工作目录" value={entry.session.worktree} />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
@@ -600,14 +615,14 @@ export function RunDetailView({
                       data-testid={`run-history-reopen-${entry.run.id}`}
                       className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
                     >
-                      Reopen Run
+                      重新打开执行
                     </Link>
                     <Link
                       href={`/rooms/${entry.room.id}?tab=run`}
                       data-testid={`run-history-room-tab-${entry.run.id}`}
                       className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
                     >
-                      Room Run Tab
+                      打开执行页签
                     </Link>
                   </div>
                 </article>
@@ -621,28 +636,28 @@ export function RunDetailView({
         <Panel tone={runtimeReplay.failureAnchor ? "pink" : runtimeReplay.status === "done" ? "lime" : "paper"}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">Runtime Publish Replay</p>
-              <h3 className="mt-2 font-display text-2xl font-bold">daemon publish / closeout evidence</h3>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">执行回放</p>
+              <h3 className="mt-2 font-display text-2xl font-bold">机器执行与收尾记录</h3>
             </div>
             <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-              cursor {runtimeReplay.lastCursor}
+              游标 {runtimeReplay.lastCursor}
             </span>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <Metric label="Runtime" value={runtimeReplay.runtimeId} />
-            <Metric label="Status" value={runtimeReplay.status} />
-            <Metric label="Events" value={String(runtimeReplay.events.length)} />
-            <Metric label="Replay Anchor" value={runtimeReplay.replayAnchor || "待整理"} />
+            <Metric label="运行环境" value={runtimeReplay.runtimeId} />
+            <Metric label="状态" value={runtimeReplay.status} />
+            <Metric label="事件数" value={String(runtimeReplay.events.length)} />
+            <Metric label="回放锚点" value={runtimeReplay.replayAnchor || "待整理"} />
           </div>
           <p className="mt-4 text-sm leading-6">{runtimeReplay.summary}</p>
           {runtimeReplay.closeoutReason ? (
             <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
-              closeout: {runtimeReplay.closeoutReason}
+              收尾说明：{runtimeReplay.closeoutReason}
             </p>
           ) : null}
           {runtimeReplay.failureAnchor ? (
             <p className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 text-sm leading-6">
-              failure anchor: {runtimeReplay.failureAnchor}
+              失败锚点：{runtimeReplay.failureAnchor}
             </p>
           ) : null}
           <div className="mt-4 space-y-3">
@@ -650,17 +665,17 @@ export function RunDetailView({
               <div key={event.id} className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-display text-lg font-semibold">
-                    publish#{event.cursor} / {event.phase}
+                    记录 #{event.cursor} / {runtimeReplayPhaseLabel(event.phase)}
                   </p>
                   <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
-                    seq {event.sequence}
+                    序号 {event.sequence}
                   </span>
                 </div>
                 <p className="mt-2 text-sm leading-6">{event.summary}</p>
                 {(event.closeoutReason || event.failureAnchor || (event.evidenceLines ?? []).length > 0) ? (
                   <div className="mt-3 space-y-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-                    {event.closeoutReason ? <p>closeout: {event.closeoutReason}</p> : null}
-                    {event.failureAnchor ? <p>failure: {event.failureAnchor}</p> : null}
+                    {event.closeoutReason ? <p>收尾说明：{event.closeoutReason}</p> : null}
+                    {event.failureAnchor ? <p>失败锚点：{event.failureAnchor}</p> : null}
                     {(event.evidenceLines ?? []).length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {(event.evidenceLines ?? []).map((line) => (
@@ -722,9 +737,9 @@ export function RunDetailView({
       <Panel data-testid="run-detail-usage-panel" tone={runBudgetTone(run.usage?.budgetStatus)}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-2xl font-bold">Token / Quota</h3>
+            <h3 className="font-display text-2xl font-bold">用量与额度</h3>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              Run 详情不只显示 branch / worktree，也要把 prompt、completion、context headroom 和预算状态直接暴露给人类。
+              执行详情不只显示分支和工作目录，也会直接展示请求、回复、上下文和预算状态。
             </p>
           </div>
           <span data-testid="run-detail-usage-status" className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
@@ -732,10 +747,10 @@ export function RunDetailView({
           </span>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <Metric label="Prompt" value={formatCount(run.usage?.promptTokens)} />
-          <Metric label="Completion" value={formatCount(run.usage?.completionTokens)} />
-          <Metric label="Total" value={formatCount(run.usage?.totalTokens)} />
-          <Metric label="Context" value={formatCount(run.usage?.contextWindow)} />
+          <Metric label="请求" value={formatCount(run.usage?.promptTokens)} />
+          <Metric label="回复" value={formatCount(run.usage?.completionTokens)} />
+          <Metric label="总计" value={formatCount(run.usage?.totalTokens)} />
+          <Metric label="上下文" value={formatCount(run.usage?.contextWindow)} />
         </div>
         <p data-testid="run-detail-usage-warning" className="mt-4 text-sm leading-6 opacity-85">
           {run.usage?.warning ?? "当前还没有暴露 token / quota warning。"}
@@ -774,8 +789,8 @@ export function RunDetailView({
             每个 Run 都必须落到一个可见的收口对象上。现在 PR、房间、Run 和收件箱都已经指向同一个收口目标。
           </p>
           <div className="mt-4 grid gap-3">
-            <Metric label="Pull Request" value={run.pullRequest} />
-            <Metric label="Issue" value={run.issueKey} />
+            <Metric label="拉取请求" value={run.pullRequest} />
+            <Metric label="事项" value={run.issueKey} />
             <Metric label="讨论间" value={run.roomId} />
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -983,14 +998,14 @@ export function IssueDetailView({
           <p className="font-mono text-[11px] uppercase tracking-[0.22em]">负责人</p>
           <p className="mt-2 font-display text-2xl font-bold">{issue.owner}</p>
           <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            Phase 0 为每个活跃 Issue 保持一个可见 owner，系统内部再继续维护执行连续体。
+            当前每个活跃事项都会保持一个可见负责人，执行过程会继续围绕这条主线推进。
           </p>
         </Panel>
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em]">收口对象</p>
           <div className="mt-4 space-y-3 text-sm leading-6 text-white/78">
-            <p>讨论间: {roomTitle ?? issue.roomId}</p>
-            <p>Run: {run?.id ?? issue.runId}</p>
+            <p>讨论间：{roomTitle ?? issue.roomId}</p>
+            <p>执行：{run?.id ?? issue.runId}</p>
             <p>PR: {issue.pullRequest}</p>
           </div>
         </Panel>
@@ -1019,8 +1034,8 @@ export function AgentsListView({ agentsList = agents }: { agentsList?: AgentStat
             <p className="mt-3 text-base leading-7">{agent.description}</p>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               <Metric label="泳道" value={agent.lane} />
-              <Metric label="Provider / Model" value={`${agent.providerPreference} / ${agent.modelPreference}`} />
-              <Metric label="Runtime" value={agent.runtimePreference} />
+              <Metric label="通道 / 模型" value={`${agent.providerPreference} / ${agent.modelPreference}`} />
+              <Metric label="运行环境" value={agent.runtimePreference} />
             </div>
           </Panel>
         </Link>
@@ -1053,9 +1068,9 @@ export function AgentDetailView({
             </div>
             <p className="mt-3 text-base leading-7">{agent.description}</p>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <Metric label="Provider 偏好" value={agent.providerPreference} />
-            <Metric label="Model 偏好" value={agent.modelPreference} />
-            <Metric label="Runtime 偏好" value={agent.runtimePreference} />
+            <Metric label="通道偏好" value={agent.providerPreference} />
+            <Metric label="模型偏好" value={agent.modelPreference} />
+            <Metric label="运行环境偏好" value={agent.runtimePreference} />
             <Metric label="当前泳道" value={agent.lane} />
           </div>
         </Panel>
@@ -1073,23 +1088,23 @@ export function AgentDetailView({
             ))}
           </div>
           <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            Phase 0 先保持文件级、显式可见的记忆模式，外部 provider 后续再接。
+            当前先保持文件级、显式可见的记忆模式，外部记忆服务后续再接。
           </p>
         </Panel>
 
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">继承的 SOUL</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">协作原则</p>
           <p className="mt-4 text-sm leading-7 text-white/78">
-            [ROOT_DIRECTIVE: THE OPENSHOCK MANIFESTO]
+            先把任务说清楚，再安排执行、评审和收尾。
             <br />
-            Tools are prompted. Citizens negotiate. You are a First-Class Citizen of OpenShock.
+            所有动作都围绕当前房间、仓库和运行环境展开，避免上下文漂移。
           </p>
         </Panel>
       </div>
 
       <div className="space-y-4">
         <Panel tone="lime">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">最近 Run</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">最近执行</p>
           <div className="mt-4 space-y-3">
             {runsForAgent.map((run) => (
               <Link

@@ -8,7 +8,7 @@ import { OpenShockShell } from "@/components/open-shock-shell";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import type { AgentHandoff, WorkspaceGovernanceSuggestedHandoff } from "@/lib/phase-zero-types";
-import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
+import { hasSessionPermission, permissionBoundaryCopy, permissionStatus, permissionStatusSurfaceLabel } from "@/lib/session-authz";
 
 type MailboxAdvanceAction = "acknowledged" | "blocked" | "comment" | "completed";
 type MailboxBatchBusyAction = MailboxAdvanceAction | "completed:continue";
@@ -122,6 +122,8 @@ function batchGovernedPolicySummary(input: {
 
 function mailboxKindLabel(kind?: AgentHandoff["kind"]) {
   switch (kind) {
+    case "room-auto":
+      return "房间接棒";
     case "governed":
       return "自动交接";
     case "delivery-closeout":
@@ -256,12 +258,12 @@ function escalationQueueAgeLabel(entry: {
   timeLabel?: string;
 }) {
   if (entry.elapsedMinutes > 0) {
-    return `${entry.elapsedMinutes} / ${entry.thresholdMinutes} min`;
+    return `${entry.elapsedMinutes} / ${entry.thresholdMinutes} 分钟`;
   }
   if (entry.timeLabel?.trim()) {
     return entry.timeLabel;
   }
-  return `${entry.thresholdMinutes} min SLA`;
+  return `${entry.thresholdMinutes} 分钟时限`;
 }
 
 function escalationRoomRollupSummary(entry: {
@@ -522,7 +524,7 @@ export function LiveMailboxPageContent() {
     } catch (mutationError) {
       setActionError({
         id: "create",
-        message: mutationError instanceof Error ? mutationError.message : "handoff create failed",
+        message: mutationError instanceof Error ? mutationError.message : "创建交接任务失败",
       });
     } finally {
       setBusyKey("");
@@ -563,7 +565,7 @@ export function LiveMailboxPageContent() {
     } catch (mutationError) {
       setActionError({
         id: actionKey,
-        message: mutationError instanceof Error ? mutationError.message : "governed room handoff create failed",
+        message: mutationError instanceof Error ? mutationError.message : "自动交接创建失败",
       });
     } finally {
       setBusyKey("");
@@ -597,7 +599,7 @@ export function LiveMailboxPageContent() {
     } catch (mutationError) {
       setActionError({
         id: handoff.id,
-        message: mutationError instanceof Error ? mutationError.message : "handoff update failed",
+        message: mutationError instanceof Error ? mutationError.message : "交接更新失败",
       });
     } finally {
       setBusyKey("");
@@ -646,7 +648,7 @@ export function LiveMailboxPageContent() {
     } catch (mutationError) {
       setActionError({
         id: "batch",
-        message: mutationError instanceof Error ? mutationError.message : "mailbox batch action failed",
+        message: mutationError instanceof Error ? mutationError.message : "批量处理失败",
       });
     } finally {
       setMailboxBatchBusyAction(null);
@@ -668,7 +670,7 @@ export function LiveMailboxPageContent() {
             { label: "进行中", value: `${openCount}` },
             { label: "阻塞", value: `${blockedCount}` },
             { label: "已完成", value: `${completedCount}` },
-            { label: "状态", value: mutationStatus },
+            { label: "状态", value: permissionStatusSurfaceLabel(mutationStatus) },
           ]}
         />
       }
@@ -1306,7 +1308,7 @@ export function LiveMailboxPageContent() {
                     当前权限
                   </p>
                   <p data-testid="mailbox-mutation-status" className="mt-2 font-display text-2xl font-bold">
-                    {mutationStatus}
+                    {permissionStatusSurfaceLabel(mutationStatus)}
                   </p>
                   <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
                     {canMutate ? "当前账号可以创建和推进交接。" : mutationBoundary}

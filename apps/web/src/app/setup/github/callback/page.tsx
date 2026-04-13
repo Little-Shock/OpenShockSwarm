@@ -162,7 +162,7 @@ function GitHubInstallationCallbackContent() {
 				<section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-yellow)]">
 					<p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">同步结果</p>
 					<h2 className="mt-2 font-display text-3xl font-bold">
-						{phase === "success" ? "GitHub 安装回跳已接住" : phase === "error" ? "GitHub 安装回跳失败" : "正在同步 GitHub 真值"}
+						{phase === "success" ? "GitHub 安装回跳已接住" : phase === "error" ? "GitHub 安装回跳失败" : "正在同步 GitHub 设置"}
 					</h2>
 					<p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">{message}</p>
 
@@ -212,7 +212,7 @@ function GitHubInstallationCallbackFallback() {
 		>
 			<section className="rounded-[28px] border-2 border-[var(--shock-ink)] bg-white p-5 shadow-[6px_6px_0_0_var(--shock-yellow)]">
 				<p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">同步结果</p>
-				<h2 className="mt-2 font-display text-3xl font-bold">正在同步 GitHub 真值</h2>
+				<h2 className="mt-2 font-display text-3xl font-bold">正在同步 GitHub 设置</h2>
 				<p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
 					正在等待回跳参数，并准备提交安装完成后的回流。
 				</p>

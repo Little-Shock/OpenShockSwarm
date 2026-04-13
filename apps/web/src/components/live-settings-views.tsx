@@ -18,6 +18,7 @@ import {
 } from "@/lib/live-notifications";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { formatSandboxList, sandboxPolicyDraft, sandboxPolicySummary, sandboxProfileLabel } from "@/lib/sandbox-policy";
+import { permissionBoundaryCopy } from "@/lib/session-authz";
 import type {
   AgentStatus,
   ApprovalCenterItem,
@@ -97,14 +98,14 @@ function formatRetentionSummary(quota?: {
   if (!quota) {
     return "未返回";
   }
-  return `${quota.messageHistoryDays ?? 0}d 消息 / ${quota.runLogDays ?? 0}d Run / ${quota.memoryDraftDays ?? 0}d 草稿`;
+  return `${quota.messageHistoryDays ?? 0} 天消息 / ${quota.runLogDays ?? 0} 天运行记录 / ${quota.memoryDraftDays ?? 0} 天草稿`;
 }
 
 function formatWorkspaceUsageWindow(usage?: { totalTokens?: number; windowLabel?: string }) {
   if (!usage) {
     return "未返回";
   }
-  return `${formatCount(usage.totalTokens)} tokens / ${valueOrPlaceholder(usage.windowLabel, "窗口未返回")}`;
+  return `${formatCount(usage.totalTokens)} 令牌 / ${valueOrPlaceholder(usage.windowLabel, "时间范围未返回")}`;
 }
 
 const WORKSPACE_POLICY_OPTIONS: WorkspaceNotificationPolicy[] = ["critical", "all", "mute"];
@@ -128,17 +129,17 @@ const DELIVERY_DELEGATION_MODE_OPTIONS: Array<{
   {
     mode: "formal-handoff",
     value: "formal-handoff",
-    label: "final lane closeout 后自动创建 delegated closeout handoff，并把最后一棒继续挂进 Mailbox / Inbox ledger。",
+    label: "完成收尾后，自动创建一条交接任务，并继续放进交接箱和收件箱。",
   },
   {
     mode: "signal-only",
     value: "signal-only",
-    label: "final lane closeout 只派 delivery delegation signal；是否起 formal closeout handoff 由人类按 signal 决定。",
+    label: "完成收尾后只发出提醒，不自动创建交接任务，是否继续由人决定。",
   },
   {
     mode: "auto-complete",
     value: "auto-complete",
-    label: "final lane closeout 后直接把 delivery delegate 收口为 done，不额外创建 delegated closeout handoff，适合明确要自动收尾的团队。",
+    label: "完成收尾后直接标记结束，不额外创建交接任务，适合明确要自动收尾的团队。",
   },
 ];
 
@@ -199,7 +200,7 @@ function registrationLabel(state: "idle" | "registering" | "ready" | "blocked" |
 function preferenceLabel(preference: NotificationPreference | WorkspaceNotificationPolicy) {
   switch (preference) {
     case "all":
-      return "全部 live 事件";
+      return "全部通知";
     case "critical":
       return "仅高优先级";
     case "mute":
@@ -210,7 +211,7 @@ function preferenceLabel(preference: NotificationPreference | WorkspaceNotificat
 }
 
 function channelLabel(channel: NotificationChannel) {
-  return channel === "browser_push" ? "Browser Push" : "Email";
+  return channel === "browser_push" ? "浏览器通知" : "邮件";
 }
 
 function subscriberStatusLabel(status: NotificationSubscriberStatus) {
@@ -368,12 +369,12 @@ function normalizeDeliveryDelegationMode(value?: string): DeliveryDelegationMode
 
 function deliveryDelegationModeLabel(mode: DeliveryDelegationMode) {
   if (mode === "signal-only") {
-    return "signal only";
+    return "仅提醒";
   }
   if (mode === "auto-complete") {
-    return "auto complete";
+    return "自动结束";
   }
-  return "formal handoff";
+  return "创建交接";
 }
 
 function hasWorkspaceManagePermission(state: PhaseZeroState) {
@@ -392,7 +393,7 @@ function credentialStatusLabel(status: string | undefined) {
 function credentialUsageSummary(profile: CredentialProfile, state: PhaseZeroState) {
   const agentCount = state.agents.filter((agent) => (agent.credentialProfileIds ?? []).includes(profile.id)).length;
   const runCount = state.runs.filter((run) => (run.credentialProfileIds ?? []).includes(profile.id)).length;
-  return `${profile.workspaceDefault ? "workspace default" : "non-default"} · ${agentCount} agent · ${runCount} run`;
+  return `${profile.workspaceDefault ? "工作区默认" : "单独绑定"} · ${agentCount} 个智能体 · ${runCount} 次运行`;
 }
 
 function FactTile({
@@ -512,13 +513,13 @@ function notificationTemplateLabel(templateID: string | undefined, fallback?: st
   }
   switch (templateID) {
     case "auth_invite":
-      return "Invite";
+      return "邀请加入";
     case "auth_verify_email":
-      return "Verify Email";
+      return "邮箱验证";
     case "auth_password_reset":
-      return "Password Reset";
+      return "重置密码";
     case "auth_blocked_recovery":
-      return "Blocked Recovery Escalation";
+      return "恢复受阻升级";
     default:
       return valueOrPlaceholder(templateID, "未命名模板");
   }
@@ -543,7 +544,7 @@ function buildIdentityTemplateSummaries(
   >();
 
   const ensureTemplate = (templateID?: string, templateLabel?: string) => {
-    const id = valueOrPlaceholder(templateID, "untyped");
+    const id = valueOrPlaceholder(templateID, "未分类");
     const existing = templates.get(id);
     if (existing) {
       return existing;
@@ -594,10 +595,10 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
   const workspace = state.workspace;
   return (
     <DetailRail
-      label="Config Truth"
+      label="配置概览"
       items={[
         {
-          label: "Onboarding",
+          label: "引导",
           value: stateLoading
             ? "同步中"
             : stateError
@@ -605,7 +606,7 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
               : `${valueOrPlaceholder(state.workspace.onboarding.templateId, "未选模板")} / ${onboardingStatusLabel(state.workspace.onboarding.status)}`,
         },
         {
-          label: "Identity",
+          label: "身份",
           value: stateLoading
             ? "同步中"
             : stateError
@@ -613,33 +614,33 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
               : `${agentLabel(member?.preferences.preferredAgentId, state.agents)} / ${valueOrPlaceholder(member?.githubIdentity?.handle, "未绑 GitHub")}`,
         },
         {
-          label: "Plan",
+          label: "套餐",
           value: stateLoading
             ? "同步中"
             : stateError
               ? "读取失败"
-              : `${valueOrPlaceholder(workspace.plan, "未声明")} / ${quotaStatusLabel(workspace.quota?.status)} / ${formatQuotaCounter(workspace.quota?.usedAgents, workspace.quota?.maxAgents, "agents")}`,
+              : `${valueOrPlaceholder(workspace.plan, "未声明")} / ${quotaStatusLabel(workspace.quota?.status)} / ${formatQuotaCounter(workspace.quota?.usedAgents, workspace.quota?.maxAgents, "个智能体")}`,
         },
         {
-          label: "Retention",
+          label: "保留",
           value: stateLoading ? "同步中" : stateError ? "读取失败" : formatRetentionSummary(workspace.quota),
         },
         {
-          label: "Usage",
+          label: "用量",
           value: stateLoading
             ? "同步中"
             : stateError
               ? "读取失败"
-              : `${formatWorkspaceUsageWindow(workspace.usage)} / ${formatCount(workspace.usage?.messageCount)} msgs`,
+              : `${formatWorkspaceUsageWindow(workspace.usage)} / ${formatCount(workspace.usage?.messageCount)} 条消息`,
         },
         {
-          label: "Worker",
+          label: "投递",
           value: loading
             ? "同步中"
             : error
               ? "读取失败"
               : center.worker.ranAt
-                ? `${center.worker.delivered}/${center.worker.attempted} sent`
+                ? `${center.worker.delivered}/${center.worker.attempted} 已送达`
                 : "未执行",
         },
       ]}
@@ -686,16 +687,16 @@ function WorkspacePlanObservabilityPanel() {
       </p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <FactTile label="Plan" value={metricValue(valueOrPlaceholder(workspace.plan, "未声明"))} testID="settings-workspace-plan-value" />
+        <FactTile label="当前计划" value={metricValue(valueOrPlaceholder(workspace.plan, "未声明"))} testID="settings-workspace-plan-value" />
         <FactTile
-          label="Usage Window"
+          label="统计范围"
           value={metricValue(formatWorkspaceUsageWindow(usage))}
           testID="settings-workspace-usage-window"
         />
-        <FactTile label="Retention" value={metricValue(formatRetentionSummary(quota))} testID="settings-workspace-retention" />
+        <FactTile label="保留周期" value={metricValue(formatRetentionSummary(quota))} testID="settings-workspace-retention" />
         <FactTile
-          label="Usage Detail"
-          value={metricValue(`${formatCount(usage?.runCount)} runs / ${formatCount(usage?.messageCount)} msgs`)}
+          label="最近使用"
+          value={metricValue(`${formatCount(usage?.runCount)} 次执行 / ${formatCount(usage?.messageCount)} 条消息`)}
           testID="settings-workspace-usage-detail"
         />
       </div>
@@ -703,26 +704,26 @@ function WorkspacePlanObservabilityPanel() {
       <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
         <div className="grid gap-3">
           <StatusRow
-            label="Machines"
-            value={metricValue(formatQuotaCounter(quota?.usedMachines, quota?.maxMachines, "machines"))}
+            label="机器"
+            value={metricValue(formatQuotaCounter(quota?.usedMachines, quota?.maxMachines, "台"))}
             tone={metricTone(quotaCounterTone(quota?.usedMachines, quota?.maxMachines))}
             testID="settings-workspace-machines"
           />
           <StatusRow
-            label="Agents"
-            value={metricValue(formatQuotaCounter(quota?.usedAgents, quota?.maxAgents, "agents"))}
+            label="智能体"
+            value={metricValue(formatQuotaCounter(quota?.usedAgents, quota?.maxAgents, "个"))}
             tone={metricTone(quotaCounterTone(quota?.usedAgents, quota?.maxAgents))}
             testID="settings-workspace-agents"
           />
           <StatusRow
-            label="Channels"
-            value={metricValue(formatQuotaCounter(quota?.usedChannels, quota?.maxChannels, "channels"))}
+            label="频道"
+            value={metricValue(formatQuotaCounter(quota?.usedChannels, quota?.maxChannels, "个"))}
             tone={metricTone(quotaCounterTone(quota?.usedChannels, quota?.maxChannels))}
             testID="settings-workspace-channels"
           />
           <StatusRow
-            label="Rooms"
-            value={metricValue(formatQuotaCounter(quota?.usedRooms, quota?.maxRooms, "rooms"))}
+            label="讨论间"
+            value={metricValue(formatQuotaCounter(quota?.usedRooms, quota?.maxRooms, "个"))}
             tone={metricTone(quotaCounterTone(quota?.usedRooms, quota?.maxRooms))}
             testID="settings-workspace-rooms"
           />
@@ -730,26 +731,26 @@ function WorkspacePlanObservabilityPanel() {
 
         <div className="grid gap-3">
           <StatusRow
-            label="Workspace Usage"
-            value={metricValue(`${formatCount(usage?.totalTokens)} tokens / ${formatCount(usage?.runCount)} runs / ${formatCount(usage?.messageCount)} msgs`)}
+            label="工作区使用量"
+            value={metricValue(`${formatCount(usage?.totalTokens)} 令牌 / ${formatCount(usage?.runCount)} 次执行 / ${formatCount(usage?.messageCount)} 条消息`)}
             tone={metricTone(usageTone)}
             testID="settings-workspace-usage-summary"
           />
           <StatusRow
-            label="Last Refresh"
+            label="最近刷新"
             value={metricValue(formatTimestamp(usage?.refreshedAt))}
             tone="white"
             testID="settings-workspace-usage-refresh"
           />
           <StatusRow
-            label="Quota Warning"
-            value={metricValue(valueOrPlaceholder(quota?.warning, "当前还没有 quota warning。"))}
+            label="配额提醒"
+            value={metricValue(valueOrPlaceholder(quota?.warning, "当前没有配额提醒。"))}
             tone={metricTone(quotaTone)}
             testID="settings-workspace-quota-warning"
           />
           <StatusRow
-            label="Usage Warning"
-            value={metricValue(valueOrPlaceholder(usage?.warning, "当前还没有 usage warning。"))}
+            label="使用提醒"
+            value={metricValue(valueOrPlaceholder(usage?.warning, "当前没有使用提醒。"))}
             tone={metricTone(usageTone)}
             testID="settings-workspace-usage-warning"
           />
@@ -824,7 +825,7 @@ function WorkspaceDurableConfigPanel() {
       setDirty(false);
       setSuccess("工作区设置已保存。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "workspace config update failed");
+      setError(mutationError instanceof Error ? mutationError.message : "工作区设置保存失败");
     } finally {
       setPending(false);
     }
@@ -948,7 +949,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">sandbox profile</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">安全级别</span>
             <select
               data-testid="settings-workspace-sandbox-profile"
               value={sandboxProfile}
@@ -958,12 +959,12 @@ function WorkspaceDurableConfigPanel() {
               }}
               className="rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3"
             >
-              <option value="trusted">trusted</option>
-              <option value="restricted">restricted</option>
+              <option value="trusted">完全访问</option>
+              <option value="restricted">受限访问</option>
             </select>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">allowed hosts</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">允许访问域名</span>
             <input
               data-testid="settings-workspace-sandbox-allowed-hosts"
               value={allowedHosts}
@@ -976,7 +977,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">allowed commands</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">允许命令</span>
             <input
               data-testid="settings-workspace-sandbox-allowed-commands"
               value={allowedCommands}
@@ -989,7 +990,7 @@ function WorkspaceDurableConfigPanel() {
             />
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">allowed tools</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">允许工具</span>
             <input
               data-testid="settings-workspace-sandbox-allowed-tools"
               value={allowedTools}
@@ -1005,7 +1006,7 @@ function WorkspaceDurableConfigPanel() {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p data-testid="settings-workspace-onboarding-value" className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-            {onboardingStatusLabel(workspace.onboarding.status)} / {valueOrPlaceholder(workspace.onboarding.currentStep, "未声明 current step")}
+            {onboardingStatusLabel(workspace.onboarding.status)} / {valueOrPlaceholder(workspace.onboarding.currentStep, "未声明当前步骤")}
           </p>
           <button
             data-testid="settings-workspace-save"
@@ -1013,7 +1014,7 @@ function WorkspaceDurableConfigPanel() {
             disabled={pending}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "写回中..." : "写回 Workspace Truth"}
+            {pending ? "保存中..." : "保存工作区设置"}
           </button>
         </div>
 
@@ -1109,7 +1110,7 @@ function GovernanceTopologyPanel() {
       setDirty(false);
       setSuccess("团队协作流程已保存。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology update failed");
+      setError(mutationError instanceof Error ? mutationError.message : "团队协作流程保存失败");
     } finally {
       setPending(false);
     }
@@ -1140,7 +1141,7 @@ function GovernanceTopologyPanel() {
       setDirty(false);
       setSuccess("已恢复为模板默认设置。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "workspace governance topology reset failed");
+      setError(mutationError instanceof Error ? mutationError.message : "恢复默认团队模板失败");
     } finally {
       setPending(false);
     }
@@ -1154,7 +1155,7 @@ function GovernanceTopologyPanel() {
           <h2 className="mt-2 font-display text-3xl font-bold">配置团队角色和接力顺序</h2>
         </div>
         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-          {valueOrPlaceholder(workspace.governance.templateId, "blank-custom")}
+          {valueOrPlaceholder(workspace.governance.templateId, "未选择模板")}
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">
@@ -1162,7 +1163,7 @@ function GovernanceTopologyPanel() {
       </p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-4">
-        <FactTile label="Template" value={valueOrPlaceholder(workspace.governance.label, "未命名治理链")} />
+        <FactTile label="治理名称" value={valueOrPlaceholder(workspace.governance.label, "未命名治理链")} />
         <FactTile label="已配置角色" value={String(lanes.length)} testID="settings-governance-topology-count" />
         <FactTile
           label="当前顺序"
@@ -1316,7 +1317,7 @@ function GovernanceTopologyPanel() {
 
         {!canManage ? (
           <p className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 text-sm">
-            当前账号没有 `workspace.manage` 权限，所以这里只能查看、不能写回。
+            {permissionBoundaryCopy(state.auth.session, "workspace.manage")}
           </p>
         ) : null}
         {error ? (
@@ -1357,8 +1358,8 @@ function MemberPreferencePanel() {
   if (!member) {
     return (
       <Panel tone="paper">
-        <p className="font-display text-3xl font-bold">当前没有可写的成员真值</p>
-        <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">先建立 active session，再写回 preferred agent / github identity / start route。</p>
+        <p className="font-display text-3xl font-bold">还不能保存个人偏好</p>
+        <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">先建立当前会话，再保存常用智能体、默认入口和 GitHub 身份。</p>
       </Panel>
     );
   }
@@ -1376,9 +1377,9 @@ function MemberPreferencePanel() {
         githubHandle,
       });
       setDirty(false);
-      setSuccess("member preference truth 已写回 server，换设备后会继续读到同一份对象。");
+      setSuccess("成员偏好已保存，换设备后也会继续读取同一份设置。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "member preference update failed");
+      setError(mutationError instanceof Error ? mutationError.message : "成员偏好保存失败");
     } finally {
       setPending(false);
     }
@@ -1388,8 +1389,8 @@ function MemberPreferencePanel() {
     <Panel tone="paper">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">member durable truth</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">把 preferred agent / start route / github identity 绑回当前成员</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">成员偏好</p>
+          <h2 className="mt-2 font-display text-3xl font-bold">设置当前成员的常用智能体、默认入口和 GitHub 身份</h2>
         </div>
         <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
           {currentMember.email}
@@ -1398,12 +1399,12 @@ function MemberPreferencePanel() {
 
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <FactTile
-          label="Preferred Agent"
+          label="常用智能体"
           value={agentLabel(currentMember.preferences.preferredAgentId, state.agents)}
           testID="settings-member-preferred-agent-value"
         />
         <p className="hidden" data-testid="settings-member-preferred-agent-text">{agentLabel(currentMember.preferences.preferredAgentId, state.agents)}</p>
-        <FactTile label="Start Route" value={valueOrPlaceholder(currentMember.preferences.startRoute, "未声明")} testID="settings-member-start-route-value" />
+        <FactTile label="默认入口" value={valueOrPlaceholder(currentMember.preferences.startRoute, "未声明")} testID="settings-member-start-route-value" />
         <p className="hidden" data-testid="settings-member-start-route-text">{valueOrPlaceholder(currentMember.preferences.startRoute, "未声明")}</p>
         <FactTile label="GitHub" value={valueOrPlaceholder(currentMember.githubIdentity?.handle, "未绑定")} testID="settings-member-github-handle-value" />
         <p className="hidden" data-testid="settings-member-github-handle-text">{valueOrPlaceholder(currentMember.githubIdentity?.handle, "未绑定")}</p>
@@ -1412,7 +1413,7 @@ function MemberPreferencePanel() {
       <form onSubmit={handleSubmit} className="mt-5 grid gap-3 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
         <div className="grid gap-3 md:grid-cols-3">
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">preferred agent</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">常用智能体</span>
             <select
               data-testid="settings-member-preferred-agent"
               value={preferredAgentId}
@@ -1431,7 +1432,7 @@ function MemberPreferencePanel() {
             </select>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">start route</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">默认入口</span>
             <select
               data-testid="settings-member-start-route"
               value={startRoute}
@@ -1449,7 +1450,7 @@ function MemberPreferencePanel() {
             </select>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">github handle</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">GitHub 账号</span>
             <input
               data-testid="settings-member-github-handle"
               value={githubHandle}
@@ -1469,7 +1470,7 @@ function MemberPreferencePanel() {
             disabled={pending}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "写回中..." : "写回 Member Truth"}
+            {pending ? "保存中..." : "保存成员设置"}
           </button>
         </div>
 
@@ -1541,9 +1542,9 @@ function CredentialProfileCard({
       });
       setDirty(false);
       setSecretValue("");
-      setSuccess(secretValue.trim() ? "credential metadata 与 rotated secret 已写回。" : "credential metadata 已写回。");
+      setSuccess(secretValue.trim() ? "凭证说明和密钥已更新。" : "凭证说明已更新。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "credential profile update failed");
+      setError(mutationError instanceof Error ? mutationError.message : "凭据保存失败");
     } finally {
       setPending(false);
     }
@@ -1562,20 +1563,20 @@ function CredentialProfileCard({
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-4">
-        <FactTile label="Scope" value={profile.workspaceDefault ? "workspace default" : "scoped only"} testID={`settings-credential-workspace-default-${profile.id}`} />
-        <FactTile label="Bindings" value={credentialUsageSummary(profile, state)} testID={`settings-credential-usage-${profile.id}`} />
-        <FactTile label="Rotated" value={valueOrPlaceholder(formatTimestamp(profile.lastRotatedAt), "尚未写入")} />
-        <FactTile label="Last Used" value={valueOrPlaceholder(formatTimestamp(profile.lastUsedAt), "尚未消费")} />
+        <FactTile label="作用范围" value={profile.workspaceDefault ? "工作区默认" : "单独绑定"} testID={`settings-credential-workspace-default-${profile.id}`} />
+        <FactTile label="使用位置" value={credentialUsageSummary(profile, state)} testID={`settings-credential-usage-${profile.id}`} />
+        <FactTile label="最近轮换" value={valueOrPlaceholder(formatTimestamp(profile.lastRotatedAt), "尚未写入")} />
+        <FactTile label="最近使用" value={valueOrPlaceholder(formatTimestamp(profile.lastUsedAt), "尚未使用")} />
       </div>
 
       <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-        {valueOrPlaceholder(profile.summary, "当前 credential 还没补完整摘要。")} 当前只暴露 metadata；secret plaintext 不会回到 `/v1/state`。
+        {valueOrPlaceholder(profile.summary, "当前这条凭证还没有补齐说明。")} 这里只显示说明和状态，密钥明文不会返回到 `/v1/state`。
       </p>
 
       <form onSubmit={handleSubmit} className="mt-4 grid gap-3 rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">label</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">名称</span>
             <input
               data-testid={`settings-credential-label-${profile.id}`}
               value={label}
@@ -1588,7 +1589,7 @@ function CredentialProfileCard({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">secret kind</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">凭证类型</span>
             <input
               data-testid={`settings-credential-secret-kind-${profile.id}`}
               value={secretKind}
@@ -1601,7 +1602,7 @@ function CredentialProfileCard({
             />
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">summary</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">说明</span>
             <textarea
               value={summary}
               onChange={(event) => {
@@ -1613,7 +1614,7 @@ function CredentialProfileCard({
             />
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">rotate secret</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">更新密钥</span>
             <textarea
               data-testid={`settings-credential-rotate-secret-${profile.id}`}
               value={secretValue}
@@ -1622,7 +1623,7 @@ function CredentialProfileCard({
                 setDirty(true);
               }}
               disabled={!canEdit || pending}
-              placeholder="留空表示只改 metadata；填写则触发 secret rotate。"
+              placeholder="留空表示只更新说明；填写后会同步更新密钥。"
               className="min-h-[84px] rounded-[16px] border-2 border-[var(--shock-ink)] px-3 py-3 font-mono text-sm"
             />
           </label>
@@ -1638,7 +1639,7 @@ function CredentialProfileCard({
             }}
             disabled={!canEdit || pending}
           />
-          <span>设为 workspace default，让所有 run 至少继承这条 credential。</span>
+          <span>设为工作区默认值，让所有执行至少继承这条凭证。</span>
         </label>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -1648,7 +1649,7 @@ function CredentialProfileCard({
             disabled={!canEdit || pending}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "写回中..." : "更新 Credential"}
+            {pending ? "保存中..." : "保存凭证"}
           </button>
           {success ? <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{success}</span> : null}
           {error ? <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.92)]">{error}</span> : null}
@@ -1688,9 +1689,9 @@ function CredentialProfilesPanel() {
       setSecretKind("api-token");
       setSecretValue("");
       setWorkspaceDefault(false);
-      setSuccess("新 credential profile 已加密落库，并同步到 workspace / agent / run surfaces。");
+      setSuccess("新凭证已保存，并可在工作区、智能体和执行页中绑定使用。");
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "credential profile create failed");
+      setError(mutationError instanceof Error ? mutationError.message : "新凭据创建失败");
     } finally {
       setPending(false);
     }
@@ -1701,33 +1702,33 @@ function CredentialProfilesPanel() {
       <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-lime)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/72">credential profile / encrypted vault</p>
-            <h2 className="mt-2 font-display text-3xl font-bold">把 secret 从隐性环境依赖拉回可审计的 workspace truth</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/72">凭证管理</p>
+            <h2 className="mt-2 font-display text-3xl font-bold">把密钥从隐性环境依赖收回到可审计的工作区配置中</h2>
           </div>
           <span className="rounded-full border-2 border-white/70 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-            {state.credentials.length} profiles
+            {state.credentials.length} 条凭证
           </span>
         </div>
         <p className="mt-3 text-sm leading-6 text-white/80">
-          `#153` 当前只把 secret metadata 暴露到 settings / profile / run surfaces；payload 单独进 encrypted vault，不会经由 `/v1/state`、SSR 或 browser report 泄漏。
+          这里只显示凭证说明和使用状态；真正的密钥内容会单独加密保存，不会通过 `/v1/state`、服务端渲染或浏览器报告泄漏。
         </p>
       </Panel>
 
       <Panel tone="yellow">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">new credential profile</p>
-            <h3 className="mt-2 font-display text-3xl font-bold">新增一个可绑定到 workspace / agent / run 的 secret 轮廓</h3>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">新增凭证</p>
+            <h3 className="mt-2 font-display text-3xl font-bold">新增一条可绑定到工作区、智能体或执行页的凭证</h3>
           </div>
           <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-            {canEdit ? "workspace.manage" : "read only"}
+            {canEdit ? "可编辑" : "只读"}
           </span>
         </div>
 
         <form onSubmit={handleCreate} className="mt-5 grid gap-3 rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
           <div className="grid gap-3 md:grid-cols-2">
             <label className="grid gap-2 text-sm">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">label</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">名称</span>
               <input
                 data-testid="settings-credential-create-label"
                 value={label}
@@ -1737,7 +1738,7 @@ function CredentialProfilesPanel() {
               />
             </label>
             <label className="grid gap-2 text-sm">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">secret kind</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">凭证类型</span>
               <input
                 data-testid="settings-credential-create-secret-kind"
                 value={secretKind}
@@ -1747,7 +1748,7 @@ function CredentialProfilesPanel() {
               />
             </label>
             <label className="grid gap-2 text-sm md:col-span-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">summary</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">说明</span>
               <textarea
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}
@@ -1756,7 +1757,7 @@ function CredentialProfilesPanel() {
               />
             </label>
             <label className="grid gap-2 text-sm md:col-span-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">secret value</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">密钥内容</span>
               <textarea
                 data-testid="settings-credential-create-secret"
                 value={secretValue}
@@ -1775,7 +1776,7 @@ function CredentialProfilesPanel() {
               onChange={(event) => setWorkspaceDefault(event.target.checked)}
               disabled={!canEdit || pending}
             />
-            <span>创建后立即作为 workspace default 生效。</span>
+            <span>创建后立即设为工作区默认值。</span>
           </label>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -1785,7 +1786,7 @@ function CredentialProfilesPanel() {
               disabled={!canEdit || pending}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {pending ? "加密写入中..." : "Create Credential"}
+              {pending ? "加密保存中..." : "创建凭证"}
             </button>
             {success ? <span className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{success}</span> : null}
             {error ? <span className="text-sm leading-6 text-[color:rgba(163,37,28,0.92)]">{error}</span> : null}
@@ -1794,7 +1795,7 @@ function CredentialProfilesPanel() {
       </Panel>
 
       {state.credentials.length === 0 ? (
-        <EmptyState title="还没有 credential profile" message="先在这里创建第一条 encrypted secret，再去 Agent Profile 和 Run Detail 绑定实际作用域。" />
+        <EmptyState title="还没有凭证" message="先在这里创建第一条凭证，再到智能体档案和执行详情中绑定使用范围。" />
       ) : (
         state.credentials.map((profile) => (
           <CredentialProfileCard
@@ -1833,7 +1834,7 @@ function SettingsDisclosureSection({
     <Panel tone={tone}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Advanced</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">高级设置</p>
           <h2 className="mt-3 font-display text-3xl font-bold">{title}</h2>
           <p className="mt-3 text-sm leading-6 opacity-80">{summary}</p>
         </div>
@@ -1929,10 +1930,10 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
   );
   const browserSubscriberState = browserSubscriber?.status ?? currentBrowserSubscriberStatus(surface);
   const workerSummary = center.worker.ranAt
-    ? `${center.worker.delivered}/${center.worker.attempted} sent · ${center.worker.failed} failed`
+    ? `${center.worker.delivered}/${center.worker.attempted} 已送达 · ${center.worker.failed} 失败`
     : "尚未执行";
   const identityWorkerSummary = identityReceipts.length
-    ? `${identityReceipts.filter((receipt) => receipt.status === "sent").length}/${identityReceipts.length} sent`
+    ? `${identityReceipts.filter((receipt) => receipt.status === "sent").length}/${identityReceipts.length} 已送达`
     : "尚未执行";
 
   async function runAction(action: string, runner: () => Promise<void>) {
@@ -1953,7 +1954,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
         email: emailPolicyDraft,
       });
       setPolicyDirty(false);
-      setActionMessage("工作区 browser push / email 默认策略已写回 server。");
+      setActionMessage("工作区通知默认值已保存。");
     });
   }
 
@@ -1971,7 +1972,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       const nextSubscriber =
         payload.notifications.subscribers.find((subscriber) => subscriber.id === payload.subscriber.id) ?? payload.subscriber;
       setActionMessage(
-        `当前浏览器 subscriber 已同步：${subscriberStatusLabel(nextSubscriber.status)} · ${preferenceLabel(nextSubscriber.effectivePreference)}。`
+        `当前浏览器已接入通知：${subscriberStatusLabel(nextSubscriber.status)} · ${preferenceLabel(nextSubscriber.effectivePreference)}。`
       );
     });
   }
@@ -1982,14 +1983,14 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
         id: emailSubscriber?.id,
         channel: "email",
         target: emailTargetDraft.trim(),
-        label: state.auth.session.email && emailTargetDraft.trim() === state.auth.session.email ? "Current Session Email" : "Workspace Email",
+        label: state.auth.session.email && emailTargetDraft.trim() === state.auth.session.email ? "当前账号邮箱" : "工作区邮箱",
         preference: emailPreferenceDraft,
         status: "ready",
         source: "workspace-email",
       });
       setEmailDirty(false);
       setActionMessage(
-        `邮箱 subscriber 已同步：${payload.subscriber.target} · ${preferenceLabel(payload.subscriber.effectivePreference)}。`
+        `邮箱通知已保存：${payload.subscriber.target} · ${preferenceLabel(payload.subscriber.effectivePreference)}。`
       );
     });
   }
@@ -2005,8 +2006,8 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       );
       setActionMessage(
         shown > 0
-          ? `fanout 已执行：${payload.worker.delivered}/${payload.worker.attempted} sent，并在当前浏览器展示 ${shown} 条通知。`
-          : `fanout 已执行：${payload.worker.delivered}/${payload.worker.attempted} sent，失败 ${payload.worker.failed}。`
+          ? `通知已发送：${payload.worker.delivered}/${payload.worker.attempted} 条送达，并在当前浏览器展示 ${shown} 条通知。`
+          : `通知已发送：${payload.worker.delivered}/${payload.worker.attempted} 条送达，失败 ${payload.worker.failed} 条。`
       );
     });
   }
@@ -2015,25 +2016,25 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
     <div className="space-y-4">
       {notificationError ? (
         <Panel tone="pink">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Notification Contract Failed</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">通知加载失败</p>
           <p className="mt-3 text-base leading-7">当前 `/v1/notifications` 拉取失败：{notificationError}</p>
         </Panel>
       ) : null}
 
       {stateError ? (
         <Panel tone="pink">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">State Sync Failed</p>
-          <p className="mt-3 text-base leading-7">通知面还能继续改 policy / subscriber，但 `/v1/state` 当前拉取失败：{stateError}</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">状态同步失败</p>
+          <p className="mt-3 text-base leading-7">设置页部分内容暂时无法同步：{stateError}</p>
         </Panel>
       ) : null}
 
       <WorkspacePlanObservabilityPanel />
       <Panel tone="paper">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Core Settings</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">核心设置</p>
         <h2 className="mt-3 font-display text-4xl font-bold">先把 workspace 和当前成员的高频配置收在眼前</h2>
         <p className="mt-3 max-w-3xl text-base leading-7">
-          这一页默认只直出 plan / quota、onboarding / sandbox、preferred agent / start route。
-          治理拓扑、凭据与通知投递继续保留，但收进高级区，避免第一次进入就像 admin console。
+          这一页优先展示套餐额度、引导状态、运行环境、常用智能体和默认入口。
+          治理、凭据和通知仍然完整保留，但默认收进高级区，避免第一次进入就信息过载。
         </p>
       </Panel>
 
@@ -2041,8 +2042,8 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       <MemberPreferencePanel />
 
       <SettingsDisclosureSection
-        title="Governance Topology"
-        summary="团队 lane、delivery delegation policy 和跨页治理回放仍保留完整能力，但默认不抢占日常配置入口。"
+        title="治理编排"
+        summary="团队分工、交接方式和治理链路仍然完整保留，但默认不抢占日常配置入口。"
         testId="governance"
         tone="paper"
       >
@@ -2050,46 +2051,46 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       </SettingsDisclosureSection>
 
       <SettingsDisclosureSection
-        title="Credential Profiles"
-        summary="运行时 secret / scope / default profile 继续保留在这里，但默认折叠，避免把所有人都带进高风险配置面。"
+        title="凭据配置"
+        summary="运行凭据、作用范围和默认配置继续保留在这里，但默认折叠，避免把所有人都带进高风险设置。"
         testId="credentials"
       >
         <CredentialProfilesPanel />
       </SettingsDisclosureSection>
 
       <SettingsDisclosureSection
-        title="Notifications And Delivery"
-        summary="browser push、email subscriber、identity template chain 和 latest receipts 仍然完整保留，只是不再默认把整页变成通知工作台。"
+        title="通知与送达"
+        summary="浏览器通知、邮件通知、身份模板和最近发送结果仍然完整保留，但不再占满整页。"
         testId="notifications"
         tone="yellow"
       >
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
         <Panel tone="yellow">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Notification Sidecar</p>
-          <h2 className="mt-3 font-display text-4xl font-bold">通知策略继续作为 durable config 的旁路能力存在</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">通知概览</p>
+          <h2 className="mt-3 font-display text-4xl font-bold">在这里统一查看通知规则和发送情况</h2>
           <p className="mt-3 max-w-3xl text-base leading-7">
-            `#126` 把 workspace/member durable truth 拉回当前页之后，通知策略仍继续直接消费 `/v1/notifications`。它现在是 config contract 的一部分，但不再是假装代表整页主语义。
+            这里会集中展示浏览器通知、邮件通知和最近的发送结果，方便你直接确认哪些消息会被送达、哪些还需要处理。
           </p>
           <div className="mt-5 grid gap-3 md:grid-cols-4">
-            <FactTile label="Subscribers" value={notificationLoading ? "同步中" : String(center.subscribers.length)} testID="notification-subscribers-count" />
-            <FactTile label="Ready Deliveries" value={notificationLoading ? "同步中" : String(readyDeliveries)} testID="notification-delivery-ready-count" />
-            <FactTile label="Suppressed" value={notificationLoading ? "同步中" : String(suppressedDeliveries)} testID="notification-delivery-suppressed-count" />
-            <FactTile label="Worker" value={notificationLoading ? "同步中" : workerSummary} testID="notification-worker-summary" />
+            <FactTile label="接收端" value={notificationLoading ? "同步中" : String(center.subscribers.length)} testID="notification-subscribers-count" />
+            <FactTile label="待发送" value={notificationLoading ? "同步中" : String(readyDeliveries)} testID="notification-delivery-ready-count" />
+            <FactTile label="已静默" value={notificationLoading ? "同步中" : String(suppressedDeliveries)} testID="notification-delivery-suppressed-count" />
+            <FactTile label="发送结果" value={notificationLoading ? "同步中" : workerSummary} testID="notification-worker-summary" />
           </div>
         </Panel>
 
         <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Current Split</p>
-          <h2 className="mt-3 font-display text-3xl font-bold">默认策略、当前浏览器与 fanout 最新真值</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前状态</p>
+          <h2 className="mt-3 font-display text-3xl font-bold">默认规则、当前浏览器与最近发送结果</h2>
           <div className="mt-4 space-y-3 text-sm leading-6 text-white/82">
-            <p>browser push / email 默认值已经不再只是静态文案，而是 server policy。</p>
-            <p>fanout 最近一拍的 attempted / delivered / failed 与 explicit receipts 也都直接从 contract surface 读取。</p>
+            <p>浏览器通知和邮件通知的默认值会直接保存到服务端。</p>
+            <p>最近一次发送的尝试数、送达数和失败数也会在这里实时显示。</p>
           </div>
           <div className="mt-5 grid gap-3">
-            <StatusRow label="Workspace Browser Push" value={preferenceLabel(center.policy.browserPush)} tone="white" testID="notification-workspace-browser-policy" />
-            <StatusRow label="Workspace Email" value={preferenceLabel(center.policy.email)} tone="yellow" testID="notification-workspace-email-policy" />
-            <StatusRow label="Current Browser" value={`${subscriberStatusLabel(browserSubscriberState)} · ${preferenceLabel(browserSubscriber?.effectivePreference || preference)}`} tone="lime" testID="notification-current-browser-subscriber" />
-            <StatusRow label="Last Fanout" value={`${workerSummary} · ${formatTimestamp(center.worker.ranAt)}`} tone={center.worker.failed > 0 ? "pink" : center.worker.delivered > 0 ? "lime" : "white"} testID="notification-last-fanout" />
+            <StatusRow label="工作区浏览器通知" value={preferenceLabel(center.policy.browserPush)} tone="white" testID="notification-workspace-browser-policy" />
+            <StatusRow label="工作区邮件通知" value={preferenceLabel(center.policy.email)} tone="yellow" testID="notification-workspace-email-policy" />
+            <StatusRow label="当前浏览器" value={`${subscriberStatusLabel(browserSubscriberState)} · ${preferenceLabel(browserSubscriber?.effectivePreference || preference)}`} tone="lime" testID="notification-current-browser-subscriber" />
+            <StatusRow label="最近发送" value={`${workerSummary} · ${formatTimestamp(center.worker.ranAt)}`} tone={center.worker.failed > 0 ? "pink" : center.worker.delivered > 0 ? "lime" : "white"} testID="notification-last-fanout" />
           </div>
         </Panel>
       </div>
@@ -2097,31 +2098,30 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Identity Template Chain</p>
-            <h2 className="mt-3 font-display text-3xl font-bold">invite / verify / reset / blocked recovery 现在走同一套通知模板</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em]">身份通知模板</p>
+            <h2 className="mt-3 font-display text-3xl font-bold">邀请、验证、重置与恢复共用一套通知模板</h2>
           </div>
           <Link
             href="/access"
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--shock-ink)]"
           >
-            打开 Access
+            打开账号中心
           </Link>
         </div>
         <p className="mt-3 max-w-4xl text-sm leading-6 text-white/84">
-          身份恢复链不再停在 auth mutation 自己的局部成功。当前 `/v1/notifications` 会把 invite、邮箱验证、密码重置和跨设备 blocked
-          escalation 一起折进同一条 template / delivery truth，并把最新 fanout 回写到这里。
+          邀请、邮箱验证、密码重置和跨设备恢复都会统一出现在这里，方便你确认身份相关通知是否已经进入发送流程。
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          <FactTile label="Templates" value={String(identityTemplateSummaries.length)} testID="notification-identity-template-count" />
-          <FactTile label="Signals" value={String(identitySignals.length)} testID="notification-identity-signal-count" />
-          <FactTile label="Ready Deliveries" value={String(identityDeliveries.filter((delivery) => delivery.status === "ready").length)} testID="notification-identity-ready-count" />
-          <FactTile label="Latest Fanout" value={identityWorkerSummary} testID="notification-identity-worker-summary" />
+          <FactTile label="模板数" value={String(identityTemplateSummaries.length)} testID="notification-identity-template-count" />
+          <FactTile label="信号数" value={String(identitySignals.length)} testID="notification-identity-signal-count" />
+          <FactTile label="待发送" value={String(identityDeliveries.filter((delivery) => delivery.status === "ready").length)} testID="notification-identity-ready-count" />
+          <FactTile label="最近发送" value={identityWorkerSummary} testID="notification-identity-worker-summary" />
         </div>
         <div className="mt-5 space-y-3">
           {identityTemplateSummaries.length === 0 ? (
             <EmptyState
-              title="当前没有 identity template signal"
-              message="先在 /access 触发 invite、邮箱验证、密码重置或跨设备恢复阻塞，再回这里看统一 delivery truth。"
+              title="当前没有身份通知记录"
+              message="先到账号中心触发邀请、邮箱验证、密码重置或恢复流程，这里会自动出现对应记录。"
             />
           ) : (
             identityTemplateSummaries.map((template) => (
@@ -2137,13 +2137,13 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
                   <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">{template.id}</span>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <StatusRow label="Signals" value={String(template.signalCount)} tone="white" />
-                  <StatusRow label="Ready" value={String(template.readyCount)} tone={template.readyCount > 0 ? "lime" : "white"} />
-                  <StatusRow label="Blocked" value={String(template.blockedCount)} tone={template.blockedCount > 0 ? "pink" : "white"} />
-                  <StatusRow label="Last Worker Result" value={template.lastStatus} tone={template.lastStatus === "已送达" ? "lime" : template.lastStatus === "发送失败" ? "pink" : "yellow"} />
+                  <StatusRow label="信号数" value={String(template.signalCount)} tone="white" />
+                  <StatusRow label="待发送" value={String(template.readyCount)} tone={template.readyCount > 0 ? "lime" : "white"} />
+                  <StatusRow label="阻塞" value={String(template.blockedCount)} tone={template.blockedCount > 0 ? "pink" : "white"} />
+                  <StatusRow label="最近结果" value={template.lastStatus} tone={template.lastStatus === "已送达" ? "lime" : template.lastStatus === "发送失败" ? "pink" : "yellow"} />
                 </div>
                 <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                  latest worker attempt: {formatTimestamp(template.lastAttempt)}
+                  最近发送：{formatTimestamp(template.lastAttempt)}
                 </p>
               </article>
             ))
@@ -2153,14 +2153,14 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_1fr]">
         <Panel tone="paper">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Workspace Defaults</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">默认通知</p>
           <h3 className="mt-3 font-display text-3xl font-bold">通知默认策略</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            browser push 与 email 的默认偏好现在都会写回 server。subscriber 若仍为 `inherit`，这里就是它们的真实 effective preference。
+            浏览器通知和邮件通知的默认偏好都会写回服务端。接收端若选择“继承工作区默认值”，这里就是实际生效的规则。
           </p>
           <div className="mt-5 space-y-4">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Browser Push</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">浏览器通知</p>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 {WORKSPACE_POLICY_OPTIONS.map((option) => (
                   <PolicyButton
@@ -2179,7 +2179,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
             </div>
 
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Email</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">邮件通知</p>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 {WORKSPACE_POLICY_OPTIONS.map((option) => (
                   <PolicyButton
@@ -2207,21 +2207,21 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
             >
               {busyAction === "save-policy" ? "写入中..." : "保存默认值"}
             </button>
-            <StatusRow label="Policy Updated At" value={formatTimestamp(center.policy.updatedAt)} tone="white" />
+            <StatusRow label="最近更新时间" value={formatTimestamp(center.policy.updatedAt)} tone="white" />
           </div>
         </Panel>
 
         <Panel tone="lime">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Current Browser</p>
-          <h3 className="mt-3 font-display text-3xl font-bold">把当前浏览器接进 subscriber contract</h3>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前浏览器</p>
+          <h3 className="mt-3 font-display text-3xl font-bold">接入当前浏览器通知</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这里不再停在 permission / registration 展示层。当前浏览器现在有稳定 subscriber target，可接入 fanout，并把 sent receipts 直接显示成本地通知。
+            先授权通知，再启用浏览器接收，就能把发送到当前浏览器的消息直接显示为本地通知。
           </p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <StatusRow label="Permission" value={permissionLabel(surface.permission)} tone={surface.permission === "granted" ? "lime" : surface.permission === "denied" ? "pink" : "white"} testID="notification-browser-permission" />
-            <StatusRow label="Registration" value={surface.registrationScope ? `${registrationLabel(surface.registrationState)} · ${surface.registrationScope}` : registrationLabel(surface.registrationState)} tone={surface.registrationState === "ready" ? "lime" : surface.registrationState === "error" || surface.registrationState === "blocked" ? "pink" : "white"} testID="notification-browser-registration" />
-            <StatusRow label="Subscriber Target" value={subscriberTarget} tone="white" testID="notification-browser-target" />
-            <StatusRow label="Subscriber Status" value={subscriberStatusLabel(browserSubscriberState)} tone={toneForSubscriberStatus(browserSubscriberState)} testID="notification-browser-subscriber-status" />
+            <StatusRow label="权限" value={permissionLabel(surface.permission)} tone={surface.permission === "granted" ? "lime" : surface.permission === "denied" ? "pink" : "white"} testID="notification-browser-permission" />
+            <StatusRow label="注册状态" value={surface.registrationScope ? `${registrationLabel(surface.registrationState)} · ${surface.registrationScope}` : registrationLabel(surface.registrationState)} tone={surface.registrationState === "ready" ? "lime" : surface.registrationState === "error" || surface.registrationState === "blocked" ? "pink" : "white"} testID="notification-browser-registration" />
+            <StatusRow label="接收目标" value={subscriberTarget} tone="white" testID="notification-browser-target" />
+            <StatusRow label="接入状态" value={subscriberStatusLabel(browserSubscriberState)} tone={toneForSubscriberStatus(browserSubscriberState)} testID="notification-browser-subscriber-status" />
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {SUBSCRIBER_PREFERENCE_OPTIONS.map((option) => (
@@ -2257,12 +2257,12 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
               onClick={() =>
                 void runAction("register", async () => {
                   await registerBrowserSurface();
-                  setActionMessage("当前浏览器 service worker 已注册。");
+                  setActionMessage("当前浏览器通知接收已启用。");
                 })
               }
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:opacity-60"
             >
-              {busyAction === "register" ? "注册中..." : "注册接收面"}
+              {busyAction === "register" ? "启用中..." : "启用浏览器接收"}
             </button>
             <button
               type="button"
@@ -2271,7 +2271,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
               onClick={() => void handleConnectBrowserSubscriber()}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:opacity-60"
             >
-              {busyAction === "connect-browser" ? "同步中..." : "同步当前浏览器"}
+              {busyAction === "connect-browser" ? "接入中..." : "接入当前浏览器"}
             </button>
             <button
               type="button"
@@ -2280,12 +2280,12 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
               onClick={() =>
                 void runAction("browser-smoke", async () => {
                   await sendTestNotification();
-                  setActionMessage("本地 smoke notification 已发出。");
+                  setActionMessage("本地测试通知已发出。");
                 })
               }
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:opacity-60"
             >
-              {busyAction === "browser-smoke" ? "发送中..." : "本地 smoke"}
+              {busyAction === "browser-smoke" ? "发送中..." : "本地试发"}
             </button>
           </div>
           {surface.registrationError ? <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.78)]">{surface.registrationError}</p> : null}
@@ -2294,13 +2294,13 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.96fr)_1.04fr]">
         <Panel tone="white">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Email Delivery</p>
-          <h3 className="mt-3 font-display text-3xl font-bold">邮箱订阅者与 retry contract</h3>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">邮件通知</p>
+          <h3 className="mt-3 font-display text-3xl font-bold">保存邮件通知地址</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这里直接写入 email subscriber。invalid target 会显式失败，修正后可在同一 contract 面上看到 retry 转绿。
+            在这里填写接收邮箱。地址无效时会明确报错，修正后再次发送即可看到恢复正常。
           </p>
           <label className="mt-5 block">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">Email Target</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">邮箱地址</span>
             <input
               data-testid="notification-email-target-input"
               value={emailTargetDraft}
@@ -2328,10 +2328,10 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
             ))}
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <StatusRow label="Subscriber Status" value={emailSubscriber ? subscriberStatusLabel(emailSubscriber.status) : "未创建"} tone={emailSubscriber ? toneForSubscriberStatus(emailSubscriber.status) : "white"} testID="notification-email-subscriber-status" />
-            <StatusRow label="Effective Preference" value={emailSubscriber ? preferenceLabel(emailSubscriber.effectivePreference) : preferenceLabel(emailPreferenceDraft)} tone="yellow" testID="notification-email-effective-preference" />
-            <StatusRow label="Last Delivered" value={formatTimestamp(emailSubscriber?.lastDeliveredAt)} tone="white" testID="notification-email-last-delivered" />
-            <StatusRow label="Last Error" value={emailSubscriber?.lastError || "无"} tone={emailSubscriber?.lastError ? "pink" : "lime"} testID="notification-email-last-error" />
+            <StatusRow label="接入状态" value={emailSubscriber ? subscriberStatusLabel(emailSubscriber.status) : "未创建"} tone={emailSubscriber ? toneForSubscriberStatus(emailSubscriber.status) : "white"} testID="notification-email-subscriber-status" />
+            <StatusRow label="当前生效" value={emailSubscriber ? preferenceLabel(emailSubscriber.effectivePreference) : preferenceLabel(emailPreferenceDraft)} tone="yellow" testID="notification-email-effective-preference" />
+            <StatusRow label="最近送达" value={formatTimestamp(emailSubscriber?.lastDeliveredAt)} tone="white" testID="notification-email-last-delivered" />
+            <StatusRow label="最近错误" value={emailSubscriber?.lastError || "无"} tone={emailSubscriber?.lastError ? "pink" : "lime"} testID="notification-email-last-error" />
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <button
@@ -2341,7 +2341,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
               onClick={() => void handleSaveEmailSubscriber()}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:opacity-60"
             >
-              {busyAction === "save-email" ? "保存中..." : "保存邮箱订阅者"}
+              {busyAction === "save-email" ? "保存中..." : "保存邮箱地址"}
             </button>
             <button
               type="button"
@@ -2350,7 +2350,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
               onClick={() => void handleDispatchFanout()}
               className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:opacity-60"
             >
-              {busyAction === "fanout" ? "发送中..." : "执行 fanout"}
+              {busyAction === "fanout" ? "发送中..." : "立即发送通知"}
             </button>
           </div>
         </Panel>
@@ -2358,18 +2358,18 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
         <Panel tone="paper">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Subscriber Roster</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">接收列表</p>
               <h3 className="mt-3 font-display text-3xl font-bold">谁会收到哪类通知</h3>
             </div>
             <span className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]" data-testid="notification-roster-summary">
-              browser {browserDeliveryCount} · email {emailDeliveryCount} ready
+              浏览器 {browserDeliveryCount} · 邮件 {emailDeliveryCount} 待发送
             </span>
           </div>
           <div className="mt-5 space-y-3">
             {notificationLoading ? (
-              <EmptyState title="正在同步 subscriber truth" message="等待 `/v1/notifications` 返回 policy、subscribers、deliveries 与 worker last-run。" />
+              <EmptyState title="正在同步通知状态" message="正在读取通知规则、接收端、待发送内容和最近一次发送结果。" />
             ) : center.subscribers.length === 0 ? (
-              <EmptyState title="当前还没有 subscriber" message="先接入当前浏览器或保存邮箱订阅者，再执行 fanout。" />
+              <EmptyState title="当前还没有接收端" message="先接入当前浏览器或保存邮箱地址，再发送通知。" />
             ) : (
               center.subscribers.map((subscriber) => {
                 const subscriberDeliveries = center.deliveries.filter((delivery) => delivery.subscriberId === subscriber.id);
@@ -2388,14 +2388,14 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
                     </div>
                     <p className="mt-3 break-all text-sm leading-6">{subscriber.target}</p>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <StatusRow label="Status" value={subscriberStatusLabel(subscriber.status)} tone={toneForSubscriberStatus(subscriber.status)} />
-                      <StatusRow label="Effective Preference" value={preferenceLabel(subscriber.effectivePreference)} tone="yellow" />
-                      <StatusRow label="Ready Deliveries" value={String(readyForSubscriber)} tone="lime" />
-                      <StatusRow label="Last Delivered" value={formatTimestamp(subscriber.lastDeliveredAt)} tone="white" />
+                      <StatusRow label="状态" value={subscriberStatusLabel(subscriber.status)} tone={toneForSubscriberStatus(subscriber.status)} />
+                      <StatusRow label="当前生效" value={preferenceLabel(subscriber.effectivePreference)} tone="yellow" />
+                      <StatusRow label="待发送" value={String(readyForSubscriber)} tone="lime" />
+                      <StatusRow label="最近送达" value={formatTimestamp(subscriber.lastDeliveredAt)} tone="white" />
                     </div>
                     {subscriber.lastError ? (
                       <p className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm leading-6 text-white">
-                        last error: {subscriber.lastError}
+                        最近错误：{subscriber.lastError}
                       </p>
                     ) : null}
                   </article>
@@ -2410,18 +2410,18 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
         <Panel tone="white">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Latest Receipts</p>
-              <h3 className="mt-3 font-display text-3xl font-bold">fanout 最近一拍</h3>
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">最近发送结果</p>
+              <h3 className="mt-3 font-display text-3xl font-bold">最近一次发送</h3>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
-              <FactTile label="Attempted" value={String(center.worker.attempted)} testID="notification-worker-attempted" />
-              <FactTile label="Delivered" value={String(center.worker.delivered)} testID="notification-worker-delivered" />
-              <FactTile label="Failed" value={String(center.worker.failed)} testID="notification-worker-failed" />
+              <FactTile label="尝试" value={String(center.worker.attempted)} testID="notification-worker-attempted" />
+              <FactTile label="送达" value={String(center.worker.delivered)} testID="notification-worker-delivered" />
+              <FactTile label="失败" value={String(center.worker.failed)} testID="notification-worker-failed" />
             </div>
           </div>
           <div className="mt-5 space-y-3">
             {workerReceipts.length === 0 ? (
-              <EmptyState title="还没有 worker receipts" message="执行一次 fanout 后，这里会直接显示 sent / failed、payload path 和 retry 后的最新结果。" />
+              <EmptyState title="还没有发送记录" message="发送一次通知后，这里会显示送达、失败以及记录文件。" />
             ) : (
               workerReceipts.map((receipt) => {
                 const delivery = center.deliveries.find((item) => item.id === receipt.deliveryId);
@@ -2448,20 +2448,20 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
                       <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">{formatTimestamp(receipt.attemptedAt)}</span>
                     </div>
                     <h4 className="mt-3 font-display text-2xl font-bold">{delivery?.title || receipt.deliveryId}</h4>
-                    <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{delivery?.body || subscriber?.target || "通知 payload"}</p>
+                    <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">{delivery?.body || subscriber?.target || "通知内容"}</p>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <StatusRow label="Subscriber" value={subscriber?.label || receipt.subscriberId} tone="white" />
-                      <StatusRow label="Target" value={subscriber?.target || "n/a"} tone="white" />
-                      <StatusRow label="Template" value={delivery?.templateLabel || receipt.templateLabel || "未命名模板"} tone="yellow" />
-                      <StatusRow label="Signal" value={delivery?.signalKind || receipt.signalKind || receipt.inboxItemId} tone="yellow" />
-                      <StatusRow label="Href" value={delivery?.href || receipt.href || "n/a"} tone="white" />
+                      <StatusRow label="接收端" value={subscriber?.label || receipt.subscriberId} tone="white" />
+                      <StatusRow label="目标" value={subscriber?.target || "无"} tone="white" />
+                      <StatusRow label="模板" value={delivery?.templateLabel || receipt.templateLabel || "未命名模板"} tone="yellow" />
+                      <StatusRow label="信号" value={delivery?.signalKind || receipt.signalKind || receipt.inboxItemId} tone="yellow" />
+                      <StatusRow label="链接" value={delivery?.href || receipt.href || "无"} tone="white" />
                     </div>
                     {receipt.payloadPath ? (
-                      <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">payload: {receipt.payloadPath}</p>
+                      <p className="mt-4 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">记录文件：{receipt.payloadPath}</p>
                     ) : null}
                     {receipt.error ? (
                       <p className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-3 text-sm leading-6 text-white">
-                        error: {receipt.error}
+                        错误：{receipt.error}
                       </p>
                     ) : null}
                   </article>
@@ -2474,32 +2474,32 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
         <Panel tone="paper">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">Source Signals</p>
-              <h3 className="mt-3 font-display text-3xl font-bold">当前会被路由的 signal truth</h3>
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em]">来源信号</p>
+              <h3 className="mt-3 font-display text-3xl font-bold">当前待发送的通知来源</h3>
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/inbox"
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
-                打开 Inbox
+                打开收件箱
               </Link>
               <Link
                 href="/access"
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
-                打开 Access
+                打开账号中心
               </Link>
             </div>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <FactTile label="Approvals" value={String(center.approvalCenter.approvalCount)} />
-            <FactTile label="Reviews" value={String(center.approvalCenter.reviewCount)} />
-            <FactTile label="Blocks" value={String(center.approvalCenter.blockedCount)} />
+            <FactTile label="待批准" value={String(center.approvalCenter.approvalCount)} />
+            <FactTile label="待评审" value={String(center.approvalCenter.reviewCount)} />
+            <FactTile label="阻塞" value={String(center.approvalCenter.blockedCount)} />
           </div>
           <div className="mt-5 space-y-3">
             {routedSignals.length === 0 ? (
-              <EmptyState title="当前没有待路由信号" message="这表示没有新的 approval / review / identity recovery signal 需要触达。" />
+              <EmptyState title="当前没有待发送信号" message="说明目前没有新的批准、评审或身份恢复通知需要触达。" />
             ) : (
               routedSignals.map((item) => (
                 <article

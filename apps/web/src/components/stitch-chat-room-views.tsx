@@ -365,6 +365,7 @@ function renderMarkedMessage(text: string) {
 
 function messageBadgeTone(message: Message) {
   if (message.tone === "blocked") return "bg-[var(--shock-pink)] text-white";
+  if (message.tone === "paper") return "bg-[var(--shock-paper)] text-[color:rgba(24,20,14,0.72)]";
   if (message.role === "agent") return "bg-[var(--shock-cyan)]";
   if (message.role === "human") return "bg-[var(--shock-yellow)]";
   return "bg-white";
@@ -374,6 +375,34 @@ function messageGlyph(message: Message) {
   if (message.role === "human") return "人";
   if (message.role === "agent") return "智";
   return "系";
+}
+
+function messageAvatarLabel(message: Message) {
+  if (message.role === "system") {
+    return "系统";
+  }
+  const trimmed = message.speaker.trim();
+  return trimmed ? trimmed.slice(0, 2) : messageGlyph(message);
+}
+
+function messageAvatarTone(message: Message) {
+  if (message.tone === "blocked") return "bg-[var(--shock-pink)] text-white";
+  if (message.tone === "paper") return "bg-[var(--shock-paper)] text-[var(--shock-ink)]";
+  if (message.role === "agent") return "bg-[var(--shock-cyan)] text-[var(--shock-ink)]";
+  return "bg-[var(--shock-yellow)] text-[var(--shock-ink)]";
+}
+
+function messageBubbleTone(message: Message) {
+  if (message.tone === "blocked") {
+    return "border-[var(--shock-pink)] bg-[#fff1f4]";
+  }
+  if (message.tone === "paper") {
+    return "border-[rgba(24,20,14,0.12)] bg-[var(--shock-paper)]";
+  }
+  if (message.role === "agent") {
+    return "border-[rgba(24,20,14,0.16)] bg-white";
+  }
+  return "border-[rgba(24,20,14,0.16)] bg-[#fff5d6]";
 }
 
 type ReplyTarget = {
@@ -450,6 +479,25 @@ function parseRoomWorkbenchTab(value?: string | null): RoomWorkbenchTab {
       return value;
     default:
       return "chat";
+  }
+}
+
+type RoomRailSummaryTab = "overview" | "delivery" | "system";
+
+const ROOM_RAIL_SUMMARY_TAB_LABEL: Record<RoomRailSummaryTab, string> = {
+  overview: "概览",
+  delivery: "交付",
+  system: "系统",
+};
+
+function railSummaryTabForWorkbench(tab: RoomWorkbenchTab): RoomRailSummaryTab {
+  switch (tab) {
+    case "pr":
+      return "delivery";
+    case "run":
+      return "system";
+    default:
+      return "overview";
   }
 }
 
@@ -763,7 +811,7 @@ function buildReplyTarget(message: Message): ReplyTarget {
   return {
     messageId: message.id,
     speaker: message.speaker,
-    excerpt: messageExcerpt(message.message, 56),
+    excerpt: messageExcerpt(sanitizeRoomVisibleText(message.message), 56),
   };
 }
 
@@ -773,6 +821,52 @@ function initialThreadMessageId(messages: Message[], threadMap: ThreadMap) {
 }
 
 const MESSAGE_SENDING_PLACEHOLDER = "正在生成回复...";
+const ROOM_HANDOFF_DIRECTIVE_PREFIX = "OPENSHOCK_HANDOFF:";
+const ROOM_HANDOFF_DIRECTIVE_HEAD = "OPENSHOCK";
+
+function stripRoomDirectiveLines(value: string, hidePartialTail: boolean) {
+  if (!value) {
+    return "";
+  }
+
+  const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const hasTrailingNewline = normalized.endsWith("\n");
+  const lines = normalized.split("\n");
+  const visibleLines: string[] = [];
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      visibleLines.push(line);
+      return;
+    }
+
+    const upper = trimmed.toUpperCase();
+    const isDirective = upper.startsWith(ROOM_HANDOFF_DIRECTIVE_PREFIX);
+    const isPartialDirectiveTail =
+      hidePartialTail &&
+      index === lines.length - 1 &&
+      !hasTrailingNewline &&
+      upper.startsWith(ROOM_HANDOFF_DIRECTIVE_HEAD) &&
+      ROOM_HANDOFF_DIRECTIVE_PREFIX.startsWith(upper);
+
+    if (isDirective || isPartialDirectiveTail) {
+      return;
+    }
+
+    visibleLines.push(line);
+  });
+
+  return visibleLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function sanitizeRoomVisibleText(value: string) {
+  return stripRoomDirectiveLines(value, false);
+}
+
+function sanitizeRoomStreamPreview(value: string) {
+  return stripRoomDirectiveLines(value, true);
+}
 
 function actionTone(tone: "yellow" | "white" | "ink") {
   switch (tone) {
@@ -1557,6 +1651,7 @@ function RoomWorkbenchRailSummary({
   pullRequest,
   issueTitle,
   activeTab,
+  activeSection,
   activeAgentsCount,
   relatedSignals,
   relatedHandoffs,
@@ -1573,6 +1668,7 @@ function RoomWorkbenchRailSummary({
   pullRequest?: PullRequest;
   issueTitle?: string;
   activeTab: RoomWorkbenchTab;
+  activeSection: RoomRailSummaryTab;
   activeAgentsCount: number;
   relatedSignals: ApprovalCenterItem[];
   relatedHandoffs: AgentHandoff[];
@@ -1590,185 +1686,208 @@ function RoomWorkbenchRailSummary({
 
   return (
     <div data-testid={contextPanelTestId} className="space-y-3">
-      <Panel tone="paper">
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">房间焦点</p>
-        <p className="mt-2 font-display text-[22px] font-bold leading-6">{room.topic.title}</p>
-        <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{room.topic.summary}</p>
-        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-1">
-          <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">事项</p>
-            <p className="mt-1.5 text-sm font-semibold">{room.issueKey}</p>
-            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待事项详情同步"}</p>
-          </div>
-          <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前视图</p>
-            <p className="mt-1.5 text-sm font-semibold">{ROOM_WORKBENCH_TAB_LABEL[activeTab]}</p>
-            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">默认回到聊天主面，其他信息只作为次级进入面保留。</p>
-          </div>
-        </div>
-      </Panel>
-
-      <Panel tone="white">
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">右栏摘要</p>
-        <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
-          聊天保持主面，话题、运行、PR、上下文统一改走顶部标签，右侧只保留摘要，不再重复摆一套跳转入口。
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {ROOM_WORKBENCH_TAB_LABEL[activeTab]}
-          </span>
-          <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {activeAgentsCount} 个在线智能体
-          </span>
-          <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {relatedSignals.length} 条信号
-          </span>
-          <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {relatedHandoffs.length} 条交接
-          </span>
-        </div>
-      </Panel>
-
-      <Panel tone="white">
-        <div data-testid={runPanelTestId}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
-              <p className="mt-2 font-display text-[18px] font-bold leading-5">{run.id}</p>
+      {activeSection === "overview" ? (
+        <>
+          <Panel tone="paper">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">房间焦点</p>
+            <p className="mt-2 font-display text-[22px] font-bold leading-6">{room.topic.title}</p>
+            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{room.topic.summary}</p>
+            <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">事项</p>
+              <p className="mt-1.5 text-sm font-semibold">{room.issueKey}</p>
+              <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待事项详情同步"}</p>
             </div>
-            <span
-              data-testid="room-workbench-run-status"
-              className={cn(
-                "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
-                currentRunStatus === "paused"
-                  ? "bg-[var(--shock-paper)]"
-                  : currentRunStatus === "blocked"
-                    ? "bg-[var(--shock-pink)] text-white"
-                    : currentRunStatus === "review"
-                      ? "bg-[var(--shock-lime)]"
-                      : currentRunStatus === "done"
-                        ? "bg-[var(--shock-ink)] text-white"
-                        : "bg-[var(--shock-yellow)]"
-              )}
-            >
-              {runStatusLabel(currentRunStatus)}
-            </span>
-          </div>
-          <p className="mt-3 font-mono text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
-            {session?.branch ?? run.branch}
-          </p>
-          <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
-            {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href={buildRoomWorkbenchHref(room.id, "run")}
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-            >
-              房间执行
-            </Link>
-            <Link
-              href={`/runs/${run.id}`}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-            >
-              执行详情
-            </Link>
-          </div>
-        </div>
-      </Panel>
+          </Panel>
 
-      <Panel tone="white">
-        <div data-testid={prPanelTestId}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
-              <h3 data-testid="room-workbench-pr-label" className="mt-2 font-display text-[18px] font-bold leading-5">
-                {pullRequest?.label ?? run.pullRequest ?? "未创建"}
-              </h3>
+          <Panel tone="white">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前状态</p>
+            <div className="mt-3 grid gap-2">
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2.5">
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">主视图</p>
+                <p className="mt-1.5 text-sm font-semibold">{ROOM_WORKBENCH_TAB_LABEL[activeTab]}</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">智能体</p>
+                  <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} 个在线</p>
+                </div>
+                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板</p>
+                  <p className="mt-1.5 text-sm font-semibold">{room.boardCount} 张卡片</p>
+                </div>
+                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">信号</p>
+                  <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条待处理</p>
+                </div>
+                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
+                  <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条跟进中</p>
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              data-testid="room-workbench-pr-action"
-              disabled={pullRequestActionDisabled}
-              onClick={() => void onPullRequestAction?.()}
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
-            >
-              {pullRequestActionLabel}
-            </button>
-          </div>
-          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            {pullRequestActionStatus}
-          </p>
-          {(pullRequestActionStatus === "blocked" ||
-            pullRequestActionStatus === "signed_out" ||
-            pullRequestActionStatus === "review_only" ||
-            pullRequestActionStatus === "merged") ? (
-            <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">{pullRequestBoundary}</p>
-          ) : null}
-          <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
-            {pullRequest?.reviewSummary ?? run.nextAction}
-          </p>
-          {prError ? (
-            <p data-testid="room-workbench-pr-error" className="mt-2 font-mono text-[11px] text-[var(--shock-pink)]">
-              {prError}
-            </p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href={buildRoomWorkbenchHref(room.id, "pr")}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-            >
-              房间 PR
-            </Link>
-            {pullRequest ? (
+          </Panel>
+        </>
+      ) : null}
+
+      {activeSection === "delivery" ? (
+        <>
+          <Panel tone="white">
+            <div data-testid={prPanelTestId}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
+                  <h3 data-testid="room-workbench-pr-label" className="mt-2 font-display text-[18px] font-bold leading-5">
+                    {pullRequest?.label ?? run.pullRequest ?? "未创建"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  data-testid="room-workbench-pr-action"
+                  disabled={pullRequestActionDisabled}
+                  onClick={() => void onPullRequestAction?.()}
+                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+                >
+                  {pullRequestActionLabel}
+                </button>
+              </div>
+              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                {pullRequestActionStatus}
+              </p>
+              {(pullRequestActionStatus === "blocked" ||
+                pullRequestActionStatus === "signed_out" ||
+                pullRequestActionStatus === "review_only" ||
+                pullRequestActionStatus === "merged") ? (
+                <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">{pullRequestBoundary}</p>
+              ) : null}
+              <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
+                {pullRequest?.reviewSummary ?? run.nextAction}
+              </p>
+              {prError ? (
+                <p data-testid="room-workbench-pr-error" className="mt-2 font-mono text-[11px] text-[var(--shock-pink)]">
+                  {prError}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={buildRoomWorkbenchHref(room.id, "pr")}
+                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                >
+                  房间 PR
+                </Link>
+                {pullRequest ? (
+                  <Link
+                    href={`/pull-requests/${pullRequest.id}`}
+                    data-testid="room-workbench-pr-detail-link"
+                    className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                  >
+                    PR 详情
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          </Panel>
+
+          <Panel tone="paper">
+            <div className="grid gap-2">
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">待处理信号</p>
+                <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条</p>
+              </div>
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
+                <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条</p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
               <Link
-                href={`/pull-requests/${pullRequest.id}`}
-                data-testid="room-workbench-pr-detail-link"
-                className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                href="/inbox"
+                data-testid="room-workbench-open-inbox"
+                className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
               >
-              PR 详情
+                收件箱
               </Link>
-            ) : null}
-          </div>
-        </div>
-      </Panel>
+              <Link
+                href={`/mailbox?roomId=${room.id}`}
+                data-testid="room-workbench-open-mailbox"
+                className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+              >
+                交接箱
+              </Link>
+            </div>
+          </Panel>
+        </>
+      ) : null}
 
-      <Panel tone="paper">
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
-          <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">信号</p>
-            <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条待处理</p>
-          </div>
-          <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
-            <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条跟进中</p>
-          </div>
-          <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">智能体</p>
-            <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} 在线</p>
-          </div>
-          <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板</p>
-            <p className="mt-1.5 text-sm font-semibold">{room.boardCount} 张卡片</p>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Link
-            href="/inbox"
-            data-testid="room-workbench-open-inbox"
-            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-          >
-            收件箱
-          </Link>
-          <Link
-            href={`/mailbox?roomId=${room.id}`}
-            data-testid="room-workbench-open-mailbox"
-            className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-          >
-            交接箱
-          </Link>
-        </div>
-      </Panel>
+      {activeSection === "system" ? (
+        <>
+          <Panel tone="white">
+            <div data-testid={runPanelTestId}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
+                  <p className="mt-2 font-display text-[18px] font-bold leading-5">{run.id}</p>
+                </div>
+                <span
+                  data-testid="room-workbench-run-status"
+                  className={cn(
+                    "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+                    currentRunStatus === "paused"
+                      ? "bg-[var(--shock-paper)]"
+                      : currentRunStatus === "blocked"
+                        ? "bg-[var(--shock-pink)] text-white"
+                        : currentRunStatus === "review"
+                          ? "bg-[var(--shock-lime)]"
+                          : currentRunStatus === "done"
+                            ? "bg-[var(--shock-ink)] text-white"
+                            : "bg-[var(--shock-yellow)]"
+                  )}
+                >
+                  {runStatusLabel(currentRunStatus)}
+                </span>
+              </div>
+              <p className="mt-3 font-mono text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
+                {session?.branch ?? run.branch}
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
+                {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={buildRoomWorkbenchHref(room.id, "run")}
+                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                >
+                  房间执行
+                </Link>
+                <Link
+                  href={`/runs/${run.id}`}
+                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                >
+                  执行详情
+                </Link>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel tone="paper">
+            <div className="grid gap-2">
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前状态</p>
+                <p className="mt-1.5 text-sm font-semibold">{runStatusLabel(currentRunStatus)}</p>
+              </div>
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">智能体</p>
+                <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} 个在线</p>
+              </div>
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">下一步</p>
+                <p className="mt-1.5 text-[12px] leading-5 text-[color:rgba(24,20,14,0.72)]">
+                  {run.nextAction || "等待新的执行动作。"}
+                </p>
+              </div>
+            </div>
+          </Panel>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1802,24 +1921,55 @@ function ReplyComposerChip({
 }
 
 function ThreadReplyRow({ message }: { message: Message }) {
-  return (
-    <article className="border-b border-[color:rgba(24,20,14,0.12)] px-3 py-3 last:border-b-0">
-      <div className="flex items-start gap-2">
-        <div
+  if (message.role === "system") {
+    return (
+      <article className="px-3 py-3 last:border-b-0">
+        <p
           className={cn(
-            "mt-0.5 flex h-7 min-w-7 items-center justify-center border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
-            messageBadgeTone(message)
+            "mx-auto max-w-xl rounded-full border px-3 py-1.5 text-center text-[12px] leading-5",
+            message.tone === "blocked"
+              ? "border-[var(--shock-pink)] bg-[#fff1f4] text-[var(--shock-pink)]"
+              : "border-[rgba(24,20,14,0.12)] bg-white text-[color:rgba(24,20,14,0.56)]"
           )}
         >
-          {messageGlyph(message)}
+          {renderMarkedMessage(sanitizeRoomVisibleText(message.message))}
+        </p>
+      </article>
+    );
+  }
+
+  return (
+    <article className="border-b border-[color:rgba(24,20,14,0.12)] px-3 py-3 last:border-b-0">
+      <div className="flex items-start gap-2.5">
+        <div
+          className={cn(
+            "mt-0.5 flex h-8 min-w-8 items-center justify-center rounded-[12px] border border-[rgba(24,20,14,0.16)] text-[10px] font-semibold shadow-[0_4px_12px_rgba(24,20,14,0.08)]",
+            messageAvatarTone(message)
+          )}
+        >
+          {messageAvatarLabel(message)}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-display text-[13px] font-bold leading-none">{message.speaker}</span>
+            {message.tone === "blocked" ? (
+              <span className="rounded-full border border-[var(--shock-pink)] bg-[#fff1f4] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--shock-pink)]">
+                需处理
+              </span>
+            ) : message.tone === "paper" ? (
+              <span className="rounded-full border border-[rgba(24,20,14,0.12)] bg-white/72 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                同步
+              </span>
+            ) : null}
             <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.5)]">{message.time}</span>
           </div>
-          <div className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[color:rgba(24,20,14,0.86)]">
-            {renderMarkedMessage(message.message)}
+          <div
+            className={cn(
+              "mt-2 rounded-[16px] border px-3 py-2.5 text-[13px] leading-6 text-[color:rgba(24,20,14,0.88)] shadow-[0_6px_16px_rgba(24,20,14,0.06)]",
+              messageBubbleTone(message)
+            )}
+          >
+            <div className="whitespace-pre-wrap break-words">{renderMarkedMessage(sanitizeRoomVisibleText(message.message))}</div>
           </div>
         </div>
       </div>
@@ -2068,32 +2218,60 @@ function MessageStreamRow({
   threadActive?: boolean;
   onOpenThread?: (message: Message) => void;
 }) {
+  if (message.role === "system") {
+    return (
+      <article className="px-4 py-3">
+        <p
+          className={cn(
+            "mx-auto max-w-2xl rounded-full border px-4 py-1.5 text-center text-[12px] leading-6",
+            message.tone === "blocked"
+              ? "border-[var(--shock-pink)] bg-[#fff1f4] text-[var(--shock-pink)]"
+              : "border-[rgba(24,20,14,0.12)] bg-white/88 text-[color:rgba(24,20,14,0.56)]"
+          )}
+        >
+          {renderMarkedMessage(sanitizeRoomVisibleText(message.message))}
+        </p>
+      </article>
+    );
+  }
+
   return (
     <article
       className={cn(
-        "border-b border-[color:rgba(24,20,14,0.12)] px-4 py-3.5 last:border-b-0",
-        threadActive && "bg-[#fff4cc]"
+        "border-b border-[color:rgba(24,20,14,0.1)] px-4 py-3.5 last:border-b-0",
+        threadActive && "bg-[#fff7dd]"
       )}
     >
       <div className="flex items-start gap-3">
         <div
           className={cn(
-            "mt-0.5 flex h-7 min-w-7 items-center justify-center rounded-[10px] border-2 border-[var(--shock-ink)] font-mono text-[10px] font-bold shadow-[var(--shock-shadow-sm)]",
-            messageBadgeTone(message)
+            "mt-0.5 flex h-9 min-w-9 items-center justify-center rounded-[12px] border border-[rgba(24,20,14,0.16)] text-[11px] font-semibold shadow-[0_6px_16px_rgba(24,20,14,0.08)]",
+            messageAvatarTone(message)
           )}
         >
-          {messageGlyph(message)}
+          {messageAvatarLabel(message)}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-display text-[14px] font-bold leading-none">{message.speaker}</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.42)]">
-              {roleLabel(message.role)}
-            </span>
             <span className="font-mono text-[10px] text-[color:rgba(24,20,14,0.5)]">{message.time}</span>
+            {message.tone === "blocked" ? (
+              <span className="rounded-full border border-[var(--shock-pink)] bg-[#fff1f4] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--shock-pink)]">
+                需处理
+              </span>
+            ) : message.tone === "paper" ? (
+              <span className="rounded-full border border-[rgba(24,20,14,0.12)] bg-white/72 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[color:rgba(24,20,14,0.56)]">
+                同步
+              </span>
+            ) : null}
           </div>
-          <div className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-6 text-[color:rgba(24,20,14,0.9)]">
-            {renderMarkedMessage(message.message)}
+          <div
+            className={cn(
+              "mt-2 rounded-[18px] border px-3.5 py-2.5 text-[14px] leading-6 text-[color:rgba(24,20,14,0.9)] shadow-[0_10px_24px_rgba(24,20,14,0.06)]",
+              messageBubbleTone(message)
+            )}
+          >
+            <div className="whitespace-pre-wrap break-words">{renderMarkedMessage(sanitizeRoomVisibleText(message.message))}</div>
           </div>
           {typeof replyCount === "number" || onOpenThread ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -2102,13 +2280,13 @@ function MessageStreamRow({
                 data-testid={`message-thread-open-${message.id}`}
                 onClick={() => onOpenThread?.(message)}
                 className={cn(
-                  "inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[var(--shock-ink)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fff9ec]",
+                  "inline-flex min-h-[38px] items-center gap-1 rounded-full border border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fff9ec]",
                   threadActive ? "bg-[var(--shock-yellow)]" : "bg-white"
                 )}
               >
                 {typeof replyCount === "number" && replyCount > 0
                   ? `${replyCount} 条回复`
-                  : "回复"}
+                  : "在线程回复"}
               </button>
               {threadActive ? (
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.5)]">
@@ -2189,7 +2367,7 @@ function ClaudeCompactComposer({
     prompt: string,
     provider?: string,
     onEvent?: (event: RoomStreamEvent) => void
-  ) => Promise<{ state?: PhaseZeroState; error?: string } | null | undefined>;
+  ) => Promise<{ state?: PhaseZeroState; error?: string; output?: string } | null | undefined>;
   canSend: boolean;
   sendStatus: string;
   sendBoundary: string;
@@ -2201,33 +2379,51 @@ function ClaudeCompactComposer({
   humanSpeaker: string;
   agentSpeaker: string;
 }) {
-  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
-  const [draft, setDraft] = useState("先给我一句结论：这个讨论间现在该先做哪一步？");
-  const [loading, setLoading] = useState(false);
+  const [pendingSends, setPendingSends] = useState<
+    Array<{
+      requestId: string;
+      humanMessage: Message;
+      replyMessage: Message;
+      settled: boolean;
+    }>
+  >([]);
+  const [draft, setDraft] = useState("");
   const messages = useMemo(
-    () => (pendingMessages.length > 0 ? [...initialMessages, ...pendingMessages] : initialMessages),
-    [initialMessages, pendingMessages]
+    () =>
+      pendingSends.length > 0
+        ? [
+            ...initialMessages,
+            ...pendingSends.flatMap((item) => [item.humanMessage, item.replyMessage]),
+          ]
+        : initialMessages,
+    [initialMessages, pendingSends]
   );
   const latestMessage = messages[messages.length - 1];
   const scrollRef = useStickyMessageScroll(room.id, messages.length, latestMessage?.message.length ?? 0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const streamBuffersRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
-    setPendingMessages([]);
+    setPendingSends([]);
+    streamBuffersRef.current = {};
   }, [room.id]);
 
   useEffect(() => {
-    if (loading) {
-      return;
-    }
-    const pendingPrompt = pendingMessages.find((item) => item.role === "human")?.message;
-    if (!pendingPrompt) {
-      return;
-    }
-    if (initialMessages.some((item) => item.role === "human" && item.message === pendingPrompt)) {
-      setPendingMessages([]);
-    }
-  }, [initialMessages, loading, pendingMessages]);
+    setPendingSends((current) =>
+      current.filter((entry) => {
+        const persistedHumanIndex = initialMessages.findIndex(
+          (item) => item.role === "human" && item.message === entry.humanMessage.message
+        );
+        if (persistedHumanIndex === -1) {
+          return true;
+        }
+        const hasFollowupMessage = initialMessages
+          .slice(persistedHumanIndex + 1)
+          .some((item) => item.role !== "human");
+        return !hasFollowupMessage;
+      })
+    );
+  }, [initialMessages]);
 
   useEffect(() => {
     if (replyTarget) {
@@ -2235,24 +2431,24 @@ function ClaudeCompactComposer({
     }
   }, [replyTarget]);
 
-  function replacePlaceholderWithDelta(message: Message, delta: string, tone?: Message["tone"]) {
-    const nextMessage =
-      message.message === MESSAGE_SENDING_PLACEHOLDER || !message.message.trim()
-        ? delta
-        : `${message.message}${delta}`;
+  const activePendingCount = pendingSends.filter((item) => !item.settled).length;
+
+  function replacePlaceholderWithPreview(message: Message, preview: string, tone?: Message["tone"]) {
     return {
       ...message,
       tone: tone ?? message.tone,
-      message: nextMessage,
+      message: preview || MESSAGE_SENDING_PLACEHOLDER,
     };
   }
 
   async function handleSend() {
-    if (!draft.trim() || loading || !canSend) return;
+    if (!draft.trim() || !canSend) return;
     const prompt = draft.trim();
     const sendPrompt = replyTarget ? `回复 ${replyTarget.speaker}：${prompt}` : prompt;
-    setLoading(true);
+    setDraft("");
+    onClearReplyTarget?.();
     const now = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+    const requestId = `room-send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const humanMessage: Message = {
       id: `local-human-${Date.now()}`,
       speaker: humanSpeaker,
@@ -2270,60 +2466,99 @@ function ClaudeCompactComposer({
       message: MESSAGE_SENDING_PLACEHOLDER,
       time: now,
     };
-    setPendingMessages([humanMessage, agentMessage]);
+    setPendingSends((current) => [
+      ...current,
+      {
+        requestId,
+        humanMessage,
+        replyMessage: agentMessage,
+        settled: false,
+      },
+    ]);
+    streamBuffersRef.current[requestId] = "";
 
     try {
       const payload = await onSend(room.id, sendPrompt, undefined, (event) => {
-        if (event.type === "stdout" && event.delta) {
-          const delta = event.delta;
-          setPendingMessages((current) =>
-            current.map((item) => (item.id === agentMessageId ? replacePlaceholderWithDelta(item, delta) : item))
+        if ((event.type === "stdout" || event.type === "stderr") && event.delta) {
+          streamBuffersRef.current[requestId] = `${streamBuffersRef.current[requestId] ?? ""}${event.delta}`;
+          const preview = sanitizeRoomStreamPreview(streamBuffersRef.current[requestId] ?? "");
+          setPendingSends((current) =>
+            current.map((entry) =>
+              entry.requestId === requestId
+                ? {
+                    ...entry,
+                    replyMessage: replacePlaceholderWithPreview(
+                      entry.replyMessage,
+                      preview,
+                      event.type === "stderr" ? "blocked" : entry.replyMessage.tone
+                    ),
+                  }
+                : entry
+            )
           );
+          return;
         }
-        if (event.type === "stderr" && event.delta) {
-          const delta = event.delta;
-          setPendingMessages((current) =>
-            current.map((item) => (item.id === agentMessageId ? replacePlaceholderWithDelta(item, delta, "blocked") : item))
+
+        if (event.type === "done" && event.output) {
+          streamBuffersRef.current[requestId] = event.output;
+          const preview = sanitizeRoomVisibleText(event.output);
+          setPendingSends((current) =>
+            current.map((entry) =>
+              entry.requestId === requestId
+                ? {
+                    ...entry,
+                    replyMessage: replacePlaceholderWithPreview(entry.replyMessage, preview),
+                  }
+                : entry
+            )
           );
+          return;
         }
       });
       const nextMessages = payload?.state?.roomMessages?.[room.id];
       if (nextMessages) {
-        setPendingMessages([]);
+        delete streamBuffersRef.current[requestId];
+        setPendingSends((current) => current.filter((entry) => entry.requestId !== requestId));
       } else {
-        setPendingMessages((current) =>
-          current.map((item) =>
-            item.id === agentMessageId &&
-            (item.message === MESSAGE_SENDING_PLACEHOLDER || item.message.trim() === "")
+        setPendingSends((current) =>
+          current.map((entry) =>
+            entry.requestId === requestId &&
+            (entry.replyMessage.message === MESSAGE_SENDING_PLACEHOLDER || entry.replyMessage.message.trim() === "")
               ? {
-                  ...item,
-                  tone: payload?.error ? "blocked" : item.tone,
-                  message: payload?.error || "这次没有拿到可展示的输出。",
+                  ...entry,
+                  settled: true,
+                  replyMessage: {
+                    ...entry.replyMessage,
+                    tone: payload?.error ? "blocked" : entry.replyMessage.tone,
+                    message: payload?.error || sanitizeRoomVisibleText(payload?.output || "") || "这次没有拿到可展示的输出。",
+                  },
                 }
-              : item
+              : entry
           )
         );
       }
-      setDraft("");
-      onClearReplyTarget?.();
     } catch (error) {
+      delete streamBuffersRef.current[requestId];
       const message = error instanceof Error ? error.message : "发送失败";
-      setPendingMessages((current) =>
-        current.map((item) =>
-          item.id === agentMessageId
+      setPendingSends((current) =>
+        current.map((entry) =>
+          entry.requestId === requestId
             ? {
-                id: `err-${Date.now()}`,
-                speaker: "系统",
-                role: "system",
-                tone: "blocked",
-                message: `消息发送失败：${message}`,
-                time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()),
+                ...entry,
+                settled: true,
+                replyMessage: {
+                  id: `err-${Date.now()}`,
+                  speaker: "系统",
+                  role: "system",
+                  tone: "blocked",
+                  message: `消息发送失败：${message}`,
+                  time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()),
+                },
               }
-            : item
+            : entry
         )
       );
     } finally {
-      setLoading(false);
     }
   }
 
@@ -2358,36 +2593,29 @@ function ClaudeCompactComposer({
             <ReplyComposerChip replyTarget={replyTarget} onClear={() => onClearReplyTarget?.()} />
           ) : null}
         </div>
-        <form onSubmit={(event) => void handleSubmit(event)} className="mx-auto flex max-w-[1040px] items-center gap-2">
-          <button
-            type="button"
-            aria-label="attach room context"
-            className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white text-lg shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-          >
-            +
-          </button>
+        <form onSubmit={(event) => void handleSubmit(event)} className="mx-auto flex max-w-[1040px] items-center gap-3">
           <input
             ref={inputRef}
             data-testid="room-message-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            disabled={!canSend || loading}
-            className="h-11 flex-1 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 font-mono text-[13px] outline-none transition-colors duration-150 focus:bg-white focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-            placeholder={replyTarget ? `继续回复 ${replyTarget.speaker}...` : "输入指令、问题或新的约束..."}
+            disabled={!canSend}
+            className="h-12 flex-1 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[#fafafa] px-4 text-[15px] outline-none transition-colors duration-150 focus:bg-white focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            placeholder={replyTarget ? `回复 ${replyTarget.speaker}` : "继续这条讨论"}
           />
           <button
             type="submit"
             data-testid="room-send-message"
-            disabled={loading || !canSend}
+            disabled={!canSend || !draft.trim()}
             className="min-h-[44px] rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[var(--shock-shadow-sm)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
           >
-            {loading ? "发送中" : "发送"}
+            {activePendingCount > 0 ? "发送中" : "发送"}
           </button>
         </form>
-        <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1040px] font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+        <p data-testid="room-reply-authz" className="mx-auto mt-2 max-w-[1040px] text-[12px] leading-5 text-[color:rgba(24,20,14,0.62)]">
           {roomReplyStatusLabel(sendStatus)}
         </p>
-        {canSend && loading ? (
+        {canSend && activePendingCount > 0 ? (
           <p className="mx-auto mt-2 max-w-[1040px] text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">{MESSAGE_SENDING_PLACEHOLDER}</p>
         ) : null}
         {!canSend ? (
@@ -3020,6 +3248,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [railMode, setRailMode] = useState<"context" | "thread">("context");
+  const [railSummaryTab, setRailSummaryTab] = useState<RoomRailSummaryTab>("overview");
   const canMerge = pullRequest && pullRequest.status !== "merged";
   const permissionReplyStatus = permissionStatus(authSession, "room.reply");
   const permissionReplyBoundary = permissionBoundaryCopy(authSession, "room.reply");
@@ -3149,6 +3378,17 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
       return null;
     });
   }, [roomId, messages, roomThreadReplies]);
+
+  useEffect(() => {
+    setRailMode("context");
+    setRailSummaryTab("overview");
+  }, [roomId]);
+
+  useEffect(() => {
+    if (activeWorkbenchTab !== "chat") {
+      setRailSummaryTab(railSummaryTabForWorkbench(activeWorkbenchTab));
+    }
+  }, [activeWorkbenchTab]);
 
   function handleOpenThread(message: Message) {
     setSelectedThreadId(message.id);
@@ -3318,12 +3558,9 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
               <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
                 PR {pullRequestStatusLabel(pullRequest?.status)}
               </span>
-              <span className="border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]">
-                {relatedSignals.length} 条信号
-              </span>
             </div>
           </div>
-          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="flex min-h-0 flex-col bg-[var(--shock-paper)]">
               <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3345,7 +3582,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     <Link
                       href={planningMirrorHref}
                       data-testid="room-open-planning-mirror"
-                      className="flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      className="flex min-h-[44px] items-center rounded-[14px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 text-[12px] text-[color:rgba(24,20,14,0.74)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
                       看板
                     </Link>
@@ -3507,40 +3744,73 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
               )}
             </div>
 
-            <aside className="hidden min-h-0 flex-col border-l-2 border-[var(--shock-ink)] bg-[#f1efe7] xl:flex">
+            <aside className="hidden min-h-0 flex-col border-l-2 border-[var(--shock-ink)] bg-[#f6f1e3] xl:flex">
               <div className="border-b-2 border-[var(--shock-ink)] bg-white px-4 py-4">
                 <p className="font-display text-[20px] font-bold leading-none">
                   {activeWorkbenchTab === "chat"
                     ? railMode === "thread"
-                      ? "线程侧栏"
-                      : "房间信息"
-                    : "房间信息"}
+                      ? "线程"
+                      : "房间摘要"
+                    : "房间摘要"}
                 </p>
                 {activeWorkbenchTab === "chat" ? (
-                  <div className="mt-3 flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
-                    {[
-                      { id: "context", label: "上下文" },
-                      { id: "thread", label: "线程" },
-                    ].map((tab) => (
-                      <button
-                        type="button"
-                        key={tab.id}
-                        data-testid={`room-rail-mode-${tab.id}`}
-                        onClick={() => setRailMode(tab.id === "thread" ? "thread" : "context")}
-                        className={cn(
-                          "min-h-[44px] border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)] last:border-r-0",
-                          (tab.id === "thread" && railMode === "thread") || (tab.id === "context" && railMode === "context")
-                            ? "bg-[var(--shock-yellow)]"
-                            : "bg-white"
-                        )}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
+                      {[
+                        { id: "context", label: "摘要" },
+                        { id: "thread", label: "线程" },
+                      ].map((tab) => (
+                        <button
+                          type="button"
+                          key={tab.id}
+                          data-testid={`room-rail-mode-${tab.id}`}
+                          onClick={() => setRailMode(tab.id === "thread" ? "thread" : "context")}
+                          className={cn(
+                            "min-h-[44px] border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)] last:border-r-0",
+                            (tab.id === "thread" && railMode === "thread") || (tab.id === "context" && railMode === "context")
+                              ? "bg-[var(--shock-yellow)]"
+                              : "bg-white"
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    {railMode === "context" ? (
+                      <div className="flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
+                        {(["overview", "delivery", "system"] as RoomRailSummaryTab[]).map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            data-testid={`room-rail-summary-${tab}`}
+                            onClick={() => setRailSummaryTab(tab)}
+                            className={cn(
+                              "min-h-[40px] flex-1 border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)] last:border-r-0",
+                              railSummaryTab === tab ? "bg-white" : "bg-[var(--shock-paper)]"
+                            )}
+                          >
+                            {ROOM_RAIL_SUMMARY_TAB_LABEL[tab]}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
-                  <div className="mt-3 border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]">
-                    {room?.issueKey ?? roomId} / 详情
+                  <div className="mt-3 flex flex-wrap gap-0 border-2 border-[var(--shock-ink)]">
+                    {(["overview", "delivery", "system"] as RoomRailSummaryTab[]).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        data-testid={`room-rail-summary-${tab}`}
+                        onClick={() => setRailSummaryTab(tab)}
+                        className={cn(
+                          "min-h-[40px] flex-1 border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)] last:border-r-0",
+                          railSummaryTab === tab ? "bg-white" : "bg-[var(--shock-paper)]"
+                        )}
+                      >
+                        {ROOM_RAIL_SUMMARY_TAB_LABEL[tab]}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -3587,6 +3857,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     pullRequest={pullRequest}
                     issueTitle={issue?.title}
                     activeTab={activeWorkbenchTab}
+                    activeSection={railSummaryTab}
                     activeAgentsCount={activeAgents.length}
                     relatedSignals={relatedSignals}
                     relatedHandoffs={relatedHandoffs}

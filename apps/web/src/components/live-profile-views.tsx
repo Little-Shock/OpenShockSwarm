@@ -8,6 +8,7 @@ import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useLiveMemoryCenter } from "@/lib/live-memory";
 import { formatSandboxList, sandboxPolicyDraft, sandboxPolicySummary, sandboxProfileLabel } from "@/lib/sandbox-policy";
+import { permissionLabel } from "@/lib/session-authz";
 import type {
   AgentStatus,
   AuthSession,
@@ -23,11 +24,11 @@ import type {
 import { buildProfileHref, isProfileKind, type ProfileKind } from "@/lib/profile-surface";
 
 const PROFILE_MEMORY_SPACE_OPTIONS = [
-  { value: "workspace", label: "工作区", summary: "MEMORY.md / work-log" },
+  { value: "workspace", label: "工作区", summary: "工作区共享记忆" },
   { value: "issue-room", label: "事项房间", summary: "当前事项的房间上下文" },
-  { value: "room-notes", label: "房间笔记", summary: "notes/rooms/* 记录" },
-  { value: "topic", label: "话题", summary: "决策 / 话题上下文" },
-  { value: "user", label: "智能体记忆", summary: ".openshock/agents/*/MEMORY.md" },
+  { value: "room-notes", label: "房间笔记", summary: "讨论过程中的补充记录" },
+  { value: "topic", label: "话题", summary: "当前决策和话题上下文" },
+  { value: "user", label: "智能体记忆", summary: "智能体自己的长期记忆" },
 ] as const;
 
 const AGENT_RECALL_POLICY_OPTIONS = [
@@ -113,6 +114,34 @@ function runStateLabel(status?: string) {
       return "已暂停";
     default:
       return status || "待同步";
+  }
+}
+
+function runtimeStateLabel(state?: string) {
+  switch (state) {
+    case "busy":
+      return "忙碌";
+    case "online":
+      return "在线";
+    case "offline":
+      return "离线";
+    default:
+      return state || "待同步";
+  }
+}
+
+function runtimePairingStateLabel(state?: string) {
+  switch (state) {
+    case "paired":
+      return "已配对";
+    case "degraded":
+      return "连接不稳定";
+    case "pending":
+      return "等待接入";
+    case "unpaired":
+      return "未配对";
+    default:
+      return state || "待同步";
   }
 }
 
@@ -291,7 +320,7 @@ function CapabilityChips({ items }: { items: string[] }) {
         ))
       ) : (
         <span className="rounded-full border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-          no capability truth yet
+          暂无能力信息
         </span>
       )}
     </div>
@@ -390,7 +419,7 @@ function findRuntimeRecordByPreference(runtimes: RuntimeRegistryRecord[], value:
 
 function runtimeOptionLabel(runtime: RuntimeRegistryRecord) {
   const cliLabel = runtime.detectedCli.join(" + ") || "CLI 未返回";
-  return `${runtime.machine} · ${runtime.shell || "shell 未返回"} · ${cliLabel}`;
+  return `${runtime.machine} · ${runtime.shell || "命令环境未返回"} · ${cliLabel}`;
 }
 
 function runtimeProviderLabel(provider: RuntimeRegistryRecord["providers"][number]) {
@@ -445,7 +474,7 @@ function RuntimeProviderInventory({
               ))
             ) : (
               <span className="rounded-full border border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px]">
-                no models reported
+                未上报模型
               </span>
             )}
           </div>
@@ -640,7 +669,7 @@ function AgentProfileSurface({
         }),
       });
       await refreshMemoryCenter();
-      setSaveStatus("智能体档案已写回后端真值，下一次执行预览已同步刷新。");
+      setSaveStatus("档案已保存，下一次执行预览已同步刷新。");
     } catch (mutationError) {
       setSaveError(mutationError instanceof Error ? mutationError.message : "保存智能体档案失败。");
     } finally {
@@ -655,10 +684,10 @@ function AgentProfileSurface({
       title={agent.name}
       description={agent.description}
       contextTitle="档案状态"
-      contextDescription="智能体档案把角色、提示词、记忆绑定和运行环境偏好放在同一页：供应商、模型和运行环境直接对齐机器真值与模型目录建议，不再长出第二套影子状态。"
+      contextDescription="智能体档案把角色、提示词、记忆绑定和机器偏好放在同一页，供应商、模型和可用机器会自动对齐。"
       contextBody={
         <DetailRail
-          label="智能体真值"
+          label="智能体概览"
           items={[
             { label: "状态", value: agentStateLabel(agent.state) },
             { label: "角色", value: agent.role },
@@ -704,14 +733,14 @@ function AgentProfileSurface({
           <Panel tone="white">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">能力</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              当前能力直接从运行环境注册表的供应商真值组装，不再只剩一条供应商角标。
+              当前能力会根据已连接机器的实际能力自动汇总。
             </p>
             <CapabilityChips items={capabilityTruth} />
           </Panel>
 
           <Panel tone="paper">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">已绑定运行目录</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">已绑定机器</p>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
                 {selectedRuntimeRecord ? selectedRuntimeRecord.id : "未命中运行环境"}
               </span>
@@ -720,7 +749,7 @@ function AgentProfileSurface({
               <div className="mt-3 space-y-3" data-testid="profile-binding-runtime-card">
                 <div className="grid gap-2 md:grid-cols-4">
                   <ProfileMetric label="机器" value={selectedRuntimeRecord.machine} />
-                  <ProfileMetric label="Shell" value={valueOrPlaceholder(selectedRuntimeRecord.shell, "未返回")} testId="profile-binding-shell" />
+                  <ProfileMetric label="命令环境" value={valueOrPlaceholder(selectedRuntimeRecord.shell, "未返回")} testId="profile-binding-shell" />
                   <ProfileMetric label="连接地址" value={valueOrPlaceholder(selectedRuntimeRecord.daemonUrl, "未配对")} />
                   <ProfileMetric
                     label="CLI"
@@ -732,7 +761,7 @@ function AgentProfileSurface({
               </div>
             ) : (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                当前草稿还没命中任何运行环境供应商或目录；先从已注册的机器真值里选一条运行环境偏好。
+                当前草稿还没有匹配到可用运行环境；先从已连接机器里选一条运行环境偏好。
               </p>
             )}
           </Panel>
@@ -745,7 +774,7 @@ function AgentProfileSurface({
           <Panel tone="paper">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">凭据范围</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              智能体侧只绑定元数据真值；实际密钥内容仍停在加密保险库。当前智能体直绑的档案会在执行详情里与工作区默认和执行覆盖一起结算。
+              这里只显示智能体绑定了哪些凭据档案；真正的密钥内容仍保存在加密保险库里。执行时会再和工作区默认设置一起生效。
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-4">
               <ProfileMetric label="已绑定" value={String(agent.credentialProfileIds?.length ?? 0)} testId="profile-credential-bound-count" />
@@ -779,7 +808,7 @@ function AgentProfileSurface({
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这层把智能体默认运行环境沙箱档位和白名单写成可审计真值；新执行会先继承所有者策略，再由执行自己按精确目标继续收口。
+              这里定义智能体默认的沙箱档位和白名单；新执行会先继承这些规则，再按当前任务范围收紧。
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <CapabilityChips items={[sandboxPolicySummary(agent.sandbox)]} />
@@ -799,11 +828,11 @@ function AgentProfileSurface({
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这层会把角色、头像、提示词、供应商、模型、运行环境偏好、记忆绑定、召回策略和沙箱策略直接写回实时服务端真值；保存后同页会回读下一次执行预览。
+              这里可以直接修改角色、头像、提示词、供应商、模型、机器偏好、记忆绑定、召回策略和沙箱策略；保存后会立即刷新下一次执行预览。
             </p>
             {!canEdit ? (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
-                当前会话没有 `workspace.manage`。仍可检查档案、预览和审计，但编辑保持只读。
+                当前账号没有编辑权限。你仍然可以查看档案、预览和审计记录，但不能修改。
               </p>
             ) : null}
             <form className="mt-4 space-y-4" onSubmit={handleSave}>
@@ -902,7 +931,7 @@ function AgentProfileSurface({
                     ))}
                   </datalist>
                   <p className="mt-1.5 text-xs leading-5 text-[color:rgba(24,20,14,0.64)]">
-                    运行环境侧这份模型目录只提供建议；可直接输入本机配置里的模型 ID，不按静态目录做硬拒绝。
+                    这里的模型列表只是建议，你也可以直接输入本机已配置的模型名称。
                   </p>
                 </label>
               </div>
@@ -1004,7 +1033,7 @@ function AgentProfileSurface({
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {state.credentials.length === 0 ? (
                     <p className="rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
-                      先去设置页创建凭据档案，这里只消费那份元数据真值。
+                      先去设置页创建凭据档案，这里只负责选择要绑定哪几份。
                     </p>
                   ) : (
                     state.credentials.map((profile) => (
@@ -1057,7 +1086,7 @@ function AgentProfileSurface({
           <Panel tone="paper">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">下一次执行预览</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              这块直接读取 `/v1/memory-center` 的会话级预览；档案保存后，这里应立刻反映新的召回策略、记忆绑定和提示词骨架。
+              这里会直接显示下一次执行会带上的提示词骨架、召回策略和挂载文件。档案保存后，预览会立刻更新。
             </p>
             {centerLoading ? (
               <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">正在同步下一次执行预览…</p>
@@ -1170,16 +1199,16 @@ function MachineProfileSurface({
       view="profiles"
       eyebrow="机器档案"
       title={machine.name}
-      description="机器档案把心跳、Shell、连接地址、供应商模型目录、最近执行和已绑定智能体收成一张前台页面。"
+      description="机器档案集中展示心跳、命令环境、连接地址、模型目录、最近执行和已绑定智能体。"
       contextTitle="机器状态"
-      contextDescription="这页只读取实时机器与运行环境真值；绑定编辑继续留在智能体档案，但 `/setup`、`/agents` 和这里都读同一份供应商与模型目录。"
+      contextDescription="这里集中查看机器状态、模型目录、最近执行和已绑定智能体。"
       contextBody={
         <DetailRail
-          label="机器真值"
+          label="机器概览"
           items={[
             { label: "状态", value: machineStateLabel(machine.state) },
             { label: "CLI", value: machine.cli },
-            { label: "Shell", value: valueOrPlaceholder(machine.shell, "未返回") },
+            { label: "命令环境", value: valueOrPlaceholder(machine.shell, "未返回") },
             { label: "心跳", value: machine.lastHeartbeat },
             { label: "租约", value: `${leases.length} 条` },
           ]}
@@ -1191,7 +1220,7 @@ function MachineProfileSurface({
           <Panel tone={toneForMachine(machine)}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">machine</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">机器</p>
                 <h2 data-testid="profile-surface-title" className="mt-2 font-display text-[30px] font-bold leading-8">
                   {machine.name}
                 </h2>
@@ -1202,7 +1231,7 @@ function MachineProfileSurface({
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-4">
               <ProfileMetric label="CLI" value={machine.cli} />
-              <ProfileMetric label="Shell" value={valueOrPlaceholder(machine.shell, "未返回")} testId="machine-profile-shell" />
+              <ProfileMetric label="命令环境" value={valueOrPlaceholder(machine.shell, "未返回")} testId="machine-profile-shell" />
               <ProfileMetric label="系统" value={machine.os} />
               <ProfileMetric label="最近心跳" value={machine.lastHeartbeat} />
             </div>
@@ -1222,11 +1251,11 @@ function MachineProfileSurface({
                     <div>
                       <p className="font-display text-[18px] font-semibold">{runtime.id}</p>
                       <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                        {runtime.pairingState} · {runtime.state}
+                        {runtimePairingStateLabel(runtime.pairingState)} · {runtimeStateLabel(runtime.state)}
                       </p>
                     </div>
                     <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                      {valueOrPlaceholder(runtime.shell, machine.shell || "shell 未返回")}
+                      {valueOrPlaceholder(runtime.shell, machine.shell || "命令环境未返回")}
                     </span>
                   </div>
                   <div className="mt-3 grid gap-2 md:grid-cols-3">
@@ -1294,12 +1323,12 @@ function HumanProfileSurface({
       view="profiles"
       eyebrow="成员档案"
       title={member.name}
-      description="成员档案把会话、角色权限、最近执行与房间关系，以及成员在线状态收在同一条前台页面里。"
+      description="成员档案集中展示会话、角色权限、最近执行、房间关系和在线状态。"
       contextTitle="成员状态"
-      contextDescription="这张档案只读取当前工作区成员真值，不提前混入更大的引导、模板或持久化配置。"
+      contextDescription="这里集中查看成员状态、权限和最近参与的工作。"
       contextBody={
         <DetailRail
-          label="成员真值"
+          label="成员概览"
           items={[
             { label: "状态", value: humanPresenceLabel(member, authSession) },
             { label: "角色", value: workspaceRoleLabel(member.role) },
@@ -1314,7 +1343,7 @@ function HumanProfileSurface({
           <Panel tone={toneForHuman(member, authSession)}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">workspace member</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">工作区成员</p>
                 <h2 data-testid="profile-surface-title" className="mt-2 font-display text-[30px] font-bold leading-8">
                   {member.name}
                 </h2>
@@ -1333,7 +1362,7 @@ function HumanProfileSurface({
 
           <Panel tone="white">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">能力 / 权限</p>
-            <CapabilityChips items={member.permissions} />
+            <CapabilityChips items={member.permissions.map((permission) => permissionLabel(permission))} />
           </Panel>
 
           {authSession ? (
@@ -1390,9 +1419,9 @@ export function LiveProfilePageContent({
         title="未知档案"
         description="当前路由类型不在支持列表里。"
         contextTitle="档案页面"
-        contextDescription="目前支持 `agent / machine / human` 三类。"
+        contextDescription="目前支持智能体、机器、成员三类。"
       >
-        <SurfaceNotice title="不支持的档案类型" message={`当前不支持 \`${kind}\`。`} />
+        <SurfaceNotice title="不支持的档案类型" message={`当前不支持 ${kind}。`} />
       </OpenShockShell>
     );
   }
@@ -1403,11 +1432,11 @@ export function LiveProfilePageContent({
         view="profiles"
         eyebrow="档案"
         title="正在同步档案"
-        description="等待服务端返回当前档案真值。"
+        description="等待服务端返回当前档案信息。"
         contextTitle="档案页面"
-        contextDescription="这页现在只读实时真值。"
+        contextDescription="正在同步当前档案信息。"
       >
-        <SurfaceNotice title="同步中" message="正在拉取智能体、机器和成员档案真值。" />
+        <SurfaceNotice title="同步中" message="正在拉取智能体、机器和成员档案。" />
       </OpenShockShell>
     );
   }
@@ -1418,7 +1447,7 @@ export function LiveProfilePageContent({
         view="profiles"
         eyebrow="档案"
         title="档案同步失败"
-        description="当前没拿到服务端真值。"
+        description="当前没有拿到档案数据。"
         contextTitle="档案页面"
         contextDescription="先检查服务端是否在线，再重新打开这页。"
       >
@@ -1435,11 +1464,11 @@ export function LiveProfilePageContent({
           view="profiles"
           eyebrow="智能体档案"
           title="未找到智能体"
-          description="这个智能体可能已经不在当前服务端状态里。"
+          description="这个智能体可能已经不在当前列表里。"
           contextTitle="档案页面"
           contextDescription="从主壳或讨论间重新进入，通常就能拿到最新对象。"
         >
-          <SurfaceNotice title="未找到智能体" message={`当前找不到 \`${profileId}\` 对应的智能体真值。`} />
+          <SurfaceNotice title="未找到智能体" message={`当前找不到 ${profileId} 对应的智能体。`} />
         </OpenShockShell>
       );
     }
@@ -1454,11 +1483,11 @@ export function LiveProfilePageContent({
           view="profiles"
           eyebrow="机器档案"
           title="未找到机器"
-          description="这台机器可能已经不在当前注册表里。"
+          description="这台机器可能已经不在当前列表里。"
           contextTitle="档案页面"
           contextDescription="从主壳或设置页重新进入，通常就能拿到最新对象。"
         >
-          <SurfaceNotice title="未找到机器" message={`当前找不到 \`${profileId}\` 对应的机器真值。`} />
+          <SurfaceNotice title="未找到机器" message={`当前找不到 ${profileId} 对应的机器。`} />
         </OpenShockShell>
       );
     }
@@ -1472,11 +1501,11 @@ export function LiveProfilePageContent({
         view="profiles"
         eyebrow="成员档案"
         title="未找到成员"
-        description="这个工作区成员可能已经不在当前名单里。"
+        description="这个工作区成员可能已经不在当前列表里。"
         contextTitle="档案页面"
         contextDescription="从主壳重新进入通常就能拿到最新对象。"
       >
-        <SurfaceNotice title="未找到成员" message={`当前找不到 \`${profileId}\` 对应的成员真值。`} />
+        <SurfaceNotice title="未找到成员" message={`当前找不到 ${profileId} 对应的成员。`} />
       </OpenShockShell>
     );
   }

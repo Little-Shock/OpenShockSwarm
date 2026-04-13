@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -30,7 +36,21 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts",
     ".next-fresh-stack/types/**/*.ts",
-    ".next-fresh-stack/dev/types/**/*.ts"
+    ".next-fresh-stack/dev/types/**/*.ts",
+    ".next-e2e-*/types/**/*.ts",
+    ".next-e2e-*/dev/types/**/*.ts",
+    ".next-e2e-planner-dispatch-replay/types/**/*.ts",
+    ".next-e2e-planner-dispatch-replay/dev/types/**/*.ts",
+    ".next-e2e-multi-agent-governance/types/**/*.ts",
+    ".next-e2e-multi-agent-governance/dev/types/**/*.ts",
+    ".next-e2e-agent-mailbox-handoff/types/**/*.ts",
+    ".next-e2e-agent-mailbox-handoff/dev/types/**/*.ts",
+    ".next-e2e-movie-multi-agent/types/**/*.ts",
+    ".next-e2e-movie-multi-agent/dev/types/**/*.ts",
+    ".next-e2e-run-history-resume-context/types/**/*.ts",
+    ".next-e2e-run-history-resume-context/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

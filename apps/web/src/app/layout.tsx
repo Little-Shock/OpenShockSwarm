@@ -36,8 +36,8 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OpenShock MVP",
-  description: "OpenShock 的 Agent 优先协作壳层",
+  title: "OpenShock",
+  description: "OpenShock 协作工作台",
 };
 
 export default function RootLayout({
