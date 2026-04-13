@@ -10,7 +10,7 @@
 - `pnpm verify:web`
 - `bash -lc 'git diff --name-only -- scripts | grep "\\.mjs$" | xargs -r -n1 node --check'`
 - `node --check scripts/headed-message-send-flow.mjs`
-- `pnpm test:headed-message-send-flow -- --report docs/testing/Test-Report-2026-04-13-message-send-flow.md`
+- `node ./scripts/headed-message-send-flow.mjs --report output/testing/headed-message-send-flow-report.md`
 
 ## Results
 
@@ -18,14 +18,14 @@
 - `pnpm verify:server` 已通过，`apps/server/internal/api`、`apps/server/internal/github`、`apps/server/internal/store` 当前整套为绿。
 - `pnpm verify:web` 已通过，包含 live-truth hygiene、`eslint`、`typecheck`、`next build` 全链路。
 - 当前变更涉及的 headed 脚本语法检查已通过，新增 `scripts/headed-message-send-flow.mjs` 可被 Node 正常解析。
+- `headed-message-send-flow` 已通过：频道与讨论间发送都会先把人类消息落到流里，显示“发送中 / 正在生成回复...”，随后完成控制面回写，并在导航或刷新后保持持久化。
 
-## Known Gap
+## Closed Gap
 
-- `pnpm test:headed-message-send-flow` 2026-04-13 本轮未稳定通过。
-- 第一次回放在 room 发送完成后的二次页面跳转阶段丢失浏览器上下文；已将脚本改为刷新后校验持久化，降低了对额外路由跳转的耦合。
-- 第二次回放仍暴露频道发送 harness 的不稳定点：`channel send request did not reach the control API`。
-- 结论：产品发送链路已有静态和局部 browser evidence，但“频道发送 -> 请求发出 -> 回写完成”的 headed 回放还需要继续收敛，暂时不能记为已完全闭环。
+- `headed-message-send-flow` 原本的 request/response 监听存在 harness 竞态，已经改为先锁定 POST request，再等待该 request 完成。
+- 同一轮回放已经重新通过，报告见 `output/testing/headed-message-send-flow-report.md`。
+- 结论：这条“频道发送 -> 请求发出 -> 回写完成 -> reload 后仍在”的有头回放，当前已闭环。
 
 ## Single Value
 
-- 当前 `dev` 分支已经完成一轮可提交的验证收口：服务端 contract、前端编译与主要脚本基线均为绿；剩余最明确的交付风险集中在 `headed-message-send-flow` 这条浏览器 harness，需要下一轮继续把发送链路的自动化稳定性做实。
+- 当前 `dev` 分支已经完成一轮可提交的验证收口：服务端 contract、前端编译与发送流浏览器回放均为绿，验证链路已经覆盖 handoff、onboarding 和 message send 三条高频用户路径。

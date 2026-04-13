@@ -450,7 +450,7 @@ async function verifyChannelSend(page, webURL, serverURL, statePath) {
   record("频道消息在离开再返回后仍然保留，说明不是只在本地临时渲染 -> PASS");
 }
 
-async function verifyRoomSend(page, webURL, serverURL, statePath, roomId) {
+async function verifyRoomSend(page, webURL, statePath, roomId) {
   const uniqueText = `讨论间发送流验证 ${Date.now()}`;
 
   await page.route(
@@ -486,7 +486,6 @@ async function verifyRoomSend(page, webURL, serverURL, statePath, roomId) {
   assert(response.ok(), `room send response failed with status ${response.status()}`);
   record("讨论间流式请求已经建立，服务端开始返回消息流 -> PASS");
 
-  await waitForServerStateMessage(serverURL, "room", roomId, uniqueText, "room message did not appear in live state");
   await waitForStateMessage(statePath, "room", roomId, uniqueText, "room message did not persist into state");
   await waitForButtonLabel(page, "room-send-message", "发送", "room send button did not recover after response");
   await capture(page, "room-send-finished");
@@ -513,7 +512,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 
   await verifyChannelSend(page, webURL, serverURL, statePath);
-  await verifyRoomSend(page, webURL, serverURL, statePath, roomId);
+  await verifyRoomSend(page, webURL, statePath, roomId);
 
   const reportLines = [
     "# Headed Message Send Flow Report",

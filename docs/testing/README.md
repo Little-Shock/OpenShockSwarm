@@ -1,9 +1,11 @@
 # Testing Docs
 
 - [Verification Sweep Report 2026-04-13](./Test-Report-2026-04-13-verification-sweep.md)
-  - 本轮 dev 分支收口报告，汇总 `verify:server`、`verify:web`、handoff contract 回归和当前已知发送流 browser GAP
+  - 本轮 dev 分支收口报告，汇总 `verify:server`、`verify:web`、handoff contract 回归，以及已闭环的发送流 browser 回放
 - [Headed First-Start Journey Report 2026-04-13](../../output/testing/headed-onboarding-studio-report.md)
   - 本轮重新生成的首次启动有头报告，覆盖 `/access -> /onboarding -> /chat/all`、setup truth 回显、server restart 与第二浏览器上下文恢复
+- [Headed Message Send Flow Report 2026-04-13](../../output/testing/headed-message-send-flow-report.md)
+  - 本轮新增的发送链路有头报告，覆盖频道与讨论间发送时的人类消息先落流、发送态占位、控制面回写与 reload 后持久化
 - [Headed Movie Site Multi-Agent Report 2026-04-12](../../output/testing/headed-multi-agent-movie-studio-report.md)
   - 本轮重新生成的多智能体顺序交接有头报告，覆盖 `星野产品 -> 折光交互 -> 青岚策展` 的 room-auto 协作链、Mailbox walkthrough、`/memory` next-run preview continuity、最终 owner 上下文、公开发言压缩后的 protocol leak probe
 - [Headed Run History Resume Context Report 2026-04-12](../../output/testing/headed-run-history-resume-context-report.md)
@@ -302,7 +304,9 @@
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-room-trace -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-room-trace.md`
   - 验证 child `delivery-reply` 的 comment / complete 是否会把 parent-synced orchestration 追加进 Room 主消息流，并保留 `[Mailbox Sync]` 历史
 - `pnpm test:headed-onboarding-studio`
-  - 验证 `/setup` 的 template selection、progress refresh、finish closeout，以及 reload / server restart / second browser context recovery
+  - 验证 `/access -> /onboarding -> /chat/all` 的首次引导链路，以及 `/setup` / `/settings` / second browser context recovery
+- `pnpm test:headed-message-send-flow`
+  - 验证频道与讨论间发送时的人类消息先落流、发送态占位、控制面回写和 reload 后仍可见
 - `pnpm test:headed-agent-profile-editor`
   - 验证 Agent profile edit、memory binding / recall policy、next-run preview 与 audit persistence
 - `pnpm test:headed-machine-profile-capability-binding`
