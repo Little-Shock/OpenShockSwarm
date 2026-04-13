@@ -507,6 +507,51 @@ func TestParseRoomResponseDirectivesStripsInternalProtocolAndToolLeak(t *testing
 	}
 }
 
+func TestParseRoomResponseDirectivesCompressesLowSignalOwnershipLead(t *testing.T) {
+	directives := parseRoomResponseDirectives("SEND_PUBLIC_MESSAGE\nKIND: message\nCLAIM: take\nBODY:\n我来接这条复核，先把恢复链路和副作用看完，再回写结论。")
+	if directives.DisplayOutput != "先把恢复链路和副作用看完，再回写结论。" {
+		t.Fatalf("display output = %q, want ownership lead removed", directives.DisplayOutput)
+	}
+}
+
+func TestParseRoomResponseDirectivesCapsVisibleSentenceBudgetByReplyKind(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{
+			name:   "message",
+			input:  "SEND_PUBLIC_MESSAGE\nKIND: message\nBODY:\n先看恢复链路。再补测试。最后回写结论。第四句不用公开。",
+			expect: "先看恢复链路。再补测试。最后回写结论。",
+		},
+		{
+			name:   "summary",
+			input:  "SEND_PUBLIC_MESSAGE\nKIND: summary\nBODY:\n先同步当前结论。下一步继续复核。第三句不用保留。",
+			expect: "先同步当前结论。下一步继续复核。",
+		},
+		{
+			name:   "clarification",
+			input:  "SEND_PUBLIC_MESSAGE\nKIND: clarification_request\nBODY:\n请先确认是否允许我改 billing guard？如果允许我就继续。",
+			expect: "请先确认是否允许我改 billing guard？",
+		},
+		{
+			name:   "handoff",
+			input:  "SEND_PUBLIC_MESSAGE\nKIND: handoff\nBODY:\n@agent-claude-review-runner 你继续复核恢复链路。补完后再同步到房间。",
+			expect: "@agent-claude-review-runner 你继续复核恢复链路。",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			directives := parseRoomResponseDirectives(testCase.input)
+			if directives.DisplayOutput != testCase.expect {
+				t.Fatalf("display output = %q, want %q", directives.DisplayOutput, testCase.expect)
+			}
+		})
+	}
+}
+
 func TestBuildChannelExecPromptConstrainsScopeAndPublicSurface(t *testing.T) {
 	snapshot := store.State{
 		Channels: []store.Channel{{

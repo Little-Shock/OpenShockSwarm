@@ -1195,7 +1195,7 @@ func TestRoomMessageRouteInfersVisibleHandoffEnvelope(t *testing.T) {
 	if requestCount != 2 {
 		t.Fatalf("requestCount = %d, want 2 with auto followup", requestCount)
 	}
-	if payload.Output != "我已接手，先复核恢复链路和副作用，再把结论回写到房间。" {
+	if payload.Output != "先复核恢复链路和副作用，再把结论回写到房间。" {
 		t.Fatalf("payload output = %q, want visible followup output", payload.Output)
 	}
 
@@ -2171,7 +2171,7 @@ func TestRoomMessageRouteClaimTakeTransfersOwnershipToMentionedAgent(t *testing.
 	}
 	decodeJSON(t, resp, &payload)
 
-	if payload.Output != "我来接这条复核，先把恢复链路和副作用看完，再回写结论。" {
+	if payload.Output != "先把恢复链路和副作用看完，再回写结论。" {
 		t.Fatalf("payload output = %q, want claimed reply body", payload.Output)
 	}
 
@@ -2396,13 +2396,13 @@ func TestRoomMessageRouteHandoffEnvelopeSuppressesVisibleRelayAfterFollowup(t *t
 	if requestCount != 2 {
 		t.Fatalf("requestCount = %d, want 2 with auto followup", requestCount)
 	}
-	if payload.Output != "我来接这条复核，先看恢复链路，再回写结论。" {
+	if payload.Output != "先看恢复链路，再回写结论。" {
 		t.Fatalf("payload output = %q, want visible followup output", payload.Output)
 	}
 
 	roomMessages := payload.State.RoomMessages[created.RoomID]
 	lastMessage := roomMessages[len(roomMessages)-1]
-	if lastMessage.Speaker != "Claude Review Runner" || lastMessage.Message != "我来接这条复核，先看恢复链路，再回写结论。" {
+	if lastMessage.Speaker != "Claude Review Runner" || lastMessage.Message != "先看恢复链路，再回写结论。" {
 		t.Fatalf("last room message = %#v, want followup from Claude Review Runner", lastMessage)
 	}
 	for _, message := range roomMessages {

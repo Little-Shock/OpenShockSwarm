@@ -2100,12 +2100,103 @@ func parseRoomResponseDirectives(output string) roomResponseDirectives {
 	}
 
 	return roomResponseDirectives{
-		DisplayOutput: sanitizePublicReplyBody(strings.Join(filtered, "\n")),
+		DisplayOutput: compactPublicReplyBody(replyKind, sanitizePublicReplyBody(strings.Join(filtered, "\n"))),
 		Handoff:       handoff,
 		ClaimMode:     claimMode,
 		ReplyKind:     replyKind,
 		SuppressReply: replyKind == "no_response",
 	}
+}
+
+func compactPublicReplyBody(replyKind, output string) string {
+	output = stripLowSignalOwnershipLead(strings.TrimSpace(output))
+	if output == "" {
+		return ""
+	}
+
+	switch replyKind {
+	case "handoff", "clarification_request":
+		return limitPublicReplySentences(output, 1)
+	case "summary":
+		return limitPublicReplySentences(output, 2)
+	default:
+		return limitPublicReplySentences(output, 3)
+	}
+}
+
+func stripLowSignalOwnershipLead(output string) string {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
+		return ""
+	}
+
+	for _, prefix := range []string{
+		"我已接手，",
+		"我已接手：",
+		"我来接这条复核，",
+		"我来接这条，",
+		"我来接这条 lane，",
+		"我来接这条任务，",
+		"我来接这条工作，",
+		"我来继续这条复核，",
+		"我来继续这条 lane，",
+	} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+		}
+	}
+	return trimmed
+}
+
+func limitPublicReplySentences(output string, maxSentences int) string {
+	if maxSentences <= 0 {
+		return ""
+	}
+
+	sentences := splitPublicReplySentences(output)
+	if len(sentences) == 0 {
+		return ""
+	}
+	if len(sentences) > maxSentences {
+		sentences = sentences[:maxSentences]
+	}
+	return strings.TrimSpace(strings.Join(sentences, ""))
+}
+
+func splitPublicReplySentences(output string) []string {
+	text := strings.TrimSpace(strings.ReplaceAll(output, "\r\n", "\n"))
+	if text == "" {
+		return nil
+	}
+
+	sentences := []string{}
+	var builder strings.Builder
+	flush := func(force bool) {
+		current := strings.TrimSpace(builder.String())
+		if current == "" {
+			builder.Reset()
+			return
+		}
+		if force || current != "" {
+			sentences = append(sentences, current)
+		}
+		builder.Reset()
+	}
+
+	for _, r := range text {
+		switch r {
+		case '\n':
+			flush(true)
+		default:
+			builder.WriteRune(r)
+			switch r {
+			case '。', '！', '？', '!', '?', '；', ';':
+				flush(true)
+			}
+		}
+	}
+	flush(true)
+	return sentences
 }
 
 func sanitizePublicReplyBody(output string) string {

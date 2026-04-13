@@ -418,6 +418,123 @@ func TestStateStreamReplaysMissedSnapshotsFromRequestedSequence(t *testing.T) {
 	}
 }
 
+func TestStateStreamReplaysMissedSnapshotsFromLastEventIDHeader(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	initialResp, err := http.Get(server.URL + "/v1/state/stream")
+	if err != nil {
+		t.Fatalf("GET initial state stream error = %v", err)
+	}
+	initialReader := bufio.NewReader(initialResp.Body)
+	initial := decodeSnapshotFrame(t, readStateStreamFrame(t, initialReader))
+	initialResp.Body.Close()
+	if initial.Sequence != 1 {
+		t.Fatalf("initial snapshot = %#v, want sequence 1", initial)
+	}
+
+	if _, _, _, err := s.UpdateNotificationPolicy(store.NotificationPolicyInput{BrowserPush: "all"}); err != nil {
+		t.Fatalf("UpdateNotificationPolicy() error = %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/state/stream", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Last-Event-ID", "1")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET state stream error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	frame := readStateStreamFrame(t, bufio.NewReader(resp.Body))
+	replay := decodeSnapshotFrame(t, frame)
+	if replay.Sequence != 2 {
+		t.Fatalf("replay snapshot = %#v, want sequence 2", replay)
+	}
+	if frame.ID != "2" {
+		t.Fatalf("frame id = %q, want 2", frame.ID)
+	}
+	if replay.State.Workspace.BrowserPush != "推全部 live 通知" {
+		t.Fatalf("replay workspace = %#v, want updated browser push", replay.State.Workspace)
+	}
+}
+
+func TestStateSequenceHeaderBridgesFetchToStreamReplayGap(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	stateResp, err := http.Get(server.URL + "/v1/state")
+	if err != nil {
+		t.Fatalf("GET /v1/state error = %v", err)
+	}
+	if stateResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/state status = %d, want %d", stateResp.StatusCode, http.StatusOK)
+	}
+	sequenceHeader := strings.TrimSpace(stateResp.Header.Get("X-OpenShock-State-Sequence"))
+	stateResp.Body.Close()
+	if sequenceHeader != "1" {
+		t.Fatalf("state sequence header = %q, want 1", sequenceHeader)
+	}
+
+	reportedAt := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.UpsertRuntimeHeartbeat(store.RuntimeHeartbeatInput{
+		RuntimeID:          "shock-gap",
+		DaemonURL:          "http://127.0.0.1:8094",
+		Machine:            "shock-gap",
+		DetectedCLI:        []string{"codex"},
+		State:              "online",
+		WorkspaceRoot:      root,
+		ReportedAt:         reportedAt,
+		HeartbeatIntervalS: 12,
+		HeartbeatTimeoutS:  48,
+	}); err != nil {
+		t.Fatalf("UpsertRuntimeHeartbeat() error = %v", err)
+	}
+
+	resp, err := http.Get(server.URL + "/v1/state/stream?since=" + sequenceHeader)
+	if err != nil {
+		t.Fatalf("GET state stream error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	frame := readStateStreamFrame(t, bufio.NewReader(resp.Body))
+	replay := decodeSnapshotFrame(t, frame)
+	if replay.Sequence != 2 {
+		t.Fatalf("replay snapshot = %#v, want sequence 2", replay)
+	}
+	if frame.ID != "2" {
+		t.Fatalf("frame id = %q, want 2", frame.ID)
+	}
+	if len(replay.State.Runtimes) == 0 || replay.State.Runtimes[0].ID != "shock-gap" {
+		t.Fatalf("replay runtimes = %#v, want shock-gap runtime", replay.State.Runtimes)
+	}
+}
+
 func TestStateStreamEmitsResyncWhenRequestedSequenceFallsOutsideHistoryWindow(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
