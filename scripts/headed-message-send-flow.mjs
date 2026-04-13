@@ -260,13 +260,20 @@ async function waitForButtonEnabled(page, testId, message) {
   });
 }
 
-async function waitForRequestResponse(page, urlFragment, message, timeoutMs = 120_000) {
-  return page.waitForResponse(
-    (response) => response.request().method() === "POST" && response.url().includes(urlFragment),
+async function waitForPostRequest(page, urlFragment, message, timeoutMs = 120_000) {
+  return page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().includes(urlFragment),
     { timeout: timeoutMs }
   ).catch(() => {
     throw new Error(message);
   });
+}
+
+async function waitForRequestCompletion(request, message, timeoutMs = 120_000) {
+  return waitFor(async () => {
+    const response = await request.response();
+    return response ?? false;
+  }, message, timeoutMs, 250);
 }
 
 async function readServerState(serverURL) {
@@ -401,7 +408,7 @@ async function verifyChannelSend(page, webURL, serverURL, statePath) {
 
   await page.getByTestId("channel-message-input").fill(uniqueText);
   await waitForButtonEnabled(page, "channel-send-message", "channel send button did not become enabled after typing");
-  const responsePromise = waitForRequestResponse(
+  const requestPromise = waitForPostRequest(
     page,
     "/v1/channels/all/messages",
     "channel send request did not reach the control API"
@@ -413,7 +420,8 @@ async function verifyChannelSend(page, webURL, serverURL, statePath) {
   await waitForButtonLabel(page, "channel-send-message", "发送中", "channel send button did not expose sending state");
   record("频道发送后，人类消息会先出现在消息流里，同时显示“发送中”和“正在生成回复...” -> PASS");
 
-  const response = await responsePromise;
+  const request = await requestPromise;
+  const response = await waitForRequestCompletion(request, "channel send request did not complete");
   assert([200, 502].includes(response.status()), `channel send response failed with status ${response.status()}`);
   const payload = await response.json();
   assert(stateHasMessage(payload.state ?? {}, "channel", "all", uniqueText), "channel response state did not include the new human message");
@@ -461,7 +469,7 @@ async function verifyRoomSend(page, webURL, serverURL, statePath, roomId) {
 
   await page.getByTestId("room-message-input").fill(uniqueText);
   await waitForButtonEnabled(page, "room-send-message", "room send button did not become enabled after typing");
-  const responsePromise = waitForRequestResponse(
+  const requestPromise = waitForPostRequest(
     page,
     `/v1/rooms/${roomId}/messages/stream`,
     "room send request did not reach the control API"
@@ -473,7 +481,8 @@ async function verifyRoomSend(page, webURL, serverURL, statePath, roomId) {
   await waitForButtonLabel(page, "room-send-message", "发送中", "room send button did not expose sending state");
   record("讨论间发送后，人类消息会先落到流里，按钮和回复占位会一起进入发送态 -> PASS");
 
-  const response = await responsePromise;
+  const request = await requestPromise;
+  const response = await waitForRequestCompletion(request, "room send request did not complete");
   assert(response.ok(), `room send response failed with status ${response.status()}`);
   record("讨论间流式请求已经建立，服务端开始返回消息流 -> PASS");
 
