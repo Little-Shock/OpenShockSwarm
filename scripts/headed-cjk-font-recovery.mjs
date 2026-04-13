@@ -177,6 +177,14 @@ async function waitForText(page, url, expectedText) {
   }, `${url} did not render expected text: ${expectedText}`);
 }
 
+async function waitForTestId(page, url, testId) {
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.locator(`[data-testid="${testId}"]:visible`).first().waitFor({
+    state: "visible",
+    timeout: 120_000,
+  });
+}
+
 async function startServices() {
   const workspaceRoot = path.join(artifactsDir, "workspace");
   const statePath = path.join(artifactsDir, "state.json");
@@ -247,18 +255,15 @@ try {
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 
-  await waitForText(page, `${webURL}/setup`, "工作区在线状态");
+  await waitForTestId(page, `${webURL}/setup`, "setup-onboarding-status");
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
   await capture(page, "setup-cjk");
 
   const bodySnapshot = await fontSnapshot(page.locator("body"), "body");
-  const monoSnapshot = await fontSnapshot(page.getByText("工作区在线状态").first(), "工作区在线状态");
-  const displaySnapshot = await fontSnapshot(
-    page.getByText("Setup 现在直接镜像同一条首次启动路径").first(),
-    "Setup 现在直接镜像同一条首次启动路径"
-  );
+  const monoSnapshot = await fontSnapshot(page.getByText("引导状态").first(), "引导状态");
+  const displaySnapshot = await fontSnapshot(page.getByText("设置与诊断").first(), "设置与诊断");
 
   const rootFontState = await page.evaluate(() => ({
     cjkVar: getComputedStyle(document.documentElement).getPropertyValue("--font-cjk-sans").trim(),

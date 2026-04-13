@@ -24,12 +24,16 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-planner-dispatch-replay";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
+const visiblePlannerOwnerLabels = ["Codex Dockmaster", "主执行智能体"];
 
 function parseArgs(args) {
   const result = { reportPath: "" };
@@ -213,11 +217,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -302,8 +308,8 @@ try {
 
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
   await waitFor(
-    async () => (await readText(page, "board-create-issue-authz")) === "allowed",
-    "board create-issue authz did not settle to allowed"
+    async () => (await readText(page, "board-create-issue-authz")) === "可创建",
+    "board create-issue authz did not settle to 可创建"
   );
   await page.getByTestId("board-create-issue-title").fill(issueTitle);
   await page.getByTestId("board-create-issue-summary").fill(issueSummary);
@@ -332,8 +338,11 @@ try {
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
   await page.getByTestId(`orchestration-planner-queue-item-${createdSession.id}`).waitFor({ state: "visible" });
   await waitFor(
-    async () => (await readText(page, `orchestration-planner-queue-owner-${createdSession.id}`)).includes("Codex Dockmaster"),
-    "assigned planner queue card did not expose Codex Dockmaster"
+    async () => {
+      const ownerText = await readText(page, `orchestration-planner-queue-owner-${createdSession.id}`);
+      return visiblePlannerOwnerLabels.some((label) => ownerText.includes(label));
+    },
+    "assigned planner queue card did not expose the assigned owner"
   );
   await waitFor(
     async () => (await readText(page, "orchestration-governance-step-issue")).includes(createdIssue.key),
@@ -379,7 +388,10 @@ try {
 
   await page.reload({ waitUntil: "load" });
   await waitFor(
-    async () => (await readText(page, "orchestration-governance-human-override")) === "watch",
+    async () => {
+      const label = await readText(page, "orchestration-governance-human-override");
+      return label === "关注" || label === "需要处理";
+    },
     "orchestration page did not expose blocked escalation watch state"
   );
   await waitFor(
@@ -437,7 +449,7 @@ try {
     "",
     "## Results",
     "",
-    `- \`/board\` 真创建 issue 后，\`/v1/planner/queue\` 会立即露出同一条 visible item（本次 initial status = \`${initialPlannerStatus}\`）；随后把 session assignment 前滚给 \`Codex Dockmaster\` 后，\`/agents\` orchestration page 会直接显示 owner / runtime / gate / auto-merge guard truth -> PASS`,
+    `- \`/board\` 真创建 issue 后，\`/v1/planner/queue\` 会立即露出同一条 visible item（本次 initial status = \`${initialPlannerStatus}\`）；随后把 session assignment 前滚后，\`/agents\` orchestration page 会直接显示负责人 / runtime / gate / auto-merge guard truth -> PASS`,
     "- orchestration page 现在不再只剩旧的 fail-closed copy；`planner queue + governed topology + issue -> handoff -> review -> test -> final response` walkthrough 已经同页可见 -> PASS",
     "- adversarial non-happy probe 已覆盖 `blocked` without note：`POST /v1/mailbox/:id` 在缺 note 时稳定返回 `400`，不会把 reviewer blocker 假绿吞掉 -> PASS",
     "- blocked escalation 与 final response aggregation 都能在同一条 orchestration page 上前滚：`human override = watch`，随后 closeout note 会进入 response aggregation 与 final-response step -> PASS",

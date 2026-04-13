@@ -339,7 +339,7 @@ try {
   await page.getByTestId("settings-credential-create-secret").fill(credentialSecret);
   await page.getByTestId("settings-credential-create-workspace-default").check();
   await page.getByTestId("settings-credential-create-save").click();
-  await page.getByText("新 credential profile 已加密落库，并同步到 workspace / agent / run surfaces。").waitFor({ state: "visible" });
+  await page.getByText("新凭证已保存，并可在工作区、智能体和执行页中绑定使用。").waitFor({ state: "visible" });
 
   const createdState = await waitFor(async () => {
     const snapshot = await readState(serverURL);
@@ -349,12 +349,12 @@ try {
   assert(createdCredential, "created credential missing from state after creation");
   await expectTextIncludes(
     page.getByTestId(`settings-credential-workspace-default-${createdCredential.id}`),
-    "workspace default",
-    "settings scope tile should show workspace default"
+    "工作区默认",
+    "settings scope tile should show 工作区默认"
   );
   await expectTextIncludes(
     page.getByTestId(`settings-credential-usage-${createdCredential.id}`),
-    "workspace default · 0 agent · 0 run",
+    "工作区默认 · 0 个智能体 · 0 次运行",
     "settings usage summary should start at zero bindings"
   );
   await capture(page, "settings-credential-created");
@@ -381,7 +381,7 @@ try {
   await page.getByTestId("profile-editor-save").click();
   await expectTextIncludes(
     page.getByTestId("profile-editor-save-status"),
-    "Agent profile 已写回后端 truth",
+    "档案已保存，下一次执行预览已同步刷新。",
     "agent profile save status did not confirm writeback"
   );
   await expectTextIncludes(page.getByTestId("profile-credential-bound-count"), "1", "agent profile bound count should be 1");
@@ -397,13 +397,13 @@ try {
 
   await page.goto(`${webURL}/runs/${runID}`, { waitUntil: "domcontentloaded" });
   await waitForVisible(page.getByTestId("run-detail-status"), "run detail did not render");
-  await expectTextIncludes(page.getByTestId("run-credential-effective-count"), "1 effective", "run should inherit the workspace-default credential");
+  await expectTextIncludes(page.getByTestId("run-credential-effective-count"), "1 条生效", "run should inherit the workspace-default credential");
   await expectTextIncludes(page.getByTestId("run-credential-effective-labels"), credentialLabel, "run effective credential labels missing created credential");
   await waitForEnabled(page.getByTestId(`run-credential-binding-${createdCredential.id}`), "run credential checkbox never became editable");
   await page.getByTestId(`run-credential-binding-${createdCredential.id}`).check();
   await waitForEnabled(page.getByTestId("run-credential-save"), "run credential save button never became enabled");
   await page.getByTestId("run-credential-save").click();
-  await page.getByText("run-scope credential binding 已写回。").waitFor({ state: "visible" });
+  await page.getByText("本次执行的凭据绑定已保存。").waitFor({ state: "visible" });
 
   const runBoundState = await waitFor(async () => {
     const snapshot = await readState(serverURL);
@@ -434,7 +434,7 @@ try {
   await waitForVisible(page.getByTestId(`settings-credential-usage-${createdCredential.id}`), "settings credential usage summary did not rerender");
   await expectTextIncludes(
     page.getByTestId(`settings-credential-usage-${createdCredential.id}`),
-    "workspace default · 1 agent · 1 run",
+    "工作区默认 · 1 个智能体 · 1 次运行",
     "settings usage summary should reflect agent + run bindings"
   );
   await capture(page, "settings-credential-usage-audit");

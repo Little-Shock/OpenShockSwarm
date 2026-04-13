@@ -658,16 +658,18 @@ async function runCallbackPhase(chromiumExecutable) {
 
   const page = await context.newPage();
   await page.goto(`${ingressURL}/setup`, { waitUntil: "load" });
-  await page.locator('[data-testid="setup-github-connection"]').waitFor({ state: "visible" });
-  await page.locator('[data-testid="setup-github-callback-link"]').waitFor({ state: "visible" });
-  await page.locator('[data-testid="setup-github-webhook-url"]').waitFor({ state: "visible" });
+  await page.getByText("展开仓库与远端").click();
+  await page.locator('[data-testid="setup-github-connection"]:visible').waitFor({ state: "visible" });
+  await page.getByText("查看回流地址").click();
+  await page.locator('[data-testid="setup-github-callback-link"]:visible').waitFor({ state: "visible" });
+  await page.locator('[data-testid="setup-github-webhook-url"]:visible').waitFor({ state: "visible" });
 
   const readinessBefore = (await page.getByTestId("setup-github-readiness-status").textContent())?.trim() ?? "";
   const messageBefore = (await page.getByTestId("setup-github-message").textContent())?.trim() ?? "";
   const callbackLink = (await page.getByTestId("setup-github-callback-link").getAttribute("href"))?.trim() ?? "";
   const webhookURL = (await page.getByTestId("setup-github-webhook-url").textContent())?.trim() ?? "";
 
-  assert(readinessBefore === "仅本地闭环", `expected local-only readiness before callback, got ${readinessBefore}`);
+  assert(readinessBefore === "未完成", `expected local-only readiness before callback, got ${readinessBefore}`);
   assert(callbackLink === `${ingressURL}/setup/github/callback`, `callback link mismatch: ${callbackLink}`);
   assert(webhookURL === `${ingressURL}/v1/github/webhook`, `webhook URL mismatch: ${webhookURL}`);
   await capture(page, "callback-setup-before");
@@ -680,18 +682,20 @@ async function runCallbackPhase(chromiumExecutable) {
   const callbackHeading = (await page.getByRole("heading", { level: 2 }).textContent())?.trim() ?? "";
   const callbackBody = (await page.textContent("body"))?.trim() ?? "";
   assert(callbackHeading === "GitHub 安装回跳已接住", `callback heading mismatch: ${callbackHeading}`);
-  assert(callbackBody.includes("installation truth 已写回"), `callback success body missing: ${callbackBody}`);
+  assert(callbackBody.includes("GitHub 已连接"), `callback success body missing ready text: ${callbackBody}`);
   await capture(page, "callback-success");
 
   await page.waitForURL(`${ingressURL}/setup?github_installation=connected`, { timeout: 30_000 });
-  await page.locator('[data-testid="setup-github-readiness-status"]').waitFor({ state: "visible" });
+  await page.getByText("展开仓库与远端").click();
+  await page.locator('[data-testid="setup-github-connection"]:visible').waitFor({ state: "visible" });
+  await page.locator('[data-testid="setup-github-readiness-status"]:visible').waitFor({ state: "visible" });
   await page.waitForFunction(
-    () => document.querySelector('[data-testid="setup-github-readiness-status"]')?.textContent?.trim() === "可进远端 PR",
+    () => document.querySelector('[data-testid="setup-github-readiness-status"]:not([hidden])')?.textContent?.trim() === "已连接",
     undefined,
     { timeout: 30_000 },
   );
-  const readinessAfter = (await page.getByTestId("setup-github-readiness-status").textContent())?.trim() ?? "";
-  assert(readinessAfter === "可进远端 PR", `expected ready status after callback, got ${readinessAfter}`);
+  const readinessAfter = (await page.locator('[data-testid="setup-github-readiness-status"]:visible').textContent())?.trim() ?? "";
+  assert(readinessAfter === "已连接", `expected ready status after callback, got ${readinessAfter}`);
   await capture(page, "callback-setup-after");
 
   const stateAfter = await fetchJSON(`${ingressURL}/v1/state`);

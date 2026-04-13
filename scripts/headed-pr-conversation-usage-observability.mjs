@@ -25,6 +25,8 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-pr-usage-observability";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 const webhookSecret = "super-secret";
 const pullRequestID = "pr-runtime-18";
 const pullRequestNumber = 18;
@@ -33,6 +35,7 @@ const runID = "run_runtime_01";
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -248,6 +251,18 @@ async function readText(page, testId) {
   return ((await page.getByTestId(testId).textContent()) ?? "").replace(/\s+/g, " ").trim();
 }
 
+async function waitForHydratedText(page, testId, timeout = 8_000) {
+  await page.waitForFunction(
+    ({ id }) => {
+      const node = document.querySelector(`[data-testid="${id}"]`);
+      const text = node?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      return text.length > 0 && !text.includes("同步中") && !text.includes("未返回");
+    },
+    { id: testId },
+    { timeout }
+  );
+}
+
 async function startServices() {
   const workspaceRoot = path.join(artifactsDir, "workspace");
   const statePath = path.join(artifactsDir, "state.json");
@@ -260,11 +275,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -543,7 +560,7 @@ try {
     page.getByTestId("pull-request-room-pr-link").click(),
   ]);
   await page.getByTestId("room-workbench-pr-panel").waitFor({ state: "visible" });
-  assert((await readText(page, "room-pr-conversation-count")) === "3 entries", "room PR panel should mirror 3 recent conversation entries");
+  assert((await readText(page, "room-pr-conversation-count")) === "3 条记录", "room PR panel should mirror 3 recent conversation entries");
   await page.getByTestId("room-pr-conversation-entry-review_thread:7001").waitFor({ state: "visible" });
   await capture(page, "room-pr-workbench-conversation-ledger");
 
@@ -574,7 +591,10 @@ try {
   const roomUsageSummary = await readText(page, "room-workbench-room-usage-summary");
   const workspaceUsageSummary = await readText(page, "room-workbench-workspace-usage-summary");
   const roomUsageWarning = await readText(page, "room-workbench-usage-warning");
-  assert(roomUsageSummary.includes("msgs /"), "room usage summary should expose message/token counters");
+  assert(
+    roomUsageSummary.includes("条消息 /") && roomUsageSummary.includes("令牌"),
+    "room usage summary should expose message/token counters"
+  );
   assert(workspaceUsageSummary.length > 8 && !workspaceUsageSummary.includes("未返回"), "workspace usage summary should expose plan/quota headroom");
   assert(roomUsageWarning.length > 8, "room usage warning should be visible");
   await capture(page, "room-run-usage-observability");
@@ -589,6 +609,9 @@ try {
 
   await page.goto(`${webURL}/settings`, { waitUntil: "load" });
   await page.getByTestId("settings-workspace-plan-value").waitFor({ state: "visible" });
+  await waitForHydratedText(page, "settings-workspace-plan-value");
+  await waitForHydratedText(page, "settings-workspace-usage-window");
+  await waitForHydratedText(page, "settings-workspace-retention");
   const workspacePlan = await readText(page, "settings-workspace-plan-value");
   const usageWindow = await readText(page, "settings-workspace-usage-window");
   const retention = await readText(page, "settings-workspace-retention");
@@ -596,9 +619,9 @@ try {
   const quotaWarning = await readText(page, "settings-workspace-quota-warning");
   const usageWarning = await readText(page, "settings-workspace-usage-warning");
   assert(workspacePlan.length > 0 && workspacePlan !== "未声明", "settings plan tile should be populated");
-  assert(usageWindow.includes("过去"), "settings usage window should be populated");
-  assert(retention.includes("消息"), "settings retention tile should expose retention contract");
-  assert(usageSummary.includes("tokens"), "settings usage summary should expose tokens");
+  assert(usageWindow.length > 8 && !usageWindow.includes("未返回"), "settings usage window should be populated");
+  assert(retention.length > 8 && !retention.includes("未返回"), "settings retention tile should expose retention contract");
+  assert(usageSummary.includes("令牌"), "settings usage summary should expose tokens");
   assert(quotaWarning.length > 8, "settings quota warning should be visible");
   assert(usageWarning.length > 8, "settings usage warning should be visible");
   await capture(page, "settings-workspace-plan-usage-retention");

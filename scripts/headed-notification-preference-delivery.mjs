@@ -262,9 +262,9 @@ try {
   await page.getByTestId("notification-browser-policy-all").click();
   await page.getByTestId("notification-email-policy-all").click();
   await page.getByTestId("notification-save-policy").click();
-  await waitForContainsText(page, "notification-action-message", "默认策略已写回 server");
-  await waitForContainsText(page, "notification-workspace-browser-policy", "全部 live 事件");
-  await waitForContainsText(page, "notification-workspace-email-policy", "全部 live 事件");
+  await waitForContainsText(page, "notification-action-message", "工作区通知默认值已保存");
+  await waitForContainsText(page, "notification-workspace-browser-policy", "全部通知");
+  await waitForContainsText(page, "notification-workspace-email-policy", "全部通知");
 
   await page.getByTestId("notification-register-browser").click();
   await waitForContainsText(page, "notification-browser-registration", "已注册");
@@ -312,31 +312,31 @@ try {
   await capture(page, screenshotsDir, "retry-fanout-green");
 
   const report = [
-    "# TKT-11 Notification Preference / Delivery Report",
+    "# TKT-11 通知偏好与送达测试报告",
     "",
     `- Command: \`${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-notification-preference-delivery -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
     "",
-    "## Results",
+    "## 结果",
     "",
-    "### Workspace Policy + Subscriber Contract",
+    "### 默认规则与接收端",
     "",
-    "- `/settings` 现在直接消费 `/v1/notifications`，workspace browser/email policy 可写回 server -> PASS",
-    "- 当前浏览器能注册 service worker、同步成 ready browser subscriber，并在 page 上暴露稳定 subscriber target -> PASS",
-    "- email subscriber 也在同页写入同一 contract surface，不再停在 placeholder 文案 -> PASS",
+    "- `/settings` 可以直接保存浏览器通知和邮件通知默认值 -> PASS",
+    "- 当前浏览器可以启用通知接收并进入已就绪状态 -> PASS",
+    "- 邮件通知地址也能在同页保存并立即参与发送 -> PASS",
     "",
-    "### Delivery / Retry Lifecycle",
+    "### 发送与重试",
     "",
-    `- invalid email target 首次 fanout 会显式打出 \`attempted = ${expectedAttempted} / delivered = ${readyBrowserDeliveries} / failed = ${readyEmailDeliveries}\`，email subscriber \`lastError\` 明面可见 -> PASS`,
-    `- 修正 email target 为 \`ops@openshock.dev\` 后，同页 retry fanout 转成 \`attempted = ${expectedAttempted} / delivered = ${expectedAttempted} / failed = 0\`，\`lastDeliveredAt\` 落桌 -> PASS`,
-    "- browser subscriber 在同一 fanout 上保持 `ready`，并把 sent browser receipts 转成 local notification -> PASS",
+    `- 无效邮箱首次发送会明确显示 \`尝试 = ${expectedAttempted} / 送达 = ${readyBrowserDeliveries} / 失败 = ${readyEmailDeliveries}\`，最近错误可见 -> PASS`,
+    `- 修正邮箱为 \`ops@openshock.dev\` 后，再次发送会恢复为 \`尝试 = ${expectedAttempted} / 送达 = ${expectedAttempted} / 失败 = 0\`，并写入最近送达时间 -> PASS`,
+    "- 浏览器通知在同一轮发送中保持已就绪，并能显示本地通知 -> PASS",
     "",
-    "### Scope Boundary",
+    "### 范围说明",
     "",
-    "- 这轮只收 `TC-017` 的 browser push / email preference、subscriber contract、fanout receipts 与 retry truth。",
-    "- invite / verify / reset password 继续留在后续身份链路范围，不借写成这张票已完成。",
+    "- 这轮只覆盖 `TC-017` 的浏览器通知、邮件通知、发送结果和重试恢复。",
+    "- 邀请、验证和重置密码继续留在后续身份链路范围，不算在这张票里完成。",
     "",
-    "### Screenshots",
+    "### 截图",
     "",
     ...screenshots.map((item) => `- ${item.name}: ${item.path}`),
     "",

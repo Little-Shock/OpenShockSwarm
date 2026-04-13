@@ -20,7 +20,8 @@ const evidenceRoot =
 const artifactsDir = path.resolve(evidenceRoot);
 const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
-const webDistDir = path.join(artifactsDir, "next-dist");
+const webDistDirName = ".next-e2e-session-foundation";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 const screenshots = [];
 const processes = [];
@@ -196,7 +197,7 @@ async function startServices(runDir) {
     env: {
       ...process.env,
       NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
-      OPENSHOCK_NEXT_DIST_DIR: webDistDir,
+      OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
     },
     logPath: path.join(logsDir, "web.log"),
   });

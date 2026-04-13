@@ -25,6 +25,7 @@ const screenshots = [];
 const processes = [];
 
 await mkdir(artifactsDir, { recursive: true });
+await mkdir(path.dirname(reportPath), { recursive: true });
 
 function parseArgs(args) {
   const result = { reportPath: "" };
@@ -261,7 +262,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
   await page.goto(`${webURL}/memory`, { waitUntil: "load" });
 
-  await waitForContains(page, "memory-artifact-count", "items");
+  await waitForContains(page, "memory-artifact-count", "条");
   await waitForVisible(page, "memory-preview-item-memory-md");
   await capture(page, screenshotsDir, "initial-memory-center");
 
@@ -272,7 +273,7 @@ try {
   await page.getByTestId("memory-policy-agent").click();
   await page.getByTestId("memory-policy-max-items").selectOption("8");
   await page.getByTestId("memory-policy-save").click();
-  await waitForContains(page, "memory-mutation-success", "memory policy switched");
+  await waitForContains(page, "memory-mutation-success", "带入设置已更新为");
   await waitForVisible(page, "memory-preview-item-openshock-agents-memory-clerk-memory-md");
   await capture(page, screenshotsDir, "policy-preview-updated");
 
@@ -281,9 +282,9 @@ try {
   await page.getByTestId("memory-promotion-title").fill("Room Conflict Triage");
   await page.getByTestId("memory-promotion-rationale").fill("把房间内反复出现的冲突处理步骤提升成可复用 skill。");
   await page.getByTestId("memory-promotion-submit").click();
-  await waitForText(page, "memory-promotion-room-conflict-triage-status", "pending_review");
+  await waitForText(page, "memory-promotion-room-conflict-triage-status", "待审核");
   await page.getByTestId("memory-promotion-room-conflict-triage-approve").click();
-  await waitForText(page, "memory-promotion-room-conflict-triage-status", "approved");
+  await waitForText(page, "memory-promotion-room-conflict-triage-status", "已通过");
   await capture(page, screenshotsDir, "skill-promotion-approved");
 
   await page.getByTestId("memory-artifact-decisions-ops-27-md").click();
@@ -291,9 +292,9 @@ try {
   await page.getByTestId("memory-promotion-title").fill("Room Over User Priority");
   await page.getByTestId("memory-promotion-rationale").fill("把阻塞时的优先级顺序提升成 policy，避免下次继续靠口头判断。");
   await page.getByTestId("memory-promotion-submit").click();
-  await waitForText(page, "memory-promotion-room-over-user-priority-status", "pending_review");
+  await waitForText(page, "memory-promotion-room-over-user-priority-status", "待审核");
   await page.getByTestId("memory-promotion-room-over-user-priority-approve").click();
-  await waitForText(page, "memory-promotion-room-over-user-priority-status", "approved");
+  await waitForText(page, "memory-promotion-room-over-user-priority-status", "已通过");
   await waitForVisible(page, "memory-preview-item-notes-skills-md");
   await waitForVisible(page, "memory-preview-item-notes-policies-md");
   await page.getByTestId("memory-artifact-notes-policies-md").click();

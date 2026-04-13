@@ -266,7 +266,7 @@ try {
   page = await context.newPage();
 
   await page.goto(`${services.webURL}/inbox`, { waitUntil: "load" });
-  await page.getByTestId("approval-center-mobile-triage").waitFor({ state: "visible" });
+  await page.locator('[data-testid="approval-center-mobile-triage"]:visible').first().waitFor({ state: "visible" });
   await waitForContainsText(page, "approval-center-mobile-open", "3");
   await waitForContainsText(page, "approval-center-mobile-unread", "3");
   await waitForContainsText(page, "approval-center-mobile-blocked", "1");

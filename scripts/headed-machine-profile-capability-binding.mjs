@@ -27,6 +27,7 @@ const logsDir = path.join(artifactsDir, "logs");
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(path.dirname(reportPath), { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -141,6 +142,16 @@ async function waitForVisible(locator, message) {
   await waitFor(async () => (await locator.count()) > 0 && (await locator.first().isVisible()), message);
 }
 
+async function expandDetails(page, selector, message) {
+  const details = page.locator(selector);
+  await waitForVisible(details, message);
+  await details.evaluate((node) => {
+    if (node instanceof HTMLDetailsElement) {
+      node.open = true;
+    }
+  });
+}
+
 function resolveChromiumExecutable() {
   const candidates = [
     process.env.OPENSHOCK_CHROMIUM_PATH,
@@ -232,6 +243,8 @@ try {
   const results = [];
 
   await page.goto(`${webURL}/setup`, { waitUntil: "domcontentloaded" });
+  await expandDetails(page, '[data-testid="setup-overview-technical-details"]', "setup technical detail panel did not render");
+  await expandDetails(page, '[data-testid="setup-runtime-inventory-details"]', "setup runtime inventory details did not render");
   await waitForVisible(page.locator('[data-testid="setup-runtime-card-shock-main"]'), "setup runtime card did not render");
   await waitForVisible(page.locator('[data-testid="setup-selected-runtime-shell"]'), "selected runtime shell metric did not render");
   await capture(page, "setup-runtime-inventory");

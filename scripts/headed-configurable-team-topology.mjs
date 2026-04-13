@@ -253,7 +253,7 @@ try {
   await page.getByTestId("settings-governance-lane-path-5").fill("release / closeout");
   await page.getByTestId("settings-governance-save").click();
   await waitFor(
-    async () => (await readText(page, "settings-governance-success")).includes("delivery policy 已写回 workspace truth"),
+    async () => (await readText(page, "settings-governance-success")).includes("团队协作流程已保存。"),
     "governance save success message did not appear"
   );
   await capture(page, "settings-governance-after-save");

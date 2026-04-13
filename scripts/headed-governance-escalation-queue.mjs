@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-governance-escalation-queue";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -50,6 +53,45 @@ function assert(condition, message) {
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+function parseCountText(value) {
+  const match = value.match(/(\d+)/);
+  return match ? Number(match[1]) : Number.NaN;
+}
+
+function governanceStatusLabel(status) {
+  switch (status) {
+    case "active":
+      return "进行中";
+    case "blocked":
+      return "阻塞";
+    case "done":
+      return "完成";
+    case "ready":
+      return "就绪";
+    case "required":
+      return "需要处理";
+    case "watch":
+      return "关注";
+    case "draft":
+      return "草稿";
+    default:
+      return status;
+  }
+}
+
+function mailboxStatusLabel(status) {
+  switch (status) {
+    case "acknowledged":
+      return "处理中";
+    case "blocked":
+      return "阻塞";
+    case "completed":
+      return "已完成";
+    default:
+      return "待接手";
+  }
 }
 
 async function freePort() {
@@ -201,14 +243,15 @@ async function waitForMailbox(serverURL, title) {
 }
 
 async function waitForMailboxStatus(page, handoffId, expected) {
+  const expectedLabel = mailboxStatusLabel(expected);
   await page.waitForFunction(
-    ({ currentHandoffId, currentExpected }) => {
+    ({ currentHandoffId, currentExpectedLabel }) => {
       return (
         document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() ===
-        currentExpected
+        currentExpectedLabel
       );
     },
-    { currentHandoffId: handoffId, currentExpected: expected },
+    { currentHandoffId: handoffId, currentExpectedLabel: expectedLabel },
     { timeout: 30_000 }
   );
 }
@@ -236,11 +279,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -316,9 +361,14 @@ try {
   await page.getByTestId("setup-template-select-dev-team").click();
   await page.getByTestId("setup-onboarding-success").waitFor({ state: "visible" });
 
+  const baselineState = await readState(serverURL);
+  const baselineQueueCount = baselineState.workspace.governance.escalationSla?.queue?.length ?? 0;
   await page.goto(`${webURL}/mailbox?roomId=room-runtime`, { waitUntil: "load" });
   await page.getByTestId("mailbox-governance-escalation-queue").waitFor({ state: "visible" });
-  assert((await readText(page, "mailbox-governance-escalation-count")) === "0 items", "baseline escalation queue should start empty");
+  assert(
+    parseCountText(await readText(page, "mailbox-governance-escalation-count")) === baselineQueueCount,
+    "baseline escalation queue count should match server governance snapshot"
+  );
   await capture(page, "mailbox-escalation-baseline");
 
   await page.getByTestId("mailbox-create-room").selectOption("room-runtime");
@@ -332,16 +382,19 @@ try {
   const handoffEntryId = `handoff:${handoff.id}`;
   await page.getByTestId(`mailbox-governance-escalation-entry-${handoffEntryId}`).waitFor({ state: "visible" });
   assert(
-    (await readText(page, `mailbox-governance-escalation-status-${handoffEntryId}`)) === "active",
+    (await readText(page, `mailbox-governance-escalation-status-${handoffEntryId}`)) === governanceStatusLabel("active"),
     "requested handoff should appear as active escalation queue entry"
   );
-  assert((await readText(page, "mailbox-governance-escalation-count")) === "1 items", "mailbox queue should expose one active handoff entry after create");
+  assert(
+    parseCountText(await readText(page, "mailbox-governance-escalation-count")) === baselineQueueCount + 1,
+    "mailbox queue should expose one additional active handoff entry after create"
+  );
   await capture(page, "mailbox-escalation-requested");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
   await page.getByTestId(`orchestration-governance-escalation-entry-${handoffEntryId}`).waitFor({ state: "visible" });
   assert(
-    (await readText(page, `orchestration-governance-escalation-status-${handoffEntryId}`)) === "active",
+    (await readText(page, `orchestration-governance-escalation-status-${handoffEntryId}`)) === governanceStatusLabel("active"),
     "orchestration page should mirror active handoff escalation entry"
   );
   await capture(page, "orchestration-escalation-requested");
@@ -364,14 +417,17 @@ try {
   await page.getByTestId(`mailbox-governance-escalation-entry-${handoffEntryId}`).waitFor({ state: "visible" });
   await page.getByTestId(`mailbox-governance-escalation-entry-${blockerEntryId}`).waitFor({ state: "visible" });
   assert(
-    (await readText(page, `mailbox-governance-escalation-status-${handoffEntryId}`)) === "blocked",
+    (await readText(page, `mailbox-governance-escalation-status-${handoffEntryId}`)) === governanceStatusLabel("blocked"),
     "blocked handoff should switch escalation queue status to blocked"
   );
   assert(
-    (await readText(page, `mailbox-governance-escalation-status-${blockerEntryId}`)) === "blocked",
+    (await readText(page, `mailbox-governance-escalation-status-${blockerEntryId}`)) === governanceStatusLabel("blocked"),
     "blocked inbox signal should appear as blocked escalation queue entry"
   );
-  assert((await readText(page, "mailbox-governance-escalation-count")) === "2 items", "mailbox queue should expose handoff + inbox blocker entries after block");
+  assert(
+    parseCountText(await readText(page, "mailbox-governance-escalation-count")) === baselineQueueCount + 2,
+    "mailbox queue should expose handoff + inbox blocker entries after block"
+  );
   await capture(page, "mailbox-escalation-blocked");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
@@ -399,15 +455,23 @@ try {
 
   await page.goto(`${webURL}/mailbox?roomId=room-runtime`, { waitUntil: "load" });
   await waitFor(
-    async () => (await readText(page, "mailbox-governance-escalation-count")) === "0 items",
-    "escalation queue should clear after handoff closeout"
+    async () => parseCountText(await readText(page, "mailbox-governance-escalation-count")) === baselineQueueCount,
+    "escalation queue should return to baseline after handoff closeout"
+  );
+  await waitFor(
+    async () => (await page.getByTestId(`mailbox-governance-escalation-entry-${handoffEntryId}`).count()) === 0,
+    "handoff escalation entry should disappear after closeout"
+  );
+  await waitFor(
+    async () => (await page.getByTestId(`mailbox-governance-escalation-entry-${blockerEntryId}`).count()) === 0,
+    "blocked inbox escalation entry should disappear after closeout"
   );
   await capture(page, "mailbox-escalation-cleared");
 
   const finalState = await readState(serverURL);
   assert(
-    (finalState.workspace.governance.escalationSla?.queue?.length ?? 0) === 0,
-    "server governance snapshot should clear escalation queue after closeout"
+    (finalState.workspace.governance.escalationSla?.queue?.length ?? 0) === baselineQueueCount,
+    "server governance snapshot should return escalation queue to baseline after closeout"
   );
 
   const report = [
@@ -425,7 +489,7 @@ try {
     "- `/mailbox` 的 governance area 现在不只显示 SLA summary，而是会把当前 active handoff 直接排进 `Escalation Queue`；创建 formal handoff 后，queue 会立刻出现 `mailbox handoff` entry -> PASS",
     "- `/agents` orchestration page 会镜像同一份 escalation queue truth，而不是只在 Mailbox 局部可见；同一条 handoff escalation 会在两个工作面同源出现 -> PASS",
     "- handoff 被 `blocked` 后，queue 会同时出现 blocked handoff 与 related inbox blocker 两条 entry，证明 escalation 不再只剩一串 aggregate counter -> PASS",
-    "- handoff 重新 `acknowledged -> completed` 后，queue 会自动清空，server snapshot 也会同步归零，说明 escalation queue 已成为正式治理对象，而不是脏残留列表 -> PASS",
+    "- handoff 重新 `acknowledged -> completed` 后，这次新增的 escalation entry 会自动退出队列，server snapshot 也会回到初始基线，说明 escalation queue 已成为正式治理对象，而不是脏残留列表 -> PASS",
     "",
     "## Screenshots",
     "",

@@ -473,7 +473,12 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
 
     await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-    await waitForPageText(page, "自动 Failover");
+    await page.getByTestId("setup-template-select-dev-team").waitFor({ state: "visible" });
+    await page.getByTestId("setup-template-select-dev-team").click();
+    await page.getByTestId("setup-onboarding-success").waitFor({ state: "visible" });
+
+    await page.goto(`${webURL}/setup`, { waitUntil: "load" });
+    await waitForPageText(page, "自动兜底切换");
     await waitForPageText(page, "shock-spare");
     await page.waitForSelector('[data-testid="setup-runtime-lease-recovery"]', { timeout: 30_000 });
     await waitForPageText(page, "session-other");
@@ -481,7 +486,7 @@ async function main() {
 
     await page.goto(`${webURL}/agents`, { waitUntil: "load" });
     await waitForPageText(page, "runtime lease 冲突");
-    await waitForPageText(page, "recovery:");
+    await waitForPageText(page, "恢复建议：");
     await waitForPageText(page, "session-other");
     await capture(page, screenshotsDir, "agents-lease-recovery");
 

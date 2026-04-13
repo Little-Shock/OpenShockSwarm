@@ -1,7 +1,9 @@
 # Testing Docs
 
+- [Verification Sweep Report 2026-04-13](./Test-Report-2026-04-13-verification-sweep.md)
+  - 本轮 dev 分支收口报告，汇总 `verify:server`、`verify:web`、handoff contract 回归和当前已知发送流 browser GAP
 - [Headed Movie Site Multi-Agent Report 2026-04-12](../../output/testing/headed-multi-agent-movie-studio-report.md)
-  - 本轮新增的多智能体顺序交接有头报告，覆盖 `星野产品 -> 折光交互 -> 青岚策展` 的 room-auto 协作链、Mailbox walkthrough、最终 owner 上下文与 protocol leak probe
+  - 本轮重新生成的多智能体顺序交接有头报告，覆盖 `星野产品 -> 折光交互 -> 青岚策展` 的 room-auto 协作链、Mailbox walkthrough、`/memory` next-run preview continuity、最终 owner 上下文、公开发言压缩后的 protocol leak probe
 - [Headed Run History Resume Context Report 2026-04-12](../../output/testing/headed-run-history-resume-context-report.md)
   - 本轮重新生成的恢复链有头报告，覆盖 `/runs` 分页历史、prior-run reopen、session resume context 与回到 room run tab 后重新锚定当前 continuity
 - [Test Report 2026-04-11 Windows Chrome Identity Template Recovery Journey](./Test-Report-2026-04-11-windows-chrome-identity-template-recovery-journey.md)
@@ -210,7 +212,7 @@
 - `pnpm test:headed-memory-provider-health-recovery`
   - 验证 provider 的 health check、manual recovery、dependency degrade propagation、preview projection 与 reload persistence
 - `node ./scripts/headed-multi-agent-movie-studio.mjs --report output/testing/headed-multi-agent-movie-studio-report.md`
-  - 验证 `A -> B -> C` 顺序 room-auto handoff、当前 owner continuity、Mailbox walkthrough，以及公开房间不泄露 `SEND_PUBLIC_MESSAGE` / `OPENSHOCK_HANDOFF:` 内部协议
+  - 验证 `A -> B -> C` 顺序 room-auto handoff、当前 owner continuity、`/memory` next-run preview continuity、Mailbox walkthrough，以及公开房间不泄露 `SEND_PUBLIC_MESSAGE` / `OPENSHOCK_HANDOFF:` 内部协议
 - `pnpm test:headed-memory-viewer-correction-forget`
   - 验证 memory detail 的 correction / forget mutation、version audit 与 recall preview removal
 - `pnpm test:headed-stop-resume-follow-thread`

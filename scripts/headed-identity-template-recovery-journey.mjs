@@ -238,6 +238,47 @@ async function waitForSession(page, expectations) {
   );
 }
 
+async function ensureAccessDetailsOpen(page, detailsTestID, toggleTestID) {
+  const toggle = page.getByTestId(toggleTestID);
+  await toggle.waitFor({ state: "visible", timeout: 30_000 });
+  const details = page.getByTestId(detailsTestID);
+  await details.waitFor({ state: "attached", timeout: 30_000 });
+  const isOpen = await details.evaluate(
+    (element) => element instanceof HTMLDetailsElement && element.open
+  );
+  if (!isOpen) {
+    await details.evaluate((element) => {
+      if (element instanceof HTMLDetailsElement) {
+        element.open = true;
+      }
+    });
+    await page.waitForFunction((currentDetailsTestID) => {
+      const element = document.querySelector(`[data-testid="${currentDetailsTestID}"]`);
+      return element instanceof HTMLDetailsElement && element.open;
+    }, detailsTestID);
+  }
+}
+
+async function ensureAccessAdvancedOpen(page) {
+  await ensureAccessDetailsOpen(page, "access-advanced-details", "access-advanced-toggle");
+}
+
+async function ensureAccessMemberAdminOpen(page) {
+  await ensureAccessDetailsOpen(page, "access-member-admin-details", "access-member-admin-toggle");
+}
+
+async function gotoAccessControls(page, webURL, focusTestID = "access-invite-email") {
+  await page.goto(`${webURL}/access`, { waitUntil: "load" });
+  const focus = page.getByTestId(focusTestID);
+  try {
+    await focus.waitFor({ state: "visible", timeout: 5_000 });
+    return;
+  } catch {
+    await ensureAccessMemberAdminOpen(page);
+    await focus.waitFor({ state: "visible", timeout: 30_000 });
+  }
+}
+
 async function readNotificationCenter(serverURL) {
   const response = await fetch(`${serverURL}/v1/notifications`, { cache: "no-store" });
   if (!response.ok) {
@@ -263,25 +304,24 @@ try {
   await page.getByTestId("notification-subscribers-count").waitFor({ state: "visible" });
   await page.getByTestId("notification-email-policy-all").click();
   await page.getByTestId("notification-save-policy").click();
-  await waitForContainsText(page, "notification-action-message", "默认策略已写回 server");
+  await waitForContainsText(page, "notification-action-message", "工作区通知默认值已保存");
   await page.getByTestId("notification-email-target-input").fill(OPS_EMAIL);
   await page.getByTestId("notification-save-email").click();
   await waitForContainsText(page, "notification-action-message", OPS_EMAIL);
   await waitForContainsText(page, "notification-subscribers-count", "1");
   await capture(page, "settings-identity-delivery-ready");
 
-  await page.goto(`${webURL}/access`, { waitUntil: "load" });
-  await page.getByTestId("access-session-status").waitFor({ state: "visible" });
+  await gotoAccessControls(page, webURL);
   await waitForSession(page, {
     status: "已登录",
     email: "larkspur@openshock.dev",
-    role: "Owner",
+    role: "所有者",
   });
   await page.getByTestId("access-invite-email").fill(REVIEWER_EMAIL);
   await page.getByTestId("access-invite-name").fill(REVIEWER_NAME);
   await page.getByTestId("access-invite-role").selectOption("member");
   await page.getByTestId("access-invite-submit").click();
-  await waitForText(page, "access-invite-success", `${REVIEWER_EMAIL} invited as Member`);
+  await waitForText(page, "access-invite-success", `已邀请 ${REVIEWER_EMAIL}，角色为 成员`);
   await waitForText(page, `access-member-status-${REVIEWER_MEMBER_ID}`, "待接受");
   await capture(page, "access-invite-created");
 
@@ -291,7 +331,7 @@ try {
   await waitForContainsText(page, "notification-identity-signal-count", "1");
   await waitForContainsText(page, "notification-identity-ready-count", "1");
   await page.getByTestId("notification-run-fanout").click();
-  await waitForContainsText(page, "notification-identity-worker-summary", "1/1 sent");
+  await waitForContainsText(page, "notification-identity-worker-summary", "1/1 已送达");
   await capture(page, "settings-invite-template-fanout");
 
   const inviteCenter = await readNotificationCenter(serverURL);
@@ -300,13 +340,14 @@ try {
     "invite fanout should emit auth_invite receipt"
   );
 
-  await page.goto(`${webURL}/access`, { waitUntil: "load" });
+  await gotoAccessControls(page, webURL);
+  await ensureAccessAdvancedOpen(page);
   await page.getByTestId("access-login-device-label").fill("Reviewer Phone");
   await page.getByTestId(`access-quick-login-${REVIEWER_MEMBER_ID}`).click();
   await waitForSession(page, {
     status: "已登录",
     email: REVIEWER_EMAIL,
-    role: "Member",
+    role: "成员",
   });
   await waitForText(page, "access-session-device-label", "Reviewer Phone");
   await waitForText(page, "access-session-device-auth", "待授权");
@@ -322,7 +363,7 @@ try {
   await page.getByTestId("notification-identity-template-auth_password_reset").waitFor({ state: "visible" });
   await page.getByTestId("notification-identity-template-auth_blocked_recovery").waitFor({ state: "visible" });
   await page.getByTestId("notification-run-fanout").click();
-  await waitForContainsText(page, "notification-identity-worker-summary", "3/3 sent");
+  await waitForContainsText(page, "notification-identity-worker-summary", "3/3 已送达");
   await capture(page, "settings-recovery-template-fanout");
 
   const recoveryCenter = await readNotificationCenter(serverURL);
@@ -343,42 +384,42 @@ try {
   await waitForSession(page, {
     status: "已登录",
     email: REVIEWER_EMAIL,
-    role: "Member",
+    role: "成员",
   });
   await waitForText(page, "access-session-device-label", "Recovery Laptop");
   await waitForText(page, "access-recovery-status", "已恢复");
   await capture(page, "access-recovery-complete");
 
   const report = [
-    "# 2026-04-11 Windows Chrome Identity Template Recovery Journey Report",
+    "# 2026-04-12 身份通知恢复链路测试报告",
     "",
     `- Command: \`${reportCommand}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
     `- Web: \`${webURL}\``,
     `- Server: \`${serverURL}\``,
     "",
-    "## Results",
+    "## 结果",
     "",
-    `- \`/settings\` 已先接住 workspace email subscriber \`${OPS_EMAIL}\`，identity template chain 不再停在局部 auth mutation。`,
-    `- \`/access\` invite 之后，\`auth_invite\` 会直接出现在 \`/settings\` 的 identity template chain；首次 fanout 已送达 \`${inviteCenter.worker.receipts.filter((receipt) => receipt.templateId === "auth_invite" && receipt.status === "sent").length}\` 条 invite receipt。`,
-    `- invited member quick login 后，再触发 reset pending，会把 \`auth_verify_email\` / \`auth_password_reset\` / \`auth_blocked_recovery\` 同时折进统一 delivery truth；第二次 fanout 已送达 \`${recoveryCenter.worker.receipts.filter((receipt) => receipt.status === "sent").length}\` 条 recovery receipts。`,
+    `- \`/settings\` 已先保存身份通知邮箱 \`${OPS_EMAIL}\`，邀请、验证、重置与恢复会统一进入通知模板区。`,
+    `- \`/access\` 发出邀请后，\`auth_invite\` 会直接出现在 \`/settings\` 的身份通知模板区；首次发送已送达 \`${inviteCenter.worker.receipts.filter((receipt) => receipt.templateId === "auth_invite" && receipt.status === "sent").length}\` 条邀请通知。`,
+    `- 邀请成员快速登录后再触发重置流程，\`auth_verify_email\` / \`auth_password_reset\` / \`auth_blocked_recovery\` 会一并进入同一通知区；第二次发送已送达 \`${recoveryCenter.worker.receipts.filter((receipt) => receipt.status === "sent").length}\` 条恢复通知。`,
     "- 返回 `/access` 完成邮箱验证、当前设备授权和另一设备密码重置后，session recovery 会回到 `已恢复`，说明 invite -> verify/reset -> delivery -> recovery 已经是同一条产品旅程。",
     "",
-    "## Template Evidence",
+    "## 模板证据",
     "",
-    `- invite fanout templates: \`${inviteCenter.worker.receipts.map((receipt) => receipt.templateId).join(", ")}\``,
-    `- recovery fanout templates: \`${recoveryCenter.worker.receipts.map((receipt) => receipt.templateId).join(", ")}\``,
+    `- 邀请阶段模板：\`${inviteCenter.worker.receipts.map((receipt) => receipt.templateId).join(", ")}\``,
+    `- 恢复阶段模板：\`${recoveryCenter.worker.receipts.map((receipt) => receipt.templateId).join(", ")}\``,
     "",
-    "## Screenshots",
+    "## 截图",
     "",
     ...screenshots.map((item) => `- ${item.name}: \`${path.relative(projectRoot, item.path)}\``),
     "",
-    "## Scope",
+    "## 范围说明",
     "",
-    "- Configured `/settings` notification policy + email subscriber for identity delivery.",
-    "- Verified `/access` invite writes `auth_invite` into the identity template chain and fanout worker.",
-    "- Verified quick login + reset pending writes `auth_verify_email`, `auth_password_reset`, and `auth_blocked_recovery` into the same template chain and worker receipts.",
-    "- Verified final `/access` recovery completes on another device after verify + authorize.",
+    "- 已在 `/settings` 配好身份通知默认值和邮箱地址。",
+    "- 已验证 `/access` 的邀请会写入身份通知模板区，并进入发送结果。",
+    "- 已验证快速登录和重置待处理会把 `auth_verify_email`、`auth_password_reset`、`auth_blocked_recovery` 一起写入同一条通知链路。",
+    "- 已验证 `/access` 在另一台设备上完成验证与授权后可以恢复成功。",
     "",
     "VERDICT: PASS",
     "",

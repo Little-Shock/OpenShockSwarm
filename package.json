@@ -86,6 +86,7 @@
     "test:headed-multi-runtime-scheduler-failover": "node ./scripts/headed-multi-runtime-scheduler-failover.mjs",
     "test:headed-runtime-lease-conflict-recovery": "node ./scripts/headed-runtime-lease-conflict-recovery.mjs",
     "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",
+    "test:headed-message-send-flow": "node ./scripts/headed-message-send-flow.mjs",
     "test:headed-frontend-interaction-polish": "node ./scripts/headed-frontend-interaction-polish.mjs",
     "test:headed-cjk-font-recovery": "node ./scripts/headed-cjk-font-recovery.mjs",
     "test:headed-room-workbench-topic-context": "node ./scripts/headed-room-workbench-topic-context.mjs",

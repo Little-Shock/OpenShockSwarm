@@ -248,6 +248,14 @@ async function waitForPageText(page, expectedText) {
   );
 }
 
+async function waitForAnyPageText(page, expectedTexts) {
+  await page.waitForFunction(
+    (texts) => texts.some((text) => document.body?.textContent?.includes(text) ?? false),
+    expectedTexts,
+    { timeout: 30_000 }
+  );
+}
+
 async function openQuickSearchWithTrigger(page, testID) {
   await page.getByTestId(testID).click();
   await waitForVisible(page, "quick-search-dialog");
@@ -273,7 +281,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 
   await page.goto(`${webURL}/chat/all`, { waitUntil: "load" });
-  await waitForPageText(page, "Quick Search");
+  await waitForVisible(page, "quick-search-trigger-sidebar");
   await openQuickSearchWithTrigger(page, "quick-search-trigger-sidebar");
   await page.getByTestId("quick-search-input").fill("roadmap");
   await expectHighlightedResult(page, "quick-search-result-channel-roadmap");
@@ -340,13 +348,13 @@ try {
 
   await openQuickSearchWithHotkey(page);
   await page.getByTestId("quick-search-input").fill("zzzz-not-found");
-  await waitForPageText(page, "No matches yet");
+  await waitForPageText(page, "还没有匹配结果");
   await capture(page, "no-matches");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => !document.querySelector('[data-testid="quick-search-dialog"]'), undefined, { timeout: 30_000 });
 
   const report = [
-    "# 2026-04-09 Quick Search / Message Surface Contract Report",
+    "# 2026-04-09 快速搜索与消息入口报告",
     "",
     `- Command: \`pnpm test:headed-quick-search -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
@@ -355,9 +363,9 @@ try {
     "",
     "### Channel / Room / Issue / Run / Agent Jump",
     "",
-    "- 侧栏 `Quick Search` 入口已不再只是静态按钮；输入 `roadmap` 会出现高亮结果，并直接跳到 `/chat/roadmap` -> PASS",
+    "- 侧栏“快速搜索”入口已不再只是静态按钮；输入 `roadmap` 会出现高亮结果，并直接跳到 `/chat/roadmap` -> PASS",
     "- `Ctrl+K` 可在 room / run / agent 等高频页重复打开同一套命令面板；输入 `Runtime 讨论间`、`OPS-19`、`run_runtime_01`、`Codex Dockmaster` 都能命中对应 kind 并完成跳转 -> PASS",
-    "- issue 页顶部 `Quick Search` 触发器已接上真实结果面，不再只有 placeholder 文案 -> PASS",
+    "- 事项页顶部的“快速搜索”触发器已接上真实结果面，不再只有占位文案 -> PASS",
     "",
     "### DM / Followed Thread / Saved Later Jump",
     "",
@@ -368,7 +376,7 @@ try {
     "### Highlight / Empty State",
     "",
     "- 搜索命中项会在标题或摘要里显式高亮关键字，验证了 `roadmap`、`OPS-19`、`run_runtime_01`、`Codex Dockmaster`、`Mina`、`runtime sync thread`、`Longwen default-entry` 的 `<mark>` 呈现 -> PASS",
-    "- 输入 `zzzz-not-found` 时不会误跳转，而是稳定展示 `No matches yet` 空结果态；`Esc` 可正常关闭面板 -> PASS",
+    "- 输入 `zzzz-not-found` 时不会误跳转，而是稳定展示“还没有匹配结果”；`Esc` 可正常关闭面板 -> PASS",
     "",
     "### Scope Boundary",
     "",

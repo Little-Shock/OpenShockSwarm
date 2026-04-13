@@ -222,17 +222,17 @@ try {
   await waitForVisible(page, "memory-provider-card-workspace-file");
   await waitForVisible(page, "memory-provider-toggle-search-sidecar");
   await waitForVisible(page, "memory-provider-toggle-external-persistent");
-  await waitForContains(page, "memory-provider-count", "1 active / 0 degraded");
+  await waitForContains(page, "memory-provider-count", "1 可用 / 0 异常");
   await capture(page, screenshotsDir, "initial-provider-bindings");
 
   await page.getByTestId("memory-provider-toggle-search-sidecar").click();
   await page.getByTestId("memory-provider-toggle-external-persistent").click();
   await page.getByTestId("memory-providers-save").click();
 
-  await waitForContains(page, "memory-mutation-success", "memory providers updated");
-  await waitForContains(page, "memory-provider-status-search-sidecar", "healthy");
-  await waitForContains(page, "memory-provider-status-external-persistent", "degraded");
-  await waitForContains(page, "memory-provider-count", "3 active / 1 degraded");
+  await waitForContains(page, "memory-mutation-success", "来源设置已保存");
+  await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
+  await waitForContains(page, "memory-provider-status-external-persistent", "异常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");
   await capture(page, screenshotsDir, "provider-bindings-saved");
 
   await page.getByTestId("memory-preview-session").selectOption("session-memory");
@@ -240,13 +240,13 @@ try {
   await waitForVisible(page, "memory-preview-provider-search-sidecar");
   await waitForVisible(page, "memory-preview-provider-external-persistent");
   await waitForContains(page, "memory-preview-summary", "Memory providers active for this run:");
-  await waitForContains(page, "memory-preview-summary", "External durable adapter is not configured yet");
+  await waitForContains(page, "memory-preview-summary", "External durable adapter stub is not configured.");
   await capture(page, screenshotsDir, "preview-provider-orchestration");
 
   await page.reload({ waitUntil: "load" });
-  await waitForContains(page, "memory-provider-status-search-sidecar", "healthy");
-  await waitForContains(page, "memory-provider-status-external-persistent", "degraded");
-  await waitForContains(page, "memory-provider-count", "3 active / 1 degraded");
+  await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
+  await waitForContains(page, "memory-provider-status-external-persistent", "异常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");
   await capture(page, screenshotsDir, "provider-bindings-reload-persisted");
 
   const report = [
@@ -262,7 +262,7 @@ try {
     "### Provider Binding Truth",
     "",
     "- `/memory` 现在会直接暴露 `workspace-file / search-sidecar / external-persistent` 三类 provider binding，并允许在同页保存 durable binding truth -> PASS",
-    "- Search Sidecar 启用后会进入 `healthy`，External Persistent 启用后会显式进入 `degraded` 并给出 adapter 未配置的 fallback note，而不是假装健康 -> PASS",
+    "- Search Sidecar 与 External Persistent 启用后都会先显式进入 `degraded`，分别提示本地索引缺失和 adapter 未配置，而不是假装健康 -> PASS",
     "",
     "### Next-Run Preview",
     "",

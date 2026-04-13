@@ -229,31 +229,38 @@ try {
   const results = [];
 
   await page.goto(`${webURL}/chat/all`, { waitUntil: "domcontentloaded" });
-  await waitForVisible(page.locator('[data-testid="sidebar-dm-dm-codex-dockmaster"]'), "DM sidebar entry did not render");
-  await page.locator('[data-testid="sidebar-dm-dm-codex-dockmaster"]').click();
+  const deskSectionToggle = page.getByRole("button", { name: /暂存区/ });
+  if ((await deskSectionToggle.getAttribute("aria-expanded")) !== "true") {
+    await deskSectionToggle.click();
+  }
+  await waitForVisible(page.locator('[data-testid="sidebar-desk-dm-dm-codex-dockmaster"]'), "DM sidebar entry did not render");
+  await page.locator('[data-testid="sidebar-desk-dm-dm-codex-dockmaster"]').click();
   await waitForUrlIncludes(page, "/chat/dm-codex-dockmaster");
   await waitForVisible(page.locator("text=@Codex Dockmaster"), "DM surface did not render");
-  await waitForVisible(page.locator("text=dm 1:1"), "DM badge did not render");
+  await waitForVisible(page.locator("text=私聊 1:1"), "DM badge did not render");
   await capture(page, "dm-surface");
   results.push("- Sidebar now exposes direct messages; entering a DM keeps the operator inside the same workspace shell.");
 
   await page.locator('[data-testid="sidebar-channel-all"]').click();
   await waitForUrlIncludes(page, "/chat/all");
+  if ((await deskSectionToggle.getAttribute("aria-expanded")) !== "true") {
+    await deskSectionToggle.click();
+  }
   await waitForVisible(page.locator('[data-testid="message-thread-open-msg-all-1"]'), "channel thread trigger did not render");
   await page.locator('[data-testid="message-thread-open-msg-all-1"]').click();
   await waitForVisible(page.locator('[data-testid="channel-thread-follow"]'), "thread follow action did not render");
   await page.locator('[data-testid="channel-thread-follow"]').click();
   await waitFor(async () => {
     const label = await page.locator('[data-testid="channel-thread-follow"]').textContent();
-    return label?.includes("Following");
+    return label?.includes("已关注");
   }, "follow thread state did not persist");
   await page.locator('[data-testid="channel-thread-save-later"]').click();
   await waitFor(async () => {
     const label = await page.locator('[data-testid="channel-thread-save-later"]').textContent();
-    return label?.includes("Saved");
+    return label?.includes("已暂存");
   }, "save later state did not persist");
-  await waitForVisible(page.locator('[data-testid="sidebar-followed-followed-all-msg-all-1"]'), "followed sidebar entry did not appear");
-  await waitForVisible(page.locator('[data-testid="sidebar-saved-saved-all-msg-all-1"]'), "saved sidebar entry did not appear");
+  await waitForVisible(page.locator('[data-testid="sidebar-desk-followed-followed-all-msg-all-1"]'), "followed sidebar entry did not appear");
+  await waitForVisible(page.locator('[data-testid="sidebar-desk-saved-saved-all-msg-all-1"]'), "saved sidebar entry did not appear");
   await capture(page, "channel-thread-actions");
   results.push("- Channel thread rail can now follow a thread and send it to saved-later without leaving chat.");
 
@@ -263,7 +270,7 @@ try {
   await capture(page, "followed-panel");
   await page.locator('[data-testid="followed-thread-reopen-followed-all-msg-all-1"]').click();
   await waitForUrlIncludes(page, "/chat/all?thread=msg-all-1");
-  await waitForVisible(page.locator("text=thread open"), "thread did not reopen from followed queue");
+  await waitForVisible(page.locator("text=线程已展开"), "thread did not reopen from followed queue");
   await capture(page, "followed-reopen");
   results.push("- Followed thread queue can reopen the same thread back into chat without re-scanning the message stream.");
 
@@ -273,7 +280,7 @@ try {
   await capture(page, "saved-panel");
   await page.locator('[data-testid="saved-later-reopen-saved-all-msg-all-1"]').click();
   await waitForUrlIncludes(page, "/chat/all?thread=msg-all-1");
-  await waitForVisible(page.locator("text=thread open"), "thread did not reopen from saved queue");
+  await waitForVisible(page.locator("text=线程已展开"), "thread did not reopen from saved queue");
   await capture(page, "saved-reopen");
   results.push("- Saved-later queue keeps revisit intent in the same shell and can reopen the exact thread when the operator is ready.");
 

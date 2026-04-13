@@ -38,6 +38,7 @@ const fakeGitHubSyncResponses = JSON.stringify({
 });
 
 await mkdir(artifactsDir, { recursive: true });
+await mkdir(path.dirname(reportPath), { recursive: true });
 
 function parseArgs(args) {
   const result = { reportPath: "" };
@@ -282,23 +283,23 @@ try {
 
   await page.goto(`${services.webURL}/inbox`, { waitUntil: "load" });
   await page.getByTestId("approval-center-open-count").waitFor({ state: "visible" });
-  await waitForText(page, "approval-center-open-count", "3 open");
-  await waitForText(page, "approval-center-unread-count", "3 unread");
-  await waitForText(page, "approval-center-recent-count", "1 recent");
-  await waitForText(page, "approval-center-blocked-count", "1 blocked");
+  await waitForText(page, "approval-center-open-count", "3 条待处理");
+  await waitForText(page, "approval-center-unread-count", "3 条未读");
+  await waitForText(page, "approval-center-recent-count", "1 条最近");
+  await waitForText(page, "approval-center-blocked-count", "1 条阻塞");
 
   await page.getByTestId("approval-center-filter-review").click();
   await page.getByTestId("approval-center-signal-inbox-review-copy").waitFor({ state: "visible" });
   assert((await page.getByTestId("approval-center-room-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox?tab=pr", "review signal should link back to PR tab in room workbench");
   assert((await page.getByTestId("approval-center-run-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox?tab=run", "review signal should link back to run tab in room workbench");
   assert((await page.getByTestId("approval-center-pr-link-inbox-review-copy").getAttribute("href"))?.endsWith("/pull/22"), "review signal should link back to PR");
-  assert((await page.getByTestId("approval-center-unread-inbox-review-copy").textContent())?.trim() === "unread", "review signal should surface unread hotspot");
+  assert((await page.getByTestId("approval-center-unread-inbox-review-copy").textContent())?.trim() === "未读", "review signal should surface unread hotspot");
   await capture(page, screenshotsDir, "review-signal-backlinks");
 
   await page.getByTestId("approval-center-filter-approval").click();
   await page.getByTestId("approval-center-action-approved-inbox-approval-runtime").click();
-  await waitForText(page, "approval-center-open-count", "2 open");
-  await waitForText(page, "approval-center-recent-count", "2 recent");
+  await waitForText(page, "approval-center-open-count", "2 条待处理");
+  await waitForText(page, "approval-center-recent-count", "2 条最近");
   await page.getByTestId("approval-center-recent-inbox-status-shell").waitFor({ state: "visible" });
   await waitForRecentTitle(page, "高风险动作已批准");
   const stateAfterApproval = await readState(page, services.serverURL);
@@ -308,8 +309,8 @@ try {
 
   await page.getByTestId("approval-center-filter-blocked").click();
   await page.getByTestId("approval-center-action-resolved-inbox-blocked-memory").click();
-  await waitForText(page, "approval-center-open-count", "1 open");
-  await waitForText(page, "approval-center-recent-count", "3 recent");
+  await waitForText(page, "approval-center-open-count", "1 条待处理");
+  await waitForText(page, "approval-center-recent-count", "3 条最近");
   await waitForRecentTitle(page, "阻塞已解除");
   const stateAfterResolve = await readState(page, services.serverURL);
   const memoryRun = stateAfterResolve.runs.find((item) => item.id === "run_memory_01");
@@ -318,9 +319,9 @@ try {
 
   await page.getByTestId("approval-center-filter-review").click();
   await page.getByTestId("approval-center-action-changes_requested-inbox-review-copy").click();
-  await waitForText(page, "approval-center-open-count", "0 open");
-  await waitForText(page, "approval-center-blocked-count", "0 blocked");
-  await waitForText(page, "approval-center-recent-count", "4 recent");
+  await waitForText(page, "approval-center-open-count", "0 条待处理");
+  await waitForText(page, "approval-center-blocked-count", "0 条阻塞");
+  await waitForText(page, "approval-center-recent-count", "4 条最近");
   await waitForRecentTitle(page, "PR #22 已合并");
   const stateAfterReview = await readState(page, services.serverURL);
   const inboxPullRequest = stateAfterReview.pullRequests.find((item) => item.id === "pr-inbox-22");

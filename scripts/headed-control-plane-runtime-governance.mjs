@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-control-plane-runtime-governance";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -220,12 +223,22 @@ async function waitForMailbox(serverURL, title) {
 }
 
 async function waitForMailboxStatus(page, handoffId, expected) {
+  const expectedLabel =
+    expected === "requested"
+      ? "待接手"
+      : expected === "acknowledged"
+        ? "处理中"
+        : expected === "blocked"
+          ? "阻塞"
+          : expected === "completed"
+            ? "已完成"
+            : expected;
   await page.waitForFunction(
-    ({ currentHandoffId, currentExpected }) =>
+    ({ currentHandoffId, currentExpectedLabel }) =>
       document
         .querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)
-        ?.textContent?.trim() === currentExpected,
-    { currentHandoffId: handoffId, currentExpected: expected },
+        ?.textContent?.trim() === currentExpectedLabel,
+    { currentHandoffId: handoffId, currentExpectedLabel: expectedLabel },
     { timeout: 30_000 }
   );
 }
@@ -246,11 +259,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -377,9 +392,9 @@ try {
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
   await page.getByTestId("orchestration-governance-template").waitFor({ state: "visible" });
-  await page.getByText("多 Agent policy 不再只存在脑补里").waitFor({ state: "visible" });
-  await page.getByText("escalation sla").waitFor({ state: "visible" });
-  await page.getByText("notification policy").waitFor({ state: "visible" });
+  await page.getByText("协作规则和通知一页看清").waitFor({ state: "visible" });
+  await page.getByText(/^升级时限$/).waitFor({ state: "visible" });
+  await page.getByText(/^通知策略$/).waitFor({ state: "visible" });
   await waitFor(
     async () => (await readText(page, "orchestration-governance-response-aggregation")).includes("最终响应"),
     "response aggregation did not expose final closeout note on /agents"
@@ -548,14 +563,14 @@ try {
   assert(runtimeReplay.payload.failureAnchor?.includes("policy-conflict"), "runtime replay should expose failure anchor");
 
   await page.goto(`${webURL}/runs/run_memory_01`, { waitUntil: "load" });
-  await page.getByText("Runtime Publish Replay").waitFor({ state: "visible" });
-  await page.getByText("daemon publish / closeout evidence").waitFor({ state: "visible" });
+  await page.getByText("机器执行与收尾记录").waitFor({ state: "visible" });
+  await page.getByText("执行回放").waitFor({ state: "visible" });
   await page
-    .getByText("closeout: 等待治理规则对齐后再恢复记忆写回。")
+    .getByText("收尾说明：等待治理规则对齐后再恢复记忆写回。")
     .first()
     .waitFor({ state: "visible" });
   await page
-    .getByText("failure anchor: notes/rooms/room-memory.md#policy-conflict")
+    .getByText("失败锚点：notes/rooms/room-memory.md#policy-conflict")
     .first()
     .waitFor({ state: "visible" });
   await capture(page, "runtime-replay-browser-surface");
@@ -588,7 +603,7 @@ try {
     "dirty governance label should fail closed in browser adapter"
   );
   assert(
-    (await readText(dirtyPage, "orchestration-governance-summary")) === "当前多 Agent 治理摘要正在整理中。",
+    (await readText(dirtyPage, "orchestration-governance-summary")) === "当前多智能体治理摘要正在整理中。",
     "dirty governance summary should fail closed in browser adapter"
   );
   assert(

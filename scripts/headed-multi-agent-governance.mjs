@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-multi-agent-governance";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -203,6 +206,19 @@ async function waitForMailbox(serverURL, title) {
   }, `mailbox handoff ${title} did not appear`);
 }
 
+function mailboxStatusLabel(status) {
+  switch (status) {
+    case "acknowledged":
+      return "处理中";
+    case "blocked":
+      return "阻塞";
+    case "completed":
+      return "已完成";
+    default:
+      return "待接手";
+  }
+}
+
 async function waitForMailboxStatus(page, handoffId, expected) {
   await page.waitForFunction(
     ({ currentHandoffId, currentExpected }) => {
@@ -212,7 +228,7 @@ async function waitForMailboxStatus(page, handoffId, expected) {
           ?.textContent?.trim() === currentExpected
       );
     },
-    { currentHandoffId: handoffId, currentExpected: expected },
+    { currentHandoffId: handoffId, currentExpected: mailboxStatusLabel(expected) },
     { timeout: 30_000 }
   );
 }
@@ -233,11 +249,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -340,7 +358,7 @@ try {
     "mailbox governance surface should reflect dev-team topology"
   );
   assert(
-    (await readText(page, "mailbox-governance-human-override")) === "required",
+    (await readText(page, "mailbox-governance-human-override")) === "需要处理",
     "mailbox governance surface should expose the explicit human override gate"
   );
   await page.getByTestId("mailbox-governance-step-review").waitFor({ state: "visible" });
@@ -366,7 +384,7 @@ try {
   await waitForMailboxStatus(page, handoffId, "blocked");
   await page.getByTestId("mailbox-governance-lane-status-reviewer").waitFor({ state: "visible" });
   assert(
-    (await readText(page, "mailbox-governance-lane-status-reviewer")) === "blocked",
+    (await readText(page, "mailbox-governance-lane-status-reviewer")) === "阻塞",
     "reviewer lane should surface blocked escalation"
   );
   await capture(page, "mailbox-governance-blocked");
@@ -403,7 +421,7 @@ try {
     "- `/setup` 现在会把模板同步成 governance preview；`开发团队` 模板会直接露出 PM / Architect / Developer / Reviewer / QA topology，而不是只剩静态 onboarding notes -> PASS",
     "- `/mailbox` 现在新增 multi-agent governance surface：team topology、review/test/blocked/human-override rules、response aggregation 和 TC-041 walkthrough 会围同一份 workspace truth 前滚 -> PASS",
     "- exact replay 已覆盖 `issue -> handoff -> review -> test -> final response`：从 room-runtime 创建 formal handoff、切到 blocked escalation、再 completed closeout 后，walkthrough 与 response aggregation 会同步前滚 -> PASS",
-    "- explicit human override gate 继续可见：runtime lane 现有 approval item 会在 governance surface 上显示 `required`，不会被 reviewer/tester loop 隐身 -> PASS",
+    "- explicit human override gate 继续可见：runtime lane 现有 approval item 会在 governance surface 上显示“需要处理”，不会被 reviewer/tester loop 隐身 -> PASS",
     "",
     "## Screenshots",
     "",

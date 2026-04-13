@@ -255,7 +255,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
   await page.goto(`${webURL}/memory`, { waitUntil: "load" });
 
-  await waitForContains(page, "memory-artifact-count", "items");
+  await waitForContains(page, "memory-artifact-count", "条");
   await waitForVisible(page, "memory-artifact-notes-rooms-room-memory-md");
   await waitForVisible(page, "memory-preview-session");
   await page.getByTestId("memory-preview-session").selectOption("session-memory");
@@ -266,15 +266,15 @@ try {
   await page.getByTestId("memory-feedback-summary").fill("Human Correction");
   await page.getByTestId("memory-feedback-note").fill("优先写 room note，再把冲突规则提升到 policy，别继续沿旧摘要注入。");
   await page.getByTestId("memory-feedback-submit").click();
-  await waitForContains(page, "memory-mutation-success", "correction 已写回");
-  await waitForContains(page, "memory-detail-correction-count", "1 corrections");
+  await waitForContains(page, "memory-mutation-success", "已更新");
+  await waitForContains(page, "memory-detail-correction-count", "1 次");
   await waitForContains(page, "memory-detail-content", "优先写 room note");
   await capture(page, screenshotsDir, "memory-correction-written");
 
   await page.getByTestId("memory-forget-reason").fill("房间临时记忆已失效，避免继续注入错误上下文。");
   await page.getByTestId("memory-forget-submit").click();
-  await waitForContains(page, "memory-mutation-success", "已从 recall preview 撤销");
-  await waitForContains(page, "memory-detail-status", "forgotten");
+  await waitForContains(page, "memory-mutation-success", "已从后续任务中移除");
+  await waitForContains(page, "memory-detail-status", "已移除");
   await waitForContains(page, "memory-detail-content", "房间临时记忆已失效");
   await waitForMissing(page, "memory-preview-item-notes-rooms-room-memory-md");
   await page.waitForFunction(

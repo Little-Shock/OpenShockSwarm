@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-mailbox-batch-actions";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -204,11 +207,24 @@ async function waitForMailbox(serverURL, title) {
 }
 
 async function waitForMailboxStatus(page, handoffId, expected) {
+  const expectedLabel =
+    expected === "requested"
+      ? "待接手"
+      : expected === "acknowledged"
+        ? "处理中"
+        : expected === "blocked"
+          ? "阻塞"
+          : expected === "completed"
+            ? "已完成"
+            : expected;
   await page.waitForFunction(
-    ({ currentHandoffId, currentExpected }) => {
-      return document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() === currentExpected;
+    ({ currentHandoffId, currentExpectedLabel }) => {
+      return (
+        document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() ===
+        currentExpectedLabel
+      );
     },
-    { currentHandoffId: handoffId, currentExpected: expected },
+    { currentHandoffId: handoffId, currentExpectedLabel: expectedLabel },
     { timeout: 30_000 }
   );
 }
@@ -229,11 +245,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -335,7 +353,7 @@ try {
   await capture(page, "mailbox-batch-requested");
 
   await page.getByTestId("mailbox-batch-select-open").click();
-  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "2 selected", "batch selection count did not reach 2");
+  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "已选 2", "batch selection count did not reach 2");
   for (const handoff of created) {
     await page.getByTestId(`mailbox-batch-selected-${handoff.id}`).waitFor({ state: "visible" });
   }
@@ -368,7 +386,7 @@ try {
       );
     });
   }, "batch comment did not land on every selected handoff");
-  assert((await readText(page, "mailbox-batch-selected-count")) === "2 selected", "selected handoffs should remain selected after batch comment");
+  assert((await readText(page, "mailbox-batch-selected-count")) === "已选 2", "selected handoffs should remain selected after batch comment");
   await capture(page, "mailbox-batch-comment");
 
   await page.getByTestId("mailbox-batch-note").fill(batchComplete);
@@ -381,7 +399,7 @@ try {
     stateAfterComplete.mailbox.filter((item) => item.status !== "completed").length === 0,
     "mailbox open queue should clear after batch complete"
   );
-  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "0 selected", "batch selection should clear after completed handoffs leave the open queue");
+  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "已选 0", "batch selection should clear after completed handoffs leave the open queue");
   for (const handoff of created) {
     const updated = stateAfterComplete.mailbox.find((item) => item.id === handoff.id);
     const inboxItem = stateAfterComplete.inbox.find((item) => item.id === updated?.inboxItemId);

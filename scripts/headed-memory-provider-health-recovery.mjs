@@ -222,53 +222,53 @@ try {
   await waitForVisible(page, "memory-provider-card-workspace-file");
   await waitForVisible(page, "memory-provider-card-search-sidecar");
   await waitForVisible(page, "memory-provider-card-external-persistent");
-  await waitForContains(page, "memory-provider-count", "1 active / 0 degraded");
+  await waitForContains(page, "memory-provider-count", "1 可用 / 0 异常");
   await capture(page, screenshotsDir, "initial-provider-health");
 
   await page.getByTestId("memory-provider-toggle-search-sidecar").click();
   await page.getByTestId("memory-provider-toggle-external-persistent").click();
   await page.getByTestId("memory-providers-save").click();
 
-  await waitForContains(page, "memory-mutation-success", "memory providers updated");
-  await waitForContains(page, "memory-provider-status-search-sidecar", "degraded");
-  await waitForContains(page, "memory-provider-status-external-persistent", "degraded");
-  await waitForContains(page, "memory-provider-count", "3 active / 2 degraded");
+  await waitForContains(page, "memory-mutation-success", "来源设置已保存");
+  await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
+  await waitForContains(page, "memory-provider-status-external-persistent", "异常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");
   await waitForContains(page, "memory-provider-health-summary-search-sidecar", "Local recall index is missing.");
   await waitForContains(page, "memory-provider-next-action-external-persistent", "Attempt recovery");
   await capture(page, screenshotsDir, "enabled-providers-degraded");
 
   await page.getByTestId("memory-provider-check-search-sidecar").click();
-  await waitForContains(page, "memory-mutation-success", "Search Sidecar check -> degraded");
-  await waitForContains(page, "memory-provider-activity-search-sidecar", "check / degraded");
+  await waitForContains(page, "memory-mutation-success", "检查完成，当前状态：异常");
+  await waitForContains(page, "memory-provider-activity-search-sidecar", "检查 / 异常");
   await capture(page, screenshotsDir, "search-sidecar-checked");
 
   await page.getByTestId("memory-provider-recover-search-sidecar").click();
-  await waitForContains(page, "memory-mutation-success", "Search Sidecar recovery -> healthy");
-  await waitForContains(page, "memory-provider-status-search-sidecar", "healthy");
-  await waitForContains(page, "memory-provider-count", "3 active / 1 degraded");
-  await waitForContains(page, "memory-provider-activity-search-sidecar", "recovery / healthy");
+  await waitForContains(page, "memory-mutation-success", "恢复完成，当前状态：正常");
+  await waitForContains(page, "memory-provider-status-search-sidecar", "正常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 1 异常");
+  await waitForContains(page, "memory-provider-activity-search-sidecar", "恢复 / 正常");
   await capture(page, screenshotsDir, "search-sidecar-recovered");
 
   await page.getByTestId("memory-provider-recover-external-persistent").click();
-  await waitForContains(page, "memory-mutation-success", "External Persistent Memory recovery -> healthy");
-  await waitForContains(page, "memory-provider-status-external-persistent", "healthy");
-  await waitForContains(page, "memory-provider-count", "3 active / 0 degraded");
+  await waitForContains(page, "memory-mutation-success", "恢复完成，当前状态：正常");
+  await waitForContains(page, "memory-provider-status-external-persistent", "正常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 0 异常");
   await waitForContains(page, "memory-provider-next-action-external-persistent", "Attach a real remote durable sink");
   await capture(page, screenshotsDir, "external-persistent-recovered");
 
   await rm(path.join(workspaceRoot, "MEMORY.md"), { force: true });
   await page.getByTestId("memory-provider-check-workspace-file").click();
-  await waitForContains(page, "memory-mutation-success", "Workspace File Memory check -> degraded");
-  await waitForContains(page, "memory-provider-status-workspace-file", "degraded");
-  await waitForContains(page, "memory-provider-status-search-sidecar", "degraded");
-  await waitForContains(page, "memory-provider-count", "3 active / 2 degraded");
+  await waitForContains(page, "memory-mutation-success", "检查完成，当前状态：异常");
+  await waitForContains(page, "memory-provider-status-workspace-file", "异常");
+  await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");
   await waitForContains(page, "memory-provider-error-workspace-file", "Missing governed memory scaffold");
   await capture(page, screenshotsDir, "workspace-file-degraded");
 
   await page.getByTestId("memory-provider-recover-workspace-file").click();
-  await waitForContains(page, "memory-mutation-success", "Workspace File Memory recovery -> healthy");
-  await waitForContains(page, "memory-provider-status-workspace-file", "healthy");
-  await waitForContains(page, "memory-provider-count", "3 active / 0 degraded");
+  await waitForContains(page, "memory-mutation-success", "恢复完成，当前状态：正常");
+  await waitForContains(page, "memory-provider-status-workspace-file", "正常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 0 异常");
   await capture(page, screenshotsDir, "workspace-file-recovered");
 
   await page.getByTestId("memory-preview-session").selectOption("session-memory");
@@ -280,10 +280,10 @@ try {
   await capture(page, screenshotsDir, "preview-recovered-provider-health");
 
   await page.reload({ waitUntil: "load" });
-  await waitForContains(page, "memory-provider-status-workspace-file", "healthy");
-  await waitForContains(page, "memory-provider-status-search-sidecar", "healthy");
-  await waitForContains(page, "memory-provider-status-external-persistent", "healthy");
-  await waitForContains(page, "memory-provider-count", "3 active / 0 degraded");
+  await waitForContains(page, "memory-provider-status-workspace-file", "正常");
+  await waitForContains(page, "memory-provider-status-search-sidecar", "正常");
+  await waitForContains(page, "memory-provider-status-external-persistent", "正常");
+  await waitForContains(page, "memory-provider-count", "3 可用 / 0 异常");
   await capture(page, screenshotsDir, "provider-health-reload-persisted");
 
   const commandPrefix = process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : "";

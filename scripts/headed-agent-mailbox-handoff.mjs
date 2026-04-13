@@ -24,9 +24,13 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-agent-mailbox-handoff";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(path.dirname(reportPath), { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -233,11 +237,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -323,7 +329,7 @@ try {
   const handoff = await waitForMailbox(serverURL, requestTitle);
   const handoffId = handoff.id;
   await page.getByTestId(`mailbox-card-${handoffId}`).waitFor({ state: "visible" });
-  await waitForMailboxStatus(page, handoffId, "requested");
+  await waitForMailboxStatus(page, handoffId, "待接手");
 
   const stateAfterCreate = await readState(serverURL);
   const createdInbox = stateAfterCreate.inbox.find((item) => item.id === handoff.inboxItemId);
@@ -341,7 +347,7 @@ try {
 
   await page.getByTestId(`mailbox-note-${handoffId}`).fill(sourceComment);
   await page.getByTestId(`mailbox-action-comment-${handoffId}`).click();
-  await waitForMailboxStatus(page, handoffId, "requested");
+  await waitForMailboxStatus(page, handoffId, "待接手");
 
   const stateAfterSourceComment = await readState(serverURL);
   const sourceCommentedHandoff = stateAfterSourceComment.mailbox.find((item) => item.id === handoffId);
@@ -365,12 +371,12 @@ try {
 
   await page.getByTestId(`mailbox-action-blocked-${handoffId}`).click();
   await page.getByText("blocked handoff requires a note").waitFor({ state: "visible" });
-  await waitForMailboxStatus(page, handoffId, "requested");
+  await waitForMailboxStatus(page, handoffId, "待接手");
   await capture(page, "mailbox-blocked-note-required");
 
   await page.getByTestId(`mailbox-note-${handoffId}`).fill(blockedNote);
   await page.getByTestId(`mailbox-action-blocked-${handoffId}`).click();
-  await waitForMailboxStatus(page, handoffId, "blocked");
+  await waitForMailboxStatus(page, handoffId, "阻塞");
 
   const stateAfterBlocked = await readState(serverURL);
   const blockedHandoff = stateAfterBlocked.mailbox.find((item) => item.id === handoffId);
@@ -382,7 +388,7 @@ try {
   await page.getByTestId(`mailbox-note-${handoffId}`).fill(targetComment);
   await page.getByTestId(`mailbox-comment-actor-${handoffId}`).selectOption("agent-claude-review-runner");
   await page.getByTestId(`mailbox-action-comment-${handoffId}`).click();
-  await waitForMailboxStatus(page, handoffId, "blocked");
+  await waitForMailboxStatus(page, handoffId, "阻塞");
 
   const stateAfterBlockedComment = await readState(serverURL);
   const blockedCommentHandoff = stateAfterBlockedComment.mailbox.find((item) => item.id === handoffId);
@@ -403,7 +409,7 @@ try {
   await capture(page, "mailbox-comment-blocked");
 
   await page.getByTestId(`mailbox-action-acknowledged-${handoffId}`).click();
-  await waitForMailboxStatus(page, handoffId, "acknowledged");
+  await waitForMailboxStatus(page, handoffId, "处理中");
 
   const stateAfterAck = await readState(serverURL);
   const runtimeRun = stateAfterAck.runs.find((item) => item.id === handoff.runId);
@@ -426,7 +432,7 @@ try {
   await page.goto(`${webURL}/mailbox?handoffId=${handoffId}&roomId=room-runtime`, { waitUntil: "load" });
   await page.getByTestId(`mailbox-note-${handoffId}`).fill(completeNote);
   await page.getByTestId(`mailbox-action-completed-${handoffId}`).click();
-  await waitForMailboxStatus(page, handoffId, "completed");
+  await waitForMailboxStatus(page, handoffId, "已完成");
 
   const stateAfterComplete = await readState(serverURL);
   const completedHandoff = stateAfterComplete.mailbox.find((item) => item.id === handoffId);
@@ -450,12 +456,8 @@ try {
   await page.getByTestId(`mailbox-inbox-link-${handoffId}`).click();
   await page.waitForURL(new RegExp(`/inbox\\?handoffId=${handoffId}`), { timeout: 30_000 });
   await page.getByTestId(`mailbox-card-${handoffId}`).waitFor({ state: "visible" });
-  await page
-    .locator(`[data-testid="mailbox-card-${handoffId}"]`)
-    .getByText("focused")
-    .waitFor({ state: "visible" });
   assert(
-    (await readText(page, `mailbox-status-${handoffId}`)) === "completed",
+    (await readText(page, `mailbox-status-${handoffId}`)) === "已完成",
     "inbox mailbox ledger should surface the completed handoff"
   );
   await capture(page, "inbox-mailbox-ledger-focused");

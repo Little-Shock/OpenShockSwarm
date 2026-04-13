@@ -248,6 +248,47 @@ async function waitForVisible(page, locator, message) {
   await waitFor(async () => (await locator.isVisible()) ? locator : null, message, 30_000, 250);
 }
 
+async function ensureAccessDetailsOpen(page, detailsTestID, toggleTestID) {
+  const toggle = page.getByTestId(toggleTestID);
+  await toggle.waitFor({ state: "visible", timeout: 30_000 });
+  const details = page.getByTestId(detailsTestID);
+  await details.waitFor({ state: "attached", timeout: 30_000 });
+  const isOpen = await details.evaluate(
+    (element) => element instanceof HTMLDetailsElement && element.open
+  );
+  if (!isOpen) {
+    await details.evaluate((element) => {
+      if (element instanceof HTMLDetailsElement) {
+        element.open = true;
+      }
+    });
+    await page.waitForFunction((currentDetailsTestID) => {
+      const element = document.querySelector(`[data-testid="${currentDetailsTestID}"]`);
+      return element instanceof HTMLDetailsElement && element.open;
+    }, detailsTestID);
+  }
+}
+
+async function ensureAccessAdvancedOpen(page) {
+  await ensureAccessDetailsOpen(page, "access-advanced-details", "access-advanced-toggle");
+}
+
+async function ensureAccessMemberAdminOpen(page) {
+  await ensureAccessDetailsOpen(page, "access-member-admin-details", "access-member-admin-toggle");
+}
+
+async function gotoAccessControls(page, webURL, focusTestID = "access-invite-email") {
+  await page.goto(`${webURL}/access`, { waitUntil: "load" });
+  const focus = page.getByTestId(focusTestID);
+  try {
+    await focus.waitFor({ state: "visible", timeout: 5_000 });
+    return;
+  } catch {
+    await ensureAccessMemberAdminOpen(page);
+    await focus.waitFor({ state: "visible", timeout: 30_000 });
+  }
+}
+
 const runDir = path.join(artifactsDir, "run");
 const screenshotsDir = path.join(runDir, "screenshots");
 await mkdir(screenshotsDir, { recursive: true });
@@ -264,12 +305,11 @@ try {
   context = await browser.newContext({ viewport: { width: 1460, height: 1280 } });
   page = await context.newPage();
 
-  await page.goto(`${services.webURL}/access`, { waitUntil: "load" });
-  await page.getByTestId("access-session-status").waitFor({ state: "visible" });
+  await gotoAccessControls(page, services.webURL);
   await waitForSession(page, {
     status: "已登录",
     email: "larkspur@openshock.dev",
-    role: "Owner",
+    role: "所有者",
   });
   await capture(page, screenshotsDir, "owner-baseline");
 
@@ -277,34 +317,35 @@ try {
   await page.getByTestId("access-invite-name").fill(REVIEWER_NAME);
   await page.getByTestId("access-invite-role").selectOption("member");
   await page.getByTestId("access-invite-submit").click();
-  await waitForText(page, "access-invite-success", `${REVIEWER_EMAIL} invited as Member`);
+  await waitForText(page, "access-invite-success", `已邀请 ${REVIEWER_EMAIL}，角色为 成员`);
   await waitForText(page, `access-member-status-${REVIEWER_MEMBER_ID}`, "待接受");
   await capture(page, screenshotsDir, "member-invited");
 
+  await ensureAccessAdvancedOpen(page);
   await page.getByTestId("access-login-device-label").fill("Reviewer Phone");
   await page.getByTestId(`access-quick-login-${REVIEWER_MEMBER_ID}`).click();
   await waitForSession(page, {
     status: "已登录",
     email: REVIEWER_EMAIL,
-    role: "Member",
+    role: "成员",
   });
   await waitForText(page, "access-session-device-label", "Reviewer Phone");
   await waitForText(page, "access-session-device-auth", "待授权");
   await waitForText(page, "access-recovery-email-status", "待验证");
-  await waitForText(page, "access-recovery-status", "等邮箱验证");
-  assert((await readText(page, "access-probe-status-issue-create")) === "allowed", "recovered member should keep issue.create access");
-  assert((await readText(page, "access-probe-status-runtime-manage")) === "blocked", "member should still be blocked from runtime.manage");
+  await waitForText(page, "access-recovery-status", "待邮箱验证");
+  assert((await readText(page, "access-probe-status-issue-create")) === "可进入", "recovered member should keep issue.create access");
+  assert((await readText(page, "access-probe-status-runtime-manage")) === "受限", "member should still be blocked from runtime.manage");
   await capture(page, screenshotsDir, "pending-verify-device");
 
   await page.getByTestId("access-verify-email-submit").click();
-  await waitForText(page, "access-recovery-success", "当前成员邮箱已转成 verified");
+  await waitForText(page, "access-recovery-success", "邮箱已验证");
   await waitForText(page, "access-recovery-email-status", "已验证");
-  await waitForText(page, "access-recovery-status", "等设备授权");
+  await waitForText(page, "access-recovery-status", "待设备授权");
 
   await page.getByTestId("access-authorize-device-submit").click();
-  await waitForText(page, "access-recovery-success", "Reviewer Phone 已转成 authorized");
+  await waitForText(page, "access-recovery-success", "Reviewer Phone 已授权");
   await waitForText(page, "access-session-device-auth", "已授权");
-  await waitForText(page, "access-recovery-status", "链路正常");
+  await waitForText(page, "access-recovery-status", "可用");
   await waitForVisible(
     page,
     page.locator('[data-testid^="access-device-"]').filter({ hasText: "Reviewer Phone" }),
@@ -314,9 +355,9 @@ try {
 
   await page.getByTestId("access-request-reset-email").fill(REVIEWER_EMAIL);
   await page.getByTestId("access-request-reset-submit").click();
-  await waitForText(page, "access-recovery-success", `${REVIEWER_EMAIL} 已进入 reset pending`);
+  await waitForText(page, "access-recovery-success", `${REVIEWER_EMAIL} 已进入待重置状态`);
   await waitForText(page, "access-recovery-reset-status", "pending");
-  await waitForText(page, "access-recovery-status", "等密码重置");
+  await waitForText(page, "access-recovery-status", "待密码重置");
   await capture(page, screenshotsDir, "reset-requested");
 
   await page.getByTestId("access-complete-reset-device-label").fill("Recovery Laptop");
@@ -324,20 +365,20 @@ try {
   await waitForSession(page, {
     status: "已登录",
     email: REVIEWER_EMAIL,
-    role: "Member",
+    role: "成员",
   });
   await waitForText(page, "access-session-device-label", "Recovery Laptop");
   await waitForText(page, "access-session-device-auth", "已授权");
   await waitForText(page, "access-recovery-reset-status", "completed");
   await waitForText(page, "access-recovery-status", "已恢复");
-  assert((await readText(page, "access-probe-status-issue-create")) === "allowed", "password-reset session should retain issue.create");
-  assert((await readText(page, "access-probe-status-runtime-manage")) === "blocked", "password-reset session should not gain runtime.manage");
+  assert((await readText(page, "access-probe-status-issue-create")) === "可进入", "password-reset session should retain issue.create");
+  assert((await readText(page, "access-probe-status-runtime-manage")) === "受限", "password-reset session should not gain runtime.manage");
   await capture(page, screenshotsDir, "password-reset-recovered");
 
   await page.getByTestId("access-bind-identity-provider").selectOption("github");
   await page.getByTestId("access-bind-identity-handle").fill("@reviewer");
   await page.getByTestId("access-bind-identity-submit").click();
-  await waitForText(page, "access-recovery-success", "github identity 已绑定到当前成员");
+  await waitForText(page, "access-recovery-success", "github 身份已绑定到当前成员");
   await waitForText(page, "access-recovery-identity-count", "1");
   await waitForVisible(page, page.getByTestId("access-identity-github"), "github identity chip did not render");
   assert((await readText(page, "access-identity-github")).includes("@reviewer"), "github identity chip should include @reviewer");

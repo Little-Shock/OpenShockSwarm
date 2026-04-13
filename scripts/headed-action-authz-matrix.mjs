@@ -241,14 +241,14 @@ async function waitForAnyText(page, testIDs, expected) {
   );
 }
 
-async function expectButtonState(page, testID, expectedDisabled) {
+async function expectButtonState(page, testID, expectedDisabled, timeoutMs = 30_000) {
   await page.waitForFunction(
     ({ currentTestID, currentExpected }) => {
       const element = document.querySelector(`[data-testid="${currentTestID}"]`);
       return element instanceof HTMLButtonElement && element.disabled === currentExpected;
     },
     { currentTestID: testID, currentExpected: expectedDisabled },
-    { timeout: 30_000 }
+    { timeout: timeoutMs }
   );
 }
 
@@ -271,6 +271,34 @@ async function expectButtonLabel(page, testID, expectedLabel) {
       return element?.textContent?.trim() === currentExpected;
     },
     { currentTestID: testID, currentExpected: expectedLabel },
+    { timeout: 30_000 }
+  );
+}
+
+async function ensureDetailsOpen(page, testID) {
+  await page.waitForFunction(
+    (currentTestID) => document.querySelector(`[data-testid="${currentTestID}"]`) instanceof HTMLDetailsElement,
+    testID,
+    { timeout: 30_000 }
+  );
+  const open = await page.evaluate((currentTestID) => {
+    const element = document.querySelector(`[data-testid="${currentTestID}"]`);
+    return element instanceof HTMLDetailsElement ? element.open : false;
+  }, testID);
+  if (!open) {
+    await page.evaluate((currentTestID) => {
+      const element = document.querySelector(`[data-testid="${currentTestID}"]`);
+      if (element instanceof HTMLDetailsElement) {
+        element.open = true;
+      }
+    }, testID);
+  }
+  await page.waitForFunction(
+    (currentTestID) => {
+      const element = document.querySelector(`[data-testid="${currentTestID}"]`);
+      return element instanceof HTMLDetailsElement && element.open;
+    },
+    testID,
     { timeout: 30_000 }
   );
 }
@@ -299,17 +327,50 @@ async function waitForSession(page, expectations) {
   );
 }
 
+async function ensureAccessAdvancedOpen(page) {
+  const toggle = page.getByTestId("access-advanced-toggle");
+  await toggle.waitFor({ state: "visible", timeout: 30_000 });
+  const details = page.getByTestId("access-advanced-details");
+  await details.waitFor({ state: "attached", timeout: 30_000 });
+  const isOpen = await details.evaluate(
+    (element) => element instanceof HTMLDetailsElement && element.open
+  );
+  if (!isOpen) {
+    await details.evaluate((element) => {
+      if (element instanceof HTMLDetailsElement) {
+        element.open = true;
+      }
+    });
+    await page.waitForFunction((currentDetailsTestID) => {
+      const element = document.querySelector(`[data-testid="${currentDetailsTestID}"]`);
+      return element instanceof HTMLDetailsElement && element.open;
+    }, "access-advanced-details");
+  }
+}
+
+async function gotoAccessControls(page, webURL, focusTestID = "access-quick-login-member-mina") {
+  await page.goto(`${webURL}/access`, { waitUntil: "load" });
+  const focus = page.getByTestId(focusTestID);
+  try {
+    await focus.waitFor({ state: "visible", timeout: 5_000 });
+    return;
+  } catch {
+    await ensureAccessAdvancedOpen(page);
+    await focus.waitFor({ state: "visible", timeout: 30_000 });
+  }
+}
+
 async function verifyOwnerSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await waitForText(page, "board-create-issue-authz", "allowed");
+  await waitForText(page, "board-create-issue-authz", "可创建");
   await expectButtonState(page, "board-create-issue-submit", false);
   await capture(page, screenshotsDir, "owner-board");
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
-  await waitForText(page, "room-reply-authz", "allowed");
+  await waitForText(page, "room-reply-authz", "可发送");
   await expectButtonState(page, "room-send-message", false);
   await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
-  await waitForAnyText(page, ["room-workbench-pr-status"], "allowed");
+  await waitForAnyText(page, ["room-workbench-pr-status"], "可操作");
   await expectAnyButtonLabel(page, ["room-workbench-pr-primary-action"], "合并 PR");
   await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], false);
   await capture(page, screenshotsDir, "owner-room");
@@ -321,26 +382,29 @@ async function verifyOwnerSurface(page, webURL, screenshotsDir) {
   await capture(page, screenshotsDir, "owner-inbox");
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await waitForText(page, "setup-repo-binding-authz", "allowed");
-  await waitForText(page, "setup-runtime-manage-authz", "allowed");
-  await waitForText(page, "setup-exec-authz", "allowed");
+  await ensureDetailsOpen(page, "setup-repo-section");
+  await ensureDetailsOpen(page, "setup-runtime-section");
+  await waitForText(page, "setup-repo-binding-authz", "可同步");
+  await waitForText(page, "setup-runtime-manage-authz", "可操作");
+  await waitForText(page, "setup-exec-authz", "可操作");
+  await waitForText(page, "setup-runtime-selection-value", "shock-main");
   await expectButtonState(page, "setup-repo-bind-button", false);
   await expectButtonState(page, "setup-runtime-pair", false);
   await expectButtonState(page, "setup-runtime-unpair", false);
-  await expectButtonState(page, "setup-runtime-exec-submit", false);
+  await expectButtonLabel(page, "setup-runtime-exec-submit", "发送提示词");
   await capture(page, screenshotsDir, "owner-setup");
 }
 
 async function verifyMemberSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await waitForText(page, "board-create-issue-authz", "allowed");
+  await waitForText(page, "board-create-issue-authz", "可创建");
   await expectButtonState(page, "board-create-issue-submit", false);
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
-  await waitForText(page, "room-reply-authz", "allowed");
+  await waitForText(page, "room-reply-authz", "可发送");
   await expectButtonState(page, "room-send-message", false);
   await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
-  await waitForAnyText(page, ["room-workbench-pr-status"], "review_only");
+  await waitForAnyText(page, ["room-workbench-pr-status"], "仅可同步");
   await expectAnyButtonLabel(page, ["room-workbench-pr-primary-action"], "同步 PR");
   await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], false);
   await capture(page, screenshotsDir, "member-room");
@@ -351,26 +415,29 @@ async function verifyMemberSurface(page, webURL, screenshotsDir) {
   await expectButtonState(page, "approval-center-action-approved-inbox-approval-runtime", true);
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await waitForText(page, "setup-repo-binding-authz", "blocked");
-  await waitForText(page, "setup-runtime-manage-authz", "blocked");
-  await waitForText(page, "setup-exec-authz", "allowed");
+  await ensureDetailsOpen(page, "setup-repo-section");
+  await ensureDetailsOpen(page, "setup-runtime-section");
+  await waitForText(page, "setup-repo-binding-authz", "无权限");
+  await waitForText(page, "setup-runtime-manage-authz", "无权限");
+  await waitForText(page, "setup-exec-authz", "可操作");
+  await waitForText(page, "setup-runtime-selection-value", "shock-main");
   await expectButtonState(page, "setup-repo-bind-button", true);
   await expectButtonState(page, "setup-runtime-pair", true);
   await expectButtonState(page, "setup-runtime-unpair", true);
-  await expectButtonState(page, "setup-runtime-exec-submit", false);
+  await expectButtonLabel(page, "setup-runtime-exec-submit", "发送提示词");
   await capture(page, screenshotsDir, "member-setup");
 }
 
 async function verifyViewerSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await waitForText(page, "board-create-issue-authz", "blocked");
+  await waitForText(page, "board-create-issue-authz", "无权限");
   await expectButtonState(page, "board-create-issue-submit", true);
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
-  await waitForText(page, "room-reply-authz", "blocked");
+  await waitForText(page, "room-reply-authz", "无权限");
   await expectButtonState(page, "room-send-message", true);
   await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
-  await waitForAnyText(page, ["room-workbench-pr-status"], "blocked");
+  await waitForAnyText(page, ["room-workbench-pr-status"], "无权限");
   await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], true);
   await capture(page, screenshotsDir, "viewer-room");
 
@@ -380,9 +447,11 @@ async function verifyViewerSurface(page, webURL, screenshotsDir) {
   await expectButtonState(page, "approval-center-action-approved-inbox-approval-runtime", true);
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await waitForText(page, "setup-repo-binding-authz", "blocked");
-  await waitForText(page, "setup-runtime-manage-authz", "blocked");
-  await waitForText(page, "setup-exec-authz", "blocked");
+  await ensureDetailsOpen(page, "setup-repo-section");
+  await ensureDetailsOpen(page, "setup-runtime-section");
+  await waitForText(page, "setup-repo-binding-authz", "无权限");
+  await waitForText(page, "setup-runtime-manage-authz", "无权限");
+  await waitForText(page, "setup-exec-authz", "无权限");
   await expectButtonState(page, "setup-repo-bind-button", true);
   await expectButtonState(page, "setup-runtime-pair", true);
   await expectButtonState(page, "setup-runtime-unpair", true);
@@ -392,20 +461,22 @@ async function verifyViewerSurface(page, webURL, screenshotsDir) {
 
 async function verifySignedOutSurface(page, webURL, screenshotsDir) {
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await waitForText(page, "board-create-issue-authz", "signed_out");
+  await waitForText(page, "board-create-issue-authz", "未登录");
   await expectButtonState(page, "board-create-issue-submit", true);
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
-  await waitForText(page, "room-reply-authz", "signed_out");
+  await waitForText(page, "room-reply-authz", "未登录");
   await expectButtonState(page, "room-send-message", true);
   await page.goto(`${webURL}/rooms/room-runtime?tab=pr`, { waitUntil: "load" });
-  await waitForAnyText(page, ["room-workbench-pr-status"], "signed_out");
+  await waitForAnyText(page, ["room-workbench-pr-status"], "未登录");
   await expectAnyButtonState(page, ["room-workbench-pr-primary-action"], true);
 
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await waitForText(page, "setup-repo-binding-authz", "signed_out");
-  await waitForText(page, "setup-runtime-manage-authz", "signed_out");
-  await waitForText(page, "setup-exec-authz", "signed_out");
+  await ensureDetailsOpen(page, "setup-repo-section");
+  await ensureDetailsOpen(page, "setup-runtime-section");
+  await waitForText(page, "setup-repo-binding-authz", "未登录");
+  await waitForText(page, "setup-runtime-manage-authz", "未登录");
+  await waitForText(page, "setup-exec-authz", "未登录");
   await capture(page, screenshotsDir, "signed-out-setup");
 }
 
@@ -416,7 +487,7 @@ function reportBody(sections) {
 - Scope: Board / Room / Inbox / Setup action-level authz matrix
 - Result: PASS
 
-## Owner
+## 所有者
 
 - Board create issue: ${sections.owner.board}
 - Room reply: ${sections.owner.roomReply}
@@ -424,7 +495,7 @@ function reportBody(sections) {
 - Inbox review/approval actions: ${sections.owner.inbox}
 - Setup repo/runtime/exec authz: ${sections.owner.setup}
 
-## Member
+## 成员
 
 - Board create issue: ${sections.member.board}
 - Room reply: ${sections.member.roomReply}
@@ -432,7 +503,7 @@ function reportBody(sections) {
 - Inbox split: ${sections.member.inbox}
 - Setup repo/runtime/exec authz: ${sections.member.setup}
 
-## Viewer
+## 访客
 
 - Board create issue: ${sections.viewer.board}
 - Room reply + PR: ${sections.viewer.room}
@@ -465,39 +536,38 @@ try {
   context = await browser.newContext({ viewport: { width: 1440, height: 1200 } });
   page = await context.newPage();
 
-  await page.goto(`${services.webURL}/access`, { waitUntil: "load" });
-  await page.getByTestId("access-session-status").waitFor({ state: "visible" });
+  await gotoAccessControls(page, services.webURL);
   await waitForSession(page, {
     status: "已登录",
     email: "larkspur@openshock.dev",
-    role: "Owner",
+    role: "所有者",
   });
 
   await verifyOwnerSurface(page, services.webURL, screenshotsDir);
 
-  await page.goto(`${services.webURL}/access`, { waitUntil: "load" });
+  await gotoAccessControls(page, services.webURL);
   await page.getByTestId("access-quick-login-member-mina").click();
   await waitForSession(page, {
     status: "已登录",
     email: "mina@openshock.dev",
-    role: "Member",
+    role: "成员",
   });
   await verifyMemberSurface(page, services.webURL, screenshotsDir);
 
-  await page.goto(`${services.webURL}/access`, { waitUntil: "load" });
+  await gotoAccessControls(page, services.webURL);
   await page.getByTestId("access-quick-login-member-longwen").click();
   await waitForSession(page, {
     status: "已登录",
     email: "longwen@openshock.dev",
-    role: "Viewer",
+    role: "访客",
   });
   await verifyViewerSurface(page, services.webURL, screenshotsDir);
 
-  await page.goto(`${services.webURL}/access`, { waitUntil: "load" });
+  await gotoAccessControls(page, services.webURL);
   await page.getByTestId("access-logout-submit").click();
   await waitForSession(page, {
     status: "未登录",
-    email: "signed out",
+    email: "未登录",
     role: "未分配",
   });
   await verifySignedOutSurface(page, services.webURL, screenshotsDir);

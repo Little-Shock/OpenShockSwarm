@@ -163,12 +163,24 @@ async function capture(page, name) {
   screenshots.push({ name, path: filePath });
 }
 
-async function waitForPage(page, url, expectedText) {
+async function waitForPage(page, url, options = {}) {
+  const { expectedPath, expectedText, expectedTestID } = options;
   await page.goto(url, { waitUntil: "domcontentloaded" });
-  await waitFor(async () => {
-    const content = await page.content();
-    return content.includes(expectedText);
-  }, `${url} did not render expected text: ${expectedText}`);
+  if (expectedPath) {
+    await waitFor(async () => page.url().includes(expectedPath), `${url} did not reach expected path: ${expectedPath}`);
+  }
+  if (expectedTestID) {
+    await page.locator(`[data-testid="${expectedTestID}"]:visible`).first().waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+  }
+  if (expectedText) {
+    await waitFor(async () => {
+      const content = await page.content();
+      return content.includes(expectedText);
+    }, `${url} did not render expected text: ${expectedText}`);
+  }
 }
 
 async function startServices() {
@@ -225,28 +237,52 @@ try {
 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
 
-  await waitForPage(page, `${webURL}/chat/all`, "Quick Search");
+  await waitForPage(page, `${webURL}/chat/all`, {
+    expectedPath: "/chat/all",
+    expectedTestID: "quick-search-trigger-sidebar",
+  });
   await capture(page, "chat-all");
 
-  await waitForPage(page, `${webURL}/setup`, "工作区在线状态");
+  await waitForPage(page, `${webURL}/setup`, {
+    expectedPath: "/setup",
+    expectedTestID: "setup-onboarding-status",
+  });
   await capture(page, "setup");
 
-  await waitForPage(page, `${webURL}/issues`, "Issue");
+  await waitForPage(page, `${webURL}/issues`, {
+    expectedPath: "/issues",
+    expectedTestID: "quick-search-trigger-topbar",
+  });
   await capture(page, "issues");
 
-  await waitForPage(page, `${webURL}/memory`, "Memory Registry");
+  await waitForPage(page, `${webURL}/memory`, {
+    expectedPath: "/memory",
+    expectedTestID: "quick-search-trigger-topbar",
+  });
   await capture(page, "memory");
 
-  await waitForPage(page, `${webURL}/inbox`, "Inbox");
+  await waitForPage(page, `${webURL}/inbox`, {
+    expectedPath: "/inbox",
+    expectedTestID: "quick-search-trigger-topbar",
+  });
   await capture(page, "inbox");
 
-  await waitForPage(page, `${webURL}/board`, "Board");
+  await waitForPage(page, `${webURL}/board`, {
+    expectedPath: "/board",
+    expectedTestID: "quick-search-trigger-topbar",
+  });
   await capture(page, "board");
 
-  await waitForPage(page, `${webURL}/rooms/room-runtime`, "Runtime 讨论间");
+  await waitForPage(page, `${webURL}/rooms/room-runtime`, {
+    expectedPath: "/rooms/room-runtime",
+    expectedText: "Runtime 讨论间",
+  });
   await capture(page, "room-runtime");
 
-  await waitForPage(page, `${webURL}/runs/run_runtime_01`, "run_runtime_01");
+  await waitForPage(page, `${webURL}/runs/run_runtime_01`, {
+    expectedPath: "/runs/run_runtime_01",
+    expectedText: "run_runtime_01",
+  });
   await capture(page, "run-runtime");
 
   const report = [
@@ -260,7 +296,7 @@ try {
     "- `/chat/all`、`/setup`、`/issues`、`/memory`、`/inbox`、`/board`、`/rooms/room-runtime`、`/runs/run_runtime_01` 已在同一套 workspace shell 下完成有头浏览器走查 -> PASS",
     "- Work 模式现在会在左侧 `Chat / Work` 顶部切换上显示明确激活态，不再让 utility surface 像未激活副按钮 -> PASS",
     "- 中栏背景已从纯白整块改回统一工作台底色，左栏与中栏之间不再出现突兀白缝；`setup / issues / memory / run` 的卡片密度也已收紧，`/inbox` 顶栏也已收成更轻的 `Inbox / Mailbox` 语义 -> PASS",
-    "- Board 仍保持次级 planning surface 位置，但 card 语言和 room / issue 回跳仍有继续压缩空间 -> GAP",
+    "- `/board` 已进一步收成中文任务板镜像面，卡片动作与 room / issue 回跳也已统一压成客户可读语言 -> PASS",
     "",
     "## Screenshots",
     "",

@@ -289,7 +289,7 @@ try {
   await page.getByTestId("run-detail-sandbox-allowed-commands").fill(allowedCommands);
   await page.getByTestId("run-detail-sandbox-allowed-tools").fill(allowedTools);
   await page.getByTestId("run-detail-sandbox-save").click();
-  await waitForText(page, "run-detail-sandbox-save-status", "run sandbox policy 已写回 live truth");
+  await waitForText(page, "run-detail-sandbox-save-status", "执行策略已保存");
   await capture(page, "run-sandbox-after-save");
   results.push("- `/runs/:id` 现在可直接编辑 run-level sandbox profile 与 allowlist，不再只剩后端隐式判断。");
 
@@ -317,8 +317,8 @@ try {
   await waitFor(async () => !(await page.getByTestId("run-detail-sandbox-override").isDisabled()), "override button did not recover after restoring exact target");
 
   await page.getByTestId("run-detail-sandbox-override").click();
-  await waitForText(page, "run-detail-sandbox-check-status", "已 override");
-  await waitForText(page, "run-detail-sandbox-decision-status", "已 override");
+  await waitForText(page, "run-detail-sandbox-check-status", "已人工放行");
+  await waitForText(page, "run-detail-sandbox-decision-status", "已人工放行");
   await capture(page, "run-sandbox-override");
   results.push("- owner 侧 `workspace.manage` 可以对同一条 `approval_required` action 执行 override retry；target 漂移时 UI 会重新收紧。");
 
@@ -327,7 +327,7 @@ try {
   await waitForInputValue(page, "run-detail-sandbox-allowed-hosts", allowedHosts);
   await waitForInputValue(page, "run-detail-sandbox-allowed-commands", allowedCommands);
   await waitForInputValue(page, "run-detail-sandbox-allowed-tools", allowedTools);
-  await waitForText(page, "run-detail-sandbox-decision-status", "已 override");
+  await waitForText(page, "run-detail-sandbox-decision-status", "已人工放行");
   await capture(page, "run-sandbox-after-reload");
 
   const state = await fetchState(serverURL);

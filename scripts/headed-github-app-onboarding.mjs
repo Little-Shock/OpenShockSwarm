@@ -14,10 +14,14 @@ import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+const parsedArgs = parseArgs(process.argv.slice(2));
 const evidenceRoot =
   process.env.OPENSHOCK_E2E_ARTIFACTS_DIR?.trim() ||
   (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt04-github-onboarding-")));
 const artifactsDir = path.resolve(evidenceRoot);
+const reportPath = parsedArgs.reportPath
+  ? path.resolve(projectRoot, parsedArgs.reportPath)
+  : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
 const workspaceDir = path.join(artifactsDir, "workspace");
@@ -29,6 +33,17 @@ const processes = [];
 const screenshots = [];
 let browser = null;
 let context = null;
+
+function parseArgs(args) {
+  const result = { reportPath: "" };
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--report") {
+      result.reportPath = args[index + 1] ?? "";
+      index += 1;
+    }
+  }
+  return result;
+}
 
 function assert(condition, message) {
   if (!condition) {
@@ -333,7 +348,8 @@ async function main() {
 
   const page = await context.newPage();
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await page.locator('[data-testid="setup-github-connection"]').waitFor({ state: "visible" });
+  await page.getByText("展开仓库与远端").click();
+  await page.locator('[data-testid="setup-github-connection"]:visible').waitFor({ state: "visible" });
   await capture(page, "setup-shell");
 
   await page.waitForFunction(
@@ -353,10 +369,10 @@ async function main() {
   const githubReturnSteps = (await page.getByTestId("setup-github-return-steps").textContent())?.trim() ?? "";
 
   assert(
-    githubReadinessStatus === "仅本地闭环",
-    `expected GitHub readiness status to stay local-only until installation completes, got: ${githubReadinessStatus}`
+    githubReadinessStatus === "未完成",
+    `expected GitHub readiness status to stay incomplete until installation completes, got: ${githubReadinessStatus}`
   );
-  assert(githubMessage.includes("installation"), `expected github message to mention installation, got: ${githubMessage}`);
+  assert(githubMessage.includes("安装"), `expected github message to mention installation, got: ${githubMessage}`);
   assert(githubInstallLink === installURL, `expected github install link ${installURL}, got ${githubInstallLink}`);
   await capture(page, "github-app-onboarding");
 
@@ -381,7 +397,7 @@ async function main() {
 
   assert(repoBindingStatus.includes("待补安装"), `expected repo binding status to be blocked, got: ${repoBindingStatus}`);
   assert(
-    repoBindingError.includes("installation") || repoBindingMessage.includes("installation"),
+    repoBindingError.includes("安装") || repoBindingMessage.includes("安装"),
     `expected blocked contract to mention installation, got error=${repoBindingError} message=${repoBindingMessage}`
   );
   assert(repoBindingInstallLink === installURL, `expected repo binding install link ${installURL}, got ${repoBindingInstallLink}`);
@@ -461,6 +477,10 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
   };
 
   await writeFile(path.join(artifactsDir, "report.md"), report);
+  if (reportPath !== path.join(artifactsDir, "report.md")) {
+    await mkdir(path.dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, report);
+  }
   await writeFile(path.join(artifactsDir, "metadata.json"), JSON.stringify(metadata, null, 2));
 
   console.log(report);
@@ -484,6 +504,10 @@ try {
     ...processes.map((entry) => `- ${entry.name}: ${entry.logPath}`),
   ].join("\n");
   await writeFile(path.join(artifactsDir, "report.md"), summary);
+  if (reportPath !== path.join(artifactsDir, "report.md")) {
+    await mkdir(path.dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, summary);
+  }
   console.error(summary);
   process.exitCode = 1;
 } finally {

@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-cross-room-governance";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -206,10 +209,20 @@ async function readText(page, testId) {
 }
 
 async function waitForMailboxStatus(page, handoffId, expected) {
+  const expectedLabel =
+    expected === "requested"
+      ? "待接手"
+      : expected === "acknowledged"
+        ? "处理中"
+        : expected === "blocked"
+          ? "阻塞"
+          : expected === "completed"
+            ? "已完成"
+            : expected;
   await page.waitForFunction(
-    ({ currentHandoffId, currentExpected }) =>
-      document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() === currentExpected,
-    { currentHandoffId: handoffId, currentExpected: expected },
+    ({ currentHandoffId, currentExpectedLabel }) =>
+      document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() === currentExpectedLabel,
+    { currentHandoffId: handoffId, currentExpectedLabel: expectedLabel },
     { timeout: 30_000 }
   );
 }
@@ -226,11 +239,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -356,12 +371,12 @@ try {
 
   await page.goto(`${webURL}/mailbox?roomId=${targetRoom.id}`, { waitUntil: "load" });
   await page.getByTestId(`mailbox-governance-escalation-rollup-room-${targetRoom.id}`).waitFor({ state: "visible" });
-  assert(
-    (await readText(page, `mailbox-governance-escalation-rollup-status-${targetRoom.id}`)) === "blocked",
+  await waitFor(
+    async () => (await readText(page, `mailbox-governance-escalation-rollup-status-${targetRoom.id}`)) === "阻塞",
     "runtime room should appear as blocked in mailbox cross-room rollup"
   );
-  assert(
-    (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "ready",
+  await waitFor(
+    async () => (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "就绪",
     "runtime room route metadata should be ready before cross-room create"
   );
   assert(
@@ -372,8 +387,8 @@ try {
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
   await page.getByTestId(`orchestration-governance-escalation-rollup-room-${targetRoom.id}`).waitFor({ state: "visible" });
-  assert(
-    (await readText(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "ready",
+  await waitFor(
+    async () => (await readText(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "就绪",
     "orchestration mirror should expose the same ready route metadata before create"
   );
   await capture(page, "orchestration-cross-room-route-ready");
@@ -403,26 +418,27 @@ try {
 
   await page.getByTestId(`mailbox-card-${activeState.handoff.id}`).waitFor({ state: "visible" });
   await waitForMailboxStatus(page, activeState.handoff.id, "requested");
-  assert(
-    (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "active",
+  await waitFor(
+    async () => (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "进行中",
     "mailbox rollup should flip route metadata to active after create"
   );
   await capture(page, "mailbox-cross-room-route-active");
 
   const roomRollupCard = page.getByTestId(`mailbox-governance-escalation-rollup-room-${targetRoom.id}`);
-  const nextRouteLink = roomRollupCard.getByRole("link", { name: "Open Next Route" });
+  const nextRouteLink = roomRollupCard.getByRole("link", { name: "打开下一步" });
   await nextRouteLink.waitFor({ state: "visible" });
   const nextRouteHref = await nextRouteLink.getAttribute("href");
   assert(nextRouteHref && nextRouteHref.includes(`handoffId=${activeState.handoff.id}`), "open next route link should deep-link to the created governed handoff");
   await nextRouteLink.click();
+  await page.waitForURL((url) => url.toString().includes(`handoffId=${activeState.handoff.id}`), { timeout: 30_000 });
   await page.getByTestId(`mailbox-card-${activeState.handoff.id}`).waitFor({ state: "visible" });
   assert(page.url().includes(`handoffId=${activeState.handoff.id}`), "inbox next-route deep link should focus the created governed handoff");
   await capture(page, "inbox-cross-room-route-focus");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
   await page.getByTestId(`orchestration-governance-escalation-rollup-room-${targetRoom.id}`).waitFor({ state: "visible" });
-  assert(
-    (await readText(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "active",
+  await waitFor(
+    async () => (await readText(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "进行中",
     "orchestration mirror should flip to active after cross-room create"
   );
   await capture(page, "orchestration-cross-room-route-active");

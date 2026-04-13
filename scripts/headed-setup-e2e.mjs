@@ -344,7 +344,8 @@ async function main() {
 
   const page = await context.newPage();
   await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-  await page.locator('[data-testid="setup-repo-binding"]').waitFor({ state: "visible" });
+  await page.getByText("展开仓库与远端").click();
+  await page.locator('[data-testid="setup-repo-binding"]:visible').waitFor({ state: "visible" });
   await capture(page, "setup-shell");
 
   await page.getByTestId("setup-repo-bind-button").click();
@@ -369,11 +370,12 @@ async function main() {
   const githubReadinessStatus = (await page.getByTestId("setup-github-readiness-status").textContent())?.trim() ?? "";
   const githubMessage = (await page.getByTestId("setup-github-message").textContent())?.trim() ?? "";
   assert(
-    githubReadinessStatus === "可进远端 PR",
-    `expected GitHub readiness happy path to be 可进远端 PR, got ${githubReadinessStatus}: ${githubMessage}`
+    githubReadinessStatus === "已连接",
+    `expected GitHub readiness happy path to be 已连接, got ${githubReadinessStatus}: ${githubMessage}`
   );
   await capture(page, "setup-binding-and-github");
 
+  await page.getByText("展开运行环境").click();
   await page.getByTestId("setup-runtime-daemon-url").fill(daemonURL);
   await page.getByTestId("setup-runtime-pair").click();
   await page.waitForFunction(
@@ -417,7 +419,7 @@ async function main() {
   assert(selectedProvider, "setup bridge never exposed a selectable provider");
   await page.getByTestId("setup-bridge-provider").selectOption(selectedProvider);
 
-  await page.getByTestId("setup-bridge-prompt").fill("Please reply with one short sentence confirming the setup bridge is online.");
+  await page.getByTestId("setup-bridge-prompt").fill("请用一句简短中文确认桥接已经在线。");
   await page.getByTestId("setup-runtime-exec-submit").click();
   const bridgeResultHandle = await page.waitForFunction(
     () => {
@@ -472,13 +474,13 @@ async function main() {
   assert(run, "expected created run to appear in /v1/state");
   assert(pullRequestActionEnabled, "expected room pull request action to be enabled");
   assert(
-    pullRequestAction === "发起 PR" && pullRequestLabel === "未创建 PR" && pullRequestStatus === "allowed",
+    pullRequestAction === "发起 PR" && pullRequestLabel === "未创建 PR" && pullRequestStatus === "可操作",
     `expected room pull request entry to stay ready for continuation, got action=${pullRequestAction} label=${pullRequestLabel} status=${pullRequestStatus}`
   );
 
   await context.tracing.stop({ path: path.join(artifactsDir, "trace.zip") });
 
-  const report = `# TKT-03 Headed Setup E2E Report
+  const report = `# TKT-03 有头 Setup 端到端报告
 
 Date: ${timestamp()}
 Project Root: ${projectRoot}
@@ -486,34 +488,34 @@ Workspace Root: ${workspaceDir}
 Artifacts Root: ${artifactsDir}
 Chromium: ${chromiumExecutable}
 
-## Environment
+## 环境
 
 - Web: ${webURL}
 - Server: ${serverURL}
 - Daemon: ${daemonURL}
 
-## Setup Checks
+## 设置检查
 
 - Repo Binding Status: ${repoBindingStatus}
 - Repo Binding Message: ${repoBindingMessage}
 - GitHub Readiness Status: ${githubReadinessStatus}
 - GitHub Message: ${githubMessage}
-- Runtime Selection: ${selectedRuntime}
-- Pairing Value: ${pairingValue}
-- Bridge Output (excerpt): ${bridgeOutput.slice(0, 240)}
+- 运行环境: ${selectedRuntime}
+- 配对状态: ${pairingValue}
+- 桥接输出（摘录）: ${bridgeOutput.slice(0, 240)}
 
-## Lane Checks
+## 链路检查
 
 - Issue: ${issue.key} / ${issue.title}
 - Room: ${room.id}
 - Run: ${run.id}
-- Pull Request Action: ${pullRequestAction} (${pullRequestActionEnabled ? "enabled" : "disabled"})
-- Pull Request Label: ${pullRequestLabel}
-- Pull Request Status: ${pullRequestStatus}
-- Run Next Action: ${run.nextAction}
+- PR 操作: ${pullRequestAction} (${pullRequestActionEnabled ? "可用" : "不可用"})
+- PR 标识: ${pullRequestLabel}
+- PR 状态: ${pullRequestStatus}
+- 下一步执行: ${run.nextAction}
 - Room URL: ${roomURL}
 
-## Evidence
+## 证据
 
 ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
 - trace: ${path.join(artifactsDir, "trace.zip")}
@@ -521,7 +523,7 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
 - server log: ${path.join(logsDir, "server.log")}
 - web log: ${path.join(logsDir, "web.log")}
 
-## Result
+## 结果
 
 - TC-001 Setup shell visibility: PASS
 - TC-002 Repo binding via Setup: PASS

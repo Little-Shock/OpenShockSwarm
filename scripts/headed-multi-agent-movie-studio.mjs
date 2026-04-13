@@ -552,10 +552,82 @@ async function createMovieIssue(serverURL) {
   };
 }
 
+async function updateMemoryPolicy(serverURL) {
+  await fetchJSON(`${serverURL}/v1/memory-center/policy`, {
+    method: "POST",
+    body: JSON.stringify({
+      mode: "governed-first",
+      includeRoomNotes: true,
+      includeDecisionLedger: true,
+      includeAgentMemory: true,
+      includePromotedArtifacts: true,
+      maxItems: 8,
+    }),
+  });
+}
+
+async function updateMemoryProviders(serverURL) {
+  await fetchJSON(`${serverURL}/v1/memory-center/providers`, {
+    method: "POST",
+    body: JSON.stringify({
+      providers: [
+        {
+          id: "workspace-file",
+          kind: "workspace-file",
+          label: "Workspace File Memory",
+          enabled: true,
+          readScopes: ["workspace", "issue-room", "room-notes", "decision-ledger", "agent", "promoted-ledger"],
+          writeScopes: ["workspace", "issue-room", "room-notes", "decision-ledger", "agent"],
+          recallPolicy: "governed-first",
+          retentionPolicy: "保留版本、人工纠偏和提升 ledger。",
+          sharingPolicy: "workspace-governed",
+          summary: "Primary file-backed memory.",
+        },
+        {
+          id: "search-sidecar",
+          kind: "search-sidecar",
+          label: "Search Sidecar",
+          enabled: true,
+          readScopes: ["workspace", "issue-room", "decision-ledger", "promoted-ledger"],
+          writeScopes: [],
+          recallPolicy: "search-on-demand",
+          retentionPolicy: "短期 query cache。",
+          sharingPolicy: "workspace-query-only",
+          summary: "Use local recall index before full scan.",
+        },
+        {
+          id: "external-persistent",
+          kind: "external-persistent",
+          label: "External Persistent Memory",
+          enabled: true,
+          readScopes: ["workspace", "agent", "user"],
+          writeScopes: ["agent", "user"],
+          recallPolicy: "promote-approved-only",
+          retentionPolicy: "长期保留审核通过的 durable memory。",
+          sharingPolicy: "explicit-share-only",
+          summary: "Forward approved memories to an external durable sink.",
+        },
+      ],
+    }),
+  });
+}
+
 async function waitForVisibleText(page, text, message, timeoutMs = 30_000) {
   await page.getByText(text, { exact: false }).first().waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {
     throw new Error(message);
   });
+}
+
+async function waitForTestIdContains(page, testId, text, message, timeoutMs = 30_000) {
+  await waitFor(
+    async () => {
+      const value = await page.getByTestId(testId).textContent();
+      return String(value ?? "").includes(text);
+    },
+    message,
+    timeoutMs,
+    200
+  );
 }
 
 async function waitForButtonLabel(page, testId, label, message, timeoutMs = 30_000) {
@@ -754,6 +826,57 @@ try {
     "折光交互继续补交互，再自动交棒给青岚策展；三位 agent 都在同一条房间公开发言，owner 继续前滚"
   );
   await capture(page, "room-after-second-turn");
+
+  await updateMemoryPolicy(services.serverURL);
+  await updateMemoryProviders(services.serverURL);
+
+  await page.goto(`${services.webURL}/memory`, { waitUntil: "load" });
+  await page.getByTestId("memory-preview-session").waitFor({ state: "visible" });
+  await page.getByTestId("memory-preview-session").selectOption(created.sessionId);
+  await page.getByTestId("memory-preview-provider-search-sidecar").waitFor({ state: "visible" });
+  await page.getByTestId("memory-preview-provider-external-persistent").waitFor({ state: "visible" });
+  await waitForTestIdContains(page, "memory-preview-summary", "青岚策展", "memory preview did not switch to 青岚策展");
+  await waitForTestIdContains(
+    page,
+    "memory-preview-summary",
+    "把内容字段、空状态、反馈文案和验收口径一次收平。",
+    "memory preview did not surface 青岚策展 prompt scaffold"
+  );
+  await waitForTestIdContains(page, "memory-preview-summary", "Search Sidecar", "memory preview missing search provider");
+  await waitForTestIdContains(
+    page,
+    "memory-preview-summary",
+    "External Persistent Memory",
+    "memory preview missing external provider"
+  );
+  assert(
+    !String(await page.getByTestId("memory-preview-summary").textContent()).includes("把页面骨架、信息结构和交互路径压到最简"),
+    "memory preview should not fall back to stale 折光交互 prompt scaffold"
+  );
+  recordCheck(
+    "Memory Preview Continuity",
+    `GET ${services.webURL}/memory`,
+    `session ${created.sessionId} 的 next-run preview 已切到青岚策展，并带出 Search/External provider note`
+  );
+  await capture(page, "memory-preview-final-owner");
+
+  await page.reload({ waitUntil: "load" });
+  await page.getByTestId("memory-preview-session").waitFor({ state: "visible" });
+  await page.getByTestId("memory-preview-session").selectOption(created.sessionId);
+  await waitForTestIdContains(page, "memory-preview-summary", "青岚策展", "memory preview lost 青岚策展 after reload");
+  await waitForTestIdContains(page, "memory-preview-summary", "Search Sidecar", "memory preview lost search provider after reload");
+  await waitForTestIdContains(
+    page,
+    "memory-preview-summary",
+    "External Persistent Memory",
+    "memory preview lost external provider after reload"
+  );
+  recordCheck(
+    "Memory Preview Reload",
+    `reload ${services.webURL}/memory`,
+    `reload 后同一 session preview 仍锚定青岚策展，并保留 provider binding 与异常提示`
+  );
+  await capture(page, "memory-preview-reload");
 
   const firstHandoff = mailboxByTitle(stateAfterSecondTurn, "电影网站信息结构");
   const secondHandoff = mailboxByTitle(stateAfterSecondTurn, "补齐影片资料与验收点");

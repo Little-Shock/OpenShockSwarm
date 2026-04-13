@@ -85,7 +85,8 @@ const artifactsDir = path.resolve(evidenceRoot);
 const reportPath = requestedReportPath || path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
-const webDistDir = path.join(artifactsDir, "next-dist");
+const webDistDirName = ".next-e2e-governed-mailbox-route";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
@@ -494,7 +495,7 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
-    OPENSHOCK_NEXT_DIST_DIR: webDistDir,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 

@@ -388,14 +388,19 @@ async function main() {
     browser = await launchChromiumSession(chromium);
     const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
 
+    await page.goto(`${webURL}/setup`, { waitUntil: "load" });
+    await page.getByTestId("setup-template-select-dev-team").waitFor({ state: "visible" });
+    await page.getByTestId("setup-template-select-dev-team").click();
+    await page.getByTestId("setup-onboarding-success").waitFor({ state: "visible" });
+
     await page.goto(`${webURL}/runs/${sidecarIssue.runId}`, { waitUntil: "load" });
     await waitForPageText(page, "shock-sidecar / Claude Code CLI");
     await capture(page, screenshotsDir, "run-sidecar-preference");
 
     await page.goto(`${webURL}/setup`, { waitUntil: "load" });
-    await waitForPageText(page, "自动 Failover");
+    await waitForPageText(page, "自动兜底切换");
     await waitForPageText(page, "shock-spare");
-    await waitForPageText(page, "active leases");
+    await waitForPageText(page, "活跃租约");
     await capture(page, screenshotsDir, "setup-failover-preview");
 
     const failoverIssue = await postJSON(`${serverURL}/v1/issues`, {
@@ -409,7 +414,7 @@ async function main() {
     const failoverRun = state.runs.find((run) => run.id === failoverIssue.runId);
     assert(failoverRun?.runtime === "shock-spare", `expected failover run on shock-spare, received ${JSON.stringify(failoverRun)}`);
     assert(
-      failoverRun?.nextAction?.includes("failover"),
+      failoverRun?.nextAction?.includes("已切换到 shock-spare"),
       `expected failover nextAction wording, received ${failoverRun?.nextAction || "<missing>"}`
     );
 

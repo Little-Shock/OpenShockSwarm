@@ -14,7 +14,7 @@ import { launchChromiumSession } from "./lib/playwright-chromium.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
-const sourceBaseBranch = process.env.OPENSHOCK_TKT06_SOURCE_BASE_BRANCH?.trim() || "dev/openshock-20260407-next";
+const sourceBaseBranch = process.env.OPENSHOCK_TKT06_SOURCE_BASE_BRANCH?.trim() || "main";
 const repoRemoteURL = process.env.OPENSHOCK_TKT06_REPO_URL?.trim() || "https://github.com/Larkspur-Wang/OpenShock.git";
 const repoName = process.env.OPENSHOCK_TKT06_REPO?.trim() || "Larkspur-Wang/OpenShock";
 const evidenceRoot =
@@ -268,7 +268,7 @@ async function waitForScenarioObjects(serverURL, issueTitle) {
   return waitFor(async () => {
     const state = await fetchState(serverURL);
     const found = findScenarioObjects(state, issueTitle);
-    if (found.issue && found.room && found.run && found.session) {
+    if (found.issue && found.room && found.run) {
       return { state, ...found };
     }
     return false;
@@ -281,6 +281,18 @@ async function createEmptyCommit(worktreePath, label) {
   await runCommand("git", ["-C", worktreePath, "commit", "--allow-empty", "-m", label]);
   const result = await runCommand("git", ["-C", worktreePath, "rev-parse", "--short", "HEAD"]);
   return result.stdout.trim();
+}
+
+function inferWorktreePath(workspaceDir, run, session) {
+  const explicitPath = session?.worktreePath || run?.worktreePath || "";
+  if (explicitPath) {
+    return explicitPath;
+  }
+  const worktreeName = session?.worktree || run?.worktree || "";
+  if (!worktreeName) {
+    return "";
+  }
+  return path.join(path.dirname(workspaceDir), ".openshock-worktrees", path.basename(workspaceDir), worktreeName);
 }
 
 async function readRemotePullRequest(number) {
@@ -434,7 +446,8 @@ async function runScenario(scenario) {
     page = await context.newPage();
 
     await page.goto(`${services.webURL}/setup`, { waitUntil: "load" });
-    await page.locator('[data-testid="setup-repo-binding"]').waitFor({ state: "visible" });
+    await page.getByText("展开仓库与远端").click();
+    await page.locator('[data-testid="setup-repo-binding"]:visible').waitFor({ state: "visible" });
     await capture(page, scenario.key, screenshotsDir, "setup-initial");
 
     await page.getByTestId("setup-repo-bind-button").click();
@@ -462,31 +475,40 @@ async function runScenario(scenario) {
     await capture(page, scenario.key, screenshotsDir, "setup-bound");
 
     if (scenario.noAuth) {
-      assert(readinessStatus === "仅本地闭环", `expected no-auth readiness to be 仅本地闭环, got ${readinessStatus}`);
+      assert(readinessStatus === "未完成", `expected no-auth readiness to be 未完成, got ${readinessStatus}`);
     } else {
-      assert(readinessStatus === "可进远端 PR", `expected readiness to be 可进远端 PR, got ${readinessStatus}`);
+      assert(readinessStatus === "已连接", `expected readiness to be 已连接, got ${readinessStatus}`);
     }
 
     await page.goto(`${services.webURL}/board`, { waitUntil: "load" });
     await page.getByTestId("board-create-issue-title").fill(issueTitle);
     await page.getByTestId("board-create-issue-summary").fill(issueSummary);
     await page.getByTestId("board-create-issue-submit").click();
-    await page.waitForURL(/\/rooms\//, { timeout: 30_000 });
-    await page.getByTestId("room-pull-request-action").waitFor({ state: "visible" });
+    const created = await waitForScenarioObjects(services.serverURL, issueTitle);
+    await page.goto(`${services.webURL}/rooms/${created.room.id}?tab=pr`, { waitUntil: "load" });
+    await page.getByTestId("room-workbench-pr-panel").waitFor({ state: "visible" });
+    await page.getByTestId("room-workbench-pr-primary-action").waitFor({ state: "visible" });
     await capture(page, scenario.key, screenshotsDir, "room-ready");
 
-    const created = await waitForScenarioObjects(services.serverURL, issueTitle);
     runBranch = created.run.branch;
-    worktreePath = created.session.worktreePath;
-    assert(worktreePath, "expected created session to expose a worktree path");
+    worktreePath = inferWorktreePath(workspaceDir, created.run, created.session);
+    assert(worktreePath, "expected created run or session to expose a worktree path");
+    await waitFor(async () => {
+      try {
+        accessSync(worktreePath, fsConstants.F_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    }, `expected worktree path to exist at ${worktreePath}`);
 
     const commitSha = await createEmptyCommit(worktreePath, commitMessage);
 
-    await page.getByTestId("room-pull-request-action").click();
+    await page.getByTestId("room-workbench-pr-primary-action").click();
 
     if (scenario.noAuth) {
       const errorText = await page.waitForFunction(
-        () => document.querySelector('[data-testid="room-pull-request-error"]')?.textContent?.trim() || false,
+        () => document.querySelector('[data-testid="room-workbench-pr-error"]')?.textContent?.trim() || false,
         undefined,
         { timeout: 30_000 }
       );
@@ -554,9 +576,12 @@ async function runScenario(scenario) {
     );
     await capture(page, scenario.key, screenshotsDir, "room-pr-created");
 
-    await page.getByTestId("room-pull-request-action").click();
+    await page.getByTestId("room-workbench-pr-primary-action").click();
     await page.waitForFunction(
-      () => document.querySelector('[data-testid="room-pull-request-status"]')?.textContent?.includes("已合并"),
+      () => {
+        const value = document.querySelector('[data-testid="room-workbench-pr-status"]')?.textContent?.trim() || "";
+        return value.includes("已合并") || value.toLowerCase().includes("merged");
+      },
       undefined,
       { timeout: 60_000 }
     );

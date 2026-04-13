@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-mailbox-batch-policy";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -204,10 +207,21 @@ async function readState(serverURL) {
 }
 
 async function waitForMailboxStatus(page, handoffId, expected) {
+  const expectedLabel =
+    expected === "requested"
+      ? "待接手"
+      : expected === "acknowledged"
+        ? "处理中"
+        : expected === "blocked"
+          ? "阻塞"
+          : expected === "completed"
+            ? "已完成"
+            : expected;
   await page.waitForFunction(
-    ({ currentHandoffId, currentExpected }) =>
-      document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() === currentExpected,
-    { currentHandoffId: handoffId, currentExpected: expected },
+    ({ currentHandoffId, currentExpectedLabel }) =>
+      document.querySelector(`[data-testid="mailbox-status-${currentHandoffId}"]`)?.textContent?.trim() ===
+      currentExpectedLabel,
+    { currentHandoffId: handoffId, currentExpectedLabel: expectedLabel },
     { timeout: 30_000 }
   );
 }
@@ -228,11 +242,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -345,15 +361,15 @@ try {
   await capture(page, "mailbox-batch-policy-requested");
 
   await page.getByTestId("mailbox-batch-select-open").click();
-  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "2 selected", "batch selection count did not reach 2");
-  assert((await readText(page, "mailbox-batch-policy-status")) === "watch", "governed batch policy should wait until selected handoffs are completable");
+  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "已选 2", "batch selection count did not reach 2");
+  assert((await readText(page, "mailbox-batch-policy-status")) === "关注", "governed batch policy should wait until selected handoffs are completable");
   await capture(page, "mailbox-batch-policy-selected");
 
   await page.getByTestId("mailbox-batch-action-acknowledged").click();
   for (const handoff of created) {
     await waitForMailboxStatus(page, handoff.id, "acknowledged");
   }
-  assert((await readText(page, "mailbox-batch-policy-status")) === "ready", "governed batch policy should become ready after acknowledge");
+  assert((await readText(page, "mailbox-batch-policy-status")) === "就绪", "governed batch policy should become ready after acknowledge");
   await capture(page, "mailbox-batch-policy-ready");
 
   await page.getByTestId("mailbox-batch-note").fill(batchCompleteNote);
@@ -361,7 +377,7 @@ try {
   for (const handoff of created) {
     await waitForMailboxStatus(page, handoff.id, "completed");
   }
-  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "0 selected", "batch selection should clear after governed batch complete");
+  await waitFor(async () => (await readText(page, "mailbox-batch-selected-count")) === "已选 0", "batch selection should clear after governed batch complete");
 
   const finalState = await waitFor(async () => {
     const state = await readState(serverURL);

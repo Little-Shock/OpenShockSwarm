@@ -24,9 +24,12 @@ const reportPath = parsedArgs.reportPath
   : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
+const webDistDirName = ".next-e2e-governance-escalation-rollup";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
+await mkdir(webDistDir, { recursive: true });
 
 const screenshots = [];
 const processes = [];
@@ -50,6 +53,27 @@ function assert(condition, message) {
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+function governanceStatusLabel(status) {
+  switch (status) {
+    case "active":
+      return "进行中";
+    case "blocked":
+      return "阻塞";
+    case "done":
+      return "完成";
+    case "ready":
+      return "就绪";
+    case "required":
+      return "需要处理";
+    case "watch":
+      return "关注";
+    case "draft":
+      return "草稿";
+    default:
+      return status;
+  }
 }
 
 async function freePort() {
@@ -234,11 +258,13 @@ async function startServices() {
     ...process.env,
     OPENSHOCK_CONTROL_API_BASE: serverURL,
     NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
+    OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
   };
   const buildLogPath = path.join(logsDir, "web-build.log");
 
   await mkdir(workspaceRoot, { recursive: true });
-  await rm(path.join(webAppRoot, ".next"), { recursive: true, force: true });
+  await rm(webDistDir, { recursive: true, force: true });
+  await mkdir(webDistDir, { recursive: true });
 
   const buildResult = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
     cwd: projectRoot,
@@ -376,11 +402,11 @@ try {
   await page.getByTestId(`mailbox-governance-escalation-rollup-room-${primaryRoom.id}`).waitFor({ state: "visible" });
   await page.getByTestId(`mailbox-governance-escalation-rollup-room-${secondaryRoom.id}`).waitFor({ state: "visible" });
   assert(
-    (await readText(page, `mailbox-governance-escalation-rollup-status-${primaryRoom.id}`)) === "blocked",
+    (await readText(page, `mailbox-governance-escalation-rollup-status-${primaryRoom.id}`)) === governanceStatusLabel("blocked"),
     "primary room should appear as blocked in mailbox cross-room rollup"
   );
   assert(
-    (await readText(page, `mailbox-governance-escalation-rollup-status-${secondaryRoom.id}`)) === "active",
+    (await readText(page, `mailbox-governance-escalation-rollup-status-${secondaryRoom.id}`)) === governanceStatusLabel("active"),
     "secondary room should appear as active in mailbox cross-room rollup"
   );
   assert(
@@ -393,11 +419,11 @@ try {
   await page.getByTestId(`orchestration-governance-escalation-rollup-room-${primaryRoom.id}`).waitFor({ state: "visible" });
   await page.getByTestId(`orchestration-governance-escalation-rollup-room-${secondaryRoom.id}`).waitFor({ state: "visible" });
   assert(
-    (await readText(page, `orchestration-governance-escalation-rollup-status-${primaryRoom.id}`)) === "blocked",
+    (await readText(page, `orchestration-governance-escalation-rollup-status-${primaryRoom.id}`)) === governanceStatusLabel("blocked"),
     "orchestration rollup should mirror blocked primary room"
   );
   assert(
-    (await readText(page, `orchestration-governance-escalation-rollup-status-${secondaryRoom.id}`)) === "active",
+    (await readText(page, `orchestration-governance-escalation-rollup-status-${secondaryRoom.id}`)) === governanceStatusLabel("active"),
     "orchestration rollup should mirror active secondary room"
   );
   await capture(page, "orchestration-rollup-hot-rooms");

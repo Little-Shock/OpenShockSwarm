@@ -22,7 +22,8 @@ const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
 const screenshotsDir = path.join(artifactsDir, "screenshots");
 const logsDir = path.join(artifactsDir, "logs");
-const webDistDir = path.join(artifactsDir, "next-dist");
+const webDistDirName = ".next-e2e-frontend-polish";
+const webDistDir = path.join(projectRoot, "apps", "web", webDistDirName);
 
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
@@ -275,7 +276,7 @@ async function startServices() {
       env: {
         ...process.env,
         OPENSHOCK_CONTROL_API_BASE: serverURL,
-        OPENSHOCK_NEXT_DIST_DIR: webDistDir,
+        OPENSHOCK_NEXT_DIST_DIR: webDistDirName,
       },
     }
   );

@@ -239,25 +239,25 @@ try {
   await page.locator('[data-testid="sidebar-profile-human"]').click();
   await waitForUrlIncludes(page, "/profiles/human/member-larkspur");
   await waitForVisible(page.locator('[data-testid="profile-surface-title"]'), "human profile title did not render");
-  await waitForVisible(page.locator("text=Capability / Permission"), "human permission panel did not render");
+  await waitForVisible(page.locator("text=能力 / 权限"), "human permission panel did not render");
   await capture(page, "shell-human-profile");
-  results.push("- 左栏固定 Profile Hub 现在会常驻显示当前 Human / Machine / Agent，点 Human 会直接进入统一 Human profile，并保留同一套壳层。");
+  results.push("- 左侧档案入口会常驻显示当前成员、机器、智能体；点击成员后会直接进入统一的成员档案页，并保留同一套壳层。");
 
   await waitForVisible(page.locator('[data-testid="sidebar-profile-machine"]'), "sidebar machine profile entry did not render");
   await page.locator('[data-testid="sidebar-profile-machine"]').click();
   await waitForUrlIncludes(page, "/profiles/machine/machine-main");
   await waitForVisible(page.locator('[data-testid="profile-surface-title"]'), "machine profile title did not render");
-  await waitForVisible(page.locator("text=Runtime Capability"), "machine capability panel did not render");
+  await waitForVisible(page.locator("text=运行能力"), "machine capability panel did not render");
   await capture(page, "shell-machine-profile");
-  results.push("- Profile Hub 里的 Machine entry 会一跳进入当前 paired machine profile，直接看到 heartbeat、runtime capability、recent run/room 与 bound agents。");
+  results.push("- 左侧档案入口里的机器项会一跳进入当前已配对机器档案，可直接看到心跳、运行能力、最近执行/房间和已绑定智能体。");
 
   await waitForVisible(page.locator('[data-testid="sidebar-profile-agent"]'), "sidebar agent profile entry did not render");
   await page.locator('[data-testid="sidebar-profile-agent"]').click();
   await waitForUrlIncludes(page, "/profiles/agent/agent-codex-dockmaster");
   await waitForVisible(page.locator('[data-testid="profile-surface-title"]'), "agent profile title did not render");
-  await waitForVisible(page.locator("text=Capability"), "agent capability panel did not render");
+  await waitForVisible(page.locator("text=能力"), "agent capability panel did not render");
   await capture(page, "shell-agent-profile");
-  results.push("- Profile Hub 里的 Agent entry 会一跳进入当前 preferred/on-duty agent profile，不再需要绕到右栏或独立列表页。");
+  results.push("- 左侧档案入口里的智能体项会一跳进入当前默认值班智能体档案，不再需要绕到右栏或独立列表页。");
 
   await page.goto(`${webURL}/rooms/room-runtime?tab=context`, { waitUntil: "domcontentloaded" });
   await waitForVisible(page.locator('[data-testid="room-workbench-context-panel"]'), "room context panel did not rerender");
@@ -268,9 +268,9 @@ try {
   await page.locator('[data-testid="room-workbench-active-agent-agent-codex-dockmaster"]').click();
   await waitForUrlIncludes(page, "/profiles/agent/agent-codex-dockmaster");
   await waitForVisible(page.locator('[data-testid="profile-surface-title"]'), "agent profile title did not render");
-  await waitForVisible(page.locator("text=Capability"), "agent capability panel did not render");
+  await waitForVisible(page.locator("text=能力"), "agent capability panel did not render");
   await capture(page, "room-agent-profile");
-  results.push("- room context 里的 active agent drill-in 仍保持可用；Room 与 shell footer 都能进入同一套 Agent profile surface。");
+  results.push("- 房间上下文里的当前智能体入口仍可用；房间和页脚都会进入同一套智能体档案页。");
 
   await page.goBack({ waitUntil: "domcontentloaded" });
   await waitForUrlIncludes(page, "/rooms/room-runtime?tab=context");
@@ -278,12 +278,12 @@ try {
   await page.locator('[data-testid="room-workbench-machine-profile"]').click();
   await waitForUrlIncludes(page, "/profiles/machine/machine-main");
   await waitForVisible(page.locator('[data-testid="profile-surface-title"]'), "machine profile title did not render");
-  await waitForVisible(page.locator("text=Runtime Capability"), "machine capability panel did not render");
+  await waitForVisible(page.locator("text=运行能力"), "machine capability panel did not render");
   await capture(page, "room-machine-profile");
-  results.push("- room context 里的 machine drill-in 也保持可用；当前 room 的执行上下文和 shell-level machine 入口继续收敛到同一份 live profile truth。");
+  results.push("- 房间上下文里的机器入口也保持可用；当前房间的执行上下文和壳层里的机器入口会汇总到同一份机器档案信息。");
 
   const report = [
-    `# ${reportDate} ${browserLabel}Shell Profile Hub / Profile Surface Report`,
+    `# ${reportDate} ${browserLabel}档案页联动报告`,
     "",
     "- Scope: `TKT-88 / CHK-16 / TC-077` + regression of `TKT-25 / TC-030`",
     `- Command: \`${reportCommand}\``,
@@ -296,7 +296,7 @@ try {
     ...screenshots.map((shot) => `- ${shot.name}: ${shot.path}`),
     "",
     "## Single Value",
-    "- 左栏固定 Profile Hub 现在把当前 Human / Machine / Agent 收成 app.slock.ai 式壳层入口；shell footer 与 room context 都会进入同一套 unified profile surface，profile truth 不再散落在右栏或孤立页面里。",
+    "- 左侧档案入口把当前成员、机器、智能体收成同一组壳层入口；shell footer 与 room context 都会进入同一套统一档案页，信息不再散落在右栏或孤立页面里。",
   ].join("\n");
 
   await writeFile(reportPath, `${report}\n`, "utf8");

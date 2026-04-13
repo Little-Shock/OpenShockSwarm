@@ -34,6 +34,7 @@ const screenshots = [];
 await mkdir(screenshotsDir, { recursive: true });
 await mkdir(logsDir, { recursive: true });
 await mkdir(workspaceRoot, { recursive: true });
+await mkdir(path.dirname(reportPath), { recursive: true });
 
 function parseArgs(args) {
   const result = { reportPath: "" };
@@ -217,6 +218,16 @@ async function waitForInputValue(page, testID, expected) {
   await waitFor(async () => (await page.getByTestId(testID).inputValue()) === expected, `${testID} did not become ${expected}`);
 }
 
+async function expandDetails(page, selector, message) {
+  const details = page.locator(selector);
+  await waitFor(async () => (await details.count()) > 0, message);
+  await details.evaluate((node) => {
+    if (node instanceof HTMLDetailsElement) {
+      node.open = true;
+    }
+  });
+}
+
 let browser;
 
 try {
@@ -234,7 +245,7 @@ try {
   const onboardingStatus = "ready";
   const currentStep = "identity-proof";
   const resumeUrl = "/access?resume=research-team";
-  const browserPush = "全部 live 事件";
+  const browserPush = "全部通知";
   const memoryMode = "governed-first / recovery ready";
   const sandboxProfile = "restricted";
   const allowedHosts = "github.com, api.openai.com";
@@ -244,6 +255,8 @@ try {
   const preferredAgentLabel = "Claude Review Runner";
   const startRoute = "/rooms";
   const githubHandle = "@durable-owner";
+  const templateLabel = "研究团队";
+  const onboardingStatusLabel = "待收口";
 
   const page = await browser.newPage({ viewport: { width: 1560, height: 1280 } });
 
@@ -263,13 +276,13 @@ try {
   await page.getByTestId("settings-workspace-sandbox-allowed-commands").fill(allowedCommands);
   await page.getByTestId("settings-workspace-sandbox-allowed-tools").fill(allowedTools);
   await page.getByTestId("settings-workspace-save").click();
-  await waitForText(page, "settings-workspace-success", "workspace durable truth 已写回 server，并会跨 refresh / restart 继续保留。");
+  await waitForText(page, "settings-workspace-success", "工作区设置已保存。");
 
   await page.getByTestId("settings-member-preferred-agent").selectOption(preferredAgentId);
   await page.getByTestId("settings-member-start-route").selectOption(startRoute);
   await page.getByTestId("settings-member-github-handle").fill(githubHandle);
   await page.getByTestId("settings-member-save").click();
-  await waitForText(page, "settings-member-success", "member preference truth 已写回 server，换设备后会继续读到同一份对象。");
+  await waitForText(page, "settings-member-success", "成员偏好已保存，换设备后也会继续读取同一份设置。");
   await capture(page, "settings-after-write");
 
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -286,21 +299,22 @@ try {
   await waitFor(async () => (await page.getByTestId("settings-member-preferred-agent").inputValue()) === preferredAgentId, "preferred agent select did not persist");
   await waitFor(async () => (await page.getByTestId("settings-member-start-route").inputValue()) === startRoute, "start route select did not persist");
   await waitForInputValue(page, "settings-member-github-handle", githubHandle);
-  results.push("- Settings writes now carry onboarding plus workspace sandbox baseline, and survive immediate browser reload without falling back to client-only draft state.");
+  results.push("- `/settings` 写入后的引导信息和安全设置可以在刷新后保持一致。");
 
   await page.goto(`${webURL}/access`, { waitUntil: "domcontentloaded" });
   await waitForText(page, "access-durable-preferred-agent", preferredAgentLabel);
   await waitForText(page, "access-durable-start-route", startRoute);
   await waitForText(page, "access-durable-github-handle", githubHandle);
   await capture(page, "access-projection");
-  results.push("- `/access` projects the same member preference and GitHub identity snapshot that `/settings` wrote.");
+  results.push("- `/access` 会显示和 `/settings` 一致的成员偏好与 GitHub 身份。");
 
   await page.goto(`${webURL}/setup`, { waitUntil: "domcontentloaded" });
-  await waitForText(page, "setup-onboarding-template", templateId);
-  await waitForText(page, "setup-onboarding-status", onboardingStatus);
+  await expandDetails(page, '[data-testid="setup-overview-technical-details"]', "setup technical detail panel did not render");
+  await waitForText(page, "setup-onboarding-template", templateLabel);
+  await waitForText(page, "setup-onboarding-status", onboardingStatusLabel);
   await waitForText(page, "setup-onboarding-resume-url", resumeUrl);
   await capture(page, "setup-projection");
-  results.push("- `/setup` reads the same onboarding template, status, and resume URL from the durable workspace snapshot.");
+  results.push("- `/setup` 会读取同一份引导模板、状态和继续地址。");
 
   await stopProcess(serverChild);
   serverChild = startServer(serverPort);
@@ -310,7 +324,7 @@ try {
   await waitForInputValue(page, "settings-workspace-template", templateId);
   await waitFor(async () => (await page.getByTestId("settings-member-preferred-agent").inputValue()) === preferredAgentId, "preferred agent did not survive server restart");
   await capture(page, "settings-after-server-restart");
-  results.push("- Restarting the server against the same state file keeps both workspace and member config truth intact.");
+  results.push("- 服务端重启后，工作区和成员设置都能继续保留。");
 
   const secondContext = await browser.newContext({ viewport: { width: 1440, height: 1200 } });
   const secondPage = await secondContext.newPage();
@@ -319,35 +333,34 @@ try {
   await waitForText(secondPage, "access-durable-start-route", startRoute);
   await waitForText(secondPage, "access-durable-github-handle", githubHandle);
   await secondPage.goto(`${webURL}/setup`, { waitUntil: "domcontentloaded" });
-  await waitForText(secondPage, "setup-onboarding-template", templateId);
-  await waitForText(secondPage, "setup-onboarding-status", onboardingStatus);
+  await expandDetails(secondPage, '[data-testid="setup-overview-technical-details"]', "setup technical detail panel did not render in second browser");
+  await waitForText(secondPage, "setup-onboarding-template", templateLabel);
+  await waitForText(secondPage, "setup-onboarding-status", onboardingStatusLabel);
   await waitForText(secondPage, "setup-onboarding-resume-url", resumeUrl);
   await capture(secondPage, "second-device-recovery");
   await secondContext.close();
-  results.push("- A second browser context still reads the same workspace/member truth, so recovery is not tied to one browser tab.");
+  results.push("- 第二个浏览器上下文也能读取同一份工作区和成员设置。");
 
   const reportLines = [
-    "# Test Report 2026-04-09 Config Persistence / Recovery",
+    "# 2026-04-12 配置持久化与恢复测试报告",
     "",
     `- Command: \`pnpm test:headed-config-persistence-recovery -- --report ${path.relative(projectRoot, reportPath)}\``,
-    `- Generated At: ${timestamp()}`,
+    `- 生成时间: ${timestamp()}`,
     "",
-    "## Result",
+    "## 结果",
     "",
     ...results,
     "",
-    "## Evidence",
+    "## 证据",
     "",
     ...screenshots.map((item) => `- ${item.name}: \`${path.relative(projectRoot, item.path)}\``),
     "",
-    "## Scope",
+    "## 范围说明",
     "",
-    "- Edited workspace onboarding/template/browser-push/memory-mode/sandbox baseline from `/settings`.",
-    "- Edited member preferred-agent/start-route/github-identity from `/settings`.",
-    "- Verified same truth from `/access` and `/setup` after reload, server restart, and second browser context replay.",
+    "- 已从 `/settings` 修改工作区引导、模板、浏览器提醒、记忆模式和安全基线。",
+    "- 已从 `/settings` 修改成员常用智能体、默认入口和 GitHub 身份。",
+    "- 已验证刷新、服务端重启和第二浏览器上下文后，`/access` 与 `/setup` 仍读取同一份配置。",
   ];
-
-  await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${reportLines.join("\n")}\n`, "utf8");
 } finally {
   if (browser) {

@@ -288,10 +288,11 @@ try {
   await page.goto(`${webURL}/pull-requests/${PULL_REQUEST_ID}`, { waitUntil: "load" });
   await page.getByTestId("pull-request-context-room").waitFor({ state: "visible" });
   detail = await readPullRequestDetail(serverURL, PULL_REQUEST_ID);
-  const liveDeliveryStatusLabel = detail.delivery.status === "ready" ? "release ready" : detail.delivery.status === "warning" ? "warning callout" : "blocked";
-  const liveHandoffStatusLabel = detail.delivery.releaseReady ? "ready to hand off" : "handoff blocked";
+  const liveDeliveryStatusLabel =
+    detail.delivery.status === "ready" ? "可以交付" : detail.delivery.status === "warning" ? "需要关注" : "暂不可交付";
+  const liveHandoffStatusLabel = detail.delivery.releaseReady ? "可以交接" : "交接受阻";
   assert(
-    (await readText(page, "pull-request-context-release-ready")).includes(detail.delivery.releaseReady ? "yes" : "not yet"),
+    (await readText(page, "pull-request-context-release-ready")).includes(detail.delivery.releaseReady ? "是" : "否"),
     "release ready context tile should match API detail"
   );
   assert((await readText(page, "pull-request-delivery-status")) === liveDeliveryStatusLabel, "delivery status should match API detail");
@@ -319,7 +320,7 @@ try {
   const templateCard = page.getByTestId(templateTestID(detail.delivery.templates[0]));
   await Promise.all([
     page.waitForURL((url) => url.pathname === "/settings"),
-    templateCard.getByRole("link", { name: "Open Delivery Surface" }).click(),
+    templateCard.getByRole("link", { name: "打开详情" }).click(),
   ]);
   await page.getByTestId("settings-advanced-notifications-toggle").click();
   await page.getByTestId("notification-worker-summary").waitFor({ state: "visible" });
@@ -339,7 +340,7 @@ try {
   const runGate = page.getByTestId("delivery-gate-run-usage");
   await Promise.all([
     page.waitForURL((url) => url.pathname === `/runs/${detail.run.id}`),
-    runGate.getByRole("link", { name: "Open Gate Context" }).click(),
+    runGate.getByRole("link", { name: "打开详情" }).click(),
   ]);
   await page.getByTestId("run-detail-usage-panel").waitFor({ state: "visible" });
   await capture(page, "run-gate-context");
