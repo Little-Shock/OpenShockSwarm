@@ -28,6 +28,7 @@
     "ops:live-server:stop": "node ./scripts/live-server-control.mjs stop",
     "ops:live-server:reload": "node ./scripts/live-server-control.mjs reload",
     "test:live-server-control": "node --test ./scripts/live-server-control.test.mjs",
+    "test:web-state-stream": "node --test ./apps/web/src/lib/live-phase0-stream.test.ts",
     "test:headed-setup": "node ./scripts/headed-setup-e2e.mjs",
     "test:headed-github-onboarding": "node ./scripts/headed-github-app-onboarding.mjs",
     "test:headed-session-foundation": "node ./scripts/headed-session-foundation.mjs",

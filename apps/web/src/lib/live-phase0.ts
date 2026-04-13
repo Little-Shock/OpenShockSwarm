@@ -12,6 +12,12 @@ import type {
   WorkspaceGovernanceLaneConfig,
 } from "@/lib/phase-zero-types";
 import { sanitizePhaseZeroState } from "@/lib/phase-zero-helpers";
+import {
+  buildPhaseZeroStateStreamURL,
+  resolvePhaseZeroDeltaDecision,
+  resolvePhaseZeroResyncDecision,
+  resolvePhaseZeroSnapshotDecision,
+} from "@/lib/live-phase0-stream";
 
 const API_BASE = process.env.NEXT_PUBLIC_OPENSHOCK_API_BASE ?? "/api/control";
 const STATE_STREAM_PATH = "/v1/state/stream";
@@ -591,31 +597,24 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
       }, delayMs);
     };
 
-    const recordSequence = (sequence?: number) => {
-      if (typeof sequence !== "number" || !Number.isFinite(sequence) || sequence <= 0) {
-        return;
-      }
-      lastStateStreamSequenceRef.current = Math.max(lastStateStreamSequenceRef.current, sequence);
-    };
-
     const openStream = () => {
       if (cancelled || typeof EventSource === "undefined") {
         return;
       }
 
       closeStream();
-      const suffix = lastStateStreamSequenceRef.current > 0 ? `?since=${lastStateStreamSequenceRef.current}` : "";
-      source = new EventSource(`${API_BASE}${STATE_STREAM_PATH}${suffix}`);
+      source = new EventSource(buildPhaseZeroStateStreamURL(API_BASE, STATE_STREAM_PATH, lastStateStreamSequenceRef.current));
       source.addEventListener("snapshot", (event) => {
         if (cancelled) {
           return;
         }
         try {
           const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroSnapshotStreamEvent;
-          if (typeof payload.sequence === "number" && payload.sequence <= lastStateStreamSequenceRef.current) {
+          const decision = resolvePhaseZeroSnapshotDecision(lastStateStreamSequenceRef.current, payload.sequence);
+          if (decision.kind === "ignore") {
             return;
           }
-          recordSequence(payload.sequence);
+          lastStateStreamSequenceRef.current = decision.nextSequence;
           commitStateAndRefreshApprovalCenter(payload.state);
         } catch {
           // Ignore malformed stream payloads and wait for the next reconnect/update.
@@ -627,19 +626,15 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
         }
         try {
           const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroDeltaStreamEvent;
-          if (typeof payload.sequence === "number" && payload.sequence <= lastStateStreamSequenceRef.current) {
+          const decision = resolvePhaseZeroDeltaDecision(lastStateStreamSequenceRef.current, payload.sequence);
+          if (decision.kind === "ignore") {
             return;
           }
-          if (
-            lastStateStreamSequenceRef.current > 0 &&
-            typeof payload.sequence === "number" &&
-            payload.sequence > lastStateStreamSequenceRef.current + 1
-          ) {
+          lastStateStreamSequenceRef.current = decision.nextSequence;
+          if (decision.kind === "refresh") {
             void refresh().catch(() => {});
-            recordSequence(payload.sequence);
             return;
           }
-          recordSequence(payload.sequence);
           commitStateDeltaAndRefreshApprovalCenter(payload.delta);
         } catch {
           // Ignore malformed stream payloads and wait for the next reconnect/update.
@@ -651,9 +646,8 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
         }
         try {
           const payload = JSON.parse((event as MessageEvent<string>).data) as PhaseZeroResyncStreamEvent;
-          if (typeof payload.sequence === "number" && Number.isFinite(payload.sequence) && payload.sequence > 0) {
-            lastStateStreamSequenceRef.current = payload.sequence;
-          }
+          const decision = resolvePhaseZeroResyncDecision(lastStateStreamSequenceRef.current, payload.sequence);
+          lastStateStreamSequenceRef.current = decision.nextSequence;
           void refresh().catch(() => {});
         } catch {
           // Ignore malformed stream payloads and wait for the next reconnect/update.
