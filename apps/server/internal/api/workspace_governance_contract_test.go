@@ -268,6 +268,229 @@ func TestGovernanceAggregationPrefersCurrentOwnerOverStaleCompletedHandoff(t *te
 	}
 }
 
+func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
+		"governance": {
+			"teamTopology": [
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
+				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
+			]
+		}
+	}`)
+	defer topologyResp.Body.Close()
+	if topologyResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace status = %d, want %d", topologyResp.StatusCode, http.StatusOK)
+	}
+
+	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      "room-runtime",
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-claude-review-runner",
+		"title":       "把 developer lane 正式交给 reviewer",
+		"summary":     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/mailbox status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+	var createPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+
+	ackReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	defer ackReviewerResp.Body.Close()
+	if ackReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer acknowledged status = %d, want %d", ackReviewerResp.StatusCode, http.StatusOK)
+	}
+
+	completeReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]any{
+		"action":                "completed",
+		"actingAgentId":         "agent-claude-review-runner",
+		"note":                  "review 完成后直接续到 QA。",
+		"continueGovernedRoute": true,
+	})
+	defer completeReviewerResp.Body.Close()
+	if completeReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer completed status = %d, want %d", completeReviewerResp.StatusCode, http.StatusOK)
+	}
+	var reviewerCompletePayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, completeReviewerResp, &reviewerCompletePayload)
+	qaHandoff := reviewerCompletePayload.State.Mailbox[0]
+
+	ackQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-memory-clerk",
+	})
+	defer ackQAResp.Body.Close()
+	if ackQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA acknowledged status = %d, want %d", ackQAResp.StatusCode, http.StatusOK)
+	}
+
+	completeQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": "agent-memory-clerk",
+		"note":          "QA 验证完成，可以进入 PR delivery closeout。",
+	})
+	defer completeQAResp.Body.Close()
+	if completeQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA completed status = %d, want %d", completeQAResp.StatusCode, http.StatusOK)
+	}
+	var qaCompletePayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, completeQAResp, &qaCompletePayload)
+	delegatedHandoff := qaCompletePayload.State.Mailbox[0]
+
+	afterDelegationReady := readStateSnapshot(t, server.URL)
+	readyAggregation := afterDelegationReady.Workspace.Governance.ResponseAggregation
+	if readyAggregation.Aggregator != "Spec Captain" ||
+		!strings.Contains(readyAggregation.FinalResponse, "Spec Captain") ||
+		!strings.Contains(readyAggregation.FinalResponse, "formal delivery closeout handoff") {
+		t.Fatalf("ready response aggregation = %#v, want delivery delegation handoff summary owned by Spec Captain", readyAggregation)
+	}
+	readyAudit := findResponseAggregationAuditEntry(readyAggregation.AuditTrail, "Delivery Closeout")
+	if readyAudit == nil || readyAudit.Actor != "Spec Captain" || !strings.Contains(readyAudit.Summary, "formal delivery closeout handoff") {
+		t.Fatalf("ready response aggregation audit = %#v, want delivery closeout audit entry", readyAggregation.AuditTrail)
+	}
+
+	blockNote := "需要先确认最终 release 文案，再继续 closeout。"
+	blockedResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+delegatedHandoff.ID, map[string]string{
+		"action":        "blocked",
+		"actingAgentId": delegatedHandoff.ToAgentID,
+		"note":          blockNote,
+	})
+	defer blockedResp.Body.Close()
+	if blockedResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST delegated blocked status = %d, want %d", blockedResp.StatusCode, http.StatusOK)
+	}
+
+	afterBlocked := readStateSnapshot(t, server.URL)
+	blockedAggregation := afterBlocked.Workspace.Governance.ResponseAggregation
+	if blockedAggregation.Aggregator != "Spec Captain" ||
+		!strings.Contains(blockedAggregation.FinalResponse, blockNote) ||
+		!strings.Contains(blockedAggregation.FinalResponse, "unblock response") {
+		t.Fatalf("blocked response aggregation = %#v, want blocked delivery delegation summary", blockedAggregation)
+	}
+
+	responseHandoffID := findDeliveryDelegationResponseHandoffID(afterBlocked.Mailbox, delegatedHandoff.ID)
+	if responseHandoffID == "" {
+		t.Fatalf("mailbox after blocked = %#v, want response handoff for delegated closeout", afterBlocked.Mailbox)
+	}
+
+	responseAckResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+responseHandoffID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": delegatedHandoff.FromAgentID,
+	})
+	defer responseAckResp.Body.Close()
+	if responseAckResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST response acknowledged status = %d, want %d", responseAckResp.StatusCode, http.StatusOK)
+	}
+
+	completeNote := "release receipt checklist 已补齐，请重新接住 delivery closeout。"
+	responseCompleteResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+responseHandoffID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": delegatedHandoff.FromAgentID,
+		"note":          completeNote,
+	})
+	defer responseCompleteResp.Body.Close()
+	if responseCompleteResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST response completed status = %d, want %d", responseCompleteResp.StatusCode, http.StatusOK)
+	}
+
+	afterResponseComplete := readStateSnapshot(t, server.URL)
+	responseCompleteAggregation := afterResponseComplete.Workspace.Governance.ResponseAggregation
+	if responseCompleteAggregation.Aggregator != "Spec Captain" ||
+		responseCompleteAggregation.Status != "blocked" ||
+		!strings.Contains(responseCompleteAggregation.FinalResponse, blockNote) ||
+		!strings.Contains(responseCompleteAggregation.FinalResponse, "已完成第 1 轮 unblock response") ||
+		!strings.Contains(responseCompleteAggregation.FinalResponse, "等待 Spec Captain 重新 acknowledge final delivery closeout") {
+		t.Fatalf("response-complete aggregation = %#v, want blocked delivery delegation summary with response progress", responseCompleteAggregation)
+	}
+	responseCompleteAudit := findResponseAggregationAuditEntry(responseCompleteAggregation.AuditTrail, "Delivery Closeout")
+	if responseCompleteAudit == nil ||
+		responseCompleteAudit.Actor != "Spec Captain" ||
+		responseCompleteAudit.Status != "blocked" ||
+		responseCompleteAudit.Summary != responseCompleteAggregation.FinalResponse {
+		t.Fatalf("response-complete aggregation audit = %#v, want blocked delivery closeout audit entry synced to final response", responseCompleteAggregation.AuditTrail)
+	}
+	if !containsExactString(responseCompleteAggregation.DecisionPath, "delivery:blocked") {
+		t.Fatalf("response-complete decision path = %#v, want delivery:blocked marker", responseCompleteAggregation.DecisionPath)
+	}
+
+	reAckResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+delegatedHandoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": delegatedHandoff.ToAgentID,
+	})
+	defer reAckResp.Body.Close()
+	if reAckResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST delegated re-ack status = %d, want %d", reAckResp.StatusCode, http.StatusOK)
+	}
+
+	afterReAck := readStateSnapshot(t, server.URL)
+	reAckAggregation := afterReAck.Workspace.Governance.ResponseAggregation
+	if reAckAggregation.Aggregator != "Spec Captain" ||
+		reAckAggregation.Status != "ready" ||
+		!strings.Contains(reAckAggregation.FinalResponse, "第 1 轮") ||
+		!strings.Contains(reAckAggregation.FinalResponse, "已重新 acknowledge final delivery closeout") ||
+		strings.Contains(reAckAggregation.FinalResponse, blockNote) {
+		t.Fatalf("re-ack response aggregation = %#v, want resumed delivery delegation summary", reAckAggregation)
+	}
+	reAckAudit := findResponseAggregationAuditEntry(reAckAggregation.AuditTrail, "Delivery Closeout")
+	if reAckAudit == nil ||
+		reAckAudit.Actor != "Spec Captain" ||
+		reAckAudit.Status != "ready" ||
+		reAckAudit.Summary != reAckAggregation.FinalResponse {
+		t.Fatalf("re-ack response aggregation audit = %#v, want resumed delivery closeout audit entry synced to final response", reAckAggregation.AuditTrail)
+	}
+	if !containsExactString(reAckAggregation.DecisionPath, "delivery:ready") {
+		t.Fatalf("re-ack decision path = %#v, want delivery:ready marker", reAckAggregation.DecisionPath)
+	}
+
+	parentCompleteResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+delegatedHandoff.ID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": delegatedHandoff.ToAgentID,
+		"note":          "最终 delivery closeout 已收口，等待 merge / release receipt。",
+	})
+	defer parentCompleteResp.Body.Close()
+	if parentCompleteResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST delegated completed status = %d, want %d", parentCompleteResp.StatusCode, http.StatusOK)
+	}
+
+	afterParentComplete := readStateSnapshot(t, server.URL)
+	completedAggregation := afterParentComplete.Workspace.Governance.ResponseAggregation
+	if completedAggregation.Aggregator != "Spec Captain" ||
+		completedAggregation.Status != "ready" ||
+		!strings.Contains(completedAggregation.FinalResponse, "第 1 轮") ||
+		!strings.Contains(completedAggregation.FinalResponse, "也已完成 final delivery closeout") ||
+		strings.Contains(completedAggregation.FinalResponse, blockNote) {
+		t.Fatalf("completed response aggregation = %#v, want completed delivery delegation summary", completedAggregation)
+	}
+	completedAudit := findResponseAggregationAuditEntry(completedAggregation.AuditTrail, "Delivery Closeout")
+	if completedAudit == nil ||
+		completedAudit.Actor != "Spec Captain" ||
+		completedAudit.Status != "done" ||
+		completedAudit.Summary != completedAggregation.FinalResponse ||
+		!strings.Contains(completedAudit.Summary, "也已完成 final delivery closeout") {
+		t.Fatalf("completed response aggregation audit = %#v, want completed delivery closeout audit entry", completedAggregation.AuditTrail)
+	}
+	if !containsExactString(completedAggregation.DecisionPath, "delivery:done") {
+		t.Fatalf("completed decision path = %#v, want delivery:done marker", completedAggregation.DecisionPath)
+	}
+}
+
 func readStateSnapshot(t *testing.T, serverURL string) store.State {
 	t.Helper()
 
@@ -338,4 +561,34 @@ func findAlternateGovernanceRoomID(state store.State, exclude string) string {
 		}
 	}
 	return ""
+}
+
+func findResponseAggregationAuditEntry(
+	items []store.WorkspaceResponseAggregationAuditEntry,
+	label string,
+) *store.WorkspaceResponseAggregationAuditEntry {
+	for index := range items {
+		if items[index].Label == label {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func findDeliveryDelegationResponseHandoffID(items []store.AgentHandoff, parentID string) string {
+	for _, item := range items {
+		if item.ParentHandoffID == parentID {
+			return item.ID
+		}
+	}
+	return ""
+}
+
+func containsExactString(items []string, needle string) bool {
+	for _, item := range items {
+		if item == needle {
+			return true
+		}
+	}
+	return false
 }
