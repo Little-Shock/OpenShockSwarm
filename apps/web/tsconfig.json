@@ -38,7 +38,9 @@
     ".next-fresh-stack/types/**/*.ts",
     ".next-fresh-stack/dev/types/**/*.ts",
     ".next-e2e-*/types/**/*.ts",
-    ".next-e2e-*/dev/types/**/*.ts"
+    ".next-e2e-*/dev/types/**/*.ts",
+    ".next-e2e-governed-mailbox-route/types/**/*.ts",
+    ".next-e2e-governed-mailbox-route/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -65,6 +65,7 @@
     "test:headed-governance-escalation-queue": "node ./scripts/headed-governance-escalation-queue.mjs",
     "test:headed-governance-escalation-rollup": "node ./scripts/headed-governance-escalation-rollup.mjs",
     "test:headed-cross-room-governance-orchestration": "node ./scripts/headed-cross-room-governance-orchestration.mjs",
+    "test:headed-cross-room-governance-auto-closeout": "node ./scripts/headed-cross-room-governance-orchestration.mjs --mode auto-closeout",
     "test:headed-mailbox-batch-policy": "node ./scripts/headed-mailbox-batch-policy.mjs",
     "test:headed-control-plane-runtime-governance": "node ./scripts/headed-control-plane-runtime-governance.mjs",
     "test:headed-planner-dispatch-replay": "node ./scripts/headed-planner-dispatch-replay.mjs",

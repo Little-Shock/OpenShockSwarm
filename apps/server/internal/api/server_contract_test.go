@@ -3419,6 +3419,479 @@ func TestAutoCompleteDeliveryDelegationPolicyMarksCloseoutDoneWithoutHandoff(t *
 	}
 }
 
+func TestAutoCompleteDeliveryDelegationDoesNotPolluteCrossRoomGovernanceSnapshot(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
+		"governance": {
+			"deliveryDelegationMode": "auto-complete",
+			"teamTopology": [
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
+			]
+		}
+	}`)
+	defer topologyResp.Body.Close()
+	if topologyResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace status = %d, want %d", topologyResp.StatusCode, http.StatusOK)
+	}
+
+	baselineState := readStateSnapshot(t, server.URL)
+	secondRoomID := findAlternateGovernanceRoomID(baselineState, "room-runtime")
+	if secondRoomID == "" {
+		t.Fatalf("baseline rooms = %#v, want second room outside current hot rollup", baselineState.Rooms)
+	}
+
+	secondRoomResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      secondRoomID,
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-memory-clerk",
+		"title":       "保持第二个 room 继续冒烟",
+		"summary":     "验证 runtime room auto-closeout 后，cross-room rollup 不会被 delivery sidecar 污染。",
+	})
+	defer secondRoomResp.Body.Close()
+	if secondRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST second room mailbox status = %d, want %d", secondRoomResp.StatusCode, http.StatusCreated)
+	}
+
+	afterSecondRoom := readStateSnapshot(t, server.URL)
+	secondRoomRollup := findEscalationRoomRollupByRoomID(afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if secondRoomRollup == nil || secondRoomRollup.Status != "active" {
+		t.Fatalf("second room rollup = %#v, want active second-room hot entry", afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if runtimeRollup := findEscalationRoomRollupByRoomID(afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup, "room-runtime"); runtimeRollup != nil {
+		t.Fatalf("pre-runtime rollup = %#v, want room-runtime absent before auto-closeout chain", afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	expectedRollupCount := len(afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup)
+
+	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      "room-runtime",
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-claude-review-runner",
+		"title":       "把 developer lane 正式交给 reviewer",
+		"summary":     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST runtime mailbox status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+	var createPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+
+	ackReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	defer ackReviewerResp.Body.Close()
+	if ackReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer acknowledged status = %d, want %d", ackReviewerResp.StatusCode, http.StatusOK)
+	}
+	completeReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]any{
+		"action":                "completed",
+		"actingAgentId":         "agent-claude-review-runner",
+		"note":                  "review 完成后直接续到 QA。",
+		"continueGovernedRoute": true,
+	})
+	defer completeReviewerResp.Body.Close()
+	if completeReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer completed continue status = %d, want %d", completeReviewerResp.StatusCode, http.StatusOK)
+	}
+	var reviewerCompletePayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, completeReviewerResp, &reviewerCompletePayload)
+	qaHandoff := reviewerCompletePayload.State.Mailbox[0]
+	if qaHandoff.RoomID != "room-runtime" || qaHandoff.ToAgent != "Memory Clerk" {
+		t.Fatalf("qa handoff = %#v, want room-runtime QA followup", qaHandoff)
+	}
+
+	ackQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-memory-clerk",
+	})
+	defer ackQAResp.Body.Close()
+	if ackQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA acknowledged status = %d, want %d", ackQAResp.StatusCode, http.StatusOK)
+	}
+	completeQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": "agent-memory-clerk",
+		"note":          "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+	})
+	defer completeQAResp.Body.Close()
+	if completeQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA completed status = %d, want %d", completeQAResp.StatusCode, http.StatusOK)
+	}
+
+	finalState := readStateSnapshot(t, server.URL)
+	if runtimeRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime"); runtimeRollup != nil {
+		t.Fatalf("final rollup = %#v, want room-runtime cleared from cross-room rollup after auto-complete closeout", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	finalSecondRoomRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if finalSecondRoomRollup == nil || finalSecondRoomRollup.Status != "active" || finalSecondRoomRollup.EscalationCount != 1 {
+		t.Fatalf("final second-room rollup = %#v, want other hot room stay active and unchanged", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if len(finalState.Workspace.Governance.EscalationSLA.Rollup) != expectedRollupCount {
+		t.Fatalf("final rollup count = %#v, want cross-room rollup count unchanged after runtime auto-closeout", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+
+	detailResp, err := http.Get(server.URL + "/v1/pull-requests/pr-runtime-18/detail")
+	if err != nil {
+		t.Fatalf("GET detail error = %v", err)
+	}
+	defer detailResp.Body.Close()
+	if detailResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET detail status = %d, want %d", detailResp.StatusCode, http.StatusOK)
+	}
+	var detail store.PullRequestDetail
+	decodeJSON(t, detailResp, &detail)
+	if detail.Delivery.Delegation.Status != "done" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
+		t.Fatalf("detail delegation = %#v, want auto-complete done without formal handoff", detail.Delivery.Delegation)
+	}
+
+	mailboxResp, err := http.Get(server.URL + "/v1/mailbox")
+	if err != nil {
+		t.Fatalf("GET mailbox error = %v", err)
+	}
+	defer mailboxResp.Body.Close()
+	if mailboxResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET mailbox status = %d, want %d", mailboxResp.StatusCode, http.StatusOK)
+	}
+	var mailbox []store.AgentHandoff
+	decodeJSON(t, mailboxResp, &mailbox)
+	for _, item := range mailbox {
+		if item.Kind == "delivery-closeout" && item.RoomID == "room-runtime" {
+			t.Fatalf("mailbox = %#v, want no delivery-closeout sidecar after auto-complete", mailbox)
+		}
+	}
+}
+
+func TestAutoCompleteDeliveryDelegationKeepsBlockedRuntimeRoomHotButMarksRouteDoneInGovernanceSnapshot(t *testing.T) {
+	root := t.TempDir()
+	s, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
+		"governance": {
+			"deliveryDelegationMode": "auto-complete",
+			"teamTopology": [
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
+			]
+		}
+	}`)
+	defer topologyResp.Body.Close()
+	if topologyResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace status = %d, want %d", topologyResp.StatusCode, http.StatusOK)
+	}
+
+	baselineState := readStateSnapshot(t, server.URL)
+	secondRoomID := findAlternateGovernanceRoomID(baselineState, "room-runtime")
+	if secondRoomID == "" {
+		t.Fatalf("baseline rooms = %#v, want second room outside current hot rollup", baselineState.Rooms)
+	}
+
+	secondRoomResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      secondRoomID,
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-memory-clerk",
+		"title":       "保持第二个 room 继续冒烟",
+		"summary":     "验证 runtime room 仍有 blocker 时，auto-complete 只把 route 收到 done，不会污染 cross-room rollup。",
+	})
+	defer secondRoomResp.Body.Close()
+	if secondRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST second room mailbox status = %d, want %d", secondRoomResp.StatusCode, http.StatusCreated)
+	}
+	afterSecondRoom := readStateSnapshot(t, server.URL)
+	expectedBaselineHotRooms := len(afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup)
+
+	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      "room-runtime",
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-claude-review-runner",
+		"title":       "把 developer lane 正式交给 reviewer",
+		"summary":     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST runtime mailbox status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+	var createPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+
+	ackReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	defer ackReviewerResp.Body.Close()
+	if ackReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer acknowledged status = %d, want %d", ackReviewerResp.StatusCode, http.StatusOK)
+	}
+	completeReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]any{
+		"action":                "completed",
+		"actingAgentId":         "agent-claude-review-runner",
+		"note":                  "review 完成后直接续到 QA。",
+		"continueGovernedRoute": true,
+	})
+	defer completeReviewerResp.Body.Close()
+	if completeReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer completed continue status = %d, want %d", completeReviewerResp.StatusCode, http.StatusOK)
+	}
+	var reviewerCompletePayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, completeReviewerResp, &reviewerCompletePayload)
+	qaHandoff := reviewerCompletePayload.State.Mailbox[0]
+	if qaHandoff.RoomID != "room-runtime" || qaHandoff.ToAgent != "Memory Clerk" {
+		t.Fatalf("qa handoff = %#v, want room-runtime QA followup", qaHandoff)
+	}
+
+	ackQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-memory-clerk",
+	})
+	defer ackQAResp.Body.Close()
+	if ackQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA acknowledged status = %d, want %d", ackQAResp.StatusCode, http.StatusOK)
+	}
+
+	if _, err := s.AppendSystemRoomMessage("room-runtime", "System", "CLI 连接失败，等待人工处理。", "blocked"); err != nil {
+		t.Fatalf("AppendSystemRoomMessage() error = %v", err)
+	}
+	blockedState := readStateSnapshot(t, server.URL)
+	runtimeBlockedRollup := findEscalationRoomRollupByRoomID(blockedState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime")
+	if runtimeBlockedRollup == nil ||
+		runtimeBlockedRollup.Status != "blocked" ||
+		runtimeBlockedRollup.BlockedCount < 1 ||
+		runtimeBlockedRollup.NextRouteStatus != "active" {
+		t.Fatalf("blocked runtime rollup = %#v, want blocked hot room with active QA route", blockedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+
+	completeQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": "agent-memory-clerk",
+		"note":          "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+	})
+	defer completeQAResp.Body.Close()
+	if completeQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA completed status = %d, want %d", completeQAResp.StatusCode, http.StatusOK)
+	}
+
+	finalState := readStateSnapshot(t, server.URL)
+	runtimeFinalRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime")
+	if runtimeFinalRollup == nil ||
+		runtimeFinalRollup.Status != "blocked" ||
+		runtimeFinalRollup.BlockedCount < 1 ||
+		runtimeFinalRollup.NextRouteStatus != "done" ||
+		runtimeFinalRollup.NextRouteLabel != "delivery closeout" ||
+		!strings.Contains(runtimeFinalRollup.NextRouteHref, "/pull-requests/pr-runtime-18") {
+		t.Fatalf("final runtime rollup = %#v, want blocked room kept hot with done delivery route", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	finalSecondRoomRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if finalSecondRoomRollup == nil || finalSecondRoomRollup.Status != "active" || finalSecondRoomRollup.EscalationCount != 1 {
+		t.Fatalf("final second-room rollup = %#v, want other hot room stay active and unchanged", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if len(finalState.Workspace.Governance.EscalationSLA.Rollup) != expectedBaselineHotRooms+1 {
+		t.Fatalf("final rollup count = %#v, want runtime blocker added on top of baseline hot rooms", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+
+	detailResp, err := http.Get(server.URL + "/v1/pull-requests/pr-runtime-18/detail")
+	if err != nil {
+		t.Fatalf("GET detail error = %v", err)
+	}
+	defer detailResp.Body.Close()
+	if detailResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET detail status = %d, want %d", detailResp.StatusCode, http.StatusOK)
+	}
+	var detail store.PullRequestDetail
+	decodeJSON(t, detailResp, &detail)
+	if detail.Delivery.Delegation.Status != "done" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		detail.Delivery.Delegation.ResponseHandoffID != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
+		t.Fatalf("detail delegation = %#v, want auto-complete done without formal handoff even while room stays blocked", detail.Delivery.Delegation)
+	}
+
+	mailboxResp, err := http.Get(server.URL + "/v1/mailbox")
+	if err != nil {
+		t.Fatalf("GET mailbox error = %v", err)
+	}
+	defer mailboxResp.Body.Close()
+	if mailboxResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET mailbox status = %d, want %d", mailboxResp.StatusCode, http.StatusOK)
+	}
+	var mailbox []store.AgentHandoff
+	decodeJSON(t, mailboxResp, &mailbox)
+	for _, item := range mailbox {
+		if item.RoomID == "room-runtime" && (item.Kind == "delivery-closeout" || item.Kind == "delivery-reply") {
+			t.Fatalf("mailbox = %#v, want no runtime delivery sidecar even when room remains blocked", mailbox)
+		}
+	}
+}
+
+func TestAutoCompleteDeliveryDelegationDoesNotPolluteCrossRoomGovernanceSnapshotAfterServerReload(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+
+	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
+		"governance": {
+			"deliveryDelegationMode": "auto-complete",
+			"teamTopology": [
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
+			]
+		}
+	}`)
+	defer topologyResp.Body.Close()
+	if topologyResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/workspace status = %d, want %d", topologyResp.StatusCode, http.StatusOK)
+	}
+
+	baselineState := readStateSnapshot(t, server.URL)
+	secondRoomID := findAlternateGovernanceRoomID(baselineState, "room-runtime")
+	if secondRoomID == "" {
+		t.Fatalf("baseline rooms = %#v, want second room outside current hot rollup", baselineState.Rooms)
+	}
+
+	secondRoomResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      secondRoomID,
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-memory-clerk",
+		"title":       "保持第二个 room 继续冒烟",
+		"summary":     "验证 runtime room auto-closeout 后，server reload 也不会把 delivery sidecar 污染进 cross-room rollup。",
+	})
+	defer secondRoomResp.Body.Close()
+	if secondRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST second room mailbox status = %d, want %d", secondRoomResp.StatusCode, http.StatusCreated)
+	}
+
+	afterSecondRoom := readStateSnapshot(t, server.URL)
+	expectedRollupCount := len(afterSecondRoom.Workspace.Governance.EscalationSLA.Rollup)
+
+	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      "room-runtime",
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-claude-review-runner",
+		"title":       "把 developer lane 正式交给 reviewer",
+		"summary":     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST runtime mailbox status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+	var createPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+
+	ackReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	defer ackReviewerResp.Body.Close()
+	if ackReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer acknowledged status = %d, want %d", ackReviewerResp.StatusCode, http.StatusOK)
+	}
+	completeReviewerResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]any{
+		"action":                "completed",
+		"actingAgentId":         "agent-claude-review-runner",
+		"note":                  "review 完成后直接续到 QA。",
+		"continueGovernedRoute": true,
+	})
+	defer completeReviewerResp.Body.Close()
+	if completeReviewerResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST reviewer completed continue status = %d, want %d", completeReviewerResp.StatusCode, http.StatusOK)
+	}
+	var reviewerCompletePayload struct {
+		State store.State `json:"state"`
+	}
+	decodeJSON(t, completeReviewerResp, &reviewerCompletePayload)
+	qaHandoff := reviewerCompletePayload.State.Mailbox[0]
+
+	ackQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-memory-clerk",
+	})
+	defer ackQAResp.Body.Close()
+	if ackQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA acknowledged status = %d, want %d", ackQAResp.StatusCode, http.StatusOK)
+	}
+	completeQAResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+qaHandoff.ID, map[string]string{
+		"action":        "completed",
+		"actingAgentId": "agent-memory-clerk",
+		"note":          "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+	})
+	defer completeQAResp.Body.Close()
+	if completeQAResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST QA completed status = %d, want %d", completeQAResp.StatusCode, http.StatusOK)
+	}
+
+	server.Close()
+	_, reloadedServer := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer reloadedServer.Close()
+
+	reloadedState := readStateSnapshot(t, reloadedServer.URL)
+	if runtimeRollup := findEscalationRoomRollupByRoomID(reloadedState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime"); runtimeRollup != nil {
+		t.Fatalf("reloaded rollup = %#v, want room-runtime absent after server reload", reloadedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	reloadedSecondRoomRollup := findEscalationRoomRollupByRoomID(reloadedState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if reloadedSecondRoomRollup == nil || reloadedSecondRoomRollup.Status != "active" || reloadedSecondRoomRollup.EscalationCount != 1 {
+		t.Fatalf("reloaded second-room rollup = %#v, want other hot room remain active after server reload", reloadedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if len(reloadedState.Workspace.Governance.EscalationSLA.Rollup) != expectedRollupCount {
+		t.Fatalf("reloaded rollup count = %#v, want cross-room rollup count unchanged after server reload", reloadedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+
+	detailResp, err := http.Get(reloadedServer.URL + "/v1/pull-requests/pr-runtime-18/detail")
+	if err != nil {
+		t.Fatalf("GET reloaded detail error = %v", err)
+	}
+	defer detailResp.Body.Close()
+	if detailResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET reloaded detail status = %d, want %d", detailResp.StatusCode, http.StatusOK)
+	}
+	var detail store.PullRequestDetail
+	decodeJSON(t, detailResp, &detail)
+	if detail.Delivery.Delegation.Status != "done" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
+		t.Fatalf("reloaded detail delegation = %#v, want auto-complete done without formal handoff after reload", detail.Delivery.Delegation)
+	}
+
+	mailboxResp, err := http.Get(reloadedServer.URL + "/v1/mailbox")
+	if err != nil {
+		t.Fatalf("GET reloaded mailbox error = %v", err)
+	}
+	defer mailboxResp.Body.Close()
+	if mailboxResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET reloaded mailbox status = %d, want %d", mailboxResp.StatusCode, http.StatusOK)
+	}
+	var mailbox []store.AgentHandoff
+	decodeJSON(t, mailboxResp, &mailbox)
+	for _, item := range mailbox {
+		if item.RoomID == "room-runtime" && (item.Kind == "delivery-closeout" || item.Kind == "delivery-reply") {
+			t.Fatalf("reloaded mailbox = %#v, want no delivery sidecar after server reload", mailbox)
+		}
+	}
+}
+
 func TestRunHistoryRouteSupportsIncrementalFetchAndRoomFilter(t *testing.T) {
 	root := t.TempDir()
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")

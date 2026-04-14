@@ -35,10 +35,13 @@ const screenshots = [];
 const processes = [];
 
 function parseArgs(args) {
-  const result = { reportPath: "" };
+  const result = { reportPath: "", mode: "orchestration" };
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--report") {
       result.reportPath = args[index + 1] ?? "";
+      index += 1;
+    } else if (args[index] === "--mode") {
+      result.mode = args[index + 1] ?? "orchestration";
       index += 1;
     }
   }
@@ -202,12 +205,31 @@ async function postRoomMessage(serverURL, roomId, prompt) {
   });
 }
 
+async function patchMailboxHandoff(serverURL, handoffId, body) {
+  return requestJSON(`${serverURL}/v1/mailbox/${handoffId}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+async function readPullRequestDetail(serverURL, pullRequestId) {
+  return fetchJSON(`${serverURL}/v1/pull-requests/${pullRequestId}/detail`, { cache: "no-store" });
+}
+
 function findRollup(state, roomId) {
   return state.workspace.governance.escalationSla?.rollup?.find((item) => item.roomId === roomId) ?? null;
 }
 
 async function readText(page, testId) {
   return (await page.getByTestId(testId).textContent())?.trim() ?? "";
+}
+
+async function readTextIfPresent(page, testId) {
+  const locator = page.getByTestId(testId);
+  if ((await locator.count()) === 0) {
+    return "";
+  }
+  return (await locator.first().textContent())?.trim() ?? "";
 }
 
 async function waitForMailboxStatus(page, handoffId, expected) {
@@ -320,6 +342,7 @@ try {
 
   await patchWorkspace(serverURL, {
     governance: {
+      ...(parsedArgs.mode === "auto-closeout" ? { deliveryDelegationMode: "auto-complete" } : {}),
       teamTopology: [
         { id: "pm", label: "PM", role: "目标与验收", defaultAgent: "Spec Captain", lane: "scope / final response" },
         { id: "architect", label: "Architect", role: "拆解与边界", defaultAgent: "Spec Captain", lane: "shape / split" },
@@ -489,30 +512,201 @@ try {
   );
   await capture(page, "orchestration-cross-room-route-active");
 
-  const report = [
-    `# ${reportDate} Cross-Room Governance Orchestration Report`,
-    "",
-    "- Ticket: `TKT-95`",
-    "- Checklist: `CHK-21`",
-    "- Test Case: `TC-084`",
-    "- Scope: cross-room rollup route metadata, dependency graph surface, room-level governed create action, mailbox + orchestration mirror, inbox deep-link",
-    `- Command: \`${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-cross-room-governance-orchestration -- --report ${path.relative(projectRoot, reportPath)}\``,
-    `- Artifacts Dir: \`${artifactsDir}\``,
-    "",
-    "## Results",
-    "",
+  let autoCloseoutSummary = null;
+  if (parsedArgs.mode === "auto-closeout") {
+    const ackReviewer = await patchMailboxHandoff(serverURL, activeState.handoff.id, {
+      action: "acknowledged",
+      actingAgentId: "agent-claude-review-runner",
+    });
+    assert(ackReviewer.ok, `reviewer acknowledge should succeed, received ${ackReviewer.status}`);
+
+    const completeReviewer = await patchMailboxHandoff(serverURL, activeState.handoff.id, {
+      action: "completed",
+      actingAgentId: "agent-claude-review-runner",
+      note: "review 已完成，直接续到 QA。",
+      continueGovernedRoute: true,
+    });
+    assert(completeReviewer.ok, `reviewer continue should succeed, received ${completeReviewer.status}`);
+    const qaHandoff =
+      completeReviewer.body?.state?.mailbox?.find(
+        (item) =>
+          item.roomId === targetRoom.id &&
+          item.kind === "governed" &&
+          item.status === "requested" &&
+          item.toAgent === "Memory Clerk"
+      ) ?? null;
+    assert(qaHandoff, "reviewer continue should materialize a requested QA governed handoff");
+
+    const ackQA = await patchMailboxHandoff(serverURL, qaHandoff.id, {
+      action: "acknowledged",
+      actingAgentId: "agent-memory-clerk",
+    });
+    assert(ackQA.ok, `qa acknowledge should succeed, received ${ackQA.status}`);
+
+    const completeQA = await patchMailboxHandoff(serverURL, qaHandoff.id, {
+      action: "completed",
+      actingAgentId: "agent-memory-clerk",
+      note: "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+    });
+    assert(completeQA.ok, `qa complete should succeed, received ${completeQA.status}`);
+
+    const finalAutoCloseout = await waitFor(async () => {
+      const state = await readState(serverURL);
+      const detail = await readPullRequestDetail(serverURL, "pr-runtime-18");
+      const runtimeRollup = findRollup(state, targetRoom.id);
+      if (!runtimeRollup) {
+        return false;
+      }
+      const hasRuntimeSidecar = state.mailbox.some(
+        (item) =>
+          item.roomId === targetRoom.id && (item.kind === "delivery-closeout" || item.kind === "delivery-reply")
+      );
+      if (hasRuntimeSidecar) {
+        return false;
+      }
+      if (runtimeRollup.status !== "blocked" || runtimeRollup.blockedCount < 1 || runtimeRollup.nextRouteStatus !== "done") {
+        return false;
+      }
+      if (detail.delivery?.delegation?.status !== "done" || detail.delivery?.delegation?.handoffId) {
+        return false;
+      }
+      return { state, detail, qaHandoff, runtimeRollup };
+    }, "auto-closeout should keep the original runtime blocker hot while leaving no delivery sidecars behind");
+
+    await page.goto(`${webURL}/pull-requests/pr-runtime-18`, { waitUntil: "load" });
+    await page.getByTestId("delivery-delegation-status").waitFor({ state: "visible" });
+    await waitFor(
+      async () => (await readText(page, "delivery-delegation-status")) === "已完成",
+      "pr detail should show delivery delegation done after auto-closeout"
+    );
+    await waitFor(
+      async () => (await readText(page, "delivery-delegation-summary")).includes("auto-complete"),
+      "pr detail summary should mention auto-complete policy after closeout"
+    );
+    await capture(page, "pr-detail-cross-room-auto-closeout-done");
+
+    await page.goto(`${webURL}/mailbox?roomId=${targetRoom.id}`, { waitUntil: "load" });
+    await page.getByTestId("mailbox-governance-escalation-graph").waitFor({ state: "visible" });
+    await waitFor(
+      async () => (await readText(page, "mailbox-governance-escalation-rollup-count")) === `${baselineRollupCount + 1} rooms`,
+      "mailbox rollup count should keep the original runtime blocker hot after auto-closeout"
+    );
+    await waitFor(
+      async () =>
+        (await readText(page, `mailbox-governance-escalation-graph-route-${targetRoom.id}`)).includes("完成"),
+      "mailbox graph should show the runtime room as done-route after auto-closeout"
+    );
+    await waitFor(
+      async () => (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "完成",
+      "mailbox rollup should show the runtime room route as done after auto-closeout"
+    );
+    const visibleMailboxKinds = await page.locator('[data-testid^="mailbox-kind-"]').allTextContents();
+    assert(
+      visibleMailboxKinds.every((label) => !label.includes("交付收尾") && !label.includes("收尾回复")),
+      `mailbox should not surface delivery sidecar kinds after auto-closeout, received ${visibleMailboxKinds.join(", ")}`
+    );
+    await capture(page, "mailbox-cross-room-auto-closeout-done");
+
+    await page.reload({ waitUntil: "load" });
+    await page.getByTestId("mailbox-governance-escalation-graph").waitFor({ state: "visible" });
+    await waitFor(
+      async () => (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "完成",
+      "mailbox rollup should stay done after reload"
+    );
+    await capture(page, "mailbox-cross-room-auto-closeout-reloaded");
+
+    await page.goto(`${webURL}/agents`, { waitUntil: "load" });
+    await waitFor(
+      async () =>
+        (await readTextIfPresent(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "完成",
+      "orchestration rollup should show the runtime room route as done after auto-closeout"
+    );
+    await waitFor(
+      async () =>
+        (await readTextIfPresent(page, `orchestration-governance-escalation-graph-route-${targetRoom.id}`)).includes("完成"),
+      "orchestration graph should show the runtime room route as done after auto-closeout"
+    );
+    await capture(page, "orchestration-cross-room-auto-closeout-done");
+
+    await page.reload({ waitUntil: "load" });
+    await waitFor(
+      async () =>
+        (await readTextIfPresent(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "完成",
+      "orchestration rollup should stay done after reload"
+    );
+    await capture(page, "orchestration-cross-room-auto-closeout-reloaded");
+
+    autoCloseoutSummary = {
+      finalState: finalAutoCloseout.state,
+      detail: finalAutoCloseout.detail,
+      qaHandoff: finalAutoCloseout.qaHandoff,
+      runtimeRollup: finalAutoCloseout.runtimeRollup,
+      visibleMailboxKinds,
+    };
+  }
+
+  const reportHeading =
+    parsedArgs.mode === "auto-closeout"
+      ? `${reportDate} Cross-Room Governance Auto-Closeout Report`
+      : `${reportDate} Cross-Room Governance Orchestration Report`;
+  const reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm ${
+    parsedArgs.mode === "auto-closeout"
+      ? "test:headed-cross-room-governance-auto-closeout"
+      : "test:headed-cross-room-governance-orchestration"
+  } -- --report ${path.relative(projectRoot, reportPath)}`;
+  const reportTicket = parsedArgs.mode === "auto-closeout" ? "`TKT-72` + `TKT-95`" : "`TKT-95`";
+  const reportTestCase = parsedArgs.mode === "auto-closeout" ? "`TC-061` + `TC-084`" : "`TC-084`";
+  const reportScope =
+    parsedArgs.mode === "auto-closeout"
+      ? "cross-room graph lifecycle, governed route -> QA -> auto-complete delivery closeout, mailbox/agents done-route sync, reload continuity, sidecar-safe blocker retention"
+      : "cross-room rollup route metadata, dependency graph surface, room-level governed create action, mailbox + orchestration mirror, inbox deep-link";
+  const reportResults = [
     "- runtime room 通过真实 blocked inbox replay 进入 cross-room governance rollup 后，会带出 `current owner / current lane / next governed route` 元数据，不再只剩 room 状态摘要 -> PASS",
     "- `/mailbox` 与 `/agents` 现在都会把 hot room 重新组织成 `room -> current owner/lane -> next route` 的 cross-room dependency graph；人类不必逐卡读长文也能看出哪一棒卡住、下一棒准备交给谁 -> PASS",
     "- `/mailbox` 上的 cross-room rollup 在 route `ready` 时会开放 `Create Governed Handoff`，并通过正式 `POST /v1/mailbox/governed` 合同起单，而不是前端本地拼接 mutation -> PASS",
     "- governed create 成功后，runtime room 的 route metadata 会从 `ready` 切成 `active`，`Open Next Route` 也会深链到新建 handoff；说明 room-level orchestration 已进入正式产品面 -> PASS",
     "- `/agents` 会镜像同一份 route status 与 deep-link，不会出现 mailbox 已 active、orchestration 仍停在 ready 的分裂真相 -> PASS",
-    "",
-    "## Assertions",
-    "",
+  ];
+  if (autoCloseoutSummary) {
+    reportResults.push(
+      "- reviewer -> QA -> delivery auto-complete 走完后，runtime room 仍会因为最初的 blocker 保持 hot，但 route 会同步切到 `done`，且不会额外长出 `delivery-closeout / delivery-reply` sidecar；说明 blocker truth 与 closeout truth 已被正确拆开 -> PASS",
+      "- `/pull-requests/pr-runtime-18` 的 Delivery Delegation 会直接显示 `已完成`，并保留 auto-complete policy 摘要；用户能在交付面确认正式收口，而不是只在后台状态里猜测 -> PASS",
+      "- `/mailbox` 与 `/agents` 在 reload 后仍会维持同一条 `done` route truth，而且 Mailbox 当前 room ledger 不会露出 `交付收尾 / 收尾回复` sidecar 卡片 -> PASS"
+    );
+  }
+  const reportAssertions = [
     `- Baseline rollup length: ${baselineRollupCount}`,
     `- Ready route: ${readyState.rollup.currentOwner} / ${readyState.rollup.currentLane} / ${readyState.rollup.nextRouteLabel}`,
     `- Created handoff: ${activeState.handoff.id} (${activeState.handoff.fromAgent} -> ${activeState.handoff.toAgent})`,
     `- Active route href: ${activeState.rollup.nextRouteHref}`,
+  ];
+  if (autoCloseoutSummary) {
+    reportAssertions.push(
+      `- QA followup: ${autoCloseoutSummary.qaHandoff.id} (${autoCloseoutSummary.qaHandoff.toAgent})`,
+      `- Final rollup length: ${autoCloseoutSummary.finalState.workspace.governance.escalationSla.rollup.length}`,
+      `- Final runtime route: ${autoCloseoutSummary.runtimeRollup.nextRouteStatus} / ${autoCloseoutSummary.runtimeRollup.nextRouteHref}`,
+      `- Final delegation status: ${autoCloseoutSummary.detail.delivery.delegation.status}`,
+      `- Visible mailbox kinds after closeout: ${autoCloseoutSummary.visibleMailboxKinds.join(", ")}`
+    );
+  }
+
+  const report = [
+    `# ${reportHeading}`,
+    "",
+    `- Ticket: ${reportTicket}`,
+    "- Checklist: `CHK-21`",
+    `- Test Case: ${reportTestCase}`,
+    `- Scope: ${reportScope}`,
+    `- Command: \`${reportCommand}\``,
+    `- Artifacts Dir: \`${artifactsDir}\``,
+    "",
+    "## Results",
+    "",
+    ...reportResults,
+    "",
+    "## Assertions",
+    "",
+    ...reportAssertions,
     "",
     "## Screenshots",
     "",

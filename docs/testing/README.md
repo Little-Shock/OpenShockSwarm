@@ -46,6 +46,8 @@
   - `TKT-95` 的 Windows Chrome 有头报告，覆盖 hot room rollup 的 `current owner / current lane / next governed route`、`Create Governed Handoff`、`/agents` mirror 与 Inbox deep-link
 - [Test Report 2026-04-14 Windows Chrome Cross-Room Governance Dependency Graph](./Test-Report-2026-04-14-windows-chrome-cross-room-governance-dependency-graph.md)
   - `TC-084` 的增量 Windows Chrome 有头报告，覆盖 `/mailbox` 与 `/agents` 上新增的 `room -> current owner/lane -> next route` cross-room dependency graph，以及 route `ready -> active` 前滚
+- [Test Report 2026-04-14 Windows Chrome Cross-Room Governance Auto-Closeout](./Test-Report-2026-04-14-windows-chrome-cross-room-governance-auto-closeout.md)
+  - `TC-061` + `TC-084` 的联动报告，覆盖 `reviewer -> QA -> auto-complete` 之后 runtime room 继续因原 blocker 保持 hot、route 切到 `done`、且 `delivery-closeout / delivery-reply` sidecar 不污染 cross-room rollup / graph
 - [Test Report 2026-04-11 Windows Chrome Memory Provider Orchestration](./Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md)
   - `TKT-96` 的 Windows Chrome 有头报告，覆盖 `/memory` 上的 provider binding 保存、next-run preview provider projection 与 reload persistence
 - [Test Report 2026-04-11 Windows Chrome Memory Provider Health Recovery](./Test-Report-2026-04-11-windows-chrome-memory-provider-health-recovery.md)
@@ -68,6 +70,8 @@
   - `TKT-71` 的 Windows Chrome 有头报告，覆盖 `signal-only` delivery delegation policy、PR detail delegation signal、Mailbox no-auto-create 与 `/settings` durable policy truth
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Auto-Complete](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-auto-complete.md)
   - `TKT-72` 的 Windows Chrome 有头报告，覆盖 `auto-complete` delivery delegation policy、PR detail delegation done、related inbox auto-closeout signal 与 `/settings` durable policy truth
+- [Test Report 2026-04-14 Windows Chrome Governed Mailbox Delegate Auto-Complete Regression](./Test-Report-2026-04-14-windows-chrome-governed-mailbox-delegate-auto-complete-regression.md)
+  - `TC-061` 的回归报告，覆盖 `auto-complete` delivery delegation policy 继续保持 `delegation done / no delivery-closeout handoff / durable workspace policy truth`
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Comment Sync](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-comment-sync.md)
   - `TKT-73` 的 Windows Chrome 有头报告，覆盖 delegated closeout source / target formal comment、PR detail delegation summary sync 与 related inbox latest-comment sync
 - [Test Report 2026-04-11 Windows Chrome Governed Mailbox Delegate Response](./Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md)
@@ -261,6 +265,8 @@
   - 验证 `workspace.governance.escalationSla.rollup` 会把整个 workspace 的 hot rooms 收成正式 rollup，并在 `/mailbox` 与 `/agents` 同源镜像
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-cross-room-governance-orchestration -- --report docs/testing/Test-Report-2026-04-14-windows-chrome-cross-room-governance-dependency-graph.md`
   - 验证 cross-room governance rollup 不只会给出 room-level `current owner / current lane / next governed route`，还会在 `/mailbox` 与 `/agents` 组织成 `room -> current owner/lane -> next route` dependency graph，并在 `/mailbox` 上对 `ready` hot room 直接起 governed handoff，随后在 `/agents` 与 Inbox deep-link 上保持同源
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-cross-room-governance-auto-closeout -- --report docs/testing/Test-Report-2026-04-14-windows-chrome-cross-room-governance-auto-closeout.md`
+  - 验证 cross-room hot room 在 `reviewer -> QA -> auto-complete` 之后，会把 PR delivery closeout 收成 `done route`，同时继续保留原 blocker hot-room truth，且不会因为 `delivery-closeout / delivery-reply` sidecar 污染 rollup / graph
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md`
   - 验证 governed route suggestion 会按当前 room truth 自动填充 source/target、聚焦 active handoff，并在缺少 QA target 时显式 blocked
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md`
@@ -278,7 +284,7 @@
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-policy -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-policy.md`
   - 验证 `signal-only` delivery delegation policy 是否只派 signal、不自动起 delegated closeout handoff，并且 `/settings` / PR detail / Mailbox 读取同一份 durable truth
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-auto-complete -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-auto-complete.md`
-  - 验证 `auto-complete` delivery delegation policy 是否直接把 delegation 收成 `done`、不自动起 delegated closeout handoff，并且 `/settings` / PR detail / Mailbox / related inbox 读取同一份 durable truth
+  - 验证 `auto-complete` delivery delegation policy 是否直接把 delegation 收成 `done`、不自动起 delegated closeout handoff，并且 PR detail / Mailbox / related inbox / durable workspace policy truth 继续保持一致
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-comment-sync -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-comment-sync.md`
   - 验证 delegated closeout handoff 上的 source / target formal comment 是否同步回 PR detail `Delivery Delegation` summary 与 related inbox latest-comment signal，并保持 handoff lifecycle 不变
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-delegate-response -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-delegate-response.md`

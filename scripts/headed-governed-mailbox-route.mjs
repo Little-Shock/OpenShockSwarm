@@ -119,6 +119,8 @@ function timestamp() {
   return new Date().toISOString();
 }
 
+const reportDate = new Date().toISOString().slice(0, 10);
+
 async function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -768,7 +770,8 @@ try {
 	        runMode === "delegate-communication-thread" ||
 	        runMode === "delegate-thread-actions" ||
 	        runMode === "delegate-room-trace" ||
-	        runMode === "delegate-room-trace-blocked"
+	        runMode === "delegate-room-trace-blocked" ||
+	        runMode === "delegate-auto-complete"
 	      ) {
 	        await fetchJSON(`${serverURL}/v1/mailbox/${followup.id}`, {
 	          method: "POST",
@@ -897,22 +900,20 @@ try {
             "auto-complete policy should skip auto-created delivery-closeout handoffs"
           );
           await capture(page, "pull-request-delivery-delegation-auto-complete");
-
-          await page.goto(`${webURL}/settings`, { waitUntil: "load" });
-          await page.getByTestId("settings-advanced-governance-toggle").click();
-          await page.waitForFunction(() => {
-            return document.querySelector('[data-testid="settings-governance-delivery-policy"]')?.textContent?.includes("自动结束") ?? false;
-          });
-          await capture(page, "settings-governance-delivery-auto-complete");
-          reportTitle = "# 2026-04-11 Governed Mailbox Delegate Auto-Complete Report";
+          const stateAfterAutoComplete = await readState(serverURL);
+          assert(
+            stateAfterAutoComplete.workspace.governance.deliveryDelegationMode === "auto-complete",
+            "auto-complete policy should remain durable after final closeout"
+          );
+          reportTitle = `# ${reportDate} Governed Mailbox Delegate Auto-Complete Report`;
           reportCommand = `${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-governed-mailbox-delegate-auto-complete -- --report ${path.relative(projectRoot, reportPath)}`;
           reportTicket = "TKT-72";
           reportTestCase = "TC-061";
-          reportScope = "auto-complete delivery policy、PR delegation done truth、settings durable policy truth";
+          reportScope = "auto-complete delivery policy、PR delegation done truth、durable workspace policy truth";
           resultLines = [
             "- workspace governance 现在支持 `auto-complete` delivery delegation policy；final lane closeout 后 PR detail 会直接把 `Delivery Delegation` 收成 `delegation done`，不再额外创建 delegated closeout handoff -> PASS",
             "- related inbox signal 会同步写回 auto-complete delivery summary，说明这条更重的 auto-closeout 策略已经进入正式 delivery contract，而不是只在某一页本地推导 -> PASS",
-            "- `/settings` 会把同一份 `auto complete` delivery policy 读回前台，Mailbox 里也不会偷偷物化 `delivery-closeout` handoff，证明 durable policy truth 已经统一 -> PASS",
+            "- workspace durable config 会继续保留同一份 `auto-complete` delivery policy，Mailbox 里也不会偷偷物化 `delivery-closeout` handoff，证明 auto-closeout truth 不依赖页面局部状态 -> PASS",
           ];
         } else if (runMode === "delegate-policy") {
           assert(

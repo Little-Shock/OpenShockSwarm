@@ -2201,6 +2201,363 @@ func TestDeliveryDelegationAutoCompletePolicyMarksDelegationDoneWithoutHandoff(t
 	}
 }
 
+func TestAutoCompleteDeliveryDelegationDoesNotPolluteCrossRoomEscalationRollup(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[len(topology)-1].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			DeliveryDelegationMode: governanceDeliveryDelegationModeAutoComplete,
+			TeamTopology:           topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	baseline := s.Snapshot()
+	secondRoomID := findAlternateGovernanceRoomID(baseline, "room-runtime")
+	if secondRoomID == "" {
+		t.Fatalf("baseline rooms = %#v, want second room outside current hot rollup", baseline.Rooms)
+	}
+
+	secondRoomState, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      secondRoomID,
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "保持第二个 room 继续冒烟",
+		Summary:     "验证 runtime room auto-closeout 后，cross-room rollup 不会被 delivery sidecar 污染。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(second room) error = %v", err)
+	}
+	secondRoomRollup := findEscalationRoomRollupByRoomID(secondRoomState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if secondRoomRollup == nil || secondRoomRollup.Status != "active" {
+		t.Fatalf("second room rollup = %#v, want active second-room hot entry", secondRoomState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if runtimeRollup := findEscalationRoomRollupByRoomID(secondRoomState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime"); runtimeRollup != nil {
+		t.Fatalf("pre-runtime rollup = %#v, want room-runtime absent before auto-closeout chain", secondRoomState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	expectedRollupCount := len(secondRoomState.Workspace.Governance.EscalationSLA.Rollup)
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 developer lane 正式交给 reviewer",
+		Summary:     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(runtime reviewer) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged reviewer) error = %v", err)
+	}
+	reviewerClosedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:                "completed",
+		ActingAgentID:         "agent-claude-review-runner",
+		Note:                  "review 完成后直接续到 QA。",
+		ContinueGovernedRoute: true,
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed reviewer continue) error = %v", err)
+	}
+	qaHandoff := reviewerClosedState.Mailbox[0]
+	if qaHandoff.RoomID != "room-runtime" || qaHandoff.ToAgent != "Memory Clerk" {
+		t.Fatalf("qa handoff = %#v, want room-runtime QA followup", qaHandoff)
+	}
+
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-memory-clerk",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged qa) error = %v", err)
+	}
+	finalState, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-memory-clerk",
+		Note:          "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed qa) error = %v", err)
+	}
+
+	detail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok {
+		t.Fatalf("PullRequestDetail() missing runtime PR detail")
+	}
+	if detail.Delivery.Delegation.Status != "done" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
+		t.Fatalf("delivery delegation = %#v, want auto-complete done without formal handoff", detail.Delivery.Delegation)
+	}
+	for _, item := range finalState.Mailbox {
+		if item.Kind == handoffKindDeliveryCloseout && item.RoomID == "room-runtime" {
+			t.Fatalf("mailbox = %#v, want no delivery-closeout sidecar in mailbox after auto-complete", finalState.Mailbox)
+		}
+	}
+
+	if runtimeRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime"); runtimeRollup != nil {
+		t.Fatalf("final rollup = %#v, want room-runtime cleared from cross-room rollup after auto-complete closeout", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	finalSecondRoomRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if finalSecondRoomRollup == nil || finalSecondRoomRollup.Status != "active" || finalSecondRoomRollup.EscalationCount != 1 {
+		t.Fatalf("final second-room rollup = %#v, want other hot room stay active and unchanged", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if len(finalState.Workspace.Governance.EscalationSLA.Rollup) != expectedRollupCount {
+		t.Fatalf("final rollup count = %#v, want cross-room rollup count unchanged after runtime auto-closeout", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+}
+
+func TestAutoCompleteDeliveryDelegationDoesNotPolluteCrossRoomEscalationRollupAfterReload(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[len(topology)-1].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			DeliveryDelegationMode: governanceDeliveryDelegationModeAutoComplete,
+			TeamTopology:           topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	baseline := s.Snapshot()
+	secondRoomID := findAlternateGovernanceRoomID(baseline, "room-runtime")
+	if secondRoomID == "" {
+		t.Fatalf("baseline rooms = %#v, want second room outside current hot rollup", baseline.Rooms)
+	}
+
+	secondRoomState, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      secondRoomID,
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "保持第二个 room 继续冒烟",
+		Summary:     "验证 runtime room auto-closeout 后，reload 也不会把 delivery sidecar 污染进 cross-room rollup。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(second room) error = %v", err)
+	}
+	expectedRollupCount := len(secondRoomState.Workspace.Governance.EscalationSLA.Rollup)
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 developer lane 正式交给 reviewer",
+		Summary:     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(runtime reviewer) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged reviewer) error = %v", err)
+	}
+	reviewerClosedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:                "completed",
+		ActingAgentID:         "agent-claude-review-runner",
+		Note:                  "review 完成后直接续到 QA。",
+		ContinueGovernedRoute: true,
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed reviewer continue) error = %v", err)
+	}
+	qaHandoff := reviewerClosedState.Mailbox[0]
+
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-memory-clerk",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged qa) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-memory-clerk",
+		Note:          "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(completed qa) error = %v", err)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload) error = %v", err)
+	}
+	reloadedState := reloaded.Snapshot()
+	if runtimeRollup := findEscalationRoomRollupByRoomID(reloadedState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime"); runtimeRollup != nil {
+		t.Fatalf("reloaded rollup = %#v, want room-runtime absent after reload", reloadedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	reloadedSecondRoomRollup := findEscalationRoomRollupByRoomID(reloadedState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if reloadedSecondRoomRollup == nil || reloadedSecondRoomRollup.Status != "active" || reloadedSecondRoomRollup.EscalationCount != 1 {
+		t.Fatalf("reloaded second-room rollup = %#v, want other hot room remain active after reload", reloadedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if len(reloadedState.Workspace.Governance.EscalationSLA.Rollup) != expectedRollupCount {
+		t.Fatalf("reloaded rollup count = %#v, want cross-room rollup count unchanged after reload", reloadedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	for _, item := range reloadedState.Mailbox {
+		if item.RoomID == "room-runtime" && isGovernanceSidecarHandoff(item.Kind) {
+			t.Fatalf("reloaded mailbox = %#v, want no persisted delivery sidecar for runtime room", reloadedState.Mailbox)
+		}
+	}
+
+	detail, ok := reloaded.PullRequestDetail("pr-runtime-18")
+	if !ok {
+		t.Fatalf("reloaded PullRequestDetail() missing runtime PR detail")
+	}
+	if detail.Delivery.Delegation.Status != "done" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
+		t.Fatalf("reloaded delivery delegation = %#v, want auto-complete done without formal handoff after reload", detail.Delivery.Delegation)
+	}
+}
+
+func TestAutoCompleteDeliveryDelegationKeepsBlockedRuntimeRoomHotButMarksRouteDone(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[len(topology)-1].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			DeliveryDelegationMode: governanceDeliveryDelegationModeAutoComplete,
+			TeamTopology:           topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	baseline := s.Snapshot()
+	secondRoomID := findAlternateGovernanceRoomID(baseline, "room-runtime")
+	if secondRoomID == "" {
+		t.Fatalf("baseline rooms = %#v, want second room outside current hot rollup", baseline.Rooms)
+	}
+
+	secondRoomState, _, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      secondRoomID,
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "保持第二个 room 继续冒烟",
+		Summary:     "验证 runtime room 仍有 blocker 时，auto-complete 只把 route 收到 done，不会污染 cross-room rollup。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(second room) error = %v", err)
+	}
+	expectedBaselineHotRooms := len(secondRoomState.Workspace.Governance.EscalationSLA.Rollup)
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "把 developer lane 正式交给 reviewer",
+		Summary:     "当前 exact-head context 已整理，交给 reviewer 接住下一棒。",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(runtime reviewer) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged reviewer) error = %v", err)
+	}
+	reviewerClosedState, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:                "completed",
+		ActingAgentID:         "agent-claude-review-runner",
+		Note:                  "review 完成后直接续到 QA。",
+		ContinueGovernedRoute: true,
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed reviewer continue) error = %v", err)
+	}
+	qaHandoff := reviewerClosedState.Mailbox[0]
+	if qaHandoff.RoomID != "room-runtime" || qaHandoff.ToAgent != "Memory Clerk" {
+		t.Fatalf("qa handoff = %#v, want room-runtime QA followup", qaHandoff)
+	}
+	if _, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-memory-clerk",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged qa) error = %v", err)
+	}
+
+	blockedState, err := s.AppendSystemRoomMessage("room-runtime", "System", "CLI 连接失败，等待人工处理。", "blocked")
+	if err != nil {
+		t.Fatalf("AppendSystemRoomMessage() error = %v", err)
+	}
+	runtimeBlockedRollup := findEscalationRoomRollupByRoomID(blockedState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime")
+	if runtimeBlockedRollup == nil ||
+		runtimeBlockedRollup.Status != "blocked" ||
+		runtimeBlockedRollup.BlockedCount < 1 ||
+		runtimeBlockedRollup.NextRouteStatus != "active" {
+		t.Fatalf("blocked runtime rollup = %#v, want blocked hot room with active QA route", blockedState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+
+	finalState, _, err := s.AdvanceHandoff(qaHandoff.ID, MailboxUpdateInput{
+		Action:        "completed",
+		ActingAgentID: "agent-memory-clerk",
+		Note:          "QA 验证完成，按 auto-complete 直接收口 delivery delegate。",
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed qa) error = %v", err)
+	}
+
+	runtimeFinalRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, "room-runtime")
+	if runtimeFinalRollup == nil ||
+		runtimeFinalRollup.Status != "blocked" ||
+		runtimeFinalRollup.BlockedCount < 1 ||
+		runtimeFinalRollup.NextRouteStatus != "done" ||
+		runtimeFinalRollup.NextRouteLabel != "delivery closeout" ||
+		!strings.Contains(runtimeFinalRollup.NextRouteHref, "/pull-requests/pr-runtime-18") {
+		t.Fatalf("final runtime rollup = %#v, want blocked room kept hot with done delivery route", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	finalSecondRoomRollup := findEscalationRoomRollupByRoomID(finalState.Workspace.Governance.EscalationSLA.Rollup, secondRoomID)
+	if finalSecondRoomRollup == nil || finalSecondRoomRollup.Status != "active" || finalSecondRoomRollup.EscalationCount != 1 {
+		t.Fatalf("final second-room rollup = %#v, want other hot room stay active and unchanged", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+	if len(finalState.Workspace.Governance.EscalationSLA.Rollup) != expectedBaselineHotRooms+1 {
+		t.Fatalf("final rollup count = %#v, want runtime blocker added on top of baseline hot rooms", finalState.Workspace.Governance.EscalationSLA.Rollup)
+	}
+
+	detail, ok := s.PullRequestDetail("pr-runtime-18")
+	if !ok {
+		t.Fatalf("PullRequestDetail() missing runtime PR detail")
+	}
+	if detail.Delivery.Delegation.Status != "done" ||
+		detail.Delivery.Delegation.HandoffID != "" ||
+		detail.Delivery.Delegation.ResponseHandoffID != "" ||
+		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
+		t.Fatalf("delivery delegation = %#v, want auto-complete done without formal handoff even while room stays blocked", detail.Delivery.Delegation)
+	}
+	for _, item := range finalState.Mailbox {
+		if item.RoomID == "room-runtime" && isGovernanceSidecarHandoff(item.Kind) {
+			t.Fatalf("mailbox = %#v, want no runtime delivery sidecar even when room remains blocked", finalState.Mailbox)
+		}
+	}
+}
+
 func findInboxItemByHandoffID(items []InboxItem, handoffID string) *InboxItem {
 	for index := range items {
 		if items[index].HandoffID == handoffID {
