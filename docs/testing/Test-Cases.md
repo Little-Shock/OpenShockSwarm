@@ -424,7 +424,7 @@
   2. 默认确认聊天主面直接可用，再在不离开 room 的情况下打开 `Topic / Run / PR / Context` 次级 sheet。
   3. 验证 run control、PR entry、inbox back-link 仍保持可用。
 - 预期结果: 用户围绕同一条 room 完成讨论、执行、交付和回溯，不需要频繁跨页。
-- 业务结论: `TKT-23` 已用 `pnpm test:headed-room-workbench-topic-context` 完成有头 exact replay，并在 2026 年 4 月 11 日收成 chat-first room shell。当前 `/rooms/:roomId` 默认先回到聊天主面，`Topic / Run / PR / Context` 退成 room 内的次级 sheet；`follow_thread` 仍可在 Run sheet 使用，PR entry 不再强制跳独立详情页，Context sheet 也能在 reload 与 inbox 往返后保留 room-first 状态，因此这条用例当前继续保持 `Pass`。
+- 业务结论: `TKT-23` 已用 `pnpm test:headed-room-workbench-topic-context` 完成有头 exact replay，并在 2026 年 4 月 11 日收成 chat-first room shell。当前 `/rooms/:roomId` 默认先回到聊天主面，`Topic / Run / PR / Context` 退成 room 内的次级 sheet；`follow_thread` 仍可在 Run sheet 使用，PR entry 不再强制跳独立详情页，Context sheet 也能在 reload 与 inbox 往返后保留 room-first 状态。2026 年 4 月 14 日又新增 `pnpm test:headed-room-chat-reload-continuity -- --report output/testing/headed-room-chat-reload-continuity-report.md`，把 room 内 thread 选择、reply target、thread rail 与未发送 draft 的 reload continuity 也补成有头证据，因此这条用例当前继续保持 `Pass`。
 
 ## TC-032 Board Planning Mirror Surface
 

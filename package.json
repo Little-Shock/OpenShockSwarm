@@ -89,6 +89,7 @@
     "test:headed-runtime-lease-conflict-recovery": "node ./scripts/headed-runtime-lease-conflict-recovery.mjs",
     "test:headed-quick-search": "node ./scripts/headed-quick-search.mjs",
     "test:headed-message-send-flow": "node ./scripts/headed-message-send-flow.mjs",
+    "test:headed-room-chat-reload-continuity": "node ./scripts/headed-room-chat-reload-continuity.mjs",
     "test:headed-room-clarification-wait": "node ./scripts/headed-room-clarification-wait.mjs",
     "test:headed-state-stream-reconnect": "node ./scripts/headed-state-stream-reconnect.mjs",
     "test:headed-frontend-interaction-polish": "node ./scripts/headed-frontend-interaction-polish.mjs",

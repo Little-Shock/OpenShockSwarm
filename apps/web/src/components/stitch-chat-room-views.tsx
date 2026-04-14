@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { DestructiveGuardCard } from "@/components/destructive-guard-views";
@@ -503,6 +503,7 @@ function parseChannelWorkbenchTab(value?: string | null): ChannelWorkbenchTab {
 }
 
 type RoomWorkbenchTab = "chat" | "topic" | "run" | "pr" | "context";
+type RoomRailMode = "context" | "thread";
 
 const ROOM_WORKBENCH_TAB_LABEL: Record<RoomWorkbenchTab, string> = {
   chat: "聊天",
@@ -541,6 +542,10 @@ function railSummaryTabForWorkbench(tab: RoomWorkbenchTab): RoomRailSummaryTab {
     default:
       return "overview";
   }
+}
+
+function parseRoomRailMode(value?: string | null): RoomRailMode {
+  return value === "thread" ? "thread" : "context";
 }
 
 function buildChannelWorkbenchHref(channelId: string, tab: ChannelWorkbenchTab, threadId?: string) {
@@ -688,11 +693,60 @@ const DEFAULT_SAVED_LATER_ITEMS: MessageSurfaceEntry[] = [
   note: rewriteCustomerFacingText(item.note),
 }));
 
-function buildRoomWorkbenchHref(roomId: string, tab: RoomWorkbenchTab) {
-  if (tab === "chat") {
-    return `/rooms/${roomId}`;
+function buildRoomWorkbenchHref(
+  roomId: string,
+  tab: RoomWorkbenchTab,
+  options?: {
+    threadId?: string | null;
+    replyId?: string | null;
+    railMode?: RoomRailMode | null;
   }
-  return `/rooms/${roomId}?tab=${tab}`;
+) {
+  const params = new URLSearchParams();
+  if (tab !== "chat") {
+    params.set("tab", tab);
+  }
+  if (options?.threadId) {
+    params.set("thread", options.threadId);
+  }
+  if (options?.replyId) {
+    params.set("reply", options.replyId);
+  }
+  if (options?.railMode === "thread") {
+    params.set("rail", "thread");
+  }
+  const query = params.toString();
+  return query ? `/rooms/${roomId}?${query}` : `/rooms/${roomId}`;
+}
+
+function roomDraftStorageKey(roomId: string) {
+  return `openshock:room-draft:${roomId}`;
+}
+
+function readRoomDraft(roomId: string) {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  try {
+    return window.sessionStorage.getItem(roomDraftStorageKey(roomId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeRoomDraft(roomId: string, draft: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    if (draft.trim()) {
+      window.sessionStorage.setItem(roomDraftStorageKey(roomId), draft);
+    } else {
+      window.sessionStorage.removeItem(roomDraftStorageKey(roomId));
+    }
+  } catch {
+    // ignore storage failures
+  }
 }
 
 const CHANNEL_THREAD_REPLIES: Record<string, ThreadMap> = {
@@ -2446,6 +2500,14 @@ function ClaudeCompactComposer({
   }, [room.id]);
 
   useEffect(() => {
+    setDraft(readRoomDraft(room.id));
+  }, [room.id]);
+
+  useEffect(() => {
+    writeRoomDraft(room.id, draft);
+  }, [draft, room.id]);
+
+  useEffect(() => {
     setPendingSends((current) =>
       current.filter((entry) => {
         const persistedHumanIndex = initialMessages.findIndex(
@@ -3351,6 +3413,7 @@ export function StitchChannelsView({ channelId }: { channelId: string }) {
 }
 
 export function StitchDiscussionView({ roomId }: { roomId: string }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { state, approvalCenter, loading, error, streamRoomMessage, createPullRequest, updatePullRequest, controlRun } = usePhaseZeroState();
   const quickSearch = useQuickSearchController(loading || error ? { ...state, channels: [], rooms: [], issues: [], runs: [], agents: [] } : state);
@@ -3381,7 +3444,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const [prError, setPrError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
-  const [railMode, setRailMode] = useState<"context" | "thread">("context");
+  const [railMode, setRailMode] = useState<RoomRailMode>("context");
   const [railSummaryTab, setRailSummaryTab] = useState<RoomRailSummaryTab>("overview");
   const canMerge = pullRequest && pullRequest.status !== "merged";
   const permissionReplyStatus = permissionStatus(authSession, "room.reply");
@@ -3447,21 +3510,31 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const workspaceName = loading || error ? undefined : state.workspace.name;
   const workspaceSubtitle = loading || error ? undefined : `${state.workspace.branch} · ${state.workspace.pairedRuntime}`;
   const activeWorkbenchTab = parseRoomWorkbenchTab(searchParams.get("tab"));
+  const queryThreadId = searchParams.get("thread");
+  const queryReplyId = searchParams.get("reply");
+  const queryRailMode = parseRoomRailMode(searchParams.get("rail"));
+  const roomQueryState = {
+    threadId: queryThreadId,
+    replyId: queryReplyId,
+    railMode: queryRailMode,
+  };
   const roomWorkbenchTabs = (["chat", "topic", "run", "pr", "context"] as RoomWorkbenchTab[]).map((tab) => ({
     label: ROOM_WORKBENCH_TAB_LABEL[tab],
-    href: buildRoomWorkbenchHref(roomId, tab),
+    href: buildRoomWorkbenchHref(roomId, tab, roomQueryState),
     testId: `room-workbench-tab-${tab}`,
   }));
   const planningMirrorHref = room
     ? buildPlanningMirrorHref({
         roomId: room.id,
         issueKey: room.issueKey,
-        returnTo: buildRoomWorkbenchHref(room.id, activeWorkbenchTab),
+        returnTo: buildRoomWorkbenchHref(room.id, activeWorkbenchTab, roomQueryState),
         returnLabel: room.title,
       })
     : "/board";
   const selectedThreadMessage =
-    messages.find((message) => message.id === selectedThreadId) ?? messages.find((message) => message.id === initialThreadMessageId(messages, roomThreadReplies));
+    messages.find((message) => message.id === selectedThreadId) ??
+    messages.find((message) => message.id === queryThreadId) ??
+    messages.find((message) => message.id === initialThreadMessageId(messages, roomThreadReplies));
   const selectedThreadReplies = selectedThreadMessage ? roomThreadReplies[selectedThreadMessage.id] ?? [] : [];
   const threadReplyCounts = Object.fromEntries(
     messages.map((message) => [message.id, roomThreadReplies[message.id]?.length ?? 0])
@@ -3497,21 +3570,36 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
   const roomRunHistory = loading || error || !room ? [] : buildRunHistoryEntries(state, room.id);
   const shellProfileEntries = buildShellProfileEntries(state, loading || Boolean(error));
 
+  function replaceRoomQueryState(next: {
+    tab?: RoomWorkbenchTab;
+    threadId?: string | null;
+    replyId?: string | null;
+    railMode?: RoomRailMode | null;
+  }) {
+    const nextTab = next.tab ?? activeWorkbenchTab;
+    const href = buildRoomWorkbenchHref(roomId, nextTab, {
+      threadId: next.threadId ?? queryThreadId,
+      replyId: next.replyId ?? queryReplyId,
+      railMode: next.railMode ?? queryRailMode,
+    });
+    router.replace(href, { scroll: false });
+  }
+
   useEffect(() => {
-    const nextThreadId = initialThreadMessageId(messages, roomThreadReplies);
-    setSelectedThreadId((current) => {
-      if (current && messages.some((message) => message.id === current)) {
-        return current;
+    const nextThreadId =
+      queryThreadId && messages.some((message) => message.id === queryThreadId)
+        ? queryThreadId
+        : initialThreadMessageId(messages, roomThreadReplies);
+    setSelectedThreadId(nextThreadId);
+    setReplyTarget(() => {
+      if (!queryReplyId) {
+        return null;
       }
-      return nextThreadId;
+      const replyMessage = messages.find((message) => message.id === queryReplyId);
+      return replyMessage ? buildReplyTarget(replyMessage) : null;
     });
-    setReplyTarget((current) => {
-      if (current && messages.some((message) => message.id === current.messageId)) {
-        return current;
-      }
-      return null;
-    });
-  }, [roomId, messages, roomThreadReplies]);
+    setRailMode(queryRailMode === "thread" ? "thread" : "context");
+  }, [messages, queryRailMode, queryReplyId, queryThreadId, roomId, roomThreadReplies]);
 
   useEffect(() => {
     setRailMode("context");
@@ -3528,6 +3616,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
     setSelectedThreadId(message.id);
     setReplyTarget(buildReplyTarget(message));
     setRailMode("thread");
+    replaceRoomQueryState({
+      threadId: message.id,
+      replyId: message.id,
+      railMode: "thread",
+    });
   }
 
   async function handleCreatePullRequest() {
@@ -3747,10 +3840,12 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       sendBoundary={roomReplyBoundary}
                       clarificationWait={clarificationWait}
                       replyTarget={replyTarget}
-                      onClearReplyTarget={() => setReplyTarget(null)}
+                      onClearReplyTarget={() => {
+                        setReplyTarget(null);
+                        replaceRoomQueryState({ replyId: null });
+                      }}
                       onFocusClarificationWait={(message) => {
                         handleOpenThread(message);
-                        setReplyTarget(buildReplyTarget(message));
                       }}
                       threadReplyCounts={threadReplyCounts}
                       activeThreadMessageId={selectedThreadMessage?.id}
@@ -3903,7 +3998,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                           type="button"
                           key={tab.id}
                           data-testid={`room-rail-mode-${tab.id}`}
-                          onClick={() => setRailMode(tab.id === "thread" ? "thread" : "context")}
+                          onClick={() => {
+                            const nextMode = tab.id === "thread" ? "thread" : "context";
+                            setRailMode(nextMode);
+                            replaceRoomQueryState({ railMode: nextMode });
+                          }}
                           className={cn(
                             "min-h-[44px] border-r-2 border-[var(--shock-ink)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--shock-ink)] last:border-r-0",
                             (tab.id === "thread" && railMode === "thread") || (tab.id === "context" && railMode === "context")
@@ -3970,6 +4069,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     onReply={() => {
                       if (selectedThreadMessage) {
                         setReplyTarget(buildReplyTarget(selectedThreadMessage));
+                        replaceRoomQueryState({
+                          threadId: selectedThreadMessage.id,
+                          replyId: selectedThreadMessage.id,
+                          railMode: "thread",
+                        });
                       }
                     }}
                     primaryAction={{

@@ -6,6 +6,8 @@
   - 本轮重新生成的首次启动有头报告，覆盖 `/access -> /onboarding -> /chat/all`、setup truth 回显、server restart 与第二浏览器上下文恢复
 - [Headed Message Send Flow Report 2026-04-13](../../output/testing/headed-message-send-flow-report.md)
   - 本轮新增的发送链路有头报告，覆盖频道与讨论间发送时的人类消息先落流、发送态占位、控制面回写与 reload 后持久化
+- [Headed Room Chat Reload Continuity Report 2026-04-14](../../output/testing/headed-room-chat-reload-continuity-report.md)
+  - 本轮新增的房间恢复有头报告，覆盖 thread 选择、reply target、thread rail 与未发送 draft 在 reload 后的连续恢复
 - [Headed Room Clarification Wait Report 2026-04-14](../../output/testing/headed-room-clarification-wait-report.md)
   - 本轮新增的房间等待补充有头报告，覆盖显式等待卡片、等待 owner/问题展示、reload 后继续可回复、锁定阻塞问题与补充后自动恢复执行
 - [Headed Movie Site Multi-Agent Report 2026-04-12](../../output/testing/headed-multi-agent-movie-studio-report.md)
@@ -229,6 +231,8 @@
   - 验证 DM entry、thread follow、saved-later、reopen thread 回访闭环
 - `pnpm test:headed-room-workbench-topic-context`
   - 验证 chat-first room shell、secondary `Topic / Run / PR / Context` sheets、follow_thread、PR surface 与 inbox back-link
+- `pnpm test:headed-room-chat-reload-continuity`
+  - 验证房间里的 thread 选择、reply target、thread rail 与未发送 draft 在 reload 后继续恢复
 - `pnpm test:headed-topic-route-resume-lifecycle`
   - 验证 `/topics/:topicId` 的 guidance edit、reload persistence、resume control 与 room backlink
 - `pnpm test:headed-profile-surface`

@@ -337,6 +337,7 @@
   - [x] room thread rail 已直接接上 `follow_thread` 控制，不再只是纯展示卡片
   - [x] channel 现在已有 followed thread / saved later 回访面，thread 可在 `follow -> reopen` 与 `save later -> reopen` 闭环
   - [x] room 现在已改成 chat-first 主面 + 次级 sheet 结构；query state 与 room-first back-links 仍留在同一壳层内，但不再把 `Topic / Run / PR / Context` 放成一级 tabs
+  - [x] room chat 现在还会把当前 `thread / reply target / thread rail` 写回 URL，并把未发送 draft 保存在浏览器 session state；reload 后能继续回到同一条会话上下文
   - [x] `Agent / Machine / Human` 现在都可从 shell 或 room drill-in 到统一 profile surface，presence / activity / capability / recent room-run 关系直接读取 live truth
 - 当前 GAP:
   - [ ] profile 现已可读，但编辑、持久化默认值与 onboarding 绑定仍留后续票推进
