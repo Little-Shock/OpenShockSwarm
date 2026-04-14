@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { GovernanceEscalationGraph } from "@/components/governance-escalation-graph";
 import { Panel } from "@/components/phase-zero-views";
 import type {
   AgentStatus,
@@ -889,9 +890,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                       </span>
                     </div>
                     <div className="mt-3 space-y-2">
-                      {escalationRollup.length === 0 ? (
-                        <p className="text-sm leading-6 opacity-70">当前没有跨讨论汇总。</p>
-                      ) : (
+                      {escalationRollup.length > 0 ? (
                         escalationRollup.map((entry) => (
                           <div
                             key={entry.roomId}
@@ -982,8 +981,15 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                             ) : null}
                           </div>
                         ))
-                      )}
+                      ) : null}
                     </div>
+                  </div>
+                  <div className="mt-4">
+                    <GovernanceEscalationGraph
+                      entries={escalationRollup}
+                      testIdPrefix="orchestration-governance-escalation"
+                      compact
+                    />
                   </div>
                 </Panel>
                 <Panel tone={governanceTone(governance.notificationPolicy.status)} className="!p-3.5">

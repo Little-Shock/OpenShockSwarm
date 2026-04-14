@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { GovernanceEscalationGraph } from "@/components/governance-escalation-graph";
 import { OpenShockShell } from "@/components/open-shock-shell";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
@@ -937,11 +938,12 @@ export function LiveMailboxPageContent() {
                     </span>
                   </div>
                   <div className="mt-4 space-y-3">
-                    {escalationRollup.length === 0 ? (
-                      <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                        当前没有跨 room escalation；新的 hot room 会直接出现在这里。
-                      </p>
-                    ) : (
+                    <GovernanceEscalationGraph
+                      entries={escalationRollup}
+                      testIdPrefix="mailbox-governance-escalation"
+                      highlightRoomId={roomId}
+                    />
+                    {escalationRollup.length > 0 ? (
                       escalationRollup.map((entry) => (
                         <div
                           key={entry.roomId}
@@ -1071,7 +1073,7 @@ export function LiveMailboxPageContent() {
                           ) : null}
                         </div>
                       ))
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </Panel>

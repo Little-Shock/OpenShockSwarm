@@ -1168,18 +1168,18 @@
 
 ## TC-084 Cross-Room Governance Orchestration
 
-- 业务目标: 确认 cross-room governance rollup 不只会告诉人类“哪个 room 在冒烟”，而是会补齐 room-level `current owner / current lane / next governed route` 元数据，并允许直接在 `/mailbox` 上对 `ready` hot room 发起下一棒 governed handoff。
+- 业务目标: 确认 cross-room governance rollup 不只会告诉人类“哪个 room 在冒烟”，而是会补齐 room-level `current owner / current lane / next governed route` 元数据，并在 `/mailbox` 与 `/agents` 把这些 hot room 组织成可读的 `room -> current owner/lane -> next route` dependency graph；用户还应能直接在 `/mailbox` 上对 `ready` hot room 发起下一棒 governed handoff。
 - 当前执行状态: Pass
 - 对应 Checklist: `CHK-21`
 - 前置条件: workspace 已启用 dev-team governance；存在至少一个当前不在 baseline rollup 中的 room；当前会话具备 `run.execute` 权限；Windows Chrome 有头浏览器可用。
 - 测试步骤:
   1. 读取 baseline governance rollup，确认目标 room 当前还不是 hot room。
   2. 通过真实 blocked inbox replay 把目标 room 抬进 cross-room rollup，确认 room entry 会带出 `current owner / current lane / next governed route`，且 route status = `ready`。
-  3. 打开 `/mailbox`，确认目标 room rollup card 会显示 `Create Governed Handoff`，并且 `/agents` 会镜像同一条 route metadata。
+  3. 打开 `/mailbox`，确认目标 room rollup card 会显示 `Create Governed Handoff`，并且 `/mailbox` 与 `/agents` 的 dependency graph 都会把该 room 组织成 `讨论间 -> 当前负责人/分工 -> 下一棒`。
   4. 在 `/mailbox` 点击 `Create Governed Handoff`，确认 server 通过正式 contract 创建一条 room-level `kind=governed` handoff。
-  5. 检查目标 room 的 rollup route status 是否从 `ready` 切到 `active`，`Open Next Route` 是否 deep-link 到新 handoff，并确认 `/agents` 与 Inbox deep-link 同步读取同一份 active truth。
-- 预期结果: cross-room rollup 必须成为可执行治理面，而不是只读摘要。用户应能在不切回 compose 的前提下，直接从 hot room 发起下一棒 governed handoff，并看到 `/mailbox`、`/agents`、Inbox deep-link 围同一条新 handoff truth 前滚。
-- 业务结论: 2026 年 4 月 11 日 `TKT-95` 已把 cross-room governance orchestration 收进正式产品面。当前 `docs/testing/Test-Report-2026-04-11-windows-chrome-cross-room-governance-orchestration.md` 已记录 `blocked hot room -> route ready -> create governed handoff -> route active -> inbox deep-link` 的 Windows Chrome 有头 walkthrough，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestCreateGovernedHandoffForRoomUsesRoomSpecificSuggestion|TestAdvanceHandoffCanAutoAdvanceGovernedRoute|TestMailboxLifecycleHydratesWorkspaceGovernance" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMailboxRoutesCreateGovernedHandoffForRoom|TestMailboxRoutesCreateAndListLiveTruth|TestStateRouteExposesGovernanceSnapshot|TestMailboxLifecycleUpdatesGovernanceSnapshot" -count=1'`、`pnpm verify:web` 与 `node --check scripts/headed-cross-room-governance-orchestration.mjs` 已锁住 store/API contract、前端构建和 headed script 合法性，因此这条 room-level cross-room orchestration 用例当前转为 `Pass`。
+  5. 检查目标 room 的 rollup route status 是否从 `ready` 切到 `active`，graph 里的“下一棒”节点是否同步切到 `active`，`Open Next Route` 是否 deep-link 到新 handoff，并确认 `/agents` 与 Inbox deep-link 同步读取同一份 active truth。
+- 预期结果: cross-room rollup 必须成为可执行治理面，而不是只读摘要。用户应能在不切回 compose 的前提下，直接从 hot room 发起下一棒 governed handoff，并通过 `/mailbox` 与 `/agents` 上的 dependency graph 一眼看出“当前卡在哪个 owner / lane，下一棒准备交给谁”，且所有 surface 都围同一条 handoff truth 前滚。
+- 业务结论: 2026 年 4 月 11 日 `TKT-95` 已把 cross-room governance orchestration 收进正式产品面；2026 年 4 月 14 日又追加 `docs/testing/Test-Report-2026-04-14-windows-chrome-cross-room-governance-dependency-graph.md`，把 `/mailbox` 与 `/agents` 上的 cross-room dependency graph 一并锁进 Windows Chrome 有头证据。当前两份报告已共同记录 `blocked hot room -> route ready -> dependency graph visible -> create governed handoff -> route active -> inbox deep-link` 的前滚，同时 `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/store -run "TestCreateGovernedHandoffForRoomUsesRoomSpecificSuggestion|TestAdvanceHandoffCanAutoAdvanceGovernedRoute|TestMailboxLifecycleHydratesWorkspaceGovernance" -count=1'`、`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run "TestMailboxRoutesCreateGovernedHandoffForRoom|TestMailboxRoutesCreateAndListLiveTruth|TestStateRouteExposesGovernanceSnapshot|TestMailboxLifecycleUpdatesGovernanceSnapshot" -count=1'`、`pnpm test:headed-governance-escalation-rollup`、`pnpm verify:web` 与 `node --check scripts/headed-cross-room-governance-orchestration.mjs` 已锁住 store/API contract、相邻 rollup 回归、前端构建和 headed script 合法性，因此这条 room-level cross-room orchestration / dependency graph 用例当前继续保持 `Pass`。
 
 ## TC-085 Memory Provider Orchestration
 

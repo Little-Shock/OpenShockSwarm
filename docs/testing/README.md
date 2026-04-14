@@ -44,6 +44,8 @@
   - `TKT-93` 的 Windows Chrome 有头报告，覆盖 cross-room escalation rollup 在 `/mailbox` 与 `/agents` 的同源镜像、blocked+active hot rooms 与 baseline restore
 - [Test Report 2026-04-11 Windows Chrome Cross-Room Governance Orchestration](./Test-Report-2026-04-11-windows-chrome-cross-room-governance-orchestration.md)
   - `TKT-95` 的 Windows Chrome 有头报告，覆盖 hot room rollup 的 `current owner / current lane / next governed route`、`Create Governed Handoff`、`/agents` mirror 与 Inbox deep-link
+- [Test Report 2026-04-14 Windows Chrome Cross-Room Governance Dependency Graph](./Test-Report-2026-04-14-windows-chrome-cross-room-governance-dependency-graph.md)
+  - `TC-084` 的增量 Windows Chrome 有头报告，覆盖 `/mailbox` 与 `/agents` 上新增的 `room -> current owner/lane -> next route` cross-room dependency graph，以及 route `ready -> active` 前滚
 - [Test Report 2026-04-11 Windows Chrome Memory Provider Orchestration](./Test-Report-2026-04-11-windows-chrome-memory-provider-orchestration.md)
   - `TKT-96` 的 Windows Chrome 有头报告，覆盖 `/memory` 上的 provider binding 保存、next-run preview provider projection 与 reload persistence
 - [Test Report 2026-04-11 Windows Chrome Memory Provider Health Recovery](./Test-Report-2026-04-11-windows-chrome-memory-provider-health-recovery.md)
@@ -257,8 +259,8 @@
   - 验证 `workspace.governance.escalationSla.queue` 会把 active handoff 与 blocked inbox signal 收成正式 queue truth，并在 `/mailbox` 与 `/agents` 同源镜像
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governance-escalation-rollup -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governance-escalation-rollup.md`
   - 验证 `workspace.governance.escalationSla.rollup` 会把整个 workspace 的 hot rooms 收成正式 rollup，并在 `/mailbox` 与 `/agents` 同源镜像
-- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-cross-room-governance-orchestration -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-cross-room-governance-orchestration.md`
-  - 验证 cross-room governance rollup 会给出 room-level `current owner / current lane / next governed route`，并允许在 `/mailbox` 上对 `ready` hot room 直接起 governed handoff，随后在 `/agents` 与 Inbox deep-link 上保持同源
+- `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-cross-room-governance-orchestration -- --report docs/testing/Test-Report-2026-04-14-windows-chrome-cross-room-governance-dependency-graph.md`
+  - 验证 cross-room governance rollup 不只会给出 room-level `current owner / current lane / next governed route`，还会在 `/mailbox` 与 `/agents` 组织成 `room -> current owner/lane -> next route` dependency graph，并在 `/mailbox` 上对 `ready` hot room 直接起 governed handoff，随后在 `/agents` 与 Inbox deep-link 上保持同源
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-route.md`
   - 验证 governed route suggestion 会按当前 room truth 自动填充 source/target、聚焦 active handoff，并在缺少 QA target 时显式 blocked
 - `OPENSHOCK_WINDOWS_CHROME=1 pnpm test:headed-governed-mailbox-route -- --report docs/testing/Test-Report-2026-04-11-windows-chrome-governed-mailbox-autocreate.md`

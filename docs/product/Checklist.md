@@ -433,6 +433,7 @@
   - [x] `workspace.governance.escalationSla.rollup` 现在还会把整个 workspace 里仍在冒烟的 room 收成同一份 cross-room rollup；`/mailbox` 与 `/agents` 会同时显示 `room / status / count / latest escalation / deep-link`，不再只盯当前 room
   - [x] `/mailbox` 的 pure governed selection 现在会读正式 routing policy，显示 `Governed Batch Policy`，并允许 `Batch Complete + Auto-Advance` 在同一条 batch queue 里顺序收口多条 governed handoff，同时只物化一条 next-lane followup
   - [x] cross-room rollup 现在还会补 `current owner / current lane / next governed route` 元数据；`/mailbox` 可直接从 `ready` room 上 `Create Governed Handoff`，`/agents` 会镜像同一条 room-level route truth
+  - [x] `/mailbox` 与 `/agents` 现在还会把 hot room 重新组织成 `room -> current owner/lane -> next route` 的 cross-room dependency graph；无需逐卡展开，也能一眼看出当前卡在哪个 owner/lane、下一棒准备交给谁
   - [x] room-auto 的顺序交接当前已补专门回归：`A -> B -> C` 时，第二次 auto-followup 会围最新 owner 路由，不再因为 stale `RecentRunIDs` 把 provider、identity prompt 或 agent prompt scaffold 锚回上一位 Agent
   - [x] 当前 owner 的 room continuity 也已补重启恢复回归；store / server reload 后，下一条房间消息仍会继续路由给最新接手者，而不是掉回旧 owner 或旧 provider
   - [x] room chat 现在也会把 clarification wait 显式渲染成等待补充卡片，展示当前 waiting owner 与阻塞问题；reload 后卡片与可回复 composer 会一起恢复，补充后自动继续执行
@@ -443,7 +444,7 @@
   - [x] `/settings` 现在可直接编辑 team topology，并把 lane / role / default agent / handoff path 写回 durable workspace truth；`/setup` `/mailbox` `/agents` 会继续读取同一份配置，且已补 Windows Chrome 有头证据
   - [x] `/settings` 当前已改成 `core settings -> advanced governance / credentials / notifications` 的信息层级；高频路径先看 workspace/member 真值，重治理能力继续保留在高级区
 - 当前 GAP:
-  - [ ] 更重的 multi-room dependency graph、cross-room auto-closeout 和跨 room 依赖治理仍留后续；当前已不再缺“当前 room ledger 的 bulk closeout”“policy-based batch orchestration”“显式 escalation queue”“跨 room escalation rollup”以及“room-level governed create action”
+  - [ ] cross-room dependency graph 的产品面已补齐，但更重的 cross-room auto-closeout 和跨 room 依赖治理仍留后续；当前已不再缺“当前 room ledger 的 bulk closeout”“policy-based batch orchestration”“显式 escalation queue”“跨 room escalation rollup”“room-level governed create action”以及“hot room dependency graph”
   - [x] `handoff -> clarification wait -> memory preview/provider choice -> restart resume` 这条跨链连续性现在已有单条 API 回归锁住；阻塞澄清期间 `/v1/memory-center` preview 会跟随 current owner/provider truth，reload 后也不会回退
   - [x] `run detail/history -> memory preview current owner -> final response aggregation` 现在已有完整回归串起来；旧 handoff completion 不会再抢走当前 owner 的 run/session/governance truth
 - 对应 Test Cases: `TC-039` `TC-041` `TC-050` `TC-051` `TC-052` `TC-053` `TC-054` `TC-055` `TC-056` `TC-057` `TC-058` `TC-059` `TC-060` `TC-061` `TC-062` `TC-063` `TC-064` `TC-065` `TC-066` `TC-067` `TC-068` `TC-069` `TC-070` `TC-071` `TC-072` `TC-073` `TC-074` `TC-075` `TC-076` `TC-078` `TC-079` `TC-080` `TC-081` `TC-082` `TC-083` `TC-084` `TC-087` `TC-089` `TC-090` `TC-091` `TC-092`

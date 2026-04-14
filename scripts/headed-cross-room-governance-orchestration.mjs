@@ -55,6 +55,8 @@ function timestamp() {
   return new Date().toISOString();
 }
 
+const reportDate = new Date().toISOString().slice(0, 10);
+
 async function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -371,6 +373,8 @@ try {
 
   await page.goto(`${webURL}/mailbox?roomId=${targetRoom.id}`, { waitUntil: "load" });
   await page.getByTestId(`mailbox-governance-escalation-rollup-room-${targetRoom.id}`).waitFor({ state: "visible" });
+  await page.getByTestId("mailbox-governance-escalation-graph").waitFor({ state: "visible" });
+  await page.getByTestId(`mailbox-governance-escalation-graph-room-${targetRoom.id}`).waitFor({ state: "visible" });
   await waitFor(
     async () => (await readText(page, `mailbox-governance-escalation-rollup-status-${targetRoom.id}`)) === "阻塞",
     "runtime room should appear as blocked in mailbox cross-room rollup"
@@ -378,6 +382,20 @@ try {
   await waitFor(
     async () => (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "就绪",
     "runtime room route metadata should be ready before cross-room create"
+  );
+  await waitFor(
+    async () => {
+      const ownerText = await readText(page, `mailbox-governance-escalation-graph-owner-${targetRoom.id}`);
+      return ownerText.includes("当前负责人") && !ownerText.includes("等待负责人") && !ownerText.includes("待补齐");
+    },
+    "mailbox governance graph should surface a resolved current owner node for the hot room"
+  );
+  await waitFor(
+    async () => {
+      const routeText = await readText(page, `mailbox-governance-escalation-graph-route-${targetRoom.id}`);
+      return routeText.includes("下一棒") && !routeText.includes("等待下一棒") && !routeText.includes("正在整理中");
+    },
+    "mailbox governance graph should surface a resolved next-route node for the hot room"
   );
   assert(
     (await readText(page, "mailbox-governance-escalation-rollup-count")) === `${baselineRollupCount + 1} rooms`,
@@ -387,9 +405,27 @@ try {
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
   await page.getByTestId(`orchestration-governance-escalation-rollup-room-${targetRoom.id}`).waitFor({ state: "visible" });
+  await page.getByTestId("orchestration-governance-escalation-graph").waitFor({ state: "visible" });
+  await page.getByTestId(`orchestration-governance-escalation-graph-room-${targetRoom.id}`).waitFor({
+    state: "visible",
+  });
   await waitFor(
     async () => (await readText(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "就绪",
     "orchestration mirror should expose the same ready route metadata before create"
+  );
+  await waitFor(
+    async () => {
+      const ownerText = await readText(page, `orchestration-governance-escalation-graph-owner-${targetRoom.id}`);
+      return ownerText.includes("当前负责人") && !ownerText.includes("等待负责人") && !ownerText.includes("待补齐");
+    },
+    "orchestration governance graph should surface a resolved current owner node for the hot room"
+  );
+  await waitFor(
+    async () => {
+      const routeText = await readText(page, `orchestration-governance-escalation-graph-route-${targetRoom.id}`);
+      return routeText.includes("下一棒") && !routeText.includes("等待下一棒") && !routeText.includes("正在整理中");
+    },
+    "orchestration governance graph should surface a resolved next-route node for the hot room"
   );
   await capture(page, "orchestration-cross-room-route-ready");
 
@@ -422,6 +458,11 @@ try {
     async () => (await readText(page, `mailbox-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "进行中",
     "mailbox rollup should flip route metadata to active after create"
   );
+  await waitFor(
+    async () =>
+      (await readText(page, `mailbox-governance-escalation-graph-route-${targetRoom.id}`)).includes("进行中"),
+    "mailbox governance graph should flip the route node to active after create"
+  );
   await capture(page, "mailbox-cross-room-route-active");
 
   const roomRollupCard = page.getByTestId(`mailbox-governance-escalation-rollup-room-${targetRoom.id}`);
@@ -441,21 +482,27 @@ try {
     async () => (await readText(page, `orchestration-governance-escalation-rollup-route-status-${targetRoom.id}`)) === "进行中",
     "orchestration mirror should flip to active after cross-room create"
   );
+  await waitFor(
+    async () =>
+      (await readText(page, `orchestration-governance-escalation-graph-route-${targetRoom.id}`)).includes("进行中"),
+    "orchestration governance graph should flip the route node to active after create"
+  );
   await capture(page, "orchestration-cross-room-route-active");
 
   const report = [
-    "# 2026-04-11 Cross-Room Governance Orchestration Report",
+    `# ${reportDate} Cross-Room Governance Orchestration Report`,
     "",
     "- Ticket: `TKT-95`",
     "- Checklist: `CHK-21`",
     "- Test Case: `TC-084`",
-    "- Scope: cross-room rollup route metadata, room-level governed create action, mailbox + orchestration mirror, inbox deep-link",
+    "- Scope: cross-room rollup route metadata, dependency graph surface, room-level governed create action, mailbox + orchestration mirror, inbox deep-link",
     `- Command: \`${process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : ""}pnpm test:headed-cross-room-governance-orchestration -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
     "",
     "## Results",
     "",
     "- runtime room 通过真实 blocked inbox replay 进入 cross-room governance rollup 后，会带出 `current owner / current lane / next governed route` 元数据，不再只剩 room 状态摘要 -> PASS",
+    "- `/mailbox` 与 `/agents` 现在都会把 hot room 重新组织成 `room -> current owner/lane -> next route` 的 cross-room dependency graph；人类不必逐卡读长文也能看出哪一棒卡住、下一棒准备交给谁 -> PASS",
     "- `/mailbox` 上的 cross-room rollup 在 route `ready` 时会开放 `Create Governed Handoff`，并通过正式 `POST /v1/mailbox/governed` 合同起单，而不是前端本地拼接 mutation -> PASS",
     "- governed create 成功后，runtime room 的 route metadata 会从 `ready` 切成 `active`，`Open Next Route` 也会深链到新建 handoff；说明 room-level orchestration 已进入正式产品面 -> PASS",
     "- `/agents` 会镜像同一份 route status 与 deep-link，不会出现 mailbox 已 active、orchestration 仍停在 ready 的分裂真相 -> PASS",
