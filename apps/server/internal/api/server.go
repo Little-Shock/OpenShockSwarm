@@ -27,20 +27,23 @@ type Config struct {
 }
 
 type Server struct {
-	store               *store.Store
-	httpClient          *http.Client
-	defaultDaemonURL    string
-	daemonURL           string
-	controlURL          string
-	actualLiveURL       string
-	daemonMu            sync.RWMutex
-	workspaceRoot       string
-	github              githubsvc.Client
-	githubWebhookSecret string
-	roomAutoLoopOnce    sync.Once
-	roomAutoRecoveryMu  sync.Mutex
-	roomAutoInFlight    map[string]struct{}
-	roomAutoLastAttempt map[string]time.Time
+	store                  *store.Store
+	httpClient             *http.Client
+	defaultDaemonURL       string
+	daemonURL              string
+	controlURL             string
+	actualLiveURL          string
+	daemonMu               sync.RWMutex
+	workspaceRoot          string
+	github                 githubsvc.Client
+	githubWebhookSecret    string
+	roomAutoLoopOnce       sync.Once
+	roomAutoRecoveryMu     sync.Mutex
+	roomAutoInFlight       map[string]struct{}
+	roomAutoLastAttempt    map[string]time.Time
+	pendingTurnRecoveryMu  sync.Mutex
+	pendingTurnInFlight    map[string]struct{}
+	pendingTurnLastAttempt map[string]time.Time
 }
 
 type serverRouteRegistrar func(*Server, *http.ServeMux)
@@ -2916,6 +2919,16 @@ func (s *Server) StartRoomAutoRecoveryLoop(ctx context.Context, interval time.Du
 func (s *Server) kickRoomAutoRecovery() {
 	snapshot := s.store.Snapshot()
 	now := time.Now()
+	for _, session := range snapshot.Sessions {
+		if !interruptedPendingTurnRecoveryEligible(session) {
+			s.clearPendingTurnRecoveryTracking(session.ID)
+			continue
+		}
+		if !s.beginPendingTurnRecovery(session.ID, now) {
+			continue
+		}
+		go s.runPendingTurnRecovery(session.ID)
+	}
 	for index := range snapshot.Mailbox {
 		handoff := snapshot.Mailbox[index]
 		if !roomAutoHandoffRecoveryEligible(snapshot, handoff) {
@@ -2927,6 +2940,69 @@ func (s *Server) kickRoomAutoRecovery() {
 		}
 		go s.runRoomAutoRecovery(handoff.ID)
 	}
+}
+
+func (s *Server) beginPendingTurnRecovery(sessionID string, now time.Time) bool {
+	trimmedID := strings.TrimSpace(sessionID)
+	if trimmedID == "" {
+		return false
+	}
+	s.pendingTurnRecoveryMu.Lock()
+	defer s.pendingTurnRecoveryMu.Unlock()
+
+	if s.pendingTurnInFlight == nil {
+		s.pendingTurnInFlight = map[string]struct{}{}
+	}
+	if s.pendingTurnLastAttempt == nil {
+		s.pendingTurnLastAttempt = map[string]time.Time{}
+	}
+	if _, exists := s.pendingTurnInFlight[trimmedID]; exists {
+		return false
+	}
+	if lastAttempt, exists := s.pendingTurnLastAttempt[trimmedID]; exists && roomAutoRecoveryCooldown > 0 && now.Sub(lastAttempt) < roomAutoRecoveryCooldown {
+		return false
+	}
+	s.pendingTurnInFlight[trimmedID] = struct{}{}
+	s.pendingTurnLastAttempt[trimmedID] = now
+	return true
+}
+
+func (s *Server) runPendingTurnRecovery(sessionID string) {
+	defer s.finishPendingTurnRecovery(sessionID)
+
+	snapshot := s.store.Snapshot()
+	session, ok := findInterruptedPendingTurnSession(snapshot, sessionID)
+	if !ok {
+		return
+	}
+	_, _ = s.continueInterruptedPendingTurn(snapshot, session)
+}
+
+func (s *Server) finishPendingTurnRecovery(sessionID string) {
+	trimmedID := strings.TrimSpace(sessionID)
+	if trimmedID == "" {
+		return
+	}
+	snapshot := s.store.Snapshot()
+	_, ok := findInterruptedPendingTurnSession(snapshot, trimmedID)
+
+	s.pendingTurnRecoveryMu.Lock()
+	defer s.pendingTurnRecoveryMu.Unlock()
+	delete(s.pendingTurnInFlight, trimmedID)
+	if !ok {
+		delete(s.pendingTurnLastAttempt, trimmedID)
+	}
+}
+
+func (s *Server) clearPendingTurnRecoveryTracking(sessionID string) {
+	trimmedID := strings.TrimSpace(sessionID)
+	if trimmedID == "" {
+		return
+	}
+	s.pendingTurnRecoveryMu.Lock()
+	defer s.pendingTurnRecoveryMu.Unlock()
+	delete(s.pendingTurnInFlight, trimmedID)
+	delete(s.pendingTurnLastAttempt, trimmedID)
 }
 
 func (s *Server) beginRoomAutoRecovery(handoffID string, now time.Time) bool {
@@ -3029,6 +3105,101 @@ func roomAutoHandoffRecoveryEligible(snapshot store.State, handoff store.AgentHa
 		return false
 	}
 	return true
+}
+
+func continueInterruptedPendingTurnProvider(session store.Session) string {
+	if session.PendingTurn == nil {
+		return ""
+	}
+	provider := normalizeProviderID(defaultString(strings.TrimSpace(session.PendingTurn.Provider), strings.TrimSpace(session.Provider)))
+	if provider != "codex" {
+		return ""
+	}
+	if !sessionHasResumeEligiblePendingTurn(session, provider) {
+		return ""
+	}
+	return provider
+}
+
+func interruptedPendingTurnRecoveryEligible(session store.Session) bool {
+	return strings.TrimSpace(session.ID) != "" &&
+		strings.TrimSpace(session.RoomID) != "" &&
+		continueInterruptedPendingTurnProvider(session) != ""
+}
+
+func findInterruptedPendingTurnSession(snapshot store.State, sessionID string) (store.Session, bool) {
+	trimmedID := strings.TrimSpace(sessionID)
+	if trimmedID == "" {
+		return store.Session{}, false
+	}
+	for _, session := range snapshot.Sessions {
+		if session.ID != trimmedID || !interruptedPendingTurnRecoveryEligible(session) {
+			continue
+		}
+		return session, true
+	}
+	return store.Session{}, false
+}
+
+func (s *Server) continueInterruptedPendingTurn(snapshot store.State, session store.Session) (store.State, string) {
+	roomID := strings.TrimSpace(session.RoomID)
+	provider := continueInterruptedPendingTurnProvider(session)
+	if roomID == "" || provider == "" || session.PendingTurn == nil {
+		return snapshot, ""
+	}
+	if blocked := execProviderPreflightMessage("讨论间恢复执行", snapshot, provider); blocked != "" {
+		return snapshot, ""
+	}
+
+	prompt := strings.TrimSpace(session.PendingTurn.Prompt)
+	execPrompt := buildRoomExecPrompt(snapshot, roomID, provider, prompt)
+	payload, err := s.runRoomDaemonExec(roomID, ExecRequest{
+		Provider:       provider,
+		Prompt:         execPrompt,
+		TimeoutSeconds: roomMessageExecTimeoutSeconds,
+	})
+	if err != nil {
+		return snapshot, ""
+	}
+
+	directives := parseRoomResponseDirectives(strings.TrimSpace(payload.Output))
+	replySpeaker := roomReplySpeaker(snapshot, roomID, prompt)
+	suppressRelay := shouldSuppressRoomHandoffRelay(snapshot, roomID, directives)
+
+	var nextState store.State
+	if directives.SuppressReply || suppressRelay {
+		nextState, err = s.store.AppendConversationWithoutVisibleReply(roomID, prompt, provider)
+	} else if directives.ReplyKind == "clarification_request" {
+		nextState, err = s.store.AppendClarificationRequest(roomID, prompt, replySpeaker, directives.DisplayOutput, provider)
+	} else if directives.ReplyKind == "summary" {
+		nextState, err = s.store.AppendConversationSummary(roomID, prompt, replySpeaker, directives.DisplayOutput, provider)
+	} else {
+		nextState, err = s.store.AppendConversationAsAgent(roomID, prompt, replySpeaker, directives.DisplayOutput, provider)
+	}
+	if err != nil {
+		return snapshot, ""
+	}
+
+	nextState, followupOutput := s.applyRoomResponseDirectives(nextState, nextState, roomID, replySpeaker, provider, directives)
+	visibleOutput := directives.DisplayOutput
+	if directives.SuppressReply {
+		visibleOutput = followupOutput
+	} else if suppressRelay {
+		if strings.TrimSpace(directives.DisplayOutput) != "" {
+			if strings.TrimSpace(followupOutput) == "" {
+				if restoredState, restoreErr := s.store.AppendAgentRoomMessage(roomID, replySpeaker, directives.DisplayOutput, provider); restoreErr == nil {
+					nextState = restoredState
+				}
+				visibleOutput = directives.DisplayOutput
+			} else {
+				visibleOutput = followupOutput
+			}
+		} else if strings.TrimSpace(followupOutput) != "" {
+			visibleOutput = followupOutput
+		}
+	}
+	nextState = s.completeRoomAutoHandoffFollowupIfNeeded(nextState, roomID, replySpeaker, directives, visibleOutput)
+	return nextState, visibleOutput
 }
 
 func findRoomAutoHandoffByID(snapshot store.State, handoffID string) (store.AgentHandoff, bool) {

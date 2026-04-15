@@ -1293,6 +1293,519 @@ func TestBackgroundRecoveryLoopDoesNotDuplicateInFlightRoomAutoRetry(t *testing.
 	close(releaseRecovery)
 }
 
+func TestBackgroundRecoveryLoopAutonomouslyResumesInterruptedPendingTurnAfterReload(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	var (
+		mu              sync.Mutex
+		resumedRequests []ExecRequest
+	)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec/stream":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			events := []DaemonStreamEvent{
+				{Type: "start", Provider: "codex", Command: []string{"codex", "exec"}},
+				{Type: "stdout", Provider: "codex", Delta: "我先接住当前 continuity，已经完成第一段检查。"},
+			}
+			for _, event := range events {
+				if err := json.NewEncoder(w).Encode(event); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(DaemonStreamEvent{Type: "stdout", Provider: "codex", Delta: "第二段输出会在连接断开后丢失。"})
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		case "/v1/exec":
+			var req ExecRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode resumed payload: %v", err)
+			}
+			mu.Lock()
+			resumedRequests = append(resumedRequests, req)
+			mu.Unlock()
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "我已经从刚才中断的位置续上，并把最后结论补齐。",
+				Duration: "0.7s",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	pairMainRuntime(t, s, daemon.URL)
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Background Pending Turn Recovery", "Codex Dockmaster")
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把这条 lane 往前推。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if event.Type == "stdout" && strings.Contains(event.Delta, "第一段检查") {
+			break
+		}
+	}
+	cancel()
+	_ = resp.Body.Close()
+	server.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		session := findSessionByID(s.Snapshot(), created.SessionID)
+		if session != nil && session.PendingTurn != nil && session.PendingTurn.Status == "interrupted" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	interrupted := findSessionByID(s.Snapshot(), created.SessionID)
+	if interrupted == nil || interrupted.PendingTurn == nil || interrupted.PendingTurn.Status != "interrupted" {
+		t.Fatalf("pending interrupted turn missing after stream disconnect: %#v", s.Snapshot().Sessions)
+	}
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedAPI := New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+	defer loopCancel()
+	reloadedAPI.StartRoomAutoRecoveryLoop(loopCtx, 5*time.Millisecond)
+
+	deadline = time.Now().Add(2 * time.Second)
+	var finalSession *store.Session
+	for time.Now().Before(deadline) {
+		finalSession = findSessionByID(reloadedStore.Snapshot(), created.SessionID)
+		if finalSession != nil && finalSession.PendingTurn == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if finalSession == nil || finalSession.PendingTurn != nil {
+		t.Fatalf("final session = %#v, want cleared pending turn after background resume", finalSession)
+	}
+
+	mu.Lock()
+	if len(resumedRequests) != 1 {
+		mu.Unlock()
+		t.Fatalf("resumed exec requests = %#v, want one autonomous retry", resumedRequests)
+	}
+	resumed := resumedRequests[0]
+	mu.Unlock()
+	if !resumed.ResumeSession {
+		t.Fatalf("resumed exec request = %#v, want resumeSession after interrupted stream", resumed)
+	}
+	for _, expected := range []string{
+		"上一次流式执行在公开连接断开后中断",
+		"第一段检查",
+		"继续把这条 lane 往前推。",
+	} {
+		if !strings.Contains(resumed.Prompt, expected) {
+			t.Fatalf("resumed prompt = %q, want %q", resumed.Prompt, expected)
+		}
+	}
+
+	roomMessages := reloadedStore.Snapshot().RoomMessages[created.RoomID]
+	humanCount := 0
+	for _, message := range roomMessages {
+		if message.Role == "human" {
+			humanCount++
+		}
+	}
+	if humanCount != 1 {
+		t.Fatalf("room messages = %#v, want only original human prompt committed once", roomMessages)
+	}
+	lastMessage := roomMessages[len(roomMessages)-1]
+	if lastMessage.Message != "我已经从刚才中断的位置续上，并把最后结论补齐。" {
+		t.Fatalf("last room message = %#v, want autonomous resumed reply", lastMessage)
+	}
+}
+
+func TestBackgroundRecoveryLoopDoesNotDuplicateInFlightInterruptedPendingTurnRecovery(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	previousCooldown := roomAutoRecoveryCooldown
+	roomAutoRecoveryCooldown = 0
+	defer func() {
+		roomAutoRecoveryCooldown = previousCooldown
+	}()
+
+	var (
+		mu              sync.Mutex
+		resumedRequests []ExecRequest
+		releaseRecovery = make(chan struct{})
+	)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec/stream":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			events := []DaemonStreamEvent{
+				{Type: "start", Provider: "codex", Command: []string{"codex", "exec"}},
+				{Type: "stdout", Provider: "codex", Delta: "我先接住当前 continuity，已经完成第一段检查。"},
+			}
+			for _, event := range events {
+				if err := json.NewEncoder(w).Encode(event); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(DaemonStreamEvent{Type: "stdout", Provider: "codex", Delta: "第二段输出会在连接断开后丢失。"})
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		case "/v1/exec":
+			var req ExecRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode resumed payload: %v", err)
+			}
+			mu.Lock()
+			resumedRequests = append(resumedRequests, req)
+			mu.Unlock()
+			<-releaseRecovery
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "我已经从刚才中断的位置续上，并把最后结论补齐。",
+				Duration: "0.7s",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	pairMainRuntime(t, s, daemon.URL)
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Background Pending Turn Dedup", "Codex Dockmaster")
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把这条 lane 往前推。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if event.Type == "stdout" && strings.Contains(event.Delta, "第一段检查") {
+			break
+		}
+	}
+	cancel()
+	_ = resp.Body.Close()
+	server.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		session := findSessionByID(s.Snapshot(), created.SessionID)
+		if session != nil && session.PendingTurn != nil && session.PendingTurn.Status == "interrupted" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedAPI := New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+	defer loopCancel()
+	reloadedAPI.StartRoomAutoRecoveryLoop(loopCtx, 5*time.Millisecond)
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		count := len(resumedRequests)
+		mu.Unlock()
+		if count == 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	mu.Lock()
+	if len(resumedRequests) != 1 {
+		mu.Unlock()
+		t.Fatalf("resumed exec requests before duplicate ticks = %#v, want one in-flight retry", resumedRequests)
+	}
+	mu.Unlock()
+
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	if len(resumedRequests) != 1 {
+		mu.Unlock()
+		t.Fatalf("resumed exec requests during in-flight recovery = %#v, want no duplicate retry", resumedRequests)
+	}
+	mu.Unlock()
+
+	close(releaseRecovery)
+}
+
+func TestBackgroundRecoveryLoopPrefersInterruptedPendingTurnOverRoomAutoFollowup(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	previousCooldown := roomAutoRecoveryCooldown
+	roomAutoRecoveryCooldown = 0
+	defer func() {
+		roomAutoRecoveryCooldown = previousCooldown
+	}()
+
+	var (
+		mu                 sync.Mutex
+		execRequests       []ExecRequest
+		releaseResumeRetry = make(chan struct{})
+	)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec":
+			var req ExecRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode exec payload: %v", err)
+			}
+			mu.Lock()
+			execRequests = append(execRequests, req)
+			count := len(execRequests)
+			mu.Unlock()
+
+			switch count {
+			case 1:
+				writeJSON(w, http.StatusOK, DaemonExecResponse{
+					Provider: "codex",
+					Command:  []string{"codex", "exec"},
+					Output:   "我先把这一棒交给 reviewer。\nOPENSHOCK_HANDOFF: agent-claude-review-runner | 继续复核恢复链路 | 请把恢复链路和副作用复核完。",
+					Duration: "0.6s",
+				})
+			case 2:
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "not logged in"})
+			case 3:
+				<-releaseResumeRetry
+				writeJSON(w, http.StatusOK, DaemonExecResponse{
+					Provider: "codex",
+					Command:  []string{"codex", "exec"},
+					Output:   "我已经把中断的检查续上，先把这一拍补齐。",
+					Duration: "0.6s",
+				})
+			default:
+				t.Fatalf("unexpected exec request count: %d", count)
+			}
+		case "/v1/exec/stream":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			events := []DaemonStreamEvent{
+				{Type: "start", Provider: "codex", Command: []string{"codex", "exec"}},
+				{Type: "stdout", Provider: "codex", Delta: "我先接住当前 continuity，已经完成第一段检查。"},
+			}
+			for _, event := range events {
+				if err := json.NewEncoder(w).Encode(event); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(DaemonStreamEvent{Type: "stdout", Provider: "codex", Delta: "第二段输出会在连接断开后丢失。"})
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	pairMainRuntime(t, s, daemon.URL)
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Pending Turn Beats Room Auto", "Codex Dockmaster")
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把恢复链路推进。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST room message error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("room message status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	resp.Body.Close()
+
+	streamBody, err := json.Marshal(map[string]any{
+		"prompt":   "继续把这条 lane 往前推。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(stream) error = %v", err)
+	}
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	defer streamCancel()
+	streamReq, err := http.NewRequestWithContext(streamCtx, http.MethodPost, server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", bytes.NewReader(streamBody))
+	if err != nil {
+		t.Fatalf("NewRequest(stream) error = %v", err)
+	}
+	streamReq.Header.Set("Content-Type", "application/json")
+	streamResp, err := http.DefaultClient.Do(streamReq)
+	if err != nil {
+		t.Fatalf("Do(stream) error = %v", err)
+	}
+	scanner := bufio.NewScanner(streamResp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal(stream) error = %v", err)
+		}
+		if event.Type == "stdout" && strings.Contains(event.Delta, "第一段检查") {
+			break
+		}
+	}
+	streamCancel()
+	_ = streamResp.Body.Close()
+	server.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		session := findSessionByID(s.Snapshot(), created.SessionID)
+		if session != nil && session.PendingTurn != nil && session.PendingTurn.Status == "interrupted" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedAPI := New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+	reloadedAPI.StartRoomAutoRecoveryLoop(loopCtx, 5*time.Millisecond)
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		count := len(execRequests)
+		mu.Unlock()
+		if count == 3 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	mu.Lock()
+	if len(execRequests) != 3 {
+		mu.Unlock()
+		t.Fatalf("exec requests before precedence check = %#v, want interrupted resume to fire first", execRequests)
+	}
+	resumeReq := execRequests[2]
+	mu.Unlock()
+	if !resumeReq.ResumeSession || resumeReq.Provider != "codex" {
+		t.Fatalf("resume exec request = %#v, want codex resume request", resumeReq)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	if len(execRequests) != 3 {
+		mu.Unlock()
+		t.Fatalf("exec requests during interrupted recovery = %#v, want no concurrent room-auto retry", execRequests)
+	}
+	mu.Unlock()
+
+	loopCancel()
+	close(releaseResumeRetry)
+}
+
 func TestRoomMessageStreamPersistsBlockedConversationOnError(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
