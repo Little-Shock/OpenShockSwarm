@@ -37,6 +37,7 @@ type Server struct {
 	workspaceRoot       string
 	github              githubsvc.Client
 	githubWebhookSecret string
+	roomAutoLoopOnce    sync.Once
 	roomAutoRecoveryMu  sync.Mutex
 	roomAutoInFlight    map[string]struct{}
 	roomAutoLastAttempt map[string]time.Time
@@ -140,6 +141,8 @@ const (
 )
 
 var roomAutoRecoveryCooldown = 30 * time.Second
+
+const roomAutoRecoveryLoopDefaultInterval = 15 * time.Second
 
 type SelectRuntimeRequest struct {
 	Machine string `json:"machine"`
@@ -2884,6 +2887,30 @@ func buildRoomAutoFollowupPrompt(ownerName, handoffTitle string) string {
 		defaultString(strings.TrimSpace(handoffTitle), "继续当前房间"),
 		defaultString(strings.TrimSpace(ownerName), "当前接手智能体"),
 	)
+}
+
+func (s *Server) StartRoomAutoRecoveryLoop(ctx context.Context, interval time.Duration) {
+	if ctx == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = roomAutoRecoveryLoopDefaultInterval
+	}
+	s.roomAutoLoopOnce.Do(func() {
+		go func() {
+			s.kickRoomAutoRecovery()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					s.kickRoomAutoRecovery()
+				}
+			}
+		}()
+	})
 }
 
 func (s *Server) kickRoomAutoRecovery() {

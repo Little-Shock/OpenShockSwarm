@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -44,11 +45,23 @@ func main() {
 		GitHub:              githubClient,
 		GitHubWebhookSecret: githubWebhookSecret,
 	})
+	backgroundCtx, cancelBackground := context.WithCancel(context.Background())
+	defer cancelBackground()
+	startBackgroundWorkers(backgroundCtx, server)
 
 	log.Printf("openshock-server listening on %s (daemon %s)", addr, daemonURL)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		log.Fatal(err)
 	}
+}
+
+var roomAutoRecoveryLoopInterval = 15 * time.Second
+
+func startBackgroundWorkers(ctx context.Context, server *api.Server) {
+	if server == nil || ctx == nil {
+		return
+	}
+	server.StartRoomAutoRecoveryLoop(ctx, roomAutoRecoveryLoopInterval)
 }
 
 func sanitizePersistedStateOnStartup(stateStore *store.Store) (bool, error) {
