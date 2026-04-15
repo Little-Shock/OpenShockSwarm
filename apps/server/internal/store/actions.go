@@ -1052,6 +1052,108 @@ func conversationProviderTool(value string) string {
 	}
 }
 
+func (s *Store) MarkRoomConversationPending(roomID, prompt, provider string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(roomID)
+	if !ok {
+		return State{}, fmt.Errorf("room not found")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	providerLabel := conversationProviderLabel(provider, s.state.Runs[runIndex].Provider)
+	nextAction := "等待当前流式执行结束；如果公开连接断开，则从同一条 room continuity 继续恢复。"
+
+	s.state.Rooms[roomIndex].Topic.Status = "running"
+	s.state.Issues[issueIndex].State = "running"
+	s.state.Runs[runIndex].Status = "running"
+	s.state.Runs[runIndex].Provider = defaultString(strings.TrimSpace(providerLabel), s.state.Runs[runIndex].Provider)
+	s.state.Runs[runIndex].NextAction = nextAction
+	s.state.Runs[runIndex].ControlNote = "当前流式执行已开始，等待公开结果收口。"
+
+	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
+		startedAt := now
+		if item.PendingTurn != nil && strings.TrimSpace(item.PendingTurn.StartedAt) != "" {
+			startedAt = item.PendingTurn.StartedAt
+		}
+		item.Status = "running"
+		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
+		item.PendingTurn = &SessionPendingTurn{
+			Prompt:    strings.TrimSpace(prompt),
+			Provider:  normalizeConversationProvider(provider),
+			Status:    "streaming",
+			StartedAt: startedAt,
+			UpdatedAt: now,
+		}
+		item.ControlNote = "当前流式执行已开始，等待公开结果收口。"
+		item.UpdatedAt = now
+		if len(item.MemoryPaths) == 0 {
+			item.MemoryPaths = defaultSessionMemoryPaths(item.RoomID, item.IssueKey)
+		}
+	})
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
+func (s *Store) MarkRoomConversationInterrupted(roomID, prompt, provider, preview string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	roomIndex, runIndex, issueIndex, ok := s.findRoomRunIssueLocked(roomID)
+	if !ok {
+		return State{}, fmt.Errorf("room not found")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	providerLabel := conversationProviderLabel(provider, s.state.Runs[runIndex].Provider)
+	summary := "上一条公开流式执行在连接断开后中断，等待从同一条 continuity 继续恢复。"
+	if trimmed := strings.TrimSpace(preview); trimmed != "" {
+		summary = trimmed
+	}
+	controlNote := "上一次公开流式执行已中断；保留当前 pending turn，下一次同房间执行应继续恢复。"
+
+	s.state.Rooms[roomIndex].Topic.Status = "running"
+	s.state.Issues[issueIndex].State = "running"
+	s.state.Runs[runIndex].Status = "running"
+	s.state.Runs[runIndex].Provider = defaultString(strings.TrimSpace(providerLabel), s.state.Runs[runIndex].Provider)
+	s.state.Runs[runIndex].Summary = summary
+	s.state.Runs[runIndex].NextAction = "从当前房间继续恢复这次中断的流式执行。"
+	s.state.Runs[runIndex].ControlNote = controlNote
+
+	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
+		startedAt := now
+		if item.PendingTurn != nil && strings.TrimSpace(item.PendingTurn.StartedAt) != "" {
+			startedAt = item.PendingTurn.StartedAt
+		}
+		item.Status = "running"
+		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
+		item.Summary = summary
+		item.PendingTurn = &SessionPendingTurn{
+			Prompt:         strings.TrimSpace(prompt),
+			Provider:       normalizeConversationProvider(provider),
+			Status:         "interrupted",
+			Preview:        strings.TrimSpace(preview),
+			StartedAt:      startedAt,
+			UpdatedAt:      now,
+			ResumeEligible: true,
+		}
+		item.ControlNote = controlNote
+		item.UpdatedAt = now
+		if len(item.MemoryPaths) == 0 {
+			item.MemoryPaths = defaultSessionMemoryPaths(item.RoomID, item.IssueKey)
+		}
+	})
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, err
+	}
+	return cloneState(s.state), nil
+}
+
 func (s *Store) AppendConversation(roomID, prompt, output, provider string) (State, error) {
 	return s.AppendConversationAsAgent(roomID, prompt, "", output, provider)
 }
@@ -1221,6 +1323,7 @@ func (s *Store) appendConversationAsAgentWithTone(roomID, prompt, speaker, outpu
 		item.Status = "running"
 		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
 		item.ContinuityReady = true
+		item.PendingTurn = nil
 		item.Summary = agentText
 		item.ControlNote = controlNote
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -1288,6 +1391,7 @@ func (s *Store) AppendConversationWithoutVisibleReply(roomID, prompt, provider s
 		item.Status = "running"
 		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
 		item.ContinuityReady = true
+		item.PendingTurn = nil
 		item.Summary = summary
 		item.ControlNote = "当前无需额外回复，继续等待下一条房间消息。"
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -1387,6 +1491,7 @@ func (s *Store) appendAgentRoomMessageWithTone(roomID, speaker, output, provider
 		item.Status = "running"
 		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
 		item.ContinuityReady = true
+		item.PendingTurn = nil
 		item.Summary = agentText
 		item.ControlNote = controlNote
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -1492,6 +1597,7 @@ func (s *Store) appendClarificationRequestLocked(roomID, prompt, speaker, questi
 		item.Status = "paused"
 		item.Provider = defaultString(strings.TrimSpace(providerLabel), item.Provider)
 		item.ContinuityReady = true
+		item.PendingTurn = nil
 		item.Summary = questionText
 		item.ControlNote = "等待当前澄清回复。"
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -1561,6 +1667,7 @@ func (s *Store) AppendConversationFailure(roomID, prompt, message string) (State
 	}}, s.state.Inbox...)
 	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
 		item.Status = "blocked"
+		item.PendingTurn = nil
 		item.Summary = blockedMessage
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		if len(item.MemoryPaths) == 0 {
@@ -1676,6 +1783,7 @@ func (s *Store) AppendSystemRoomMessage(roomID, speaker, text, tone string) (Sta
 	s.state.Inbox = append([]InboxItem{{ID: fmt.Sprintf("inbox-blocked-%d", time.Now().UnixNano()), Title: "CLI 连接失败，等待人工处理", Kind: "blocked", Room: s.state.Rooms[roomIndex].Title, Time: "刚刚", Summary: text, Action: "解除阻塞", Href: fmt.Sprintf("/rooms/%s", roomID)}}, s.state.Inbox...)
 	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
 		item.Status = "blocked"
+		item.PendingTurn = nil
 		item.Summary = text
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		if len(item.MemoryPaths) == 0 {
@@ -1767,6 +1875,7 @@ func (s *Store) AppendRuntimeLeaseConflict(roomID, speaker, text, inboxTitle, ne
 	s.updateAgentStateLocked(s.state.Runs[runIndex].Owner, "blocked", title)
 	s.updateSessionLocked(s.state.Runs[runIndex].ID, func(item *Session) {
 		item.Status = "blocked"
+		item.PendingTurn = nil
 		item.Summary = text
 		item.ControlNote = note
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)

@@ -584,6 +584,8 @@ export type Session = {
   activeRunId: string;
   status: RunStatus;
   followThread?: boolean;
+  continuityReady?: boolean;
+  pendingTurn?: SessionPendingTurn;
   controlNote?: string;
   runtime: string;
   machine: string;
@@ -594,6 +596,16 @@ export type Session = {
   summary: string;
   updatedAt: string;
   memoryPaths: string[];
+};
+
+export type SessionPendingTurn = {
+  prompt?: string;
+  provider?: string;
+  status?: string;
+  preview?: string;
+  startedAt?: string;
+  updatedAt?: string;
+  resumeEligible?: boolean;
 };
 
 export type MemoryGovernance = {

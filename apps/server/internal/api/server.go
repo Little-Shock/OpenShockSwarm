@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1621,6 +1622,10 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
+	if _, err := s.store.MarkRoomConversationPending(roomID, prompt, req.Provider); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1645,6 +1650,11 @@ func (s *Server) handleRoomMessageStream(w http.ResponseWriter, r *http.Request,
 		return writeNDJSON(w, flusher, event)
 	})
 	if err != nil {
+		if roomStreamInterruptedByClient(r, err) {
+			preview := buildInterruptedPendingTurnPreview(outputBuilder.String())
+			_, _ = s.store.MarkRoomConversationInterrupted(roomID, prompt, req.Provider, preview)
+			return
+		}
 		message := execFailureMessage("讨论间消息", err)
 		var daemonErr *daemonHTTPError
 		if errors.As(err, &daemonErr) && daemonErr.Status == http.StatusConflict {
@@ -1850,6 +1860,13 @@ func buildRoomExecPrompt(snapshot store.State, roomID, provider, userPrompt stri
 	if worktreePath := strings.TrimSpace(run.WorktreePath); worktreePath != "" {
 		builder.WriteString(fmt.Sprintf("- 工作目录：%s\n", worktreePath))
 	}
+	if pending := findInterruptedRoomPendingTurn(snapshot, roomID, provider); pending != nil {
+		builder.WriteString("\n恢复提醒：\n")
+		builder.WriteString("- 上一次流式执行在公开连接断开后中断；先从同一条 continuity 接着往下做，不要把它当成新线程。\n")
+		if preview := strings.TrimSpace(pending.Preview); preview != "" {
+			builder.WriteString(fmt.Sprintf("- 中断前最后一段公开可见输出：%s\n", compactPromptLine(preview)))
+		}
+	}
 
 	if recent := buildRoomPromptHistory(snapshot.RoomMessages[roomID], 6); recent != "" {
 		builder.WriteString("\n最近对话：\n")
@@ -1986,6 +2003,14 @@ func buildRoomWakeupHint(snapshot store.State, roomID, wakeupMode string, turnAg
 	default:
 		return ""
 	}
+}
+
+func findInterruptedRoomPendingTurn(snapshot store.State, roomID, provider string) *store.SessionPendingTurn {
+	session, ok := findRoomConversationSession(snapshot, roomID, "")
+	if !ok || !sessionHasResumeEligiblePendingTurn(session, provider) {
+		return nil
+	}
+	return session.PendingTurn
 }
 
 func buildRoomHandoffCatalog(snapshot store.State, roomID string) string {
@@ -2345,6 +2370,27 @@ func shouldSuppressRoomHandoffRelay(snapshot store.State, roomID string, directi
 	}
 	_, ok := inferRoomHandoffDirective(snapshot, roomID, body)
 	return ok
+}
+
+func roomStreamInterruptedByClient(r *http.Request, err error) bool {
+	if err == nil {
+		return false
+	}
+	if r != nil && r.Context().Err() != nil {
+		return true
+	}
+	return errors.Is(err, context.Canceled)
+}
+
+func buildInterruptedPendingTurnPreview(output string) string {
+	preview := strings.TrimSpace(sanitizePublicReplyBody(output))
+	if preview == "" {
+		return ""
+	}
+	if len(preview) <= 360 {
+		return preview
+	}
+	return strings.TrimSpace(preview[:357]) + "..."
 }
 
 func parseRoomReplyEnvelope(output string) (string, string, string, bool) {

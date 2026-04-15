@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -132,6 +133,170 @@ func TestRoomMessageStreamPersistsConversation(t *testing.T) {
 	agentMessage := detail.Messages[len(detail.Messages)-1].Message
 	if !strings.Contains(agentMessage, "第一行输出") || !strings.Contains(agentMessage, "第二行输出") {
 		t.Fatalf("agent message = %q, want streamed output", agentMessage)
+	}
+}
+
+func TestRoomMessageStreamDisconnectPersistsPendingTurnForResume(t *testing.T) {
+	root := t.TempDir()
+	var firstStream ExecRequest
+	var resumed ExecRequest
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec/stream":
+			if err := json.NewDecoder(r.Body).Decode(&firstStream); err != nil {
+				t.Fatalf("decode stream payload: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			events := []DaemonStreamEvent{
+				{Type: "start", Provider: "codex", Command: []string{"codex", "exec"}},
+				{Type: "stdout", Provider: "codex", Delta: "我先接住当前 continuity，已经完成第一段检查。"},
+			}
+			for _, event := range events {
+				if err := json.NewEncoder(w).Encode(event); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(DaemonStreamEvent{Type: "stdout", Provider: "codex", Delta: "第二段输出会在连接断开后丢失。"})
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		case "/v1/exec":
+			if err := json.NewDecoder(r.Body).Decode(&resumed); err != nil {
+				t.Fatalf("decode resumed payload: %v", err)
+			}
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "我已经从刚才中断的位置续上，并把最后结论补齐。",
+				Duration: "0.7s",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	s, server := newContractTestServer(t, root, daemon.URL)
+	defer server.Close()
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Streaming Disconnect Recovery", "Codex Dockmaster")
+	initialDetail, ok := s.RoomDetail(created.RoomID)
+	if !ok {
+		t.Fatalf("RoomDetail(%q) missing", created.RoomID)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把这条 lane 往前推。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sawPartial := false
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if event.Type == "stdout" && strings.Contains(event.Delta, "第一段检查") {
+			sawPartial = true
+			break
+		}
+	}
+	if !sawPartial {
+		t.Fatalf("stream did not emit partial stdout before disconnect")
+	}
+	cancel()
+	_ = resp.Body.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	var interrupted *store.Session
+	for time.Now().Before(deadline) {
+		snapshot := s.Snapshot()
+		session := findSessionByID(snapshot, created.SessionID)
+		if session != nil && session.PendingTurn != nil && session.PendingTurn.Status == "interrupted" {
+			interrupted = session
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if interrupted == nil {
+		t.Fatalf("pending interrupted turn missing after stream disconnect: %#v", s.Snapshot().Sessions)
+	}
+	if interrupted.PendingTurn.Prompt != "继续把这条 lane 往前推。" {
+		t.Fatalf("pending turn prompt = %#v, want original user prompt", interrupted.PendingTurn)
+	}
+	if !strings.Contains(interrupted.PendingTurn.Preview, "第一段检查") {
+		t.Fatalf("pending turn preview = %#v, want partial visible output", interrupted.PendingTurn)
+	}
+	if !interrupted.PendingTurn.ResumeEligible {
+		t.Fatalf("pending turn = %#v, want resume eligible", interrupted.PendingTurn)
+	}
+	if !strings.Contains(interrupted.ControlNote, "中断") {
+		t.Fatalf("session control note = %q, want interrupted recovery hint", interrupted.ControlNote)
+	}
+	if detail, ok := s.RoomDetail(created.RoomID); !ok {
+		t.Fatalf("RoomDetail(%q) missing after interrupt", created.RoomID)
+	} else if len(detail.Messages) != len(initialDetail.Messages) {
+		t.Fatalf("room messages after interrupt = %#v, want no committed failure/filler reply", detail.Messages)
+	}
+
+	secondBody, err := json.Marshal(map[string]any{
+		"prompt":   "继续刚才中断的那一拍。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(second) error = %v", err)
+	}
+	secondResp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader(secondBody))
+	if err != nil {
+		t.Fatalf("POST resumed room message error = %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusOK {
+		t.Fatalf("resumed room message status = %d, want %d", secondResp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Output string      `json:"output"`
+		State  store.State `json:"state"`
+	}
+	decodeJSON(t, secondResp, &payload)
+
+	if !resumed.ResumeSession {
+		t.Fatalf("resumed exec request = %#v, want resumeSession after interrupted stream", resumed)
+	}
+	if !strings.Contains(resumed.Prompt, "上一次流式执行在公开连接断开后中断") {
+		t.Fatalf("resumed prompt = %q, want interrupted-turn wakeup hint", resumed.Prompt)
+	}
+	if !strings.Contains(resumed.Prompt, "第一段检查") {
+		t.Fatalf("resumed prompt = %q, want preserved partial visible output", resumed.Prompt)
+	}
+	finalSession := findSessionByID(payload.State, created.SessionID)
+	if finalSession == nil || finalSession.PendingTurn != nil {
+		t.Fatalf("final session = %#v, want cleared pending turn after successful resume", finalSession)
+	}
+	if !strings.Contains(payload.Output, "中断的位置续上") {
+		t.Fatalf("final output = %q, want resumed daemon reply", payload.Output)
 	}
 }
 

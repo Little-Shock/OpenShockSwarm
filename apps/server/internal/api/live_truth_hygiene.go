@@ -842,6 +842,12 @@ func sanitizeSession(session store.Session) store.Session {
 	session.Worktree = sanitizeDisplayText(session.Worktree, "当前 worktree 名称正在整理中。")
 	session.WorktreePath = sanitizeDisplayText(session.WorktreePath, "当前 worktree 路径正在整理中。")
 	session.Summary = sanitizeDisplayText(session.Summary, "当前会话摘要正在整理中。")
+	if session.PendingTurn != nil {
+		session.PendingTurn.Prompt = sanitizeDisplayText(session.PendingTurn.Prompt, "当前中断前用户消息正在整理中。")
+		session.PendingTurn.Provider = sanitizeDisplayText(session.PendingTurn.Provider, "")
+		session.PendingTurn.Status = sanitizeDisplayText(session.PendingTurn.Status, "")
+		session.PendingTurn.Preview = sanitizeDisplayText(session.PendingTurn.Preview, "当前中断前公开摘要正在整理中。")
+	}
 	session.MemoryPaths = sanitizeTextLines(session.MemoryPaths, "当前 session 记忆路径正在整理中。")
 	return session
 }

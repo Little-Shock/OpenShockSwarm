@@ -168,6 +168,80 @@ func TestBuildRoomExecPromptIncludesClarificationFollowupHint(t *testing.T) {
 	}
 }
 
+func TestBuildRoomExecPromptIncludesInterruptedPendingTurnHint(t *testing.T) {
+	snapshot := store.State{
+		Rooms: []store.Room{{
+			ID:       "room-runtime",
+			Title:    "Runtime Lane",
+			IssueKey: "OPS-12",
+			RunID:    "run_runtime_01",
+			Topic: store.Topic{
+				ID:      "topic-runtime",
+				Title:   "Pairing Recovery",
+				Owner:   "Codex Dockmaster",
+				Summary: "收紧 daemon continuity",
+			},
+		}},
+		Runs: []store.Run{{
+			ID:           "run_runtime_01",
+			RoomID:       "room-runtime",
+			Status:       "running",
+			Provider:     "Codex CLI",
+			Owner:        "Codex Dockmaster",
+			Branch:       "feat/runtime-continuity",
+			Worktree:     "wt-runtime-continuity",
+			WorktreePath: "/tmp/runtime-continuity",
+		}},
+		Issues: []store.Issue{{
+			ID:     "issue-runtime",
+			Key:    "OPS-12",
+			Title:  "Recover runtime continuity",
+			Owner:  "Codex Dockmaster",
+			State:  "running",
+			RoomID: "room-runtime",
+		}},
+		Sessions: []store.Session{{
+			ID:              "session-runtime",
+			IssueKey:        "OPS-12",
+			RoomID:          "room-runtime",
+			TopicID:         "topic-runtime",
+			ActiveRunID:     "run_runtime_01",
+			Status:          "running",
+			Provider:        "Codex CLI",
+			Branch:          "feat/runtime-continuity",
+			Worktree:        "wt-runtime-continuity",
+			WorktreePath:    "/tmp/runtime-continuity",
+			Summary:         "等待恢复",
+			UpdatedAt:       "2026-04-15T00:00:00Z",
+			ContinuityReady: false,
+			PendingTurn: &store.SessionPendingTurn{
+				Provider:       "codex",
+				Status:         "interrupted",
+				Preview:        "我先接住当前 continuity，已经完成第一段检查。",
+				ResumeEligible: true,
+			},
+		}},
+		Agents: []store.Agent{{
+			ID:                 "agent-codex-dockmaster",
+			Name:               "Codex Dockmaster",
+			Role:               "Platform Architect",
+			Lane:               "OPS-12",
+			ProviderPreference: "codex",
+		}},
+	}
+
+	prompt := buildRoomExecPrompt(snapshot, "room-runtime", "codex", "继续刚才中断的那一拍。")
+	for _, expected := range []string{
+		"恢复提醒：",
+		"上一次流式执行在公开连接断开后中断",
+		"第一段检查",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected interrupted pending-turn prompt to contain %q, got:\n%s", expected, prompt)
+		}
+	}
+}
+
 func TestBuildRoomExecPromptUsesExplicitRoomWaitForClarificationFollowup(t *testing.T) {
 	snapshot := store.State{
 		Rooms: []store.Room{{

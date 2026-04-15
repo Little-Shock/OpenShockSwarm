@@ -92,13 +92,30 @@ func attachRoomConversationContinuity(req *ExecRequest, snapshot store.State, ro
 		return
 	}
 	session, ok := findRoomConversationSession(snapshot, roomID, req.SessionID)
-	if !ok || !session.ContinuityReady {
+	if !ok {
 		return
 	}
 	if normalizeProviderID(session.Provider) != normalizeProviderID(req.Provider) {
 		return
 	}
+	if !session.ContinuityReady && !sessionHasResumeEligiblePendingTurn(session, req.Provider) {
+		return
+	}
 	req.ResumeSession = true
+}
+
+func sessionHasResumeEligiblePendingTurn(session store.Session, provider string) bool {
+	if session.PendingTurn == nil {
+		return false
+	}
+	if strings.TrimSpace(session.PendingTurn.Status) != "interrupted" || !session.PendingTurn.ResumeEligible {
+		return false
+	}
+	pendingProvider := normalizeProviderID(session.PendingTurn.Provider)
+	if pendingProvider == "" {
+		pendingProvider = normalizeProviderID(session.Provider)
+	}
+	return pendingProvider != "" && pendingProvider == normalizeProviderID(provider)
 }
 
 func findRoomConversationSession(snapshot store.State, roomID, sessionID string) (store.Session, bool) {
