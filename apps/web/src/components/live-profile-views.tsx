@@ -250,6 +250,19 @@ function toTestID(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
+function agentFileKindLabel(kind: string) {
+  switch (kind) {
+    case "soul":
+      return "灵魂指令";
+    case "memory":
+      return "长期记忆";
+    case "notes":
+      return "运行规则";
+    default:
+      return kind || "文件";
+  }
+}
+
 function ProfileMetric({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
     <div data-testid={testId} className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
@@ -520,6 +533,9 @@ function AgentProfileSurface({
   });
   const previewSessionId = activeSessions[0]?.id;
   const preview = findPreviewForAgent(center, agent, previewSessionId);
+  const previewFileSet = new Set(preview?.files ?? []);
+  const activeSessionFileSet = new Set(activeSessions.flatMap((session) => session.memoryPaths ?? []));
+  const agentFileStack = agent.fileStack ?? [];
   const canEdit = hasPermission(state.auth.session, "workspace.manage");
   const [roleDraft, setRoleDraft] = useState(agent.role);
   const [avatarDraft, setAvatarDraft] = useState(agent.avatar);
@@ -651,7 +667,6 @@ function AgentProfileSurface({
 
     try {
       await updateAgentProfile(agent.id, {
-        name: agent.name,
         role: roleDraft,
         avatar: avatarDraft,
         prompt: promptDraft,
@@ -769,6 +784,66 @@ function AgentProfileSurface({
           <Panel tone="paper">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">记忆空间</p>
             <CapabilityChips items={agent.memorySpaces} />
+          </Panel>
+
+          <Panel tone="paper">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">文件记忆与规则</p>
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                {agentFileStack.length} 个文件
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+              这里直接暴露智能体自己的 `SOUL.md / MEMORY.md / notes/*` 文件栈；当前会话或下一次执行预览若会读到这些文件，也会在这里同步标出。
+            </p>
+            {agentFileStack.length > 0 ? (
+              <div className="mt-3 space-y-2" data-testid="profile-agent-file-stack">
+                {agentFileStack.map((file) => {
+                  const testID = toTestID(file.path);
+                  const inPreview = previewFileSet.has(file.path);
+                  const inActiveSession = activeSessionFileSet.has(file.path);
+                  return (
+                    <div
+                      key={file.path}
+                      data-testid={`profile-agent-file-${testID}`}
+                      className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+                            {agentFileKindLabel(file.kind)}
+                          </p>
+                          <p className="mt-2 font-mono text-[12px] leading-6">{file.path}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {inActiveSession ? (
+                            <span
+                              data-testid={`profile-agent-file-active-${testID}`}
+                              className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]"
+                            >
+                              当前会话
+                            </span>
+                          ) : null}
+                          {inPreview ? (
+                            <span
+                              data-testid={`profile-agent-file-preview-${testID}`}
+                              className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]"
+                            >
+                              下一次执行
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{file.summary}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
+                当前智能体还没有暴露文件级记忆栈；先确认工作区 scaffold 和智能体目录已经初始化。
+              </p>
+            )}
           </Panel>
 
           <Panel tone="paper">

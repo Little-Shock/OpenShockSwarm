@@ -636,6 +636,12 @@ export type AgentStatus = {
       current: string;
     }>;
   }>;
+  fileStack?: Array<{
+    path: string;
+    kind: string;
+    summary: string;
+    scope?: string;
+  }>;
 };
 
 export type MachineStatus = {

@@ -73,7 +73,7 @@ type RunControlInput = {
 };
 
 type AgentProfileUpdateInput = {
-  name: string;
+  name?: string;
   role: string;
   avatar: string;
   prompt: string;

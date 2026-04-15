@@ -1122,7 +1122,9 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, p
 		}
 		agentSlug := slugify(ownerName)
 		if agentSlug != "" {
-			addCandidate(filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), "owner agent memory", false)
+			// The mounted file list drives profile-level preview badges, so the owner
+			// agent memory file must survive preview trimming whenever it is selected.
+			addCandidate(filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), "owner agent memory", true)
 		}
 	}
 

@@ -173,7 +173,7 @@
 - [Test Report 2026-04-09 Agent Mailbox / Handoff Contract](./Test-Report-2026-04-09-agent-mailbox-handoff.md)
   - `TKT-35` 的 mailbox create/blocked/acknowledged/completed lifecycle、room/inbox back-link 与 owner transfer headed evidence
 - [Test Report 2026-04-08 Agent Profile Editor](./Test-Report-2026-04-08-agent-profile-editor.md)
-  - `TKT-32` 的 Agent profile edit、memory binding / recall policy、next-run preview 与 profile audit headed evidence
+  - `TKT-32` 的 Agent profile edit、memory binding / recall policy、file-level `SOUL.md / MEMORY.md / notes/*` surface、next-run preview 与 profile audit headed evidence
 - [Test Report 2026-04-09 Machine Profile / Local CLI Model Capability Binding](./Test-Report-2026-04-09-machine-profile-capability-binding.md)
   - `TKT-33` 的 machine shell / daemon / provider-model catalog 与 Agent provider+model+runtime affinity headed evidence
 - [Test Report 2026-04-09 Live Truth Hygiene](./Test-Report-2026-04-09-live-truth-hygiene.md)
@@ -324,7 +324,7 @@
 - `pnpm test:headed-room-clarification-wait`
   - 验证房间等待补充卡片、等待 owner/问题展示、reload 后继续可回复、锁定阻塞问题与补充后自动恢复执行
 - `pnpm test:headed-agent-profile-editor`
-  - 验证 Agent profile edit、memory binding / recall policy、next-run preview 与 audit persistence
+  - 验证 Agent profile edit、memory binding / recall policy、file-level `SOUL.md / MEMORY.md / notes/*` surface、next-run preview 与 audit persistence
 - `pnpm test:headed-machine-profile-capability-binding`
   - 验证 `/setup`、machine profile、`/agents` 与 Agent profile editor 是否共享同一份 machine capability / provider-model catalog truth，并允许写回 provider+model+runtime affinity
 - `pnpm test:headed-control-plane-runtime-governance`

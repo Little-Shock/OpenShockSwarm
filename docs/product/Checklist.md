@@ -369,6 +369,7 @@
   - [x] Agent profile 现在可直接编辑 `prompt / avatar / role / operating instructions / memory binding / recall policy / provider preference`，并同步写回 audit 与 next-run preview
   - [x] `/setup`、machine profile、`/agents` 与 Agent profile editor 现在会回读同一份 machine shell / daemon / provider-model catalog truth
   - [x] Agent 现在可声明 default provider / model / runtime affinity，并与 machine/provider truth 对齐后直接写回后端 state；model catalog 只作 suggestion，不按静态列表硬拒绝
+  - [x] Agent profile 现在会正式暴露 file-level `SOUL.md / MEMORY.md / notes/*` stack，并标出哪些文件正在被当前 session 使用、哪些会被 next-run preview 挂载
 - 当前 GAP:
   - [ ] 上述配置还不能作为 onboarding 默认值长期保存
 - 对应 Test Cases: `TC-030` `TC-036` `TC-037`

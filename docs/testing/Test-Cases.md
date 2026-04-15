@@ -487,9 +487,9 @@
 - 测试步骤:
   1. 打开某个 Agent profile。
   2. 编辑 `role / avatar / prompt / memory binding / provider preference`。
-  3. 保存后刷新页面，并检查 next-run preview 是否读取新配置。
-- 预期结果: Agent profile edit 会持久化并影响下一次 run 的配置注入。
-- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine inventory 继续留 `TKT-33`，更宽的 workspace / member durable config 与 recovery truth 继续留 `TKT-37`。
+  3. 保存后刷新页面，并检查 next-run preview 与 file-level `SOUL.md / MEMORY.md / notes/*` stack 是否读取新配置与挂载关系。
+- 预期结果: Agent profile edit 会持久化并影响下一次 run 的配置注入，且 profile 会显式暴露 file-backed memory/rule stack 与 preview linkage。
+- 业务结论: `TKT-32` 已把 Agent profile editor、memory binding / recall policy / provider preference、file-level `SOUL.md / MEMORY.md / notes/*` stack、next-run preview 与 profile audit 接成同一条链；这条用例现在按 headed `profile -> edit -> save -> reload` 回放转 `Pass`，machine inventory 继续留 `TKT-33`，更宽的 workspace / member durable config 与 recovery truth 继续留 `TKT-37`。
 
 ## TC-037 Machine Profile / Local CLI Model Capability Binding
 

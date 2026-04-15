@@ -231,6 +231,14 @@ try {
   await page.goto(`${webURL}/profiles/agent/agent-codex-dockmaster`, { waitUntil: "domcontentloaded" });
   await waitForVisible(page.locator('[data-testid="profile-surface-title"]'), "agent profile title did not render");
   await waitForVisible(page.locator('[data-testid="profile-editor-role"]'), "agent profile editor did not render");
+  await waitForVisible(
+    page.locator('[data-testid="profile-agent-file-openshock-agents-codex-dockmaster-soul-md"]'),
+    "agent soul file did not render in file stack"
+  );
+  await waitForVisible(
+    page.locator('[data-testid="profile-agent-file-openshock-agents-codex-dockmaster-memory-md"]'),
+    "agent memory file did not render in file stack"
+  );
   await capture(page, "agent-profile-before-edit");
 
   await page.locator('[data-testid="profile-editor-role"]').fill("Delivery Lead");
@@ -269,17 +277,25 @@ try {
   }, "next-run preview did not reflect updated profile");
   await waitForVisible(page.locator('[data-testid="profile-audit-entry"]'), "profile audit entry did not render");
   await capture(page, "agent-profile-after-save");
-  results.push("- 在 Agent profile 中编辑 `role / avatar / prompt / provider preference / memory binding / recall policy / sandbox policy` 后，保存会直接写回后端 truth，并立刻刷新同页状态。");
+  results.push(
+    "- 在 Agent profile 中编辑 `role / avatar / prompt / provider preference / memory binding / recall policy / sandbox policy` 后，保存会直接写回后端 truth，并立刻刷新同页状态；同页也会正式暴露 `SOUL.md / MEMORY.md / notes/*` 文件栈。"
+  );
 
   await waitForVisible(
     page.locator('[data-testid="profile-next-run-preview-file-openshock-agents-codex-dockmaster-memory-md"]'),
     "agent memory file did not enter next-run preview"
   );
+  await waitForVisible(
+    page.locator('[data-testid="profile-agent-file-preview-openshock-agents-codex-dockmaster-memory-md"]'),
+    "agent file stack did not mark preview relationship for memory file"
+  );
   const previewText = await page.locator('[data-testid="profile-next-run-preview-summary"]').innerText();
   if (previewText.includes("notes/rooms/room-runtime.md")) {
     throw new Error("room note still appears in prompt summary after removing issue-room binding");
   }
-  results.push("- next-run preview 现在会吸收新的 Agent profile：summary 带出 `Delivery Lead / Claude Code CLI / agent-first`，并把 `.openshock/agents/codex-dockmaster/MEMORY.md` 收进 preview。");
+  results.push(
+    "- next-run preview 现在会吸收新的 Agent profile：summary 带出 `Delivery Lead / Claude Code CLI / agent-first`，并把 `.openshock/agents/codex-dockmaster/MEMORY.md` 收进 preview；file stack 也会同步标出哪些文件会被下一轮挂载。"
+  );
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForVisible(page.locator('[data-testid="profile-editor-role"]'), "profile editor did not survive reload");
@@ -292,8 +308,14 @@ try {
     const text = await page.locator('[data-testid="profile-next-run-preview-summary"]').innerText();
     return text.includes("Delivery Lead") && text.includes("agent-first");
   }, "next-run preview did not persist after reload");
+  await waitForVisible(
+    page.locator('[data-testid="profile-agent-file-openshock-agents-codex-dockmaster-notes-operating-rules-md"]'),
+    "agent operating rules file did not persist in file stack after reload"
+  );
   await capture(page, "agent-profile-after-reload");
-  results.push("- 刷新页面后，profile editor、profile audit 和 next-run preview 都会继续读回同一份持久化 truth；sandbox allowlist 也不会退回默认值。");
+  results.push(
+    "- 刷新页面后，profile editor、profile audit、file stack 和 next-run preview 都会继续读回同一份持久化 truth；sandbox allowlist 也不会退回默认值。"
+  );
 
   const report = [
     "# 2026-04-09 Agent Profile Editor Report",
@@ -308,7 +330,7 @@ try {
     ...screenshots.map((shot) => `- ${shot.name}: ${shot.path}`),
     "",
     "## Single Value",
-    "- Agent profile 现在已经不只是只读 surface：`role / avatar / prompt / provider preference / memory binding / recall policy / sandbox policy` 可编辑、可持久化，并能直接改写同页 next-run preview 与 profile audit truth。",
+    "- Agent profile 现在不仅能编辑抽象字段，还能把 file-level `SOUL.md / MEMORY.md / notes/*` 和记忆预览一起暴露出来，让下一轮注入关系在同一页可见。",
   ].join("\n");
 
   await writeFile(reportPath, `${report}\n`, "utf8");

@@ -507,6 +507,7 @@ type Agent struct {
 	Sandbox               SandboxPolicy            `json:"sandbox"`
 	RecentRunIDs          []string                 `json:"recentRunIds"`
 	ProfileAudit          []AgentProfileAuditEntry `json:"profileAudit"`
+	FileStack             []AgentFileReference     `json:"fileStack,omitempty"`
 }
 
 type AgentProfileAuditEntry struct {
@@ -521,6 +522,13 @@ type AgentProfileAuditChange struct {
 	Field    string `json:"field"`
 	Previous string `json:"previous"`
 	Current  string `json:"current"`
+}
+
+type AgentFileReference struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Summary string `json:"summary"`
+	Scope   string `json:"scope,omitempty"`
 }
 
 type Machine struct {

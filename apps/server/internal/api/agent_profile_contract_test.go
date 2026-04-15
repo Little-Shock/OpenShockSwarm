@@ -26,6 +26,10 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 	if initial.Role == "" || initial.Avatar == "" || initial.Prompt == "" || initial.ProviderPreference == "" {
 		t.Fatalf("initial agent = %#v, want seeded profile fields", initial)
 	}
+	if !agentFileStackHasPath(initial.FileStack, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "SOUL.md"))) ||
+		!agentFileStackHasPath(initial.FileStack, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
+		t.Fatalf("initial fileStack = %#v, want seeded agent file-backed memory scaffold", initial.FileStack)
+	}
 
 	updateResp := doJSONRequest(
 		t,
@@ -64,6 +68,9 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 	if !previewHasPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
 		t.Fatalf("preview items = %#v, want owner agent memory path", preview.Items)
 	}
+	if !stringSliceHasPath(preview.Files, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
+		t.Fatalf("preview files = %#v, want owner agent memory path in mounted preview files", preview.Files)
+	}
 	if previewHasPath(preview.Items, filepath.ToSlash(filepath.Join("notes", "rooms", "room-runtime.md"))) {
 		t.Fatalf("preview items = %#v, room note should be absent after binding change", preview.Items)
 	}
@@ -82,6 +89,10 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 	}
 	if updated.Sandbox.Profile != "restricted" || len(updated.Sandbox.AllowedTools) != 1 {
 		t.Fatalf("updated sandbox detail = %#v, want persisted sandbox policy", updated.Sandbox)
+	}
+	if !agentFileStackHasPath(updated.FileStack, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "operating-rules.md"))) ||
+		!agentFileStackHasPath(updated.FileStack, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "skills.md"))) {
+		t.Fatalf("updated detail fileStack = %#v, want durable agent file-backed rule paths", updated.FileStack)
 	}
 }
 
@@ -120,4 +131,24 @@ func TestAgentProfileRouteAllowsCustomModelOutsideCatalog(t *testing.T) {
 		!strings.Contains(preview.PromptSummary, "shock-sidecar") {
 		t.Fatalf("promptSummary = %q, want renamed agent + custom model + runtime preference", preview.PromptSummary)
 	}
+}
+
+func agentFileStackHasPath(items []store.AgentFileReference, want string) bool {
+	want = filepath.ToSlash(want)
+	for _, item := range items {
+		if filepath.ToSlash(item.Path) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceHasPath(items []string, want string) bool {
+	want = filepath.ToSlash(want)
+	for _, item := range items {
+		if filepath.ToSlash(item) == want {
+			return true
+		}
+	}
+	return false
 }

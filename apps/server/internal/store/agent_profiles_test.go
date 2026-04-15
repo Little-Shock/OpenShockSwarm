@@ -48,6 +48,20 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 	}
 	if found, ok := findAgentByOwner(nextState, "Codex Dockmaster"); !ok || found.Role != "Delivery Lead" {
 		t.Fatalf("state agents = %#v, want updated role persisted in returned state", nextState.Agents)
+	} else {
+		expectedFiles := []string{
+			filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "SOUL.md")),
+			filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md")),
+			filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "channels.md")),
+			filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "operating-rules.md")),
+			filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "skills.md")),
+			filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "work-log.md")),
+		}
+		for _, path := range expectedFiles {
+			if !agentFileStackContainsPath(found.FileStack, path) {
+				t.Fatalf("agent fileStack = %#v, want %q", found.FileStack, path)
+			}
+		}
 	}
 
 	center := s.MemoryCenter()
@@ -60,6 +74,9 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 	}
 	if !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
 		t.Fatalf("preview items = %#v, want owner agent memory path after user binding", preview.Items)
+	}
+	if !stringSliceContains(preview.Files, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
+		t.Fatalf("preview files = %#v, want owner agent memory path exposed in mounted file list", preview.Files)
 	}
 	if previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join("notes", "rooms", "room-runtime.md"))) {
 		t.Fatalf("preview items = %#v, room note should be absent after dropping issue-room binding", preview.Items)
@@ -75,6 +92,9 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 	}
 	if reloadedAgent.Role != "Delivery Lead" || reloadedAgent.Avatar != "signal-radar" || reloadedAgent.ModelPreference != "claude-sonnet-4" || reloadedAgent.RuntimePreference != "shock-main" || len(reloadedAgent.ProfileAudit) == 0 {
 		t.Fatalf("reloaded agent = %#v, want persisted profile edits + audit", reloadedAgent)
+	}
+	if !agentFileStackContainsPath(reloadedAgent.FileStack, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
+		t.Fatalf("reloaded agent fileStack = %#v, want agent memory scaffold path", reloadedAgent.FileStack)
 	}
 }
 
@@ -127,4 +147,24 @@ func TestUpdateAgentProfileAllowsModelOutsideProviderCatalog(t *testing.T) {
 		!strings.Contains(preview.PromptSummary, "shock-sidecar") {
 		t.Fatalf("preview summary = %q, want renamed agent + custom model + runtime preference", preview.PromptSummary)
 	}
+}
+
+func agentFileStackContainsPath(items []AgentFileReference, want string) bool {
+	want = filepath.ToSlash(want)
+	for _, item := range items {
+		if filepath.ToSlash(item.Path) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceContains(items []string, want string) bool {
+	want = filepath.ToSlash(want)
+	for _, item := range items {
+		if filepath.ToSlash(item) == want {
+			return true
+		}
+	}
+	return false
 }
