@@ -506,6 +506,9 @@ func TestRoomAutoHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(
 	if !strings.Contains(blockedHandoff.AutoFollowup.Summary, "当前还未登录模型服务") {
 		t.Fatalf("handoff auto followup summary = %#v, want blocked error summary", blockedHandoff.AutoFollowup)
 	}
+	if !strings.Contains(blockedHandoff.LastAction, "自动继续受阻") || !strings.Contains(blockedHandoff.LastAction, "当前还未登录模型服务") {
+		t.Fatalf("handoff last action = %q, want blocked durable followup visibility", blockedHandoff.LastAction)
+	}
 
 	reloadedStore, err := store.New(statePath, root)
 	if err != nil {
@@ -564,6 +567,9 @@ func TestRoomAutoHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(
 	}
 	if resumedHandoff == nil || resumedHandoff.AutoFollowup == nil || resumedHandoff.AutoFollowup.Status != "completed" {
 		t.Fatalf("resumed handoff = %#v, want completed durable followup after restart", resumedHandoff)
+	}
+	if !strings.Contains(resumedHandoff.LastAction, "已自动继续") || !strings.Contains(resumedHandoff.LastAction, "我接着上一轮没跑完的复核") {
+		t.Fatalf("resumed handoff last action = %q, want completed durable followup summary", resumedHandoff.LastAction)
 	}
 	if secondPayload.Output != "我接着上一轮没跑完的复核，先把恢复链路继续收口。" {
 		t.Fatalf("second payload output = %q, want resumed claude reply", secondPayload.Output)

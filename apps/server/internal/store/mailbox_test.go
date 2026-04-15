@@ -114,6 +114,72 @@ func TestCreateRoomAutoHandoffImmediatelySwitchesOwner(t *testing.T) {
 	}
 }
 
+func TestRoomAutoHandoffFollowupUpdatesMailboxAndInboxTruth(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	nextState, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "继续复核当前房间",
+		Summary:     "请直接接棒并继续推进这条房间线程。",
+		Kind:        handoffKindRoomAuto,
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(room-auto) error = %v", err)
+	}
+
+	if handoff.AutoFollowup == nil || handoff.AutoFollowup.Status != "pending" {
+		t.Fatalf("handoff auto followup = %#v, want pending", handoff.AutoFollowup)
+	}
+	if !strings.Contains(handoff.LastAction, "自动继续") {
+		t.Fatalf("handoff last action = %q, want pending auto-followup hint", handoff.LastAction)
+	}
+	pendingInbox := findInboxItemByHandoffID(nextState.Inbox, handoff.ID)
+	if pendingInbox == nil || !strings.Contains(pendingInbox.Summary, "自动继续") {
+		t.Fatalf("pending inbox item = %#v, want auto-followup summary", pendingInbox)
+	}
+
+	blockedState, blocked, err := s.UpdateRoomAutoHandoffFollowup(handoff.ID, "blocked", "当前还未登录模型服务。")
+	if err != nil {
+		t.Fatalf("UpdateRoomAutoHandoffFollowup(blocked) error = %v", err)
+	}
+	if blocked.AutoFollowup == nil || blocked.AutoFollowup.Status != "blocked" {
+		t.Fatalf("blocked handoff auto followup = %#v, want blocked", blocked.AutoFollowup)
+	}
+	if !strings.Contains(blocked.LastAction, "自动继续受阻") || !strings.Contains(blocked.LastAction, "当前还未登录模型服务") {
+		t.Fatalf("blocked handoff last action = %q, want blocked followup reason", blocked.LastAction)
+	}
+	blockedInbox := findInboxItemByHandoffID(blockedState.Inbox, handoff.ID)
+	if blockedInbox == nil || blockedInbox.Kind != "blocked" || !strings.Contains(blockedInbox.Title, "自动继续受阻") || !strings.Contains(blockedInbox.Summary, "当前还未登录模型服务") {
+		t.Fatalf("blocked inbox item = %#v, want blocked auto-followup truth", blockedInbox)
+	}
+
+	completedState, completed, updated, err := s.CompleteLatestRoomAutoHandoffFollowup("room-runtime", "Claude Review Runner", "先把恢复链路继续收口。")
+	if err != nil {
+		t.Fatalf("CompleteLatestRoomAutoHandoffFollowup() error = %v", err)
+	}
+	if !updated {
+		t.Fatalf("updated = false, want latest room-auto followup completed")
+	}
+	if completed.AutoFollowup == nil || completed.AutoFollowup.Status != "completed" {
+		t.Fatalf("completed handoff auto followup = %#v, want completed", completed.AutoFollowup)
+	}
+	if !strings.Contains(completed.LastAction, "已自动继续") || !strings.Contains(completed.LastAction, "先把恢复链路继续收口") {
+		t.Fatalf("completed handoff last action = %q, want completed followup summary", completed.LastAction)
+	}
+	completedInbox := findInboxItemByHandoffID(completedState.Inbox, handoff.ID)
+	if completedInbox == nil || completedInbox.Kind != "status" || !strings.Contains(completedInbox.Title, "自动继续已完成") || !strings.Contains(completedInbox.Summary, "先把恢复链路继续收口") {
+		t.Fatalf("completed inbox item = %#v, want completed auto-followup truth", completedInbox)
+	}
+}
+
 func TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
