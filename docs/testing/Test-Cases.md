@@ -1,7 +1,7 @@
 # OpenShock Test Cases
 
-**版本:** 1.26
-**更新日期:** 2026 年 4 月 12 日
+**版本:** 1.27
+**更新日期:** 2026 年 4 月 16 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
 ---
@@ -1328,18 +1328,18 @@
 - 预期结果: 本地 session workspace 必须成为 Codex resume continuity 的恢复锚点；不同 session 不得共享全局 `--last` 状态。
 - 业务结论: 2026 年 4 月 16 日新增 `TestRunPromptUsesSessionScopedCodexHome`、`TestResumeSessionReusesSessionScopedCodexHomeAcrossRestart` 与 `TestExecRouteUsesSessionScopedCodexHome`。当前 targeted `go test ./apps/daemon/internal/runtime` 与 `go test ./apps/daemon/internal/api` 已确认 daemon 会为同一 session 派生稳定的 `OPENSHOCK_CODEX_HOME`，并在 restart 后继续复用，因此这条 local-first Codex continuity 用例当前转为 `Pass`。
 
-## TC-095 Daemon Once System Continuity Harness
+## TC-095 Daemon Real-Process Continuity Harness
 
-- 业务目标: 确认 `go run ./cmd/openshock-daemon --once` 级别的 system harness 能真实证明多轮 session continuity 和恢复链，而不只是 API 层单测。
-- 前置条件: daemon once 模式、httptest control plane、fake CLI 与 scenario snapshot seed 已就绪。
+- 业务目标: 确认真实 daemon 进程级别的 system harness 能证明多轮 session continuity、heartbeat 与恢复链，而不只是 API / runtime 单测。
+- 前置条件: 可 build 的 daemon binary、httptest control plane、fake Codex CLI 与同一 `sessionId / runId / roomId` 的最小执行场景已就绪。
 - 测试步骤:
-  1. 用 scenario snapshot 启一个带 run/session/room 的最小 control plane。
-  2. 运行一次 `openshock-daemon --once`，确认第一轮 turn 完成并写出 session workspace。
-  3. 再运行第二次 `openshock-daemon --once`，确认复用同一 session workspace。
-  4. 检查 `CURRENT_TURN.md` 已刷新、`notes/work-log.md` 已累积两轮。
-  5. 如果 provider thread continuity 已落地，再确认 thread id 也被同一 harness 证明。
-- 预期结果: system harness 必须能覆盖 “后台拉起 -> 执行 -> 写回 -> 二轮复用 -> 恢复” 这条整链，而不是只证明某个函数返回值。
-- 业务结论: 待补 `TKT-100`。
+  1. build `./cmd/openshock-daemon` 二进制，并用 httptest control plane 接收 `/v1/runtime/heartbeats`。
+  2. 启动第一轮 daemon 进程，通过 `/v1/exec` 发第一轮 Codex 请求，确认写出 session workspace。
+  3. 杀掉第一轮 daemon，再启动第二轮 daemon 进程，对同一 `sessionId` 发 `resumeSession=true` 的第二轮请求。
+  4. 检查 `CURRENT_TURN.md` 已刷新到第二轮、`notes/work-log.md` 已累积两轮，且 `SESSION.json.codexHome` 保持稳定。
+  5. 检查 `SESSION.json.appServerThreadId` 已持久化并在第二轮 resume 时重新注入，同时 control plane 至少收到一次 heartbeat。
+- 预期结果: system harness 必须覆盖“真实 daemon 拉起 -> heartbeat -> exec -> 写回 -> restart -> resume”整链，并证明同一 session 的本地恢复锚点没有断裂。
+- 业务结论: 2026 年 4 月 16 日新增 `TestDaemonContinuityHarnessAcrossRestart`。当前 `go test -tags=integration ./apps/daemon/internal/integration` 与 `go test ./apps/daemon/...` 已确认真实 daemon 子进程、control plane heartbeat、same-session Codex home、`CURRENT_TURN.md`/`notes/work-log.md` 刷新累积与 `appServerThreadId` reinjection 一起成立，因此这条 system continuity 用例当前转为 `Pass`。
 
 ## TC-096 Phase 0 Shell Subtractive Flow Sweep
 

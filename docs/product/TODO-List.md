@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.20
+**版本:** 1.21
 **更新日期:** 2026 年 4 月 16 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -138,8 +138,6 @@
   - memory center 现在还补了正式 provider orchestration；`workspace-file / search-sidecar / external-persistent` 的 `enabled / scope / retention / degraded fallback` 会写回 durable truth，并直接进入 `/memory` 和 next-run preview。
 - `GAP-66 / TKT-97`
   - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
-- `GAP-69 / TKT-100`
-  - daemon 现在还要补真正的 system harness；`go run ./cmd/openshock-daemon --once`、httptest control plane、fake CLI 与 scenario snapshot 要一起证明“两轮复用同一 session、CURRENT_TURN 刷新、work-log 累积、恢复链不断裂”。
 - `GAP-70 / TKT-101`
   - Phase 0 shell 前端现在要持续做减法；房间、收件箱、运行与治理面要继续收掉重复状态、重复动作和过度解释，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
 
@@ -149,20 +147,22 @@
   - daemon session workspace envelope 已正式落地；同一 `sessionId` 会稳定复用同一目录，并写出 `MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/work-log.md` 作为 turn continuity 本地锚点。
 - `GAP-68 / TKT-99`
   - Codex resume continuity 已收成 local-first truth；session-scoped `OPENSHOCK_CODEX_HOME` 会跟同一份 session workspace 一起复用，daemon restart 后的 `resume --last` 不再继续吃全局共享状态。
+- `GAP-69 / TKT-100`
+  - daemon real-process continuity system harness 已站住；built binary + real daemon subprocess + httptest control plane + fake Codex CLI 现在能一起证明 same-session restart recovery、`CURRENT_TURN.md` 刷新、`notes/work-log.md` 累积、稳定 `codexHome` 与 `appServerThreadId` reinjection。
 - `GAP-71 / TKT-102`
   - 显式 provider thread state 的本地持久化 contract 已站住；执行进程现在可通过 daemon 提供的 thread-state file 写回 `SESSION.json.appServerThreadId`，后续 resume 会把这个值重新注入进程环境，形成可验证的本地恢复锚点。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”“能不能把 workspace 级 hot room 收成跨 room rollup”“能不能让 hot room 直接起 governed next handoff”，而是 daemon system harness、前端减法、更重的长期记忆整理、外部 provider 编排、durable governance，以及下一层的 multi-room dependency graph / auto-closeout。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”“能不能把 workspace 级 hot room 收成跨 room rollup”“能不能让 hot room 直接起 governed next handoff”，而是前端减法、更重的长期记忆整理、外部 provider 编排、durable governance，以及下一层的 multi-room dependency graph / auto-closeout；同时要继续把刚站住的 daemon continuity harness 扩成更重的 multi-session / multi-agent recovery 矩阵。
 
 ---
 
 ## 四、推荐推进顺序
 
-1. 先收 `TKT-100`：把 daemon system harness / scenario snapshot 做成默认回归入口，避免后续多智能体协同与恢复链只靠零散单测。
-2. 前端持续并行做 `TKT-101` 的 subtractive polish，但不再靠加新面板解决流畅度问题。
-3. 然后回到 `CHK-10` 的更重 memory compaction / retention / durable adapter。
+1. 先收 `TKT-101`：持续做 room / inbox / run / governance 的 subtractive polish，但不再靠加新面板解决流畅度问题。
+2. 然后回到 `CHK-10` 的更重 memory compaction / retention / durable adapter。
+3. 后续所有多智能体 continuity / recovery 票默认接 `TKT-100` 这套 real-process harness，不再回退到手搓零散 fixture。
 
 ---
 
@@ -178,12 +178,20 @@
   - daemon-managed persistent session workspace
   - `CURRENT_TURN.md / SESSION.json / notes/work-log.md` per-session envelope
   - local-first provider thread persistence 与 restart recovery
-  - daemon once/system harness + scenario snapshot seed pattern
+  - real daemon-process continuity harness + restart recovery pattern
   - 前端 mention/feed/read-receipt 里“减法优先”的交互收口思路
 - 不允许吸收的是:
   - 旧 JS `apps/server / apps/shell` 主体代码
   - `tff` 的 dashboard 气质
   - 提前把 hosted billing / subscription 拖回当前主线
+
+### 还要继续吸收进 TODO 的具体项
+
+- 用 `TKT-100` harness 继续补多 session / 多 provider / 多次 retry 的 continuity matrix，不让恢复链重新退回函数级单测。
+- 把 recovery fixture 继续收敛成可复用的 scenario seed / evidence pattern，后续 daemon 与 governance 恢复票不再各自手搓假数据。
+- 按 `tff` 的局部组件拆法继续重构 shell，但只吸收拆法和降复杂度思路，不吸收它的 dashboard 视觉与 IA。
+- 把 session workspace 从最小 envelope 前滚到更可读的 memory / rules / notes surface，让多智能体协作不只靠聊天历史恢复。
+- 前端所有高频路径继续执行“减法优先”，优先删除重复状态、重复动作和解释性噪音，而不是再加 summary 卡和二级面板。
 
 ---
 

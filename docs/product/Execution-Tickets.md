@@ -1,7 +1,7 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.27
-**更新日期:** 2026 年 4 月 11 日
+**版本:** 1.28
+**更新日期:** 2026 年 4 月 16 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -1531,23 +1531,26 @@
 - Checklist: `CHK-10` `CHK-14` `CHK-15`
 - Test Cases: `TC-094`
 
-## TKT-100 Daemon System Scenario Harness
+## TKT-100 Daemon Real-Process Continuity Harness
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P1`
 - 目标: 把多智能体协同、session continuity 与恢复链做成可重复的 daemon system harness，避免关键行为只靠零散 store/api 单测守着。
 - 范围:
-  - `go run ./cmd/openshock-daemon --once` system tests
-  - httptest control plane + fake CLI
-  - reusable scenario snapshot seed
-  - two-turn reuse / restart recovery / CURRENT_TURN refresh assertions
-- 依赖: `TKT-98` `TKT-99`
+  - built daemon binary + real daemon subprocess
+  - httptest control plane + fake Codex CLI
+  - two-turn same-session reuse across daemon restart
+  - `CURRENT_TURN.md` refresh、`notes/work-log.md` 累积与 `SESSION.json` continuity assertions
+  - provider thread continuity reinjection proof
+- 依赖: `TKT-98` `TKT-99` `TKT-102`
 - Done When:
-  - system harness 能稳定重放同一 session 的连续两轮 turn
-  - `CURRENT_TURN.md`、`notes/work-log.md` 与 provider thread continuity 都能在 system 级测试里被证明
-  - 后续多智能体恢复票默认接这套 harness，而不是重新手搓 fixture
+  - real daemon process 能稳定重放同一 session 的连续两轮 turn
+  - daemon restart 后，同一 session 的 `codex-home`、`CURRENT_TURN.md`、`notes/work-log.md` 与 `appServerThreadId` continuity 都能在 system 级测试里被证明
+  - heartbeat、exec bridge 与恢复链在同一 harness 里一起成立，后续恢复票默认接这套 harness
 - 最新证据:
-  - 待补
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test -tags=integration ./internal/integration -run TestDaemonContinuityHarnessAcrossRestart -count=1'`
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test -tags=integration ./internal/integration -count=1'`
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test ./... -count=1'`
 - Checklist: `CHK-14` `CHK-15`
 - Test Cases: `TC-095`
 
