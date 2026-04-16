@@ -96,6 +96,62 @@ func TestControlRunStopResumeAndFollowThread(t *testing.T) {
 	}
 }
 
+func TestRoomConversationRecoveryWritebackPreservesPausedState(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, err := s.ControlRun("run_runtime_01", RunControlInput{
+		Action: runControlActionStop,
+		Note:   "先暂停，等待人工确认后再继续。",
+		Actor:  "Larkspur",
+	}); err != nil {
+		t.Fatalf("ControlRun(stop) error = %v", err)
+	}
+
+	assertPausedState := func(label string, state State) {
+		t.Helper()
+		room := findControlRoomByID(state, "room-runtime")
+		issue := findControlIssueByKey(state, "OPS-12")
+		run := findControlRunByID(state, "run_runtime_01")
+		session := findControlSessionByID(state, "session-runtime")
+		if room == nil || room.Topic.Status != runStatusPaused {
+			t.Fatalf("%s room = %#v, want paused topic", label, room)
+		}
+		if issue == nil || issue.State != runStatusPaused {
+			t.Fatalf("%s issue = %#v, want paused issue", label, issue)
+		}
+		if run == nil || run.Status != runStatusPaused {
+			t.Fatalf("%s run = %#v, want paused run", label, run)
+		}
+		if session == nil || session.Status != runStatusPaused {
+			t.Fatalf("%s session = %#v, want paused session", label, session)
+		}
+	}
+
+	attemptState, err := s.RecordRoomConversationRecoveryAttempt("room-runtime", "background_loop", "后台恢复 loop 正在尝试续跑。")
+	if err != nil {
+		t.Fatalf("RecordRoomConversationRecoveryAttempt() error = %v", err)
+	}
+	assertPausedState("attempt", attemptState)
+
+	blockedState, err := s.RecordRoomConversationRecoveryBlocked("room-runtime", "background_loop", "当前恢复仍被阻塞。")
+	if err != nil {
+		t.Fatalf("RecordRoomConversationRecoveryBlocked() error = %v", err)
+	}
+	assertPausedState("blocked", blockedState)
+
+	completedState, err := s.CompleteRoomConversationRecovery("room-runtime", "background_loop", "已经收口。")
+	if err != nil {
+		t.Fatalf("CompleteRoomConversationRecovery() error = %v", err)
+	}
+	assertPausedState("completed", completedState)
+}
+
 func findControlRunByID(state State, runID string) *Run {
 	for index := range state.Runs {
 		if state.Runs[index].ID == runID {

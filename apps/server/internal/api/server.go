@@ -2135,6 +2135,25 @@ func findInterruptedRoomPendingTurn(snapshot store.State, roomID, provider strin
 	return session.PendingTurn
 }
 
+func roomAutonomousRecoverySuppressed(snapshot store.State, roomID string) bool {
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
+		return false
+	}
+	_, run, _, ok := findRoomRunIssue(snapshot, roomID)
+	if !ok || strings.TrimSpace(run.Status) != "paused" {
+		return false
+	}
+	if !strings.Contains(strings.TrimSpace(run.NextAction), "Resume") {
+		return false
+	}
+	session, ok := findRoomConversationSession(snapshot, roomID, "")
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(session.Status) == "paused"
+}
+
 func buildRoomHandoffCatalog(snapshot store.State, roomID string) string {
 	_, run, issue, ok := findRoomRunIssue(snapshot, roomID)
 	if !ok {
@@ -3005,7 +3024,7 @@ func (s *Server) kickRoomAutoRecovery() {
 	snapshot := s.store.Snapshot()
 	now := time.Now()
 	for _, session := range snapshot.Sessions {
-		if !interruptedPendingTurnRecoveryEligible(session) {
+		if !interruptedPendingTurnRecoveryEligible(snapshot, session) {
 			s.clearPendingTurnRecoveryTracking(session.ID)
 			continue
 		}
@@ -3167,6 +3186,9 @@ func roomAutoHandoffRecoveryEligible(snapshot store.State, handoff store.AgentHa
 	if !ok {
 		return false
 	}
+	if roomAutonomousRecoverySuppressed(snapshot, handoff.RoomID) {
+		return false
+	}
 	ownerMatches := false
 	for _, owner := range []string{
 		strings.TrimSpace(room.Topic.Owner),
@@ -3206,9 +3228,10 @@ func continueInterruptedPendingTurnProvider(session store.Session) string {
 	return provider
 }
 
-func interruptedPendingTurnRecoveryEligible(session store.Session) bool {
+func interruptedPendingTurnRecoveryEligible(snapshot store.State, session store.Session) bool {
 	return strings.TrimSpace(session.ID) != "" &&
 		strings.TrimSpace(session.RoomID) != "" &&
+		!roomAutonomousRecoverySuppressed(snapshot, session.RoomID) &&
 		continueInterruptedPendingTurnProvider(session) != ""
 }
 
@@ -3218,7 +3241,7 @@ func findInterruptedPendingTurnSession(snapshot store.State, sessionID string) (
 		return store.Session{}, false
 	}
 	for _, session := range snapshot.Sessions {
-		if session.ID != trimmedID || !interruptedPendingTurnRecoveryEligible(session) {
+		if session.ID != trimmedID || !interruptedPendingTurnRecoveryEligible(snapshot, session) {
 			continue
 		}
 		return session, true

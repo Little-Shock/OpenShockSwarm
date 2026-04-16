@@ -8,6 +8,36 @@ import (
 
 const sessionRecoveryHistoryCap = 16
 
+func recoveryWritebackShouldPreserveHumanPause(run Run, session *Session) bool {
+	if strings.TrimSpace(run.Status) != runStatusPaused {
+		return false
+	}
+	if session == nil || strings.TrimSpace(session.Status) != runStatusPaused {
+		return false
+	}
+	return strings.Contains(strings.TrimSpace(run.NextAction), "Resume")
+}
+
+func (s *Store) roomConversationRecoverySessionLocked(runID string) *Session {
+	for index := range s.state.Sessions {
+		if s.state.Sessions[index].ActiveRunID == runID {
+			return &s.state.Sessions[index]
+		}
+	}
+	return nil
+}
+
+func (s *Store) applyRoomConversationRecoveryWritebackLocked(roomIndex, runIndex, issueIndex int) {
+	session := s.roomConversationRecoverySessionLocked(s.state.Runs[runIndex].ID)
+	if recoveryWritebackShouldPreserveHumanPause(s.state.Runs[runIndex], session) {
+		s.state.Rooms[roomIndex].Topic.Status = runStatusPaused
+		s.state.Issues[issueIndex].State = runStatusPaused
+		return
+	}
+	s.state.Rooms[roomIndex].Topic.Status = "running"
+	s.state.Issues[issueIndex].State = "running"
+}
+
 func sessionRecoveryReplayAnchor(sessionID string) string {
 	trimmedID := strings.TrimSpace(sessionID)
 	if trimmedID == "" {
@@ -73,8 +103,7 @@ func (s *Store) RecordRoomConversationRecoveryAttempt(roomID, source, summary st
 		appendSessionRecoveryEvent(item.Recovery, "retrying", strings.TrimSpace(source), summary, now)
 		item.UpdatedAt = now
 	})
-	s.state.Rooms[roomIndex].Topic.Status = "running"
-	s.state.Issues[issueIndex].State = "running"
+	s.applyRoomConversationRecoveryWritebackLocked(roomIndex, runIndex, issueIndex)
 	if err := s.persistLocked(); err != nil {
 		return State{}, err
 	}
@@ -100,8 +129,7 @@ func (s *Store) RecordRoomConversationRecoveryBlocked(roomID, source, summary st
 		appendSessionRecoveryEvent(item.Recovery, "blocked", strings.TrimSpace(source), summary, now)
 		item.UpdatedAt = now
 	})
-	s.state.Rooms[roomIndex].Topic.Status = "running"
-	s.state.Issues[issueIndex].State = "running"
+	s.applyRoomConversationRecoveryWritebackLocked(roomIndex, runIndex, issueIndex)
 	if err := s.persistLocked(); err != nil {
 		return State{}, err
 	}
@@ -128,8 +156,7 @@ func (s *Store) CompleteRoomConversationRecovery(roomID, source, summary string)
 		appendSessionRecoveryEvent(item.Recovery, "recovered", strings.TrimSpace(source), summary, now)
 		item.UpdatedAt = now
 	})
-	s.state.Rooms[roomIndex].Topic.Status = "running"
-	s.state.Issues[issueIndex].State = "running"
+	s.applyRoomConversationRecoveryWritebackLocked(roomIndex, runIndex, issueIndex)
 	if err := s.persistLocked(); err != nil {
 		return State{}, err
 	}

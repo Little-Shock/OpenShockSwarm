@@ -1850,6 +1850,170 @@ func TestBackgroundRecoveryLoopAutonomouslyRecoversBlockedRoomAutoFollowupAfterR
 	}
 }
 
+func TestBackgroundRecoveryLoopDoesNotRecoverBlockedRoomAutoFollowupWhileRunPaused(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	var (
+		mu           sync.Mutex
+		execRequests []ExecRequest
+	)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode exec payload: %v", err)
+		}
+		mu.Lock()
+		execRequests = append(execRequests, req)
+		count := len(execRequests)
+		mu.Unlock()
+
+		switch count {
+		case 1:
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "我先把这一棒交给 reviewer。\nOPENSHOCK_HANDOFF: agent-claude-review-runner | 继续复核恢复链路 | 请把恢复链路和副作用复核完。",
+				Duration: "0.6s",
+			})
+		case 2:
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "not logged in"})
+		case 3:
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "claude",
+				Command:  []string{"claude", "--print"},
+				Output:   "这个回复不该在 pause 期间被自动触发。",
+				Duration: "0.4s",
+			})
+		default:
+			t.Fatalf("unexpected exec request count: %d", count)
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	pairMainRuntime(t, s, daemon.URL)
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Paused Loop Auto Recovery", "Codex Dockmaster")
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把恢复链路推进。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/messages", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST room message error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first room message status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	server.Close()
+
+	stoppedState, err := s.ControlRun(created.RunID, store.RunControlInput{
+		Action: "stop",
+		Note:   "先暂停，人工确认后再决定是否恢复自动续跑。",
+		Actor:  "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("ControlRun(stop) error = %v", err)
+	}
+	stoppedRoom := findRoomByID(stoppedState, created.RoomID)
+	stoppedIssue := findIssueByRoomID(stoppedState, created.RoomID)
+	stoppedRun := findRunByID(stoppedState, created.RunID)
+	stoppedSession := findSessionByID(stoppedState, created.SessionID)
+	if stoppedRoom == nil || stoppedRoom.Topic.Status != "paused" {
+		t.Fatalf("stopped room = %#v, want paused topic", stoppedRoom)
+	}
+	if stoppedIssue == nil || stoppedIssue.State != "paused" {
+		t.Fatalf("stopped issue = %#v, want paused issue", stoppedIssue)
+	}
+	if stoppedRun == nil || stoppedRun.Status != "paused" {
+		t.Fatalf("stopped run = %#v, want paused run", stoppedRun)
+	}
+	if stoppedSession == nil || stoppedSession.Status != "paused" {
+		t.Fatalf("stopped session = %#v, want paused session", stoppedSession)
+	}
+
+	var blockedHandoff *store.AgentHandoff
+	for index := range stoppedState.Mailbox {
+		item := &stoppedState.Mailbox[index]
+		if item.RoomID == created.RoomID && item.Kind == "room-auto" {
+			blockedHandoff = item
+			break
+		}
+	}
+	if blockedHandoff == nil || blockedHandoff.AutoFollowup == nil || blockedHandoff.AutoFollowup.Status != "blocked" {
+		t.Fatalf("blocked handoff = %#v, want blocked room-auto followup before reload", blockedHandoff)
+	}
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedAPI := New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reloadedAPI.StartRoomAutoRecoveryLoop(ctx, 5*time.Millisecond)
+
+	time.Sleep(200 * time.Millisecond)
+
+	mu.Lock()
+	if len(execRequests) != 2 {
+		mu.Unlock()
+		t.Fatalf("exec requests = %#v, want no autonomous retry while paused", execRequests)
+	}
+	mu.Unlock()
+
+	reloadedSnapshot := reloadedStore.Snapshot()
+	reloadedRoom := findRoomByID(reloadedSnapshot, created.RoomID)
+	reloadedIssue := findIssueByRoomID(reloadedSnapshot, created.RoomID)
+	reloadedRun := findRunByID(reloadedSnapshot, created.RunID)
+	reloadedSession := findSessionByID(reloadedSnapshot, created.SessionID)
+	if reloadedRoom == nil || reloadedRoom.Topic.Status != "paused" {
+		t.Fatalf("reloaded room = %#v, want paused topic preserved", reloadedRoom)
+	}
+	if reloadedIssue == nil || reloadedIssue.State != "paused" {
+		t.Fatalf("reloaded issue = %#v, want paused issue preserved", reloadedIssue)
+	}
+	if reloadedRun == nil || reloadedRun.Status != "paused" {
+		t.Fatalf("reloaded run = %#v, want paused run preserved", reloadedRun)
+	}
+	if reloadedSession == nil || reloadedSession.Status != "paused" {
+		t.Fatalf("reloaded session = %#v, want paused session preserved", reloadedSession)
+	}
+
+	var resumedHandoff *store.AgentHandoff
+	for index := range reloadedSnapshot.Mailbox {
+		item := &reloadedSnapshot.Mailbox[index]
+		if item.ID == blockedHandoff.ID {
+			resumedHandoff = item
+			break
+		}
+	}
+	if resumedHandoff == nil || resumedHandoff.AutoFollowup == nil || resumedHandoff.AutoFollowup.Status != "blocked" {
+		t.Fatalf("reloaded handoff = %#v, want blocked auto followup to remain untouched while paused", resumedHandoff)
+	}
+}
+
 func TestBackgroundRecoveryLoopDoesNotDuplicateInFlightRoomAutoRetry(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
@@ -2136,6 +2300,182 @@ func TestBackgroundRecoveryLoopAutonomouslyResumesInterruptedPendingTurnAfterRel
 	lastMessage := roomMessages[len(roomMessages)-1]
 	if lastMessage.Message != "我已经从刚才中断的位置续上，并把最后结论补齐。" {
 		t.Fatalf("last room message = %#v, want autonomous resumed reply", lastMessage)
+	}
+}
+
+func TestBackgroundRecoveryLoopDoesNotResumeInterruptedPendingTurnWhileRunPaused(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	var (
+		mu              sync.Mutex
+		resumedRequests []ExecRequest
+	)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec/stream":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			events := []DaemonStreamEvent{
+				{Type: "start", Provider: "codex", Command: []string{"codex", "exec"}},
+				{Type: "stdout", Provider: "codex", Delta: "我先接住当前 continuity，已经完成第一段检查。"},
+			}
+			for _, event := range events {
+				if err := json.NewEncoder(w).Encode(event); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(DaemonStreamEvent{Type: "stdout", Provider: "codex", Delta: "第二段输出会在连接断开后丢失。"})
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		case "/v1/exec":
+			var req ExecRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode resumed payload: %v", err)
+			}
+			mu.Lock()
+			resumedRequests = append(resumedRequests, req)
+			mu.Unlock()
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "codex",
+				Command:  []string{"codex", "exec"},
+				Output:   "这个回复不该在 pause 期间被自动触发。",
+				Duration: "0.7s",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	pairMainRuntime(t, s, daemon.URL)
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Paused Pending Turn Recovery", "Codex Dockmaster")
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把这条 lane 往前推。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if event.Type == "stdout" && strings.Contains(event.Delta, "第一段检查") {
+			break
+		}
+	}
+	cancel()
+	_ = resp.Body.Close()
+	server.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		session := findSessionByID(s.Snapshot(), created.SessionID)
+		if session != nil && session.PendingTurn != nil && session.PendingTurn.Status == "interrupted" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	stoppedState, err := s.ControlRun(created.RunID, store.RunControlInput{
+		Action: "stop",
+		Note:   "先暂停，别让后台在我确认前自动续跑。",
+		Actor:  "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("ControlRun(stop) error = %v", err)
+	}
+	stoppedRoom := findRoomByID(stoppedState, created.RoomID)
+	stoppedIssue := findIssueByRoomID(stoppedState, created.RoomID)
+	stoppedRun := findRunByID(stoppedState, created.RunID)
+	stoppedSession := findSessionByID(stoppedState, created.SessionID)
+	if stoppedRoom == nil || stoppedRoom.Topic.Status != "paused" {
+		t.Fatalf("stopped room = %#v, want paused topic", stoppedRoom)
+	}
+	if stoppedIssue == nil || stoppedIssue.State != "paused" {
+		t.Fatalf("stopped issue = %#v, want paused issue", stoppedIssue)
+	}
+	if stoppedRun == nil || stoppedRun.Status != "paused" {
+		t.Fatalf("stopped run = %#v, want paused run", stoppedRun)
+	}
+	if stoppedSession == nil || stoppedSession.Status != "paused" {
+		t.Fatalf("stopped session = %#v, want paused session", stoppedSession)
+	}
+	if stoppedSession.PendingTurn == nil || stoppedSession.PendingTurn.Status != "interrupted" {
+		t.Fatalf("stopped session = %#v, want interrupted pending turn preserved", stoppedSession)
+	}
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedAPI := New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+	defer loopCancel()
+	reloadedAPI.StartRoomAutoRecoveryLoop(loopCtx, 5*time.Millisecond)
+
+	time.Sleep(200 * time.Millisecond)
+
+	mu.Lock()
+	if len(resumedRequests) != 0 {
+		mu.Unlock()
+		t.Fatalf("resumed exec requests = %#v, want no autonomous retry while paused", resumedRequests)
+	}
+	mu.Unlock()
+
+	finalSession := findSessionByID(reloadedStore.Snapshot(), created.SessionID)
+	if finalSession == nil || finalSession.PendingTurn == nil || finalSession.PendingTurn.Status != "interrupted" {
+		t.Fatalf("final session = %#v, want interrupted pending turn preserved while paused", finalSession)
+	}
+	if finalSession.Recovery == nil || finalSession.Recovery.AttemptCount != 0 || finalSession.Recovery.LastSource != "stream_disconnect" {
+		t.Fatalf("final recovery = %#v, want no background retry recorded while paused", finalSession.Recovery)
+	}
+
+	finalRoom := findRoomByID(reloadedStore.Snapshot(), created.RoomID)
+	finalIssue := findIssueByRoomID(reloadedStore.Snapshot(), created.RoomID)
+	finalRun := findRunByID(reloadedStore.Snapshot(), created.RunID)
+	if finalRoom == nil || finalRoom.Topic.Status != "paused" {
+		t.Fatalf("final room = %#v, want paused topic preserved", finalRoom)
+	}
+	if finalIssue == nil || finalIssue.State != "paused" {
+		t.Fatalf("final issue = %#v, want paused issue preserved", finalIssue)
+	}
+	if finalRun == nil || finalRun.Status != "paused" {
+		t.Fatalf("final run = %#v, want paused run preserved", finalRun)
 	}
 }
 
