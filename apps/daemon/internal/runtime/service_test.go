@@ -415,6 +415,96 @@ func TestResumeSessionReusesSessionScopedCodexHomeAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestRunPromptPersistsAppServerThreadIDFromProviderStateFile(t *testing.T) {
+	root := t.TempDir()
+	cwd := t.TempDir()
+	cliDir := t.TempDir()
+	writeRuntimeCLI(
+		t,
+		cliDir,
+		"codex",
+		"#!/bin/sh\nprintf 'thread-file=%s|incoming=%s\\n' \"$OPENSHOCK_APP_SERVER_THREAD_ID_FILE\" \"$OPENSHOCK_APP_SERVER_THREAD_ID\"\nprintf 'thread-001' > \"$OPENSHOCK_APP_SERVER_THREAD_ID_FILE\"\n",
+		"@echo off\r\necho thread-file=%OPENSHOCK_APP_SERVER_THREAD_ID_FILE%^|incoming=%OPENSHOCK_APP_SERVER_THREAD_ID%\r\n> \"%OPENSHOCK_APP_SERVER_THREAD_ID_FILE%\" <nul set /p =thread-001\r\n",
+	)
+	t.Setenv("PATH", cliDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service := NewService("daemon-test", root)
+	resp, err := service.RunPrompt(ExecRequest{
+		Provider:  "codex",
+		Prompt:    "persist thread state",
+		Cwd:       cwd,
+		SessionID: "session-runtime",
+		RunID:     "run-runtime-01",
+		RoomID:    "room-runtime",
+	})
+	if err != nil {
+		t.Fatalf("RunPrompt() error = %v", err)
+	}
+
+	sessionDir := filepath.Join(root, ".openshock", "agent-sessions", "session-runtime")
+	wantThreadFile := filepath.Join(sessionDir, "app-server-thread-id")
+	if !strings.Contains(resp.Output, "thread-file="+wantThreadFile) {
+		t.Fatalf("RunPrompt() output = %q, want thread state file %q", resp.Output, wantThreadFile)
+	}
+
+	var payload struct {
+		AppServerThreadID string `json:"appServerThreadId,omitempty"`
+	}
+	data, err := os.ReadFile(filepath.Join(sessionDir, "SESSION.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(SESSION.json) error = %v", err)
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("Unmarshal(SESSION.json) error = %v", err)
+	}
+	if payload.AppServerThreadID != "thread-001" {
+		t.Fatalf("SESSION.json appServerThreadId = %q, want thread-001", payload.AppServerThreadID)
+	}
+}
+
+func TestResumeSessionExportsPersistedAppServerThreadIDAcrossRestart(t *testing.T) {
+	root := t.TempDir()
+	cwd := t.TempDir()
+	cliDir := t.TempDir()
+	writeRuntimeCLI(
+		t,
+		cliDir,
+		"codex",
+		"#!/bin/sh\nprintf 'incoming=%s\\n' \"$OPENSHOCK_APP_SERVER_THREAD_ID\"\nif [ \"$1\" = \"exec\" ] && [ \"$2\" != \"resume\" ]; then\n  printf 'thread-001' > \"$OPENSHOCK_APP_SERVER_THREAD_ID_FILE\"\nfi\n",
+		"@echo off\r\necho incoming=%OPENSHOCK_APP_SERVER_THREAD_ID%\r\nif \"%1\"==\"exec\" if not \"%2\"==\"resume\" > \"%OPENSHOCK_APP_SERVER_THREAD_ID_FILE%\" <nul set /p =thread-001\r\n",
+	)
+	t.Setenv("PATH", cliDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	first := NewService("daemon-test", root)
+	if _, err := first.RunPrompt(ExecRequest{
+		Provider:  "codex",
+		Prompt:    "first codex turn",
+		Cwd:       cwd,
+		SessionID: "session-runtime",
+		RunID:     "run-runtime-01",
+		RoomID:    "room-runtime",
+	}); err != nil {
+		t.Fatalf("first RunPrompt() error = %v", err)
+	}
+
+	second := NewService("daemon-test", root)
+	resp, err := second.RunPrompt(ExecRequest{
+		Provider:      "codex",
+		Prompt:        "resume codex turn",
+		Cwd:           cwd,
+		SessionID:     "session-runtime",
+		RunID:         "run-runtime-01",
+		RoomID:        "room-runtime",
+		ResumeSession: true,
+	})
+	if err != nil {
+		t.Fatalf("second RunPrompt() error = %v", err)
+	}
+	if !strings.Contains(resp.Output, "incoming=thread-001") {
+		t.Fatalf("second RunPrompt() output = %q, want persisted thread id", resp.Output)
+	}
+}
+
 func writeExecutable(t *testing.T, path string) {
 	t.Helper()
 	content := []byte("#!/bin/sh\nexit 0\n")

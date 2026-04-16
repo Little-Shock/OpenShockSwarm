@@ -280,6 +280,75 @@ func TestExecRouteUsesSessionScopedCodexHome(t *testing.T) {
 	}
 }
 
+func TestExecRoutePersistsAndReusesAppServerThreadID(t *testing.T) {
+	root := t.TempDir()
+	dir := t.TempDir()
+	if goruntime.GOOS == "windows" {
+		if err := os.WriteFile(filepath.Join(dir, "codex.cmd"), []byte("@echo off\r\necho incoming=%OPENSHOCK_APP_SERVER_THREAD_ID%\r\nif \"%1\"==\"exec\" if not \"%2\"==\"resume\" > \"%OPENSHOCK_APP_SERVER_THREAD_ID_FILE%\" <nul set /p =thread-001\r\n"), 0o755); err != nil {
+			t.Fatalf("write fake codex cmd: %v", err)
+		}
+	} else {
+		if err := os.WriteFile(filepath.Join(dir, "codex"), []byte("#!/bin/sh\nprintf 'incoming=%s\\n' \"$OPENSHOCK_APP_SERVER_THREAD_ID\"\nif [ \"$1\" = \"exec\" ] && [ \"$2\" != \"resume\" ]; then\n  printf 'thread-001' > \"$OPENSHOCK_APP_SERVER_THREAD_ID_FILE\"\nfi\n"), 0o755); err != nil {
+			t.Fatalf("write fake codex cli: %v", err)
+		}
+	}
+	prependDaemonCLIPath(t, dir)
+
+	server := httptest.NewServer(New(runtime.NewService("daemon-test", root), root).Handler())
+	defer server.Close()
+
+	firstBody, err := json.Marshal(map[string]any{
+		"provider":  "codex",
+		"prompt":    "first codex turn",
+		"cwd":       t.TempDir(),
+		"sessionId": "session-runtime",
+		"runId":     "run-runtime-01",
+		"roomId":    "room-runtime",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(firstBody) error = %v", err)
+	}
+	firstResp, err := http.Post(server.URL+"/v1/exec", "application/json", bytes.NewReader(firstBody))
+	if err != nil {
+		t.Fatalf("POST first /v1/exec error = %v", err)
+	}
+	defer firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusOK {
+		t.Fatalf("first POST /v1/exec status = %d, want %d", firstResp.StatusCode, http.StatusOK)
+	}
+
+	secondBody, err := json.Marshal(map[string]any{
+		"provider":      "codex",
+		"prompt":        "resume codex turn",
+		"cwd":           t.TempDir(),
+		"sessionId":     "session-runtime",
+		"runId":         "run-runtime-01",
+		"roomId":        "room-runtime",
+		"resumeSession": true,
+	})
+	if err != nil {
+		t.Fatalf("Marshal(secondBody) error = %v", err)
+	}
+	secondResp, err := http.Post(server.URL+"/v1/exec", "application/json", bytes.NewReader(secondBody))
+	if err != nil {
+		t.Fatalf("POST second /v1/exec error = %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusOK {
+		t.Fatalf("second POST /v1/exec status = %d, want %d", secondResp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Output string `json:"output"`
+	}
+	if err := json.NewDecoder(secondResp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode response error = %v", err)
+	}
+	if !strings.Contains(payload.Output, "incoming=thread-001") {
+		t.Fatalf("exec output = %q, want persisted thread id", payload.Output)
+	}
+}
+
 func writeDaemonClaudeCLI(t *testing.T) string {
 	t.Helper()
 

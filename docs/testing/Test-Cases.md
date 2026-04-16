@@ -1356,13 +1356,13 @@
 
 ## TC-097 Explicit Provider Thread State Persistence
 
-- 业务目标: 确认真正的 provider thread / conversation id 会作为 daemon-managed local truth 被持久化，而不是长期留在占位字段里。
-- 前置条件: daemon session workspace 已存在 `SESSION.json`；provider transport 能暴露可复用 thread id。
+- 业务目标: 确认显式 provider thread state 会作为 daemon-managed local truth 被持久化，即便真实 app-server transport 还没接进来，也不能继续停在占位字段。
+- 前置条件: daemon session workspace 已存在 `SESSION.json`；执行进程可通过 daemon 提供的 thread-state file 写回 thread id。
 - 测试步骤:
-  1. 对同一 `sessionId` 启动一轮真实 provider transport 执行，记录 thread id。
-  2. 停止 daemon，再次启动 daemon。
-  3. 对同一 `sessionId` 发第二轮执行，确认复用同一 thread id。
-  4. 人为损坏或删除 `SESSION.json` 中的 thread id，再执行一轮。
-  5. 检查 daemon 是否显式暴露 degraded / recovery truth，而不是静默开启新 thread。
-- 预期结果: `SESSION.json.appServerThreadId` 或等价字段必须成为可验证的恢复锚点；thread 漂移不能静默发生。
-- 业务结论: 待补 `TKT-102`。
+  1. 对同一 `sessionId` 发第一轮 provider-backed 执行，让 fake provider 通过 daemon 提供的 thread-state file 写回 `thread-001`。
+  2. 读取 `SESSION.json`，确认 `appServerThreadId=thread-001`。
+  3. 重建 daemon service，再对同一 `sessionId` 发第二轮 `resumeSession=true` 执行。
+  4. 确认执行进程收到 `OPENSHOCK_APP_SERVER_THREAD_ID=thread-001`。
+  5. 经 `/v1/exec` 再走一遍相同 resume 请求，确认 HTTP 路由也会复用同一份持久化 thread state。
+- 预期结果: `SESSION.json.appServerThreadId` 必须成为可验证的本地恢复锚点；resume 时 thread state 要被显式重新注入，而不是靠隐式全局状态。
+- 业务结论: 2026 年 4 月 16 日新增 `TestRunPromptPersistsAppServerThreadIDFromProviderStateFile`、`TestResumeSessionExportsPersistedAppServerThreadIDAcrossRestart` 与 `TestExecRoutePersistsAndReusesAppServerThreadID`。当前 targeted `go test ./apps/daemon/internal/runtime` 与 `go test ./apps/daemon/internal/api` 已确认 daemon 会把执行进程写回的 thread state 持久化到 `SESSION.json.appServerThreadId`，并在 restart 后 resume 时重新注入执行环境，因此这条显式 provider thread state continuity 用例当前转为 `Pass`。

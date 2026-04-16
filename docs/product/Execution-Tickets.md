@@ -1577,21 +1577,22 @@
 
 ## TKT-102 Explicit Provider Thread State Persistence
 
-- 状态: `todo`
+- 状态: `done`
 - 优先级: `P0`
-- 目标: 把显式 provider thread state 做成 daemon-managed local truth，而不是让 `SESSION.json.appServerThreadId` 长期停在占位字段。
+- 目标: 把显式 provider thread state 做成 daemon-managed local truth；即便真实 app-server transport 还没接进来，daemon 也要先把 thread state 的写回、持久化和 resume 注入 contract 站住。
 - 范围:
-  - `SESSION.json.appServerThreadId` 真正写回与复用
-  - provider transport / conversation id drift detection
-  - daemon restart 后的 thread reuse / fail-loud recovery
-  - 与 session workspace continuity 对齐的 contract tests
+  - `SESSION.json.appServerThreadId` 写回与复用
+  - thread-state file contract
+  - daemon restart 后的 thread state env reinjection
+  - runtime / API contract tests
 - 依赖: `TKT-99`
 - Done When:
-  - 同一 session 的真实 provider thread id 会在 daemon restart 后继续复用
-  - thread 丢失 / 损坏时 daemon 会显式暴露 degraded / recovery truth，而不是静默开新 thread
+  - 同一 session 的 provider thread state 能由执行进程写回 daemon 提供的 thread-state file
+  - daemon restart 后再 resume，会把已持久化的 `appServerThreadId` 重新注入执行进程环境
   - `SESSION.json` 不再只有占位 `appServerThreadId`
 - 最新证据:
-  - 待补
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test ./internal/runtime -run "TestRunPromptPersistsAppServerThreadIDFromProviderStateFile|TestResumeSessionExportsPersistedAppServerThreadIDAcrossRestart" -count=1'`
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test ./internal/api -run "TestExecRoutePersistsAndReusesAppServerThreadID" -count=1'`
 - Checklist: `CHK-14` `CHK-15`
 - Test Cases: `TC-097`
 

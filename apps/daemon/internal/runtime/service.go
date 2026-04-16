@@ -103,6 +103,7 @@ type sessionWorkspace struct {
 	CurrentTurnPath string
 	WorkLogPath     string
 	CodexHomePath   string
+	ThreadStatePath string
 }
 
 type sessionWorkspacePayload struct {
@@ -253,13 +254,18 @@ func (s *Service) RunPrompt(req ExecRequest) (ExecResponse, error) {
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
+		_ = ensureProviderThreadStatePersisted(req, workspace)
 		return resp, context.DeadlineExceeded
 	}
 	if err != nil {
 		if stderr.Len() > 0 {
 			resp.Error = strings.TrimSpace(stderr.String())
 		}
+		_ = ensureProviderThreadStatePersisted(req, workspace)
 		return resp, err
+	}
+	if persistErr := ensureProviderThreadStatePersisted(req, workspace); persistErr != nil {
+		return resp, persistErr
 	}
 	return resp, nil
 }
@@ -389,6 +395,7 @@ func (s *Service) StreamPrompt(req ExecRequest, emit func(StreamEvent) error) (E
 				Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 			})
 		}
+		_ = ensureProviderThreadStatePersisted(req, workspace)
 		return resp, context.DeadlineExceeded
 	}
 	if waitErr != nil {
@@ -407,7 +414,11 @@ func (s *Service) StreamPrompt(req ExecRequest, emit func(StreamEvent) error) (E
 				Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 			})
 		}
+		_ = ensureProviderThreadStatePersisted(req, workspace)
 		return resp, waitErr
+	}
+	if persistErr := ensureProviderThreadStatePersisted(req, workspace); persistErr != nil {
+		return resp, persistErr
 	}
 	if emitErr == nil && emit != nil {
 		if err := emit(StreamEvent{
@@ -757,6 +768,7 @@ func (s *Service) prepareSessionWorkspace(req ExecRequest) (sessionWorkspace, er
 		CurrentTurnPath: filepath.Join(dir, "CURRENT_TURN.md"),
 		WorkLogPath:     filepath.Join(dir, "notes", "work-log.md"),
 		CodexHomePath:   filepath.Join(dir, "codex-home"),
+		ThreadStatePath: filepath.Join(dir, "app-server-thread-id"),
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "notes"), 0o755); err != nil {
 		return sessionWorkspace{}, err
@@ -834,7 +846,97 @@ func ensureSessionMemoryFile(path string) error {
 }
 
 func writeSessionWorkspaceFile(path string, req ExecRequest, workspace sessionWorkspace) error {
-	payload := sessionWorkspacePayload{
+	payload, _ := readSessionWorkspaceFile(path)
+	payload.SessionID = strings.TrimSpace(req.SessionID)
+	payload.RunID = strings.TrimSpace(req.RunID)
+	payload.RoomID = strings.TrimSpace(req.RoomID)
+	payload.Provider = strings.TrimSpace(req.Provider)
+	payload.Cwd = strings.TrimSpace(req.Cwd)
+	payload.CodexHome = strings.TrimSpace(workspace.CodexHomePath)
+	payload.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if payload.AppServerThreadID == "" {
+		payload.AppServerThreadID = readThreadStateFile(workspace.ThreadStatePath)
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+func readSessionWorkspaceFile(path string) (sessionWorkspacePayload, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return sessionWorkspacePayload{}, err
+	}
+	var payload sessionWorkspacePayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return sessionWorkspacePayload{}, err
+	}
+	return payload, nil
+}
+
+func persistProviderThreadState(path string, req ExecRequest, workspace sessionWorkspace) error {
+	payload, err := readSessionWorkspaceFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return writeSessionWorkspaceFile(path, req, workspace)
+		}
+		return err
+	}
+	if value := readThreadStateFile(workspace.ThreadStatePath); value != "" {
+		payload.AppServerThreadID = value
+	}
+	payload.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+func readThreadStateFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func buildExecEnv(req ExecRequest, workspace sessionWorkspace) []string {
+	env := append([]string{}, os.Environ()...)
+	if normalizedProviderID(req.Provider) == "codex" && strings.TrimSpace(workspace.CodexHomePath) != "" {
+		env = upsertEnv(env, "OPENSHOCK_CODEX_HOME", workspace.CodexHomePath)
+	}
+	if strings.TrimSpace(workspace.ThreadStatePath) != "" {
+		env = upsertEnv(env, "OPENSHOCK_APP_SERVER_THREAD_ID_FILE", workspace.ThreadStatePath)
+	}
+	if payload, err := readSessionWorkspaceFile(workspace.SessionFilePath); err == nil && strings.TrimSpace(payload.AppServerThreadID) != "" {
+		env = upsertEnv(env, "OPENSHOCK_APP_SERVER_THREAD_ID", strings.TrimSpace(payload.AppServerThreadID))
+	}
+	return env
+}
+
+func upsertEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for index, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			env[index] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
+func ensureProviderThreadStatePersisted(req ExecRequest, workspace sessionWorkspace) error {
+	if strings.TrimSpace(workspace.SessionFilePath) == "" {
+		return nil
+	}
+	return persistProviderThreadState(workspace.SessionFilePath, req, workspace)
+}
+
+func buildSessionWorkspacePayload(req ExecRequest, workspace sessionWorkspace) sessionWorkspacePayload {
+	return sessionWorkspacePayload{
 		SessionID:         strings.TrimSpace(req.SessionID),
 		RunID:             strings.TrimSpace(req.RunID),
 		RoomID:            strings.TrimSpace(req.RoomID),
@@ -844,11 +946,6 @@ func writeSessionWorkspaceFile(path string, req ExecRequest, workspace sessionWo
 		CodexHome:         strings.TrimSpace(workspace.CodexHomePath),
 		UpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func writeCurrentTurnFile(path string, req ExecRequest) error {
@@ -906,25 +1003,6 @@ func appendSessionWorkLog(path string, req ExecRequest) error {
 	defer file.Close()
 	_, err = file.WriteString(builder.String())
 	return err
-}
-
-func buildExecEnv(req ExecRequest, workspace sessionWorkspace) []string {
-	env := append([]string{}, os.Environ()...)
-	if normalizedProviderID(req.Provider) == "codex" && strings.TrimSpace(workspace.CodexHomePath) != "" {
-		env = upsertEnv(env, "OPENSHOCK_CODEX_HOME", workspace.CodexHomePath)
-	}
-	return env
-}
-
-func upsertEnv(env []string, key, value string) []string {
-	prefix := key + "="
-	for index, item := range env {
-		if strings.HasPrefix(item, prefix) {
-			env[index] = prefix + value
-			return env
-		}
-	}
-	return append(env, prefix+value)
 }
 
 func findClaudeCLI() (string, bool) {
