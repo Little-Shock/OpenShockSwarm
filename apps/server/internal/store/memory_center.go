@@ -1180,6 +1180,8 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, p
 		"memory.promote",
 	}
 
+	continuity := buildMemoryPreviewContinuityLines(snapshot, session, ownerName)
+
 	return MemoryInjectionPreview{
 		ID:            session.ID,
 		SessionID:     session.ID,
@@ -1188,12 +1190,62 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, p
 		IssueKey:      session.IssueKey,
 		Title:         title,
 		RecallPolicy:  fmt.Sprintf("%s / max %d items / room:%t / decision:%t / agent:%t / promoted:%t", policy.Mode, policy.MaxItems, policy.IncludeRoomNotes, policy.IncludeDecisionLedger, policy.IncludeAgentMemory, policy.IncludePromotedArtifacts),
-		PromptSummary: buildMemoryPromptSummary(policy, session, items, agent, previewProviders),
+		PromptSummary: buildMemoryPromptSummary(policy, session, items, agent, previewProviders, continuity),
 		Files:         files,
 		Tools:         tools,
 		Providers:     previewProviders,
 		Items:         items,
 	}
+}
+
+func buildMemoryPreviewContinuityLines(snapshot State, session Session, ownerName string) []string {
+	lines := []string{}
+
+	if session.PendingTurn != nil && session.PendingTurn.ResumeEligible {
+		lines = append(lines, "Session continuity: 当前 pending turn 已中断，但仍可从同一条 continuity 恢复。")
+		if note := strings.TrimSpace(session.ControlNote); note != "" {
+			lines = append(lines, fmt.Sprintf("Recovery note: %s", summarizeMemoryPromptLine(note)))
+		}
+		if preview := strings.TrimSpace(session.PendingTurn.Preview); preview != "" {
+			lines = append(lines, fmt.Sprintf("Interrupted preview: %s", summarizeMemoryPromptLine(preview)))
+		}
+	}
+
+	if handoff := findLatestMemoryPreviewAutoFollowup(snapshot, session.RoomID, ownerName); handoff != nil && handoff.AutoFollowup != nil {
+		target := defaultString(strings.TrimSpace(handoff.ToAgent), defaultString(strings.TrimSpace(ownerName), "当前接手智能体"))
+		lines = append(lines, fmt.Sprintf("Handoff continuity: %s 已正式接棒当前房间。", target))
+		summary := summarizeMemoryPromptLine(defaultString(strings.TrimSpace(handoff.AutoFollowup.Summary), handoff.LastAction))
+		switch strings.TrimSpace(handoff.AutoFollowup.Status) {
+		case "blocked":
+			lines = append(lines, fmt.Sprintf("Auto-followup blocked: %s", summary))
+		default:
+			lines = append(lines, fmt.Sprintf("Auto-followup: %s", summary))
+		}
+	}
+
+	return lines
+}
+
+func findLatestMemoryPreviewAutoFollowup(snapshot State, roomID, ownerName string) *AgentHandoff {
+	roomID = strings.TrimSpace(roomID)
+	ownerName = strings.TrimSpace(ownerName)
+	if roomID == "" || ownerName == "" {
+		return nil
+	}
+	for index := range snapshot.Mailbox {
+		handoff := &snapshot.Mailbox[index]
+		if handoff.RoomID != roomID || !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(handoff.ToAgent), ownerName) {
+			continue
+		}
+		switch strings.TrimSpace(handoff.AutoFollowup.Status) {
+		case "pending", "blocked":
+			return handoff
+		}
+	}
+	return nil
 }
 
 func shouldIncludeSessionMemoryPath(path string, policy MemoryInjectionPolicy) bool {
@@ -1312,7 +1364,7 @@ func memoryProviderAppliesToSession(provider MemoryProviderBinding, sessionScope
 	return false
 }
 
-func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem, agent *Agent, providers []MemoryProviderBinding) string {
+func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, items []MemoryInjectionPreviewItem, agent *Agent, providers []MemoryProviderBinding, continuity []string) string {
 	lines := []string{}
 	if agent != nil {
 		lines = append(lines,
@@ -1334,6 +1386,10 @@ func buildMemoryPromptSummary(policy MemoryInjectionPolicy, session Session, ite
 		if instructions := strings.TrimSpace(agent.OperatingInstructions); instructions != "" {
 			lines = append(lines, fmt.Sprintf("Operating instructions: %s", summarizeMemoryPromptLine(instructions)))
 		}
+	}
+
+	if len(continuity) > 0 {
+		lines = append(lines, continuity...)
 	}
 
 	if len(providers) > 0 {

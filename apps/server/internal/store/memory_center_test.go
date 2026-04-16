@@ -741,6 +741,50 @@ func TestMemoryProviderPreviewFollowsCurrentOwnerAcrossHandoffReload(t *testing.
 	}
 }
 
+func TestMemoryCenterPreviewSurfacesFormalHandoffContinuation(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, _, _, err := s.UpdateMemoryProviders(sampleMemoryProviderBindings(), "Larkspur"); err != nil {
+		t.Fatalf("UpdateMemoryProviders() error = %v", err)
+	}
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "接住 reviewer lane",
+		Summary:     "请正式接住 reviewer lane，并继续把当前房间往前推。",
+		Kind:        handoffKindGoverned,
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(governed) error = %v", err)
+	}
+
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged) error = %v", err)
+	}
+
+	preview := findMemoryPreviewBySession(s.MemoryCenter().Previews, "session-runtime")
+	if preview == nil {
+		t.Fatalf("session-runtime preview missing")
+	}
+	if !strings.Contains(preview.PromptSummary, "Handoff continuity: Claude Review Runner 已正式接棒当前房间。") {
+		t.Fatalf("preview summary = %q, want formal handoff continuity headline", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Auto-followup: 等待 Claude Review Runner 自动继续当前房间。") {
+		t.Fatalf("preview summary = %q, want durable auto-followup summary", preview.PromptSummary)
+	}
+}
+
 func TestMemoryProviderHealthCheckAndRecoveryLifecycle(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

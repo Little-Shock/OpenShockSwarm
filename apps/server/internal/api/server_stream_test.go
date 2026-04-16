@@ -547,6 +547,109 @@ func TestRoomMessageStreamDisconnectPersistsSessionRecoveryTruth(t *testing.T) {
 	}
 }
 
+func TestRoomMessageStreamDisconnectSurfacesContinuityInMemoryCenterPreview(t *testing.T) {
+	root := t.TempDir()
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/exec/stream":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			events := []DaemonStreamEvent{
+				{Type: "start", Provider: "codex", Command: []string{"codex", "exec"}},
+				{Type: "stdout", Provider: "codex", Delta: "我先接住当前 continuity，已经完成第一段检查。"},
+			}
+			for _, event := range events {
+				if err := json.NewEncoder(w).Encode(event); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(DaemonStreamEvent{Type: "stdout", Provider: "codex", Delta: "第二段输出会在连接断开后丢失。"})
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer daemon.Close()
+
+	s, server := newContractTestServer(t, root, daemon.URL)
+	defer server.Close()
+
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Memory Preview Recovery Continuity", "Codex Dockmaster")
+
+	body, err := json.Marshal(map[string]any{
+		"prompt":   "继续把这条 lane 往前推。",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/rooms/"+created.RoomID+"/messages/stream", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var event DaemonStreamEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if event.Type == "stdout" && strings.Contains(event.Delta, "第一段检查") {
+			break
+		}
+	}
+	cancel()
+	_ = resp.Body.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		session := findSessionByID(s.Snapshot(), created.SessionID)
+		if session != nil && session.PendingTurn != nil && session.PendingTurn.Status == "interrupted" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	centerResp, err := http.Get(server.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center error = %v", err)
+	}
+	defer centerResp.Body.Close()
+	if centerResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center status = %d, want %d", centerResp.StatusCode, http.StatusOK)
+	}
+
+	var center store.MemoryCenter
+	decodeJSON(t, centerResp, &center)
+	preview := findPreviewBySession(center.Previews, created.SessionID)
+	if preview == nil {
+		t.Fatalf("preview missing for session %q: %#v", created.SessionID, center.Previews)
+	}
+	if !strings.Contains(preview.PromptSummary, "Session continuity: 当前 pending turn 已中断，但仍可从同一条 continuity 恢复。") {
+		t.Fatalf("preview summary = %q, want interrupted continuity headline", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Recovery note: 上一次公开流式执行已中断；保留当前 pending turn，下一次同房间执行应继续恢复。") {
+		t.Fatalf("preview summary = %q, want recovery control note", preview.PromptSummary)
+	}
+	if !strings.Contains(preview.PromptSummary, "Interrupted preview: 我先接住当前 continuity，已经完成第一段检查。") {
+		t.Fatalf("preview summary = %q, want interrupted visible preview", preview.PromptSummary)
+	}
+}
+
 func TestExplicitRoomResumePersistsSessionRecoveryReplay(t *testing.T) {
 	root := t.TempDir()
 	var resumed ExecRequest
