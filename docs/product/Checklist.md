@@ -504,6 +504,10 @@
 - `CHK-07` `CHK-08` -> `TKT-39`
 - `CHK-06` -> `TKT-40` `TKT-52`
 - `CHK-10` `CHK-22` -> `TKT-42` `TKT-43` `TKT-96`
+- `CHK-10` `CHK-14` -> `TKT-98`
+- `CHK-10` `CHK-14` `CHK-15` -> `TKT-99`
+- `CHK-14` `CHK-15` -> `TKT-100`
+- `CHK-01` `CHK-16` -> `TKT-101`
 - `CHK-11` `CHK-13` `CHK-20` -> `TKT-44`
 - `CHK-12` `CHK-13` -> `TKT-45`
 - `CHK-12` `CHK-15` -> `TKT-46`

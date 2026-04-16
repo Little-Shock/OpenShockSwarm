@@ -187,6 +187,46 @@ func TestExecConflictGuardAllowsSameLeaseHolderReentry(t *testing.T) {
 	}
 }
 
+func TestExecRoutePersistsSessionWorkspaceEnvelope(t *testing.T) {
+	root := t.TempDir()
+	prependDaemonCLIPath(t, writeDaemonClaudeCLI(t))
+
+	server := httptest.NewServer(New(runtime.NewService("daemon-test", root), root).Handler())
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"provider":  "claude",
+		"prompt":    "persist current turn",
+		"cwd":       t.TempDir(),
+		"sessionId": "session-runtime",
+		"runId":     "run-runtime-01",
+		"roomId":    "room-runtime",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(body) error = %v", err)
+	}
+	resp, err := http.Post(server.URL+"/v1/exec", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/exec error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/exec status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	sessionDir := filepath.Join(root, ".openshock", "agent-sessions", "session-runtime")
+	if _, err := os.Stat(filepath.Join(sessionDir, "SESSION.json")); err != nil {
+		t.Fatalf("Stat(SESSION.json) error = %v", err)
+	}
+	currentTurn, err := os.ReadFile(filepath.Join(sessionDir, "CURRENT_TURN.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(CURRENT_TURN.md) error = %v", err)
+	}
+	if !strings.Contains(string(currentTurn), "persist current turn") {
+		t.Fatalf("CURRENT_TURN.md = %q, want prompt", string(currentTurn))
+	}
+}
+
 func writeDaemonClaudeCLI(t *testing.T) string {
 	t.Helper()
 

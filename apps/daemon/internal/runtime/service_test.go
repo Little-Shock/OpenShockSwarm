@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -194,6 +195,126 @@ func TestAnnotateProviderStatusesUsesAuthTruth(t *testing.T) {
 	}
 }
 
+func TestRunPromptPersistsSessionWorkspaceEnvelope(t *testing.T) {
+	root := t.TempDir()
+	cwd := t.TempDir()
+	cliDir := t.TempDir()
+	writeRuntimeCLI(t, cliDir, "claude", "#!/bin/sh\nprintf 'daemon-ready\\n'\n", "@echo off\r\necho daemon-ready\r\n")
+	t.Setenv("PATH", cliDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service := NewService("daemon-test", root)
+	resp, err := service.RunPrompt(ExecRequest{
+		Provider:  "claude",
+		Prompt:    "first turn prompt",
+		Cwd:       cwd,
+		SessionID: "session-runtime",
+		RunID:     "run-runtime-01",
+		RoomID:    "room-runtime",
+	})
+	if err != nil {
+		t.Fatalf("RunPrompt() error = %v", err)
+	}
+	if !strings.Contains(resp.Output, "daemon-ready") {
+		t.Fatalf("RunPrompt() output = %q, want daemon-ready", resp.Output)
+	}
+
+	sessionDir := filepath.Join(root, ".openshock", "agent-sessions", "session-runtime")
+	assertFileContains(t, filepath.Join(sessionDir, "MEMORY.md"), "same session")
+	assertFileContains(t, filepath.Join(sessionDir, "CURRENT_TURN.md"), "first turn prompt")
+	assertFileContains(t, filepath.Join(sessionDir, "notes", "work-log.md"), "first turn prompt")
+
+	var payload struct {
+		SessionID         string `json:"sessionId"`
+		RunID             string `json:"runId,omitempty"`
+		RoomID            string `json:"roomId,omitempty"`
+		Provider          string `json:"provider,omitempty"`
+		Cwd               string `json:"cwd,omitempty"`
+		AppServerThreadID string `json:"appServerThreadId,omitempty"`
+	}
+	data, err := os.ReadFile(filepath.Join(sessionDir, "SESSION.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(SESSION.json) error = %v", err)
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("Unmarshal(SESSION.json) error = %v", err)
+	}
+	if payload.SessionID != "session-runtime" || payload.RunID != "run-runtime-01" || payload.RoomID != "room-runtime" {
+		t.Fatalf("SESSION.json payload = %#v, want session/run/room ids", payload)
+	}
+	if payload.Provider != "claude" || payload.Cwd != cwd {
+		t.Fatalf("SESSION.json payload = %#v, want provider/cwd", payload)
+	}
+	if payload.AppServerThreadID != "" {
+		t.Fatalf("SESSION.json appServerThreadId = %q, want empty placeholder", payload.AppServerThreadID)
+	}
+}
+
+func TestStreamPromptRefreshesCurrentTurnAndAccumulatesWorkLog(t *testing.T) {
+	root := t.TempDir()
+	cwd := t.TempDir()
+	cliDir := t.TempDir()
+	writeRuntimeCLI(t, cliDir, "claude", "#!/bin/sh\nprintf 'stream-ready\\n'\n", "@echo off\r\necho stream-ready\r\n")
+	t.Setenv("PATH", cliDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service := NewService("daemon-test", root)
+	req := ExecRequest{
+		Provider:  "claude",
+		Cwd:       cwd,
+		SessionID: "session-runtime",
+		RunID:     "run-runtime-01",
+		RoomID:    "room-runtime",
+	}
+	if _, err := service.StreamPrompt(withPrompt(req, "first turn prompt"), nil); err != nil {
+		t.Fatalf("first StreamPrompt() error = %v", err)
+	}
+	if _, err := service.StreamPrompt(withPrompt(req, "second turn prompt"), nil); err != nil {
+		t.Fatalf("second StreamPrompt() error = %v", err)
+	}
+
+	sessionDir := filepath.Join(root, ".openshock", "agent-sessions", "session-runtime")
+	currentTurn := readFile(t, filepath.Join(sessionDir, "CURRENT_TURN.md"))
+	if !strings.Contains(currentTurn, "second turn prompt") {
+		t.Fatalf("CURRENT_TURN.md = %q, want second turn prompt", currentTurn)
+	}
+	if strings.Contains(currentTurn, "first turn prompt") {
+		t.Fatalf("CURRENT_TURN.md = %q, should not retain first turn prompt after refresh", currentTurn)
+	}
+
+	workLog := readFile(t, filepath.Join(sessionDir, "notes", "work-log.md"))
+	if !strings.Contains(workLog, "first turn prompt") || !strings.Contains(workLog, "second turn prompt") {
+		t.Fatalf("work-log = %q, want both prompts", workLog)
+	}
+}
+
+func TestRunPromptSessionWorkspaceRootRespectsEnvOverride(t *testing.T) {
+	root := t.TempDir()
+	customRoot := t.TempDir()
+	cwd := t.TempDir()
+	cliDir := t.TempDir()
+	writeRuntimeCLI(t, cliDir, "claude", "#!/bin/sh\nprintf 'override-ready\\n'\n", "@echo off\r\necho override-ready\r\n")
+	t.Setenv("PATH", cliDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("OPENSHOCK_AGENT_SESSION_ROOT", customRoot)
+
+	service := NewService("daemon-test", root)
+	if _, err := service.RunPrompt(ExecRequest{
+		Provider:  "claude",
+		Prompt:    "override prompt",
+		Cwd:       cwd,
+		SessionID: "session-runtime",
+	}); err != nil {
+		t.Fatalf("RunPrompt() error = %v", err)
+	}
+
+	overridePath := filepath.Join(customRoot, "session-runtime", "CURRENT_TURN.md")
+	if _, err := os.Stat(overridePath); err != nil {
+		t.Fatalf("Stat(custom CURRENT_TURN.md) error = %v", err)
+	}
+	defaultPath := filepath.Join(root, ".openshock", "agent-sessions", "session-runtime")
+	if _, err := os.Stat(defaultPath); !os.IsNotExist(err) {
+		t.Fatalf("default session workspace exists unexpectedly at %s", defaultPath)
+	}
+}
+
 func writeExecutable(t *testing.T, path string) {
 	t.Helper()
 	content := []byte("#!/bin/sh\nexit 0\n")
@@ -228,4 +349,39 @@ func containsArg(args []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func withPrompt(req ExecRequest, prompt string) ExecRequest {
+	req.Prompt = prompt
+	return req
+}
+
+func writeRuntimeCLI(t *testing.T, dir, name, unixContent, windowsContent string) {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	content := []byte(unixContent)
+	if goruntime.GOOS == "windows" {
+		path += ".cmd"
+		content = []byte(windowsContent)
+	}
+	if err := os.WriteFile(path, content, 0o755); err != nil {
+		t.Fatalf("write runtime cli %s: %v", path, err)
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return string(data)
+}
+
+func assertFileContains(t *testing.T, path, want string) {
+	t.Helper()
+	if got := readFile(t, path); !strings.Contains(got, want) {
+		t.Fatalf("%s = %q, want substring %q", path, got, want)
+	}
 }

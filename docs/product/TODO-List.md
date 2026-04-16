@@ -1,7 +1,7 @@
 # OpenShock To Do List
 
-**版本:** 1.19
-**更新日期:** 2026 年 4 月 11 日
+**版本:** 1.20
+**更新日期:** 2026 年 4 月 16 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -138,18 +138,28 @@
   - memory center 现在还补了正式 provider orchestration；`workspace-file / search-sidecar / external-persistent` 的 `enabled / scope / retention / degraded fallback` 会写回 durable truth，并直接进入 `/memory` 和 next-run preview。
 - `GAP-66 / TKT-97`
   - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
+- `GAP-67 / TKT-98`
+  - daemon 现在必须补稳定的 agent session workspace envelope；同一 `sessionId` 要持续复用同一目录，并显式写出 `MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/work-log.md`，让 turn continuity、文件级记忆和掉线恢复有本地锚点。
+- `GAP-68 / TKT-99`
+  - daemon 现在还要把 provider transport continuity 收成 local-first truth；`appServerThreadId`、隔离的 `OPENSHOCK_CODEX_HOME` 与 restart 后的 session resume 不能只靠最后一条消息猜，而要挂在同一份 session workspace 上。
+- `GAP-69 / TKT-100`
+  - daemon 现在还要补真正的 system harness；`go run ./cmd/openshock-daemon --once`、httptest control plane、fake CLI 与 scenario snapshot 要一起证明“两轮复用同一 session、CURRENT_TURN 刷新、work-log 累积、恢复链不断裂”。
+- `GAP-70 / TKT-101`
+  - Phase 0 shell 前端现在要持续做减法；房间、收件箱、运行与治理面要继续收掉重复状态、重复动作和过度解释，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
 
 ### 当前必须先收的 GAP
 
-当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”“能不能把 workspace 级 hot room 收成跨 room rollup”“能不能让 hot room 直接起 governed next handoff”，而是更重的长期记忆整理、外部 provider 编排、durable governance，以及下一层的 multi-room dependency graph / auto-closeout。
+当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”“能不能把 workspace 级 hot room 收成跨 room rollup”“能不能让 hot room 直接起 governed next handoff”，而是 daemon session continuity、provider transport recovery、更重的长期记忆整理、外部 provider 编排、durable governance，以及下一层的 multi-room dependency graph / auto-closeout。
 
 ---
 
 ## 四、推荐推进顺序
 
-1. 先补 `CHK-10` 的后台记忆整理、真实 remote external durable adapter，以及更重的 retention / compaction / tagging automation。
-2. 再围 `CHK-21` 的 multi-room dependency graph / auto-closeout / cross-room dependency orchestration 开票。
-3. 前端继续做跨页面细节回扫，但不再把 `CHK-16` 回写成主阻塞 GAP。
+1. 先收 `TKT-98`：把 daemon 的 session workspace envelope 站住，先用 TDD 锁住 `CURRENT_TURN.md / SESSION.json / work-log` 的持久化与同 session 复用。
+2. 再收 `TKT-99`：把 local-first provider thread continuity、隔离 `OPENSHOCK_CODEX_HOME` 与 daemon restart resume 接到同一份 session workspace。
+3. 再收 `TKT-100`：把 daemon system harness / scenario snapshot 做成默认回归入口，避免后续多智能体协同与恢复链只靠零散单测。
+4. 然后回到 `CHK-10` 的更重 memory compaction / retention / durable adapter。
+5. 前端持续并行做 `TKT-101` 的 subtractive polish，但不再靠加新面板解决流畅度问题。
 
 ---
 
@@ -162,6 +172,11 @@
   - `feat/tff`
 - 允许吸收的是:
   - `/v1` contract、debug / replay read-model、runtime publish cursor、staged backlog 拆法、局部组件拆分
+  - daemon-managed persistent session workspace
+  - `CURRENT_TURN.md / SESSION.json / notes/work-log.md` per-session envelope
+  - local-first provider thread persistence 与 restart recovery
+  - daemon once/system harness + scenario snapshot seed pattern
+  - 前端 mention/feed/read-receipt 里“减法优先”的交互收口思路
 - 不允许吸收的是:
   - 旧 JS `apps/server / apps/shell` 主体代码
   - `tff` 的 dashboard 气质

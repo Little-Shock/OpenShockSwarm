@@ -1301,3 +1301,55 @@
   5. 读取 `/v1/state`，确认 `workspace.governance.responseAggregation.aggregator/finalResponse` 继续围当前 owner，而不是吃进旧 handoff 的 completion note。
 - 预期结果: 旧 handoff completion 只能留在自己的 mailbox ledger，不得回写污染当前 active run/session/governance aggregation；对外 surface 必须继续锚定当前 owner 的 closeout truth。
 - 业务结论: 2026 年 4 月 13 日新增 `TestGovernanceAggregationPrefersCurrentOwnerOverStaleCompletedHandoff` 与 `TestStaleCompletedHandoffDoesNotOverrideActiveRunTruth`，同时复跑 `TestRunDetailRouteReturnsResumeContextAndRoomHistory`、`TestMemoryProviderPreviewFollowsCurrentOwnerAcrossHandoffReload`、`TestMailboxLifecycleUpdatesGovernanceSnapshot` 与 `TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart`。当前 targeted `go test ./apps/server/internal/api` 与 `go test ./apps/server/internal/store` 已确认旧 reviewer closeout 不会再抢走 `Memory Clerk` 的 active owner / final response truth，因此这条跨 `run -> memory -> governance` 聚合连续性用例当前转为 `Pass`。
+
+## TC-093 Persistent Session Workspace Envelope
+
+- 业务目标: 确认 daemon 对同一 `sessionId` 会持续复用同一份本地工作区，并把当前 turn、session metadata 与 work log 写成可恢复的文件锚点。
+- 前置条件: daemon runtime exec 已支持 `sessionId / runId / roomId` 元数据；存在可控 fake CLI。
+- 测试步骤:
+  1. 以同一 `sessionId` 连续执行两轮 daemon prompt。
+  2. 检查 daemon session workspace 下是否存在 `MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/work-log.md`。
+  3. 确认 `CURRENT_TURN.md` 已刷新到第二轮 prompt，而不是继续停在第一轮。
+  4. 确认 `notes/work-log.md` 同时保留两轮记录。
+  5. 经 `/v1/exec` 再走一遍同样的 session metadata，确认 HTTP 路由也会落同一层文件。
+- 预期结果: session workspace 必须是 stable local truth；当前 turn 会刷新，work log 会累积，HTTP 与 runtime 入口都落同一份 envelope。
+- 业务结论: 2026 年 4 月 16 日新增 `TestRunPromptPersistsSessionWorkspaceEnvelope`、`TestStreamPromptRefreshesCurrentTurnAndAccumulatesWorkLog`、`TestRunPromptSessionWorkspaceRootRespectsEnvOverride` 与 `TestExecRoutePersistsSessionWorkspaceEnvelope`，并复跑 lease guard 相关 daemon API 回归。当前 targeted `go test ./apps/daemon/internal/runtime` 与 `go test ./apps/daemon/internal/api` 已确认 persistent session workspace envelope 在 daemon 侧正式落地，因此这条 continuity 用例当前转为 `Pass`。
+
+## TC-094 Local-First Provider Thread Resume
+
+- 业务目标: 确认 daemon restart 后，同一 session 的 provider thread continuity 仍然锚定本地 session workspace，而不是偷偷开一条新 transport。
+- 前置条件: session workspace 已持久化 `SESSION.json`；provider transport 支持暴露可复用 thread id。
+- 测试步骤:
+  1. 对同一 `sessionId` 启动一轮 provider-backed 执行，并记录真实 thread id。
+  2. 停止 daemon，再次启动 daemon。
+  3. 继续对同一 `sessionId` 发第二轮执行。
+  4. 读取 `SESSION.json` 与 provider transport side effect，确认 thread id 仍为同一值。
+  5. 人为清空或损坏 thread id，再执行一轮，确认 daemon 显式暴露 degraded/recovery truth，而不是静默切新会话。
+- 预期结果: 本地 session workspace 必须成为 provider thread continuity 的唯一恢复锚点；丢失 thread 时必须 fail loud。
+- 业务结论: 待补 `TKT-99`。
+
+## TC-095 Daemon Once System Continuity Harness
+
+- 业务目标: 确认 `go run ./cmd/openshock-daemon --once` 级别的 system harness 能真实证明多轮 session continuity 和恢复链，而不只是 API 层单测。
+- 前置条件: daemon once 模式、httptest control plane、fake CLI 与 scenario snapshot seed 已就绪。
+- 测试步骤:
+  1. 用 scenario snapshot 启一个带 run/session/room 的最小 control plane。
+  2. 运行一次 `openshock-daemon --once`，确认第一轮 turn 完成并写出 session workspace。
+  3. 再运行第二次 `openshock-daemon --once`，确认复用同一 session workspace。
+  4. 检查 `CURRENT_TURN.md` 已刷新、`notes/work-log.md` 已累积两轮。
+  5. 如果 provider thread continuity 已落地，再确认 thread id 也被同一 harness 证明。
+- 预期结果: system harness 必须能覆盖 “后台拉起 -> 执行 -> 写回 -> 二轮复用 -> 恢复” 这条整链，而不是只证明某个函数返回值。
+- 业务结论: 待补 `TKT-100`。
+
+## TC-096 Phase 0 Shell Subtractive Flow Sweep
+
+- 业务目标: 确认前端在不改 chat-first 架构的前提下，持续通过减法降低操作路径和视觉噪音。
+- 前置条件: room / inbox / run / governance 主路径已有 headed walkthrough 与基准截图。
+- 测试步骤:
+  1. 走一遍 room 主路径，记录首屏重复 owner/status/action truth 的位置。
+  2. 走一遍 inbox triage 与 governance surface，记录需要额外阅读说明才能继续的阻塞点。
+  3. 应用减法后重跑同样路径，对比点击次数、滚动次数与重复信息块数量。
+  4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
+  5. 输出 headed walkthrough 与前后对照截图。
+- 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
+- 业务结论: 待补 `TKT-101`。

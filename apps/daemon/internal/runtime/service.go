@@ -96,6 +96,24 @@ type streamChunk struct {
 	err    error
 }
 
+type sessionWorkspace struct {
+	Dir             string
+	MemoryPath      string
+	SessionFilePath string
+	CurrentTurnPath string
+	WorkLogPath     string
+}
+
+type sessionWorkspacePayload struct {
+	SessionID         string `json:"sessionId,omitempty"`
+	RunID             string `json:"runId,omitempty"`
+	RoomID            string `json:"roomId,omitempty"`
+	Provider          string `json:"provider,omitempty"`
+	Cwd               string `json:"cwd,omitempty"`
+	AppServerThreadID string `json:"appServerThreadId,omitempty"`
+	UpdatedAt         string `json:"updatedAt,omitempty"`
+}
+
 type providerAuthProbe struct {
 	Ready   bool
 	Status  string
@@ -187,6 +205,9 @@ func (s *Service) Snapshot() Heartbeat {
 
 func (s *Service) RunPrompt(req ExecRequest) (ExecResponse, error) {
 	startedAt := time.Now()
+	if _, err := s.prepareSessionWorkspace(req); err != nil {
+		return ExecResponse{Provider: req.Provider}, err
+	}
 	plan, err := buildCommand(req)
 	if err != nil {
 		return ExecResponse{Provider: req.Provider}, err
@@ -242,6 +263,9 @@ func (s *Service) RunPrompt(req ExecRequest) (ExecResponse, error) {
 
 func (s *Service) StreamPrompt(req ExecRequest, emit func(StreamEvent) error) (ExecResponse, error) {
 	startedAt := time.Now()
+	if _, err := s.prepareSessionWorkspace(req); err != nil {
+		return ExecResponse{Provider: req.Provider}, err
+	}
 	plan, err := buildCommand(req)
 	if err != nil {
 		return ExecResponse{Provider: req.Provider}, err
@@ -713,6 +737,166 @@ func normalizedProviderID(value string) string {
 	default:
 		return trimmed
 	}
+}
+
+func (s *Service) prepareSessionWorkspace(req ExecRequest) (sessionWorkspace, error) {
+	key := sessionWorkspaceKey(req)
+	if key == "" {
+		return sessionWorkspace{}, nil
+	}
+
+	dir := filepath.Join(sessionWorkspaceRoot(s.root), key)
+	workspace := sessionWorkspace{
+		Dir:             dir,
+		MemoryPath:      filepath.Join(dir, "MEMORY.md"),
+		SessionFilePath: filepath.Join(dir, "SESSION.json"),
+		CurrentTurnPath: filepath.Join(dir, "CURRENT_TURN.md"),
+		WorkLogPath:     filepath.Join(dir, "notes", "work-log.md"),
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "notes"), 0o755); err != nil {
+		return sessionWorkspace{}, err
+	}
+	if err := ensureSessionMemoryFile(workspace.MemoryPath); err != nil {
+		return sessionWorkspace{}, err
+	}
+	if err := writeSessionWorkspaceFile(workspace.SessionFilePath, req); err != nil {
+		return sessionWorkspace{}, err
+	}
+	if err := writeCurrentTurnFile(workspace.CurrentTurnPath, req); err != nil {
+		return sessionWorkspace{}, err
+	}
+	if err := appendSessionWorkLog(workspace.WorkLogPath, req); err != nil {
+		return sessionWorkspace{}, err
+	}
+	return workspace, nil
+}
+
+func sessionWorkspaceRoot(root string) string {
+	if value := strings.TrimSpace(os.Getenv("OPENSHOCK_AGENT_SESSION_ROOT")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(root); value != "" {
+		return filepath.Join(value, ".openshock", "agent-sessions")
+	}
+	return filepath.Join(os.TempDir(), "openshock-agent-sessions")
+}
+
+func sessionWorkspaceKey(req ExecRequest) string {
+	for _, value := range []string{req.SessionID, req.RoomID, req.RunID} {
+		if key := sanitizeWorkspaceSegment(value); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
+func sanitizeWorkspaceSegment(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	lastDash := false
+	for _, char := range trimmed {
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9':
+			builder.WriteRune(char)
+			lastDash = false
+		case char == '-', char == '_', char == '.':
+			builder.WriteRune(char)
+			lastDash = false
+		default:
+			if !lastDash && builder.Len() > 0 {
+				builder.WriteRune('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}
+
+func ensureSessionMemoryFile(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	content := "# OpenShock Agent Session Memory\n\n- This folder persists context for the same session across turns.\n- Keep `notes/work-log.md` as the running continuity ledger.\n"
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func writeSessionWorkspaceFile(path string, req ExecRequest) error {
+	payload := sessionWorkspacePayload{
+		SessionID:         strings.TrimSpace(req.SessionID),
+		RunID:             strings.TrimSpace(req.RunID),
+		RoomID:            strings.TrimSpace(req.RoomID),
+		Provider:          strings.TrimSpace(req.Provider),
+		Cwd:               strings.TrimSpace(req.Cwd),
+		AppServerThreadID: "",
+		UpdatedAt:         time.Now().UTC().Format(time.RFC3339),
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+func writeCurrentTurnFile(path string, req ExecRequest) error {
+	var builder strings.Builder
+	builder.WriteString("# Current Turn\n\n")
+	if value := strings.TrimSpace(req.SessionID); value != "" {
+		builder.WriteString("- sessionId: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.RunID); value != "" {
+		builder.WriteString("- runId: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.RoomID); value != "" {
+		builder.WriteString("- roomId: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.Provider); value != "" {
+		builder.WriteString("- provider: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.Cwd); value != "" {
+		builder.WriteString("- cwd: " + value + "\n")
+	}
+	builder.WriteString("- updatedAt: " + time.Now().UTC().Format(time.RFC3339) + "\n\n")
+	builder.WriteString("## Prompt\n\n")
+	builder.WriteString(strings.TrimSpace(req.Prompt))
+	builder.WriteString("\n")
+	return os.WriteFile(path, []byte(builder.String()), 0o644)
+}
+
+func appendSessionWorkLog(path string, req ExecRequest) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.WriteFile(path, []byte("# OpenShock Agent Work Log\n\n"), 0o644); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	var builder strings.Builder
+	builder.WriteString("## " + time.Now().UTC().Format(time.RFC3339) + "\n\n")
+	if value := strings.TrimSpace(req.SessionID); value != "" {
+		builder.WriteString("- sessionId: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.RunID); value != "" {
+		builder.WriteString("- runId: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.RoomID); value != "" {
+		builder.WriteString("- roomId: " + value + "\n")
+	}
+	if value := strings.TrimSpace(req.Provider); value != "" {
+		builder.WriteString("- provider: " + value + "\n")
+	}
+	builder.WriteString("- prompt: " + strings.TrimSpace(req.Prompt) + "\n\n")
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.WriteString(builder.String())
+	return err
 }
 
 func findClaudeCLI() (string, bool) {

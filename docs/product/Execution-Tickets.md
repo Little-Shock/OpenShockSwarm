@@ -1486,6 +1486,94 @@
 - Checklist: `CHK-10` `CHK-22`
 - Test Cases: `TC-086`
 
+## TKT-98 Persistent Session Workspace Envelope
+
+- 状态: `done`
+- 优先级: `P0`
+- 目标: 把 daemon 执行从“只跑一次命令”推进到“每个 session 都有可复用的本地工作区锚点”，让 turn continuity、文件级记忆与恢复链开始落到真实文件上。
+- 范围:
+  - daemon runtime session workspace root
+  - `MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/work-log.md`
+  - `OPENSHOCK_AGENT_SESSION_ROOT` override
+  - runtime/service 单测
+  - daemon exec route 回归
+- 依赖: `TKT-13` `TKT-14`
+- Done When:
+  - 同一 `sessionId` 的多轮执行会复用同一个 daemon-managed 目录
+  - 每轮执行都会刷新 `CURRENT_TURN.md`
+  - `notes/work-log.md` 会累积多轮 turn 记录，而不是只保留最后一轮
+  - `SESSION.json` 会固定暴露 `sessionId / runId / roomId / provider / cwd / appServerThreadId`
+  - daemon `/v1/exec` 路由回归能证明这层 envelope 真实落盘
+- 最新证据:
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test ./internal/runtime -run "TestRunPromptPersistsSessionWorkspaceEnvelope|TestStreamPromptRefreshesCurrentTurnAndAccumulatesWorkLog|TestRunPromptSessionWorkspaceRootRespectsEnvOverride" -count=1'`
+  - `bash -lc 'cd apps/daemon && ../../scripts/go.sh test ./internal/api -run "TestExecRoutePersistsSessionWorkspaceEnvelope|TestExecConflictGuardRejectsSameCwdAndAllowsDifferentCwd|TestExecConflictGuardAllowsReentrantReuseForSameLease" -count=1'`
+- Checklist: `CHK-10` `CHK-14`
+- Test Cases: `TC-093`
+
+## TKT-99 Local-First Provider Thread Continuity
+
+- 状态: `todo`
+- 优先级: `P0`
+- 目标: 把 provider transport continuity 做成 daemon 自己的本地真相，而不是把 session resume 建在聊天历史和脆弱默认值上。
+- 范围:
+  - `SESSION.json.appServerThreadId` 真正写回与复用
+  - 隔离 `OPENSHOCK_CODEX_HOME`
+  - daemon restart 后的 local thread reuse / resume proof
+  - provider transport drift / missing thread fail-loud contract
+- 依赖: `TKT-98`
+- Done When:
+  - 同一 session 的 provider thread id 会在 daemon restart 后继续复用
+  - `OPENSHOCK_CODEX_HOME` 不再污染宿主共享状态，而是和 session continuity 对齐
+  - 缺失 / 失效 thread 时会显式暴露恢复状态，不会静默回落成“新会话”
+- 最新证据:
+  - 待补
+- Checklist: `CHK-10` `CHK-14` `CHK-15`
+- Test Cases: `TC-094`
+
+## TKT-100 Daemon System Scenario Harness
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 把多智能体协同、session continuity 与恢复链做成可重复的 daemon system harness，避免关键行为只靠零散 store/api 单测守着。
+- 范围:
+  - `go run ./cmd/openshock-daemon --once` system tests
+  - httptest control plane + fake CLI
+  - reusable scenario snapshot seed
+  - two-turn reuse / restart recovery / CURRENT_TURN refresh assertions
+- 依赖: `TKT-98` `TKT-99`
+- Done When:
+  - system harness 能稳定重放同一 session 的连续两轮 turn
+  - `CURRENT_TURN.md`、`notes/work-log.md` 与 provider thread continuity 都能在 system 级测试里被证明
+  - 后续多智能体恢复票默认接这套 harness，而不是重新手搓 fixture
+- 最新证据:
+  - 待补
+- Checklist: `CHK-14` `CHK-15`
+- Test Cases: `TC-095`
+
+## TKT-101 Phase 0 Shell Subtractive Flow Sweep
+
+- 状态: `todo`
+- 优先级: `P1`
+- 目标: 持续把 chat-first 壳做减法，让常见路径更短、更顺，而不是靠堆更多 summary、tab、sheet 和提示文案解决复杂度。
+- 范围:
+  - room / inbox / run / governance surface 重复信息清理
+  - 二级 sheet / action strip / helper copy 减法
+  - message flow / follow-up action / hot path micro-friction 收敛
+  - `open-shock-shell.tsx` chrome 层级减法
+  - `stitch-chat-room-views.tsx` room 顶部重复 strip 与默认右栏信息量收敛
+  - `run-control-surface.tsx` 默认动作块减法
+  - `live-detail-views.tsx` topic/run 概览重复块压缩
+  - 浏览器级 walkthrough 与对照截图
+- 依赖: `TKT-16` `TKT-23` `TKT-88`
+- Done When:
+  - 房间主面、Inbox 和 run/governance 次级面不再重复展示同一条 owner/status/action truth
+  - 首屏默认动作比当前更短，不靠阅读长解释才能继续推进
+  - headed walkthrough 能证明主要路径点击次数和视觉干扰都下降
+- 最新证据:
+  - 待补
+- Checklist: `CHK-01` `CHK-16`
+- Test Cases: `TC-096`
+
 ---
 
 ## 五、已完成批次归档
