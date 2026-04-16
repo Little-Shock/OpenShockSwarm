@@ -198,6 +198,7 @@ async function startServices(runDir) {
       cwd: projectRoot,
       env: {
         ...process.env,
+        OPENSHOCK_CONTROL_API_BASE: serverURL,
         NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
       },
       logPath: path.join(logsDir, "web.log"),
@@ -247,11 +248,16 @@ async function waitForPageContains(page, expected) {
   );
 }
 
-async function expectButtonState(page, testID, expectedDisabled) {
+async function expectControlDisabledState(page, testID, expectedDisabled) {
   await page.waitForFunction(
     ({ currentTestID, currentExpected }) => {
       const element = document.querySelector(`[data-testid="${currentTestID}"]`);
-      return element instanceof HTMLButtonElement && element.disabled === currentExpected;
+      return (
+        (element instanceof HTMLButtonElement ||
+          element instanceof HTMLTextAreaElement ||
+          element instanceof HTMLInputElement) &&
+        element.disabled === currentExpected
+      );
     },
     { currentTestID: testID, currentExpected: expectedDisabled },
     { timeout: 30_000 }
@@ -292,7 +298,7 @@ try {
 
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "可发送");
-  await expectButtonState(page, "room-send-message", false);
+  await expectControlDisabledState(page, "room-message-input", false);
   await page.goto(`${webURL}/rooms/room-runtime?tab=run`, { waitUntil: "load" });
   await page.getByTestId("room-workbench-run-panel").waitFor({ state: "visible", timeout: 30_000 });
   await waitForText(page, "room-run-control-authz", "可操作");
@@ -308,7 +314,7 @@ try {
   await waitForContains(page, "room-run-control-note-preview", stopNote);
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "已暂停");
-  await expectButtonState(page, "room-send-message", true);
+  await expectControlDisabledState(page, "room-message-input", true);
   await capture(page, screenshotsDir, "room-paused");
 
   const stoppedState = await waitFor(async () => {
@@ -368,7 +374,7 @@ try {
   await waitForContains(page, "room-run-control-note-preview", resumeNote);
   await page.goto(`${webURL}/rooms/room-runtime`, { waitUntil: "load" });
   await waitForText(page, "room-reply-authz", "可发送");
-  await expectButtonState(page, "room-send-message", false);
+  await expectControlDisabledState(page, "room-message-input", false);
   await capture(page, screenshotsDir, "room-resumed");
 
   const resumedState = await waitFor(async () => {

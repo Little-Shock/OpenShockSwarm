@@ -46,6 +46,18 @@ function controlPermissionLabel(status: string) {
   }
 }
 
+function controlSummary(status: Run["status"] | Session["status"], followThread: boolean) {
+  if (status === "done") {
+    return "当前执行已经收口，只保留状态回看，不再继续发控制动作。";
+  }
+
+  if (status === "paused") {
+    return followThread ? "当前已暂停；恢复后会继续沿这条线程往下走。" : "当前已暂停；恢复后会继续沿当前会话推进。";
+  }
+
+  return followThread ? "当前已锁定线程，后续继续会贴着同一条讨论推进。" : "当前未锁定线程，后续继续时仍可能新开 follow-up。";
+}
+
 type RunControlSurfaceProps = {
   scope: "room" | "run" | "topic";
   run: Run;
@@ -76,6 +88,7 @@ export function RunControlSurface({
   const isPaused = currentStatus === "paused";
   const isDone = currentStatus === "done";
   const hasGate = !canControl || controlStatus === "blocked" || controlStatus === "signed_out";
+  const summary = controlSummary(currentStatus, followThread);
 
   async function handleAction(action: RunControlAction) {
     if (busyAction || hasGate || isDone) return;
@@ -114,17 +127,24 @@ export function RunControlSurface({
         </span>
       </div>
 
-      <p className="mt-3 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-        暂停会把当前执行和会话切到暂停态；恢复会继续沿当前会话往下走；锁定线程会让后续恢复继续贴着当前线程，不再新开分支执行。
-      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <p
+          data-testid={`${prefix}-control-authz`}
+          className="rounded-[6px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.72)]"
+        >
+          {controlPermissionLabel(controlStatus)}
+        </p>
+        <p className="text-[12px] leading-6 text-[color:rgba(24,20,14,0.72)]">{summary}</p>
+      </div>
+      {hasGate ? <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{controlBoundary}</p> : null}
 
       <textarea
         data-testid={`${prefix}-control-note`}
         value={note}
         onChange={(event) => setNote(event.target.value)}
         disabled={busyAction !== null || hasGate || isDone}
-        className="mt-4 min-h-[84px] w-full border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 py-3 text-[13px] outline-none disabled:opacity-60"
-        placeholder="补充暂停、恢复或锁定线程的说明；留空则走默认文案。"
+        className="mt-3 min-h-[72px] w-full border-2 border-[var(--shock-ink)] bg-[#fafafa] px-3 py-3 text-[13px] outline-none disabled:opacity-60"
+        placeholder="补一句暂停、恢复或锁定线程的原因；留空则沿默认文案。"
       />
 
       <div className="mt-3 grid gap-2 md:grid-cols-3">
@@ -157,13 +177,6 @@ export function RunControlSurface({
         </button>
       </div>
 
-      <p
-        data-testid={`${prefix}-control-authz`}
-        className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]"
-      >
-        {controlPermissionLabel(controlStatus)}
-      </p>
-      {hasGate ? <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{controlBoundary}</p> : null}
       {controlNote ? (
         <p data-testid={`${prefix}-control-note-preview`} className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
           当前控制说明：{controlNote}

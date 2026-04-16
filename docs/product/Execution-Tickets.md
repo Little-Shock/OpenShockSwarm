@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.28
+**版本:** 1.29
 **更新日期:** 2026 年 4 月 16 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1556,7 +1556,7 @@
 
 ## TKT-101 Phase 0 Shell Subtractive Flow Sweep
 
-- 状态: `todo`
+- 状态: `active`
 - 优先级: `P1`
 - 目标: 持续把 chat-first 壳做减法，让常见路径更短、更顺，而不是靠堆更多 summary、tab、sheet 和提示文案解决复杂度。
 - 范围:
@@ -1573,8 +1573,16 @@
   - 房间主面、Inbox 和 run/governance 次级面不再重复展示同一条 owner/status/action truth
   - 首屏默认动作比当前更短，不靠阅读长解释才能继续推进
   - headed walkthrough 能证明主要路径点击次数和视觉干扰都下降
+- 当前已收第一刀:
+  - shared `RunControlSurface` 已压掉长解释段，改成状态摘要 + 权限信号，避免 room / topic / run 三处重复讲同一套控制说明
+  - `/topics/:topicId` 已删除重复的 `topic-resume-context` 卡，避免同页继续入口、run snapshot 与 continuity truth 三次重复
+  - headed verification scripts 已对齐当前控制真值，不再把“空草稿发送按钮可点击”当成错误前提
 - 最新证据:
-  - 待补
+  - `pnpm typecheck:web`
+  - `pnpm lint:web`
+  - `pnpm build:web`
+  - `pnpm test:headed-topic-route-resume-lifecycle`
+  - `pnpm test:headed-stop-resume-follow-thread`
 - Checklist: `CHK-01` `CHK-16`
 - Test Cases: `TC-096`
 

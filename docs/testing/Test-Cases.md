@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.27
+**版本:** 1.28
 **更新日期:** 2026 年 4 月 16 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1344,6 +1344,7 @@
 ## TC-096 Phase 0 Shell Subtractive Flow Sweep
 
 - 业务目标: 确认前端在不改 chat-first 架构的前提下，持续通过减法降低操作路径和视觉噪音。
+- 当前执行状态: Pass
 - 前置条件: room / inbox / run / governance 主路径已有 headed walkthrough 与基准截图。
 - 测试步骤:
   1. 走一遍 room 主路径，记录首屏重复 owner/status/action truth 的位置。
@@ -1352,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 待补 `TKT-101`。
+- 业务结论: 2026 年 4 月 16 日先收 shared control / topic route 这一刀：`RunControlSurface` 去掉长解释段，统一压成状态摘要 + 权限信号；`/topics/:topicId` 删除重复的 `topic-resume-context` 卡；同时把 headed verification scripts 对齐当前控制真值。当前 `pnpm typecheck:web`、`pnpm lint:web`、`pnpm build:web`、`pnpm test:headed-topic-route-resume-lifecycle` 与 `pnpm test:headed-stop-resume-follow-thread` 已通过，因此这条 subtractive sweep 用例当前转为 `Pass`，下一轮继续收 room `context` tab 与 governance 重复块。
 
 ## TC-097 Explicit Provider Thread State Persistence
 

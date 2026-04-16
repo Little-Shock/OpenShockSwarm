@@ -194,6 +194,7 @@ async function startServices() {
       env: {
         ...process.env,
         OPENSHOCK_CONTROL_API_BASE: serverURL,
+        NEXT_PUBLIC_OPENSHOCK_API_BASE: serverURL,
       },
     }
   );

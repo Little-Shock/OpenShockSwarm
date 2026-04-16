@@ -1399,19 +1399,6 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
           ) : (
             <LiveStateNotice title="当前话题还没有可继续的执行" message="这条话题已经独立成页面，但目前还没有可恢复的执行记录。" />
           )}
-          <Panel tone="paper" className="!p-4" data-testid="topic-resume-context">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">继续入口</p>
-            <h3 className="mt-2 font-display text-2xl font-bold">同页决定是继续、暂停还是回到 room</h3>
-            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              如果当前话题已经暂停，可以直接在这里恢复；如果只是想回到讨论页，也可以直接跳转过去。
-            </p>
-            <div className="mt-4 grid gap-2 md:grid-cols-2">
-              <FactTile label="连续性" value={continuityLabel} />
-              <FactTile label="PR" value={pullRequest?.status ?? issue?.pullRequest ?? "待产生"} />
-              <FactTile label="运行环境" value={run?.runtime ?? session?.runtime ?? "待同步"} />
-              <FactTile label="分支" value={run?.branch ?? session?.branch ?? "待同步"} />
-            </div>
-          </Panel>
           {run ? <RunSnapshotCard run={run} room={room} issue={issue} session={session} /> : null}
         </div>
       </div>

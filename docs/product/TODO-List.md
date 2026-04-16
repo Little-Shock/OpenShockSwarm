@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.21
+**版本:** 1.22
 **更新日期:** 2026 年 4 月 16 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -139,7 +139,7 @@
 - `GAP-66 / TKT-97`
   - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
 - `GAP-70 / TKT-101`
-  - Phase 0 shell 前端现在要持续做减法；房间、收件箱、运行与治理面要继续收掉重复状态、重复动作和过度解释，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
+  - Phase 0 shell 前端减法已经起第一刀；shared `RunControlSurface` 已压短，`/topics/:topicId` 的重复继续入口卡已删掉。下一步继续收 room `context` tab、Inbox 和 governance surface 上重复的 owner/status/action truth，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
 
 ### 2026-04-16 已收口
 
