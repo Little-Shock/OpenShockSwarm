@@ -866,6 +866,290 @@ func TestRoomAutoHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(
 	}
 }
 
+func TestGovernedHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+	var execRequests []ExecRequest
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode exec payload: %v", err)
+		}
+		execRequests = append(execRequests, req)
+
+		switch len(execRequests) {
+		case 1:
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "not logged in"})
+		case 2:
+			writeJSON(w, http.StatusOK, DaemonExecResponse{
+				Provider: "claude",
+				Command:  []string{"claude", "--print"},
+				Output:   "我接住 formal reviewer handoff 之后，把恢复链路继续收口。",
+				Duration: "0.4s",
+			})
+		default:
+			t.Fatalf("unexpected exec request count: %d", len(execRequests))
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Blocked Governed Handoff Continuation", "Codex Dockmaster")
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	}).Handler())
+
+	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      created.RoomID,
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-claude-review-runner",
+		"title":       "接住 reviewer lane",
+		"summary":     "请正式接住 reviewer lane，并继续把恢复链路往前推。",
+		"kind":        "governed",
+	})
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/mailbox status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+
+	var createPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+
+	ackResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	defer ackResp.Body.Close()
+	if ackResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/mailbox/:id acknowledged status = %d, want %d", ackResp.StatusCode, http.StatusOK)
+	}
+
+	var ackPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+		State   store.State        `json:"state"`
+	}
+	decodeJSON(t, ackResp, &ackPayload)
+	server.Close()
+
+	if ackPayload.Handoff.AutoFollowup == nil || ackPayload.Handoff.AutoFollowup.Status != "blocked" {
+		t.Fatalf("acknowledged governed handoff = %#v, want blocked durable followup after failed first continue", ackPayload.Handoff)
+	}
+	if !strings.Contains(ackPayload.Handoff.LastAction, "自动继续受阻") || !strings.Contains(ackPayload.Handoff.LastAction, "当前还未登录模型服务") {
+		t.Fatalf("acknowledged governed handoff last action = %q, want blocked followup visibility", ackPayload.Handoff.LastAction)
+	}
+	if len(execRequests) != 1 || execRequests[0].Provider != "claude" {
+		t.Fatalf("exec requests after acknowledge = %#v, want one claude followup attempt", execRequests)
+	}
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedAPI := New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reloadedAPI.StartRoomAutoRecoveryLoop(ctx, 5*time.Millisecond)
+
+	deadline := time.Now().Add(2 * time.Second)
+	var resumedHandoff *store.AgentHandoff
+	for time.Now().Before(deadline) {
+		snapshot := reloadedStore.Snapshot()
+		for index := range snapshot.Mailbox {
+			item := &snapshot.Mailbox[index]
+			if item.ID == createPayload.Handoff.ID {
+				resumedHandoff = item
+				break
+			}
+		}
+		if resumedHandoff != nil && resumedHandoff.AutoFollowup != nil && resumedHandoff.AutoFollowup.Status == "completed" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if resumedHandoff == nil || resumedHandoff.AutoFollowup == nil || resumedHandoff.AutoFollowup.Status != "completed" {
+		t.Fatalf("recovered governed handoff = %#v, want completed durable followup after background loop", resumedHandoff)
+	}
+	if !strings.Contains(resumedHandoff.LastAction, "已自动继续") || !strings.Contains(resumedHandoff.LastAction, "formal reviewer handoff") {
+		t.Fatalf("recovered governed handoff last action = %q, want completed durable followup summary", resumedHandoff.LastAction)
+	}
+	if len(execRequests) != 2 || execRequests[1].Provider != "claude" {
+		t.Fatalf("exec requests after restart = %#v, want second claude retry from background loop", execRequests)
+	}
+	for _, expected := range []string{
+		"你上一轮已正式接棒当前房间",
+		"自动继续时被阻塞",
+		"当前还未登录模型服务",
+	} {
+		if !strings.Contains(execRequests[1].Prompt, expected) {
+			t.Fatalf("restart exec prompt = %q, want %q", execRequests[1].Prompt, expected)
+		}
+	}
+}
+
+func TestGovernedHandoffAcknowledgeDoesNotDuplicateInFlightImmediateContinue(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	var (
+		mu           sync.Mutex
+		execRequests []ExecRequest
+		releaseExec  = make(chan struct{})
+	)
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		var req ExecRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode exec payload: %v", err)
+		}
+		mu.Lock()
+		execRequests = append(execRequests, req)
+		count := len(execRequests)
+		mu.Unlock()
+
+		switch count {
+		case 1:
+			<-releaseExec
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "not logged in"})
+		default:
+			t.Fatalf("unexpected duplicate exec request count: %d", count)
+		}
+	}))
+	defer daemon.Close()
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Governed Immediate Continue Dedup", "Codex Dockmaster")
+
+	api := New(s, http.DefaultClient, Config{
+		DaemonURL:     daemon.URL,
+		WorkspaceRoot: root,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	api.StartRoomAutoRecoveryLoop(ctx, 5*time.Millisecond)
+
+	server := httptest.NewServer(api.Handler())
+	defer server.Close()
+
+	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
+		"roomId":      created.RoomID,
+		"fromAgentId": "agent-codex-dockmaster",
+		"toAgentId":   "agent-claude-review-runner",
+		"title":       "接住 reviewer lane",
+		"summary":     "请正式接住 reviewer lane，并继续把恢复链路往前推。",
+		"kind":        "governed",
+	})
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/mailbox status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+
+	var createPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+
+	body, err := json.Marshal(map[string]string{
+		"action":        "acknowledged",
+		"actingAgentId": "agent-claude-review-runner",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	type ackResult struct {
+		response *http.Response
+		err      error
+	}
+	ackDone := make(chan ackResult, 1)
+	go func() {
+		resp, err := http.Post(server.URL+"/v1/mailbox/"+createPayload.Handoff.ID, "application/json", bytes.NewReader(body))
+		ackDone <- ackResult{response: resp, err: err}
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		count := len(execRequests)
+		mu.Unlock()
+		if count == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	count := len(execRequests)
+	mu.Unlock()
+	if count != 1 {
+		t.Fatalf("in-flight exec request count = %d, want exactly 1 immediate continue attempt", count)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	count = len(execRequests)
+	mu.Unlock()
+	if count != 1 {
+		t.Fatalf("exec request count during in-flight continue = %d, want recovery loop not to duplicate immediate continue", count)
+	}
+
+	close(releaseExec)
+
+	var result ackResult
+	select {
+	case result = <-ackDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for acknowledged mailbox response")
+	}
+	if result.err != nil {
+		t.Fatalf("POST /v1/mailbox/:id acknowledged error = %v", result.err)
+	}
+	defer result.response.Body.Close()
+	if result.response.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/mailbox/:id acknowledged status = %d, want %d", result.response.StatusCode, http.StatusOK)
+	}
+
+	var ackPayload struct {
+		Handoff store.AgentHandoff `json:"handoff"`
+	}
+	decodeJSON(t, result.response, &ackPayload)
+	if ackPayload.Handoff.AutoFollowup == nil || ackPayload.Handoff.AutoFollowup.Status != "blocked" {
+		t.Fatalf("acknowledged governed handoff = %#v, want blocked durable followup after failed immediate continue", ackPayload.Handoff)
+	}
+	if !strings.Contains(ackPayload.Handoff.LastAction, "自动继续受阻") {
+		t.Fatalf("acknowledged governed handoff last action = %q, want blocked auto-followup visibility", ackPayload.Handoff.LastAction)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	count = len(execRequests)
+	mu.Unlock()
+	if count != 1 {
+		t.Fatalf("exec request count after acknowledged response = %d, want no duplicate retry within cooldown window", count)
+	}
+}
+
 func TestRoomMessageStreamCreatesMailboxHandoffFromDirective(t *testing.T) {
 	root := t.TempDir()
 	var seen ExecRequest

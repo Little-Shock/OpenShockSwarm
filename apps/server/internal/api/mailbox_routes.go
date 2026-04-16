@@ -141,6 +141,15 @@ func (s *Server) handleMailboxRoutes(w http.ResponseWriter, r *http.Request) {
 			writeMailboxError(w, err)
 			return
 		}
+		switch strings.TrimSpace(req.Action) {
+		case "ack", "acknowledge", "acknowledged":
+			if handoffKindSupportsAutoFollowup(handoff.Kind) && handoff.AutoFollowup != nil {
+				nextState, _ = s.continueHandoffAutoFollowupNow(nextState, handoff)
+				if refreshed, ok := s.store.Handoff(handoffID); ok {
+					handoff = refreshed
+				}
+			}
+		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"handoff": sanitizeLivePayload(handoff),

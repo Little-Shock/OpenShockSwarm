@@ -180,6 +180,51 @@ func TestRoomAutoHandoffFollowupUpdatesMailboxAndInboxTruth(t *testing.T) {
 	}
 }
 
+func TestAdvanceFormalHandoffAcknowledgedSeedsDurableAutoFollowup(t *testing.T) {
+	for _, kind := range []string{handoffKindManual, handoffKindGoverned} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			statePath := filepath.Join(root, "data", "state.json")
+
+			s, err := New(statePath, root)
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+
+			_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+				RoomID:      "room-runtime",
+				FromAgentID: "agent-codex-dockmaster",
+				ToAgentID:   "agent-claude-review-runner",
+				Title:       "接住 reviewer lane",
+				Summary:     "请正式接住 reviewer lane，并继续把当前房间往前推。",
+				Kind:        kind,
+			})
+			if err != nil {
+				t.Fatalf("CreateHandoff(%s) error = %v", kind, err)
+			}
+
+			ackState, acked, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+				Action:        "acknowledged",
+				ActingAgentID: "agent-claude-review-runner",
+			})
+			if err != nil {
+				t.Fatalf("AdvanceHandoff(%s acknowledged) error = %v", kind, err)
+			}
+			if acked.AutoFollowup == nil || acked.AutoFollowup.Status != "pending" {
+				t.Fatalf("%s acknowledged handoff = %#v, want pending durable auto followup", kind, acked)
+			}
+			if !strings.Contains(acked.LastAction, "自动继续") {
+				t.Fatalf("%s acknowledged last action = %q, want durable auto-followup summary", kind, acked.LastAction)
+			}
+
+			inboxItem := findInboxItemByHandoffID(ackState.Inbox, acked.ID)
+			if inboxItem == nil || !strings.Contains(inboxItem.Summary, "自动继续") {
+				t.Fatalf("%s inbox item = %#v, want auto-followup summary", kind, inboxItem)
+			}
+		})
+	}
+}
+
 func TestAdvanceHandoffLifecycleUpdatesOwnerAndLedger(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")

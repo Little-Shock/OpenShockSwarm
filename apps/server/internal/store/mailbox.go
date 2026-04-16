@@ -37,6 +37,48 @@ const (
 	mailboxEventTimestampLayout = "2006-01-02T15:04:05.000000000Z07:00"
 )
 
+func handoffKindSupportsAutoFollowup(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case handoffKindManual, handoffKindRoomAuto, handoffKindGoverned:
+		return true
+	default:
+		return false
+	}
+}
+
+func defaultHandoffAutoFollowupSummary(handoff AgentHandoff) string {
+	target := defaultString(strings.TrimSpace(handoff.ToAgent), "当前接手智能体")
+	return fmt.Sprintf("等待 %s 自动继续当前房间。", target)
+}
+
+func ensureHandoffAutoFollowupPending(handoff *AgentHandoff, updatedAt string) {
+	if handoff == nil || !handoffKindSupportsAutoFollowup(handoff.Kind) {
+		return
+	}
+	if handoff.AutoFollowup == nil {
+		handoff.AutoFollowup = &AgentHandoffAutoFollowup{}
+	}
+	handoff.AutoFollowup.Status = "pending"
+	handoff.AutoFollowup.Summary = defaultHandoffAutoFollowupSummary(*handoff)
+	handoff.AutoFollowup.UpdatedAt = updatedAt
+	handoff.UpdatedAt = updatedAt
+	handoff.LastAction = roomAutoHandoffFollowupLastAction(*handoff)
+}
+
+func updateHandoffAutoFollowupStatus(handoff *AgentHandoff, status, summary, updatedAt string) {
+	if handoff == nil || !handoffKindSupportsAutoFollowup(handoff.Kind) {
+		return
+	}
+	if handoff.AutoFollowup == nil {
+		handoff.AutoFollowup = &AgentHandoffAutoFollowup{}
+	}
+	handoff.AutoFollowup.Status = strings.TrimSpace(status)
+	handoff.AutoFollowup.Summary = defaultString(strings.TrimSpace(summary), defaultHandoffAutoFollowupSummary(*handoff))
+	handoff.AutoFollowup.UpdatedAt = updatedAt
+	handoff.UpdatedAt = updatedAt
+	handoff.LastAction = roomAutoHandoffFollowupLastAction(*handoff)
+}
+
 func mailboxEventTimestamp(now time.Time) string {
 	return now.UTC().Format(mailboxEventTimestampLayout)
 }
@@ -217,6 +259,16 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 		s.state.Runs[runIndex].Owner = handoff.ToAgent
 		s.state.Issues[issueIndex].Owner = handoff.ToAgent
 		shouldSyncActiveRun = true
+		if handoff.Kind != handoffKindRoomAuto && handoffKindSupportsAutoFollowup(handoff.Kind) {
+			ensureHandoffAutoFollowupPending(handoff, updatedAt)
+			presentation.NextAction = handoff.LastAction
+		}
+	}
+	if action == "blocked" && handoff.Kind != handoffKindRoomAuto && handoff.AutoFollowup != nil {
+		updateHandoffAutoFollowupStatus(handoff, "blocked", note, updatedAt)
+	}
+	if action == "completed" && handoff.Kind != handoffKindRoomAuto && handoff.AutoFollowup != nil {
+		updateHandoffAutoFollowupStatus(handoff, "completed", defaultString(note, presentation.Summary), updatedAt)
 	}
 	if shouldSyncActiveRun {
 		s.state.Runs[runIndex].NextAction = presentation.NextAction
@@ -226,7 +278,13 @@ func (s *Store) AdvanceHandoff(handoffID string, input MailboxUpdateInput) (Stat
 			item.UpdatedAt = updatedAt
 		})
 	}
-	s.updateHandoffInboxLocked(*handoff, presentation.Title, presentation.Summary)
+	inboxTitle := presentation.Title
+	inboxSummary := presentation.Summary
+	if handoffKindSupportsAutoFollowup(handoff.Kind) && handoff.AutoFollowup != nil {
+		inboxTitle = roomAutoHandoffFollowupInboxTitle(*handoff)
+		inboxSummary = roomAutoHandoffFollowupInboxSummary(*handoff)
+	}
+	s.updateHandoffInboxLocked(*handoff, inboxTitle, inboxSummary)
 	s.appendRoomMessageLocked(handoff.RoomID, Message{
 		ID:      fmt.Sprintf("%s-system-%d", handoff.RoomID, now.UnixNano()),
 		Speaker: presentation.RoomSpeaker,
@@ -351,11 +409,7 @@ func (s *Store) createHandoffLocked(input MailboxCreateInput) (AgentHandoff, err
 		Messages:        []MailboxMessage{message},
 	}
 	if handoffKind == handoffKindRoomAuto {
-		handoff.AutoFollowup = &AgentHandoffAutoFollowup{
-			Status:    "pending",
-			Summary:   fmt.Sprintf("等待 %s 自动继续当前房间。", toAgent.Name),
-			UpdatedAt: createdAt,
-		}
+		ensureHandoffAutoFollowupPending(&handoff, createdAt)
 	}
 
 	s.state.Mailbox = append([]AgentHandoff{handoff}, s.state.Mailbox...)
@@ -506,17 +560,10 @@ func (s *Store) autoAcknowledgeRoomHandoffLocked(handoffID string, roomIndex, ru
 func (s *Store) updateRoomAutoHandoffFollowupLocked(handoffID, status, summary, updatedAt string) (AgentHandoff, bool) {
 	for index := range s.state.Mailbox {
 		handoff := &s.state.Mailbox[index]
-		if handoff.ID != strings.TrimSpace(handoffID) || handoff.Kind != handoffKindRoomAuto {
+		if handoff.ID != strings.TrimSpace(handoffID) || !handoffKindSupportsAutoFollowup(handoff.Kind) {
 			continue
 		}
-		if handoff.AutoFollowup == nil {
-			handoff.AutoFollowup = &AgentHandoffAutoFollowup{}
-		}
-		handoff.AutoFollowup.Status = strings.TrimSpace(status)
-		handoff.AutoFollowup.Summary = strings.TrimSpace(summary)
-		handoff.AutoFollowup.UpdatedAt = updatedAt
-		handoff.UpdatedAt = updatedAt
-		handoff.LastAction = roomAutoHandoffFollowupLastAction(*handoff)
+		updateHandoffAutoFollowupStatus(handoff, status, summary, updatedAt)
 		s.updateHandoffInboxLocked(*handoff, roomAutoHandoffFollowupInboxTitle(*handoff), roomAutoHandoffFollowupInboxSummary(*handoff))
 		return *handoff, true
 	}
@@ -531,7 +578,7 @@ func (s *Store) completeLatestRoomAutoHandoffFollowupLocked(roomID, agentName, s
 	}
 	for index := range s.state.Mailbox {
 		handoff := &s.state.Mailbox[index]
-		if handoff.RoomID != roomID || handoff.Kind != handoffKindRoomAuto || handoff.AutoFollowup == nil {
+		if handoff.RoomID != roomID || !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
 			continue
 		}
 		if !strings.EqualFold(strings.TrimSpace(handoff.ToAgent), agentName) {
@@ -539,11 +586,7 @@ func (s *Store) completeLatestRoomAutoHandoffFollowupLocked(roomID, agentName, s
 		}
 		switch strings.TrimSpace(handoff.AutoFollowup.Status) {
 		case "pending", "blocked":
-			handoff.AutoFollowup.Status = "completed"
-			handoff.AutoFollowup.Summary = strings.TrimSpace(summary)
-			handoff.AutoFollowup.UpdatedAt = updatedAt
-			handoff.UpdatedAt = updatedAt
-			handoff.LastAction = roomAutoHandoffFollowupLastAction(*handoff)
+			updateHandoffAutoFollowupStatus(handoff, "completed", summary, updatedAt)
 			s.updateHandoffInboxLocked(*handoff, roomAutoHandoffFollowupInboxTitle(*handoff), roomAutoHandoffFollowupInboxSummary(*handoff))
 			return *handoff, true
 		}
@@ -778,7 +821,7 @@ func (s *Store) updateHandoffInboxLocked(handoff AgentHandoff, title, summary st
 }
 
 func roomAutoHandoffFollowupLastAction(handoff AgentHandoff) string {
-	if handoff.Kind != handoffKindRoomAuto || handoff.AutoFollowup == nil {
+	if !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
 		return handoff.LastAction
 	}
 	target := defaultString(strings.TrimSpace(handoff.ToAgent), "当前接手智能体")
@@ -803,7 +846,7 @@ func roomAutoHandoffFollowupLastAction(handoff AgentHandoff) string {
 
 func roomAutoHandoffFollowupInboxTitle(handoff AgentHandoff) string {
 	target := defaultString(strings.TrimSpace(handoff.ToAgent), "当前接手智能体")
-	if handoff.Kind != handoffKindRoomAuto || handoff.AutoFollowup == nil {
+	if !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
 		return fmt.Sprintf("%s 已接棒", target)
 	}
 	switch strings.TrimSpace(handoff.AutoFollowup.Status) {
@@ -818,7 +861,7 @@ func roomAutoHandoffFollowupInboxTitle(handoff AgentHandoff) string {
 
 func roomAutoHandoffFollowupInboxSummary(handoff AgentHandoff) string {
 	target := defaultString(strings.TrimSpace(handoff.ToAgent), "当前接手智能体")
-	if handoff.Kind != handoffKindRoomAuto || handoff.AutoFollowup == nil {
+	if !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
 		return fmt.Sprintf("%s 正在跟进：%s", target, defaultString(strings.TrimSpace(handoff.Summary), handoff.Title))
 	}
 	switch strings.TrimSpace(handoff.AutoFollowup.Status) {
@@ -832,7 +875,7 @@ func roomAutoHandoffFollowupInboxSummary(handoff AgentHandoff) string {
 }
 
 func roomAutoHandoffFollowupInboxKind(handoff AgentHandoff) string {
-	if handoff.Kind != handoffKindRoomAuto || handoff.AutoFollowup == nil {
+	if !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
 		return ""
 	}
 	if strings.TrimSpace(handoff.AutoFollowup.Status) == "blocked" {

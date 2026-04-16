@@ -2101,10 +2101,19 @@ func buildRoomAutoHandoffContinuationHint(snapshot store.State, roomID string, t
 	}
 }
 
+func handoffKindSupportsAutoFollowup(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case "manual", "room-auto", "governed":
+		return true
+	default:
+		return false
+	}
+}
+
 func findLatestRoomAutoHandoffContinuation(snapshot store.State, roomID string, ownerAgent store.Agent) *store.AgentHandoff {
 	for index := range snapshot.Mailbox {
 		handoff := &snapshot.Mailbox[index]
-		if handoff.RoomID != roomID || handoff.Kind != "room-auto" || handoff.AutoFollowup == nil {
+		if handoff.RoomID != roomID || !handoffKindSupportsAutoFollowup(handoff.Kind) || handoff.AutoFollowup == nil {
 			continue
 		}
 		if handoff.ToAgentID != ownerAgent.ID && !strings.EqualFold(strings.TrimSpace(handoff.ToAgent), strings.TrimSpace(ownerAgent.Name)) {
@@ -2842,7 +2851,21 @@ func buildRoomAutoHandoffInput(snapshot store.State, roomID, fromAgentName strin
 	}, true
 }
 
-func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTitle, handoffID string) (store.State, string) {
+func handoffAutoFollowupExecLabel(handoff store.AgentHandoff) string {
+	if strings.TrimSpace(handoff.Kind) == "room-auto" {
+		return "讨论间自动接棒"
+	}
+	return "讨论间正式交接继续"
+}
+
+func handoffAutoFollowupShouldEscalateRoom(handoff store.AgentHandoff) bool {
+	return strings.TrimSpace(handoff.Kind) == "room-auto"
+}
+
+func (s *Server) continueHandoffAutoFollowup(snapshot store.State, handoff store.AgentHandoff) (store.State, string) {
+	roomID := strings.TrimSpace(handoff.RoomID)
+	handoffID := strings.TrimSpace(handoff.ID)
+	handoffTitle := strings.TrimSpace(handoff.Title)
 	room, _, _, ok := findRoomRunIssue(snapshot, roomID)
 	if !ok {
 		return snapshot, ""
@@ -2852,9 +2875,13 @@ func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTi
 	}
 
 	provider := resolveRoomExecProvider(snapshot, roomID, "")
-	if blocked := execProviderPreflightMessage("讨论间自动接棒", snapshot, provider); blocked != "" {
+	execLabel := handoffAutoFollowupExecLabel(handoff)
+	if blocked := execProviderPreflightMessage(execLabel, snapshot, provider); blocked != "" {
 		if nextState, _, err := s.store.UpdateRoomAutoHandoffFollowup(handoffID, "blocked", blocked); err == nil {
 			snapshot = nextState
+		}
+		if !handoffAutoFollowupShouldEscalateRoom(handoff) {
+			return snapshot, ""
 		}
 		message := fmt.Sprintf("%s 已接棒，但当前无法继续执行：%s", room.Topic.Owner, blocked)
 		nextState, err := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
@@ -2872,9 +2899,12 @@ func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTi
 		TimeoutSeconds: roomMessageExecTimeoutSeconds,
 	})
 	if err != nil {
-		blocked := execFailureMessage("讨论间自动接棒", err)
+		blocked := execFailureMessage(execLabel, err)
 		if nextState, _, followupErr := s.store.UpdateRoomAutoHandoffFollowup(handoffID, "blocked", blocked); followupErr == nil {
 			snapshot = nextState
+		}
+		if !handoffAutoFollowupShouldEscalateRoom(handoff) {
+			return snapshot, ""
 		}
 		message := fmt.Sprintf("%s 已接棒，但继续推进失败：%s", room.Topic.Owner, blocked)
 		nextState, appendErr := s.store.AppendSystemRoomMessage(roomID, "System", message, "blocked")
@@ -2889,8 +2919,10 @@ func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTi
 		if nextState, _, err := s.store.UpdateRoomAutoHandoffFollowup(handoffID, "completed", "已静默继续当前房间，无需额外公开回复。"); err == nil {
 			snapshot = nextState
 		}
-		if nextState, _, err := s.store.SuppressRoomAutoHandoffAnnouncement(roomID, room.Topic.Owner, handoffTitle); err == nil {
-			return nextState, ""
+		if strings.TrimSpace(handoff.Kind) == "room-auto" {
+			if nextState, _, err := s.store.SuppressRoomAutoHandoffAnnouncement(roomID, room.Topic.Owner, handoffTitle); err == nil {
+				return nextState, ""
+			}
 		}
 		return snapshot, ""
 	}
@@ -2915,6 +2947,26 @@ func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTi
 		nextState = blockedState
 	}
 	return nextState, directives.DisplayOutput
+}
+
+func (s *Server) continueHandoffAutoFollowupNow(snapshot store.State, handoff store.AgentHandoff) (store.State, string) {
+	handoffID := strings.TrimSpace(handoff.ID)
+	if handoffID == "" {
+		return snapshot, ""
+	}
+	if !s.beginRoomAutoRecovery(handoffID, time.Now()) {
+		return snapshot, ""
+	}
+	defer s.finishRoomAutoRecovery(handoffID)
+	return s.continueHandoffAutoFollowup(snapshot, handoff)
+}
+
+func (s *Server) continueRoomAutoHandoff(snapshot store.State, roomID, handoffTitle, handoffID string) (store.State, string) {
+	handoff, ok := findRoomAutoHandoffByID(snapshot, handoffID)
+	if !ok {
+		return snapshot, ""
+	}
+	return s.continueHandoffAutoFollowupNow(snapshot, handoff)
 }
 
 func buildRoomAutoFollowupPrompt(ownerName, handoffTitle string) string {
@@ -3071,7 +3123,7 @@ func (s *Server) runRoomAutoRecovery(handoffID string) {
 	if !ok || !roomAutoHandoffRecoveryEligible(snapshot, handoff) {
 		return
 	}
-	_, _ = s.continueRoomAutoHandoff(snapshot, handoff.RoomID, handoff.Title, handoff.ID)
+	_, _ = s.continueHandoffAutoFollowup(snapshot, handoff)
 }
 
 func (s *Server) finishRoomAutoRecovery(handoffID string) {
@@ -3102,7 +3154,7 @@ func (s *Server) clearRoomAutoRecoveryTracking(handoffID string) {
 }
 
 func roomAutoHandoffRecoveryEligible(snapshot store.State, handoff store.AgentHandoff) bool {
-	if handoff.Kind != "room-auto" || strings.TrimSpace(handoff.Status) != "acknowledged" || handoff.AutoFollowup == nil {
+	if !handoffKindSupportsAutoFollowup(handoff.Kind) || strings.TrimSpace(handoff.Status) != "acknowledged" || handoff.AutoFollowup == nil {
 		return false
 	}
 	switch strings.TrimSpace(handoff.AutoFollowup.Status) {
@@ -3254,7 +3306,7 @@ func findRoomAutoHandoffByID(snapshot store.State, handoffID string) (store.Agen
 		return store.AgentHandoff{}, false
 	}
 	for _, handoff := range snapshot.Mailbox {
-		if handoff.ID == trimmedID && handoff.Kind == "room-auto" {
+		if handoff.ID == trimmedID && handoffKindSupportsAutoFollowup(handoff.Kind) {
 			return handoff, true
 		}
 	}
