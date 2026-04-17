@@ -348,6 +348,15 @@ try {
     async () => (await readText(page, "orchestration-governance-step-issue")).includes(createdIssue.key),
     "governance replay did not pivot to the created issue"
   );
+  const initialGovernancePageText = (await page.locator("body").textContent())?.trim() ?? "";
+  assert(
+    !initialGovernancePageText.includes("决策路径"),
+    "orchestration response aggregation should not duplicate decision-path copy that already belongs to the main governance walkthrough"
+  );
+  assert(
+    !initialGovernancePageText.includes("接管记录"),
+    "orchestration response aggregation should not duplicate override-trace copy that already belongs to the dedicated human-override surface"
+  );
   await capture(page, "agents-after-planner-assignment");
 
   const createHandoffPayload = await fetchJSON(`${serverURL}/v1/mailbox`, {
@@ -393,6 +402,10 @@ try {
       return label === "关注" || label === "需要处理";
     },
     "orchestration page did not expose blocked escalation watch state"
+  );
+  assert(
+    (await page.getByText(/^协作规则$/).count()) === 0,
+    "orchestration page should not render a second standalone governance rules panel once routing rules are already present"
   );
   await waitFor(
     async () => (await readText(page, "orchestration-governance-step-handoff")).includes("blocked"),

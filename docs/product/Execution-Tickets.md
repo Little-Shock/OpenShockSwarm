@@ -1593,21 +1593,20 @@
   - `/agents` 的 cross-room governance rollup 已把 `current owner / current lane / next-route` 解释收回 `GovernanceEscalationGraph` 主视图，rollup 列表卡只保留 room 热点、双状态与 deep-link 动作入口
   - `orchestration-governance-escalation-rollup-*`、`orchestration-governance-escalation-graph-*`、`orchestration-governance-summary`、`orchestration-governance-human-override` 与 `orchestration-governance-response-aggregation` 锚点保持不变；减法后仍能继续读取同一份治理镜像真相
   - headed cross-room regression 已把 orchestration mirror 也锁进“rollup 卡不再重复 current-owner / next-route copy”断言，避免后续又把 graph 与列表卡的真相重新写两遍
+- 当前已收第六刀:
+  - `/agents` 的 `responseAggregation` 已删掉重复的 `决策路径 / 接管记录` 尾巴；回复聚合卡只保留 final response、summary、sources 与 audit trail，不再把已由 walkthrough / human override 主面持有的说明再写一遍
+  - `/agents` 右栏独立 `协作规则` 卡组已删除；`handoffRules` 不再作为第二块 standalone 面板重复渲染，formal handoff / review / test / blocked / human override 的治理真相继续由 walkthrough、escalation queue、human override 与 response aggregation 主面持有
+  - `orchestration-governance-human-override`、`orchestration-governance-response-aggregation`、`orchestration-governance-step-*` 与 orchestration planner queue 锚点保持不变；减法后 `/agents` 仍围同一份治理镜像前滚
+  - headed planner replay 已新增“`responseAggregation` 不再重复 `决策路径 / 接管记录` 文案，且 routing rules 已存在时不再渲染第二块 standalone `协作规则` 面板”断言，避免后续又把说明尾巴和辅助规则卡组堆回治理镜像
 - 最新证据:
+  - `node --check scripts/headed-planner-dispatch-replay.mjs`
   - `node --check scripts/headed-cross-room-governance-orchestration.mjs`
-  - `node --check scripts/headed-governed-mailbox-route.mjs`
   - `pnpm typecheck:web`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-mailbox-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-board-inbox-views.tsx'`
   - `pnpm build:web`
-  - `pnpm test:headed-topic-route-resume-lifecycle`
-  - `pnpm test:headed-stop-resume-follow-thread`
-  - `pnpm test:headed-profile-surface`
-  - `pnpm test:headed-room-workbench-topic-context`
-  - `pnpm test:headed-agent-mailbox-handoff`
-  - `pnpm test:headed-approval-center-lifecycle`
-  - `pnpm test:headed-governed-mailbox-route`
+  - `pnpm test:headed-planner-dispatch-replay`
   - `pnpm test:headed-governance-escalation-rollup`
   - `pnpm test:headed-cross-room-governance-orchestration`
   - `pnpm test:headed-cross-room-governance-auto-closeout`

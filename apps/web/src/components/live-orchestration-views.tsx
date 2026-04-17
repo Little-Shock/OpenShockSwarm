@@ -1041,35 +1041,8 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                 </span>
               ))}
             </div>
-            {(governance.responseAggregation.decisionPath ?? []).length > 0 ? (
-              <div className="mt-4 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">决策路径</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(governance.responseAggregation.decisionPath ?? []).map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {(governance.responseAggregation.overrideTrace ?? []).length > 0 ? (
-              <div className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">接管记录</p>
-                <div className="mt-2 space-y-2">
-                  {(governance.responseAggregation.overrideTrace ?? []).map((item, index) => (
-                    <p key={`${item}-${index}`} className="text-sm leading-6">
-                      {item}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : null}
             {(governance.responseAggregation.auditTrail ?? []).length > 0 ? (
-              <div className="mt-3 space-y-2">
+              <div className="mt-4 space-y-2">
                 {(governance.responseAggregation.auditTrail ?? []).map((entry) => (
                   <div key={entry.id} className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1090,33 +1063,6 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
             ) : null}
           </Panel>
 
-          <Panel tone="white">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-              协作规则
-            </p>
-            <div className="mt-3 space-y-2">
-              {governance.handoffRules.map((rule) => (
-                <div
-                  key={rule.id}
-                  data-testid={`orchestration-governance-rule-${rule.id}`}
-                  className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <p className="font-display text-lg font-semibold">{rule.label}</p>
-                    <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
-                      {governanceStatusLabel(rule.status)}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6">{rule.summary}</p>
-                  {rule.href ? (
-                    <Link href={rule.href} className="mt-3 inline-flex font-mono text-[10px] uppercase tracking-[0.16em] underline">
-                      打开
-                    </Link>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </Panel>
         </div>
       </div>
     </Panel>

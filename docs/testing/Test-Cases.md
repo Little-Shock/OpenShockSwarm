@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.29
+**版本:** 1.30
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 18 日继续收第五刀：在前一轮 room `/context`、`/mailbox` rollup 与 `/inbox` governed compose 减法的基础上，`/agents` 的 cross-room governance rollup 也把 `current owner / current lane / next-route` 解释收回 `GovernanceEscalationGraph` 主视图，列表卡只保留 room 热点、双状态与动作入口，不再重复 graph 已拥有的 `当前负责人 / 下一步建议` 真相。当前 `node --check scripts/headed-cross-room-governance-orchestration.mjs`、`pnpm typecheck:web`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`、`pnpm build:web`、`pnpm test:headed-governance-escalation-rollup`、`pnpm test:headed-cross-room-governance-orchestration` 与 `pnpm test:headed-cross-room-governance-auto-closeout` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先收 `/agents` 的 `handoffRules`、`responseAggregation` 尾巴，以及 Inbox/room 里仍重复的 owner/status/action truth。
+- 业务结论: 2026 年 4 月 18 日继续收第六刀：在前一轮 room `/context`、`/mailbox` rollup、`/inbox` governed compose 与 `/agents` cross-room governance rollup 减法的基础上，`/agents` 的 `responseAggregation` 里重复的 `决策路径 / 接管记录` 尾巴和独立 `协作规则` 卡组也已删除；回复聚合卡现在只保留 final response、summary、sources、audit trail，而 formal handoff / review / test / blocked / human override 的治理真相继续由 walkthrough、escalation queue、human override 与 response aggregation 主面持有。当前 `node --check scripts/headed-planner-dispatch-replay.mjs`、`node --check scripts/headed-cross-room-governance-orchestration.mjs`、`pnpm typecheck:web`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`、`pnpm build:web`、`pnpm test:headed-planner-dispatch-replay`、`pnpm test:headed-governance-escalation-rollup`、`pnpm test:headed-cross-room-governance-orchestration` 与 `pnpm test:headed-cross-room-governance-auto-closeout` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先收 `/agents` walkthrough detail/helper copy，以及 Inbox/room 里仍重复的 owner/status/action truth。
 
 ## TC-097 Explicit Provider Thread State Persistence
 
