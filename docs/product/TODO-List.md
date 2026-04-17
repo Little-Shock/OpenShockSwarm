@@ -1,7 +1,7 @@
 # OpenShock To Do List
 
-**版本:** 1.22
-**更新日期:** 2026 年 4 月 16 日
+**版本:** 1.23
+**更新日期:** 2026 年 4 月 17 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -139,7 +139,7 @@
 - `GAP-66 / TKT-97`
   - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
 - `GAP-70 / TKT-101`
-  - Phase 0 shell 前端减法已经起第一刀；shared `RunControlSurface` 已压短，`/topics/:topicId` 的重复继续入口卡已删掉。下一步继续收 room `context` tab、Inbox 和 governance surface 上重复的 owner/status/action truth，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
+  - Phase 0 shell 前端减法已收两刀；shared `RunControlSurface` 已压短，`/topics/:topicId` 的重复继续入口卡已删掉，room `context` tab 也已压成“当前焦点 + 待处理”，右侧 `RoomWorkbenchRailSummary` 则把 `overview / delivery / system` 的重复双卡收回单卡表达，并补回房间内 agent / machine profile 深链锚点。下一步继续收 Inbox 和 governance surface 上重复的 owner/status/action truth，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
 
 ### 2026-04-16 已收口
 
@@ -190,6 +190,7 @@
 - 用 `TKT-100` harness 继续补多 session / 多 provider / 多次 retry 的 continuity matrix，不让恢复链重新退回函数级单测。
 - 把 recovery fixture 继续收敛成可复用的 scenario seed / evidence pattern，后续 daemon 与 governance 恢复票不再各自手搓假数据。
 - 按 `tff` 的局部组件拆法继续重构 shell，但只吸收拆法和降复杂度思路，不吸收它的 dashboard 视觉与 IA。
+- 继续按局部组件拆法收 room / inbox / governance rail，把重复双卡压回单卡表达，同时保住 profile、inbox、mailbox 这些高频深链锚点。
 - 把 session workspace 从最小 envelope 前滚到更可读的 memory / rules / notes surface，让多智能体协作不只靠聊天历史恢复。
 - 前端所有高频路径继续执行“减法优先”，优先删除重复状态、重复动作和解释性噪音，而不是再加 summary 卡和二级面板。
 

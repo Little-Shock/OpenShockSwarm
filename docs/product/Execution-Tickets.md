@@ -1577,12 +1577,19 @@
   - shared `RunControlSurface` 已压掉长解释段，改成状态摘要 + 权限信号，避免 room / topic / run 三处重复讲同一套控制说明
   - `/topics/:topicId` 已删除重复的 `topic-resume-context` 卡，避免同页继续入口、run snapshot 与 continuity truth 三次重复
   - headed verification scripts 已对齐当前控制真值，不再把“空草稿发送按钮可点击”当成错误前提
+- 当前已收第二刀:
+  - room `context` tab 已压成“当前焦点 + 待处理”，不再把 run / PR / 记忆 / timeline / guard / mailbox truth 在同一页重复铺开
+  - `RoomWorkbenchRailSummary` 已把 `overview / delivery / system` 的重复双卡压回单卡表达，同时保住 `room-workbench-open-inbox`、`room-workbench-open-mailbox`、`room-workbench-pr-detail-link`、`room-workbench-run-status` 等稳定锚点
+  - 房间右栏已补回 `room-workbench-machine-profile` 与 `room-workbench-active-agent-*`，保证减法后 agent / machine profile 仍能从房间工作面直接深链
 - 最新证据:
   - `pnpm typecheck:web`
   - `pnpm lint:web`
   - `pnpm build:web`
   - `pnpm test:headed-topic-route-resume-lifecycle`
   - `pnpm test:headed-stop-resume-follow-thread`
+  - `pnpm test:headed-profile-surface`
+  - `pnpm test:headed-room-workbench-topic-context`
+  - `pnpm test:headed-agent-mailbox-handoff`
 - Checklist: `CHK-01` `CHK-16`
 - Test Cases: `TC-096`
 

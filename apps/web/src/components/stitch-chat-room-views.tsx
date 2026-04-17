@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
-import { DestructiveGuardCard } from "@/components/destructive-guard-views";
 import type { SidebarProfileEntry } from "@/components/stitch-shell-primitives";
 import { QuickSearchSurface, StitchSidebar, StitchTopBar, WorkspaceStatusStrip } from "@/components/stitch-shell-primitives";
 import { buildRunHistoryEntries, rewriteCustomerFacingText } from "@/lib/phase-zero-helpers";
@@ -14,7 +13,6 @@ import { useAutoScrollBottom } from "@/lib/use-auto-scroll-bottom";
 import {
   type AgentHandoff,
   type ApprovalCenterItem,
-  type DestructiveGuard,
   type Message,
   type PhaseZeroState,
   type PullRequest,
@@ -1121,388 +1119,209 @@ function RoomRelatedSignalsPanel({
   );
 }
 
-function RoomMailboxPanel({
-  roomId,
-  handoffs,
-}: {
-  roomId: string;
-  handoffs: AgentHandoff[];
-}) {
-  return (
-    <Panel tone="paper">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">
-            交接回链
-          </p>
-          <p className="mt-2 font-display text-[20px] font-bold leading-6">{handoffs.length} 条在跟交接</p>
-        </div>
-        <Link
-          href={`/mailbox?roomId=${roomId}`}
-          data-testid="room-workbench-open-mailbox"
-          className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-        >
-          打开交接箱
-        </Link>
-      </div>
-      <div className="mt-4 space-y-3">
-        {handoffs.length === 0 ? (
-          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
-            当前这条讨论间还没有正式交接；发起请求后，这里会直接显示请求、接收、阻塞和完成轨迹。
-          </p>
-        ) : (
-          handoffs.slice(0, 3).map((handoff) => (
-            <Link
-              key={handoff.id}
-              href={`/mailbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
-              data-testid={`room-workbench-handoff-${handoff.id}`}
-              className="block rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-display text-[18px] font-bold leading-6">{handoff.title}</p>
-                <span
-                  className={cn(
-                    "rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
-                    handoffStatusTone(handoff.status)
-                  )}
-                >
-                  {handoffStatusLabel(handoff.status)}
-                </span>
-              </div>
-              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
-                {handoff.fromAgent} {"->"} {handoff.toAgent}
-              </p>
-              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
-            </Link>
-          ))
-        )}
-      </div>
-    </Panel>
-  );
-}
-
 function RoomContextPanels({
   room,
   run,
   session,
-  pullRequest,
   issueTitle,
-  activeAgents,
   topicOwnerProfileHref,
-  runOwnerProfileHref,
-  machineProfileHref,
-  sessionMemoryPaths,
-  latestTimelineEvent,
-  relatedGuards,
   relatedSignals,
   recentSignals,
   relatedHandoffs,
-  canControlRun,
-  runControlStatus,
-  runControlBoundary,
-  onRunControl,
-  pullRequestActionLabel,
-  pullRequestActionDisabled,
-  onPullRequestAction,
-  pullRequestActionStatus,
-  pullRequestBoundary,
-  prError,
 }: {
   room: Room;
   run: Run;
   session?: Session;
-  pullRequest?: PullRequest;
   issueTitle?: string;
-  activeAgents: Array<{ id: string; name: string; state: string }>;
   topicOwnerProfileHref?: string | null;
-  runOwnerProfileHref?: string | null;
-  machineProfileHref?: string | null;
-  sessionMemoryPaths: string[];
-  latestTimelineEvent?: Run["timeline"][number];
-  relatedGuards: DestructiveGuard[];
   relatedSignals: ApprovalCenterItem[];
   recentSignals: ApprovalCenterItem[];
   relatedHandoffs: AgentHandoff[];
-  canControlRun: boolean;
-  runControlStatus: string;
-  runControlBoundary: string;
-  onRunControl: (action: "stop" | "resume" | "follow_thread", note: string) => Promise<void>;
-  pullRequestActionLabel: string;
-  pullRequestActionDisabled: boolean;
-  onPullRequestAction: (() => Promise<void>) | null;
-  pullRequestActionStatus: string;
-  pullRequestBoundary: string;
-  prError: string | null;
 }) {
   const currentRunStatus = session?.status ?? run.status;
+  const previewSignals = relatedSignals.length === 0 ? recentSignals.slice(0, 2) : relatedSignals.slice(0, 2);
+  const hasPendingItems = previewSignals.length > 0 || relatedHandoffs.length > 0;
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 xl:grid-cols-2">
-        <Panel tone="white">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">话题</p>
-          <p className="mt-2 font-display text-[20px] font-bold leading-6">{room.topic.title}</p>
-          <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{room.topic.summary}</p>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">负责人</p>
-              {topicOwnerProfileHref ? (
-                <Link
-                  href={topicOwnerProfileHref}
-                  data-testid="room-workbench-topic-owner-profile"
-                  className="mt-2 block text-sm font-semibold underline decoration-[1.5px] underline-offset-4"
-                >
-                  {room.topic.owner}
-                </Link>
-              ) : (
-                <p className="mt-2 text-sm font-semibold">{room.topic.owner}</p>
-              )}
-            </div>
-            <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">事项</p>
-              <p className="mt-2 text-sm font-semibold">{room.issueKey}</p>
-            </div>
-          </div>
-          {issueTitle ? (
-            <p className="mt-3 text-[12px] leading-5 text-[color:rgba(24,20,14,0.6)]">
-              当前话题绑定的事项标题：{issueTitle}
-            </p>
-          ) : null}
-        </Panel>
-
-        <Panel tone="paper">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">上下文入口</p>
-          <div className="mt-4 grid gap-2 md:grid-cols-2">
-            <Link
-              href={`/issues/${room.issueKey}`}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              事项上下文
-            </Link>
-            <Link
-              href={buildRoomWorkbenchHref(room.id, "run")}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              运行详情
-            </Link>
-            <Link
-              href={buildRoomWorkbenchHref(room.id, "pr")}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              PR 面板
-            </Link>
-            <Link
-              href="/board"
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              看板镜像
-            </Link>
-          </div>
-        </Panel>
-      </div>
-
-      <Panel tone="white">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
-            <p className="mt-2 font-display text-[20px] font-bold leading-6">{run.id}</p>
-          </div>
-          <span
-            data-testid="room-workbench-run-status"
-            className={cn(
-              "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px]",
-              currentRunStatus === "paused"
-                ? "bg-[var(--shock-paper)]"
-                : currentRunStatus === "blocked"
-                  ? "bg-[var(--shock-pink)] text-white"
-                  : currentRunStatus === "review"
-                    ? "bg-[var(--shock-lime)]"
-                    : currentRunStatus === "done"
-                      ? "bg-[var(--shock-ink)] text-white"
-                      : "bg-[var(--shock-yellow)]"
-            )}
-          >
-            {runStatusLabel(currentRunStatus)}
-          </span>
-        </div>
-        <p className="mt-3 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
-          分支 {session?.branch ?? run.branch}
-        </p>
-        <p className="mt-1 font-mono text-[11px] text-[color:rgba(24,20,14,0.56)]">
-          工作区 {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {machineProfileHref ? (
-            <Link
-              href={machineProfileHref}
-              data-testid="room-workbench-machine-profile"
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              机器档案
-            </Link>
-          ) : null}
-          {runOwnerProfileHref ? (
-            <Link
-              href={runOwnerProfileHref}
-              data-testid="room-workbench-run-owner-profile"
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              负责人档案
-            </Link>
-          ) : null}
-        </div>
-      </Panel>
-
-      <RunControlSurface
-        scope="room"
-        run={run}
-        session={session}
-        canControl={canControlRun}
-        controlStatus={runControlStatus}
-        controlBoundary={runControlBoundary}
-        onControl={onRunControl}
-      />
-
-      {relatedGuards.length > 0 ? (
-        <Panel tone="paper">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">风险守护</p>
-              <p className="mt-2 font-display text-[20px] font-bold leading-6">高风险 / 密钥边界</p>
-            </div>
-            <span className="rounded-[4px] border border-[var(--shock-ink)] bg-white px-2 py-1 font-mono text-[10px]">
-              {relatedGuards.length} 条生效中
-            </span>
-          </div>
-          <div className="mt-4 space-y-3">
-            {relatedGuards.map((guard) => (
-              <DestructiveGuardCard
-                key={guard.id}
-                guard={guard}
-                compact
-                contextHref={buildRoomWorkbenchHref(room.id, "run")}
-                testIdPrefix="room-guard"
-              />
-            ))}
-          </div>
-        </Panel>
-      ) : null}
-
       <Panel tone="white">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
-            <p data-testid="room-workbench-pr-label" className="mt-2 font-display text-[20px] font-bold leading-6">
-              {pullRequest?.label ?? run.pullRequest ?? "未创建"}
-            </p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前焦点</p>
+            <p className="mt-2 font-display text-[20px] font-bold leading-6">{room.topic.title}</p>
+            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{room.topic.summary}</p>
           </div>
-          <button
-            type="button"
-            data-testid="room-workbench-pr-action"
-            disabled={pullRequestActionDisabled}
-            onClick={() => void onPullRequestAction?.()}
-            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
-          >
-            {pullRequestActionLabel}
-          </button>
-        </div>
-        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-          {pullRequestActionStatus}
-        </p>
-        {(pullRequestActionStatus === "blocked" ||
-          pullRequestActionStatus === "signed_out" ||
-          pullRequestActionStatus === "review_only" ||
-          pullRequestActionStatus === "merged") ? (
-          <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{pullRequestBoundary}</p>
-        ) : null}
-        <p data-testid="room-workbench-pr-summary" className="mt-3 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-          {pullRequest?.reviewSummary ?? run.nextAction}
-        </p>
-        {prError ? (
-          <p data-testid="room-workbench-pr-error" className="mt-3 font-mono text-[11px] text-[var(--shock-pink)]">
-            {prError}
-          </p>
-        ) : null}
-        <div className="mt-4 flex flex-wrap gap-2">
-          {pullRequest ? (
+          <div className="flex flex-wrap gap-2">
             <Link
-              href={`/pull-requests/${pullRequest.id}`}
-              data-testid="room-workbench-pr-detail-link"
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              PR 详情
-            </Link>
-          ) : null}
-          {pullRequest?.url ? (
-            <Link
-              href={pullRequest.url}
-              target="_blank"
-              rel="noreferrer"
+              href={`/issues/${room.issueKey}`}
               className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
             >
-              打开远端 PR
+              事项
             </Link>
-          ) : null}
-          <Link
-            href="/inbox"
-            data-testid="room-workbench-pr-inbox-link"
-            className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-          >
-            返回收件箱
-          </Link>
+            <Link
+              href={buildRoomWorkbenchHref(room.id, "run")}
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              运行
+            </Link>
+            <Link
+              href={buildRoomWorkbenchHref(room.id, "pr")}
+              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              PR
+            </Link>
+            <Link
+              href="/board"
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              看板
+            </Link>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <div className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">事项</p>
+            <p className="mt-2 text-sm font-semibold">{room.issueKey}</p>
+            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待事项详情同步"}</p>
+          </div>
+          <div className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">执行</p>
+            <p className="mt-2 text-sm font-semibold">{run.id}</p>
+            <span
+              data-testid="room-workbench-run-status"
+              className={cn(
+                "mt-2 inline-flex rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px]",
+                currentRunStatus === "paused"
+                  ? "bg-[var(--shock-paper)]"
+                  : currentRunStatus === "blocked"
+                    ? "bg-[var(--shock-pink)] text-white"
+                    : currentRunStatus === "review"
+                      ? "bg-[var(--shock-lime)]"
+                      : currentRunStatus === "done"
+                        ? "bg-[var(--shock-ink)] text-white"
+                        : "bg-[var(--shock-yellow)]"
+              )}
+            >
+              {runStatusLabel(currentRunStatus)}
+            </span>
+          </div>
+          <div className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">负责人</p>
+            {topicOwnerProfileHref ? (
+              <Link
+                href={topicOwnerProfileHref}
+                data-testid="room-workbench-topic-owner-profile"
+                className="mt-2 block text-sm font-semibold underline decoration-[1.5px] underline-offset-4"
+              >
+                {room.topic.owner}
+              </Link>
+            ) : (
+              <p className="mt-2 text-sm font-semibold">{room.topic.owner}</p>
+            )}
+          </div>
+          <div className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.52)]">工作区</p>
+            <p className="mt-2 text-sm font-semibold">{session?.branch ?? run.branch}</p>
+            <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
+              {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
+            </p>
+          </div>
         </div>
       </Panel>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        <Panel tone="ink">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">会话记忆</p>
-          <div className="mt-3 space-y-2 font-mono text-[10px] leading-5 text-[#8bff9e]">
-            {sessionMemoryPaths.map((item) => (
-              <p key={item}>{item}</p>
+      <Panel tone="paper">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">待处理</p>
+            <p className="mt-2 font-display text-[20px] font-bold leading-6">
+              {relatedSignals.length} 条收件箱 / {relatedHandoffs.length} 条交接
+            </p>
+            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+              这里只保留当前房间最值得继续处理的信号和交接，不再把 run、PR、记忆和时间线重复铺一遍。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/inbox"
+              data-testid="room-workbench-open-inbox"
+              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              打开收件箱
+            </Link>
+            <Link
+              href={`/mailbox?roomId=${room.id}`}
+              data-testid="room-workbench-open-mailbox"
+              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
+            >
+              打开交接箱
+            </Link>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          <div className="space-y-3">
+            <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">收件箱信号</p>
+              <p className="mt-1.5 text-sm font-semibold">
+                {previewSignals.length === 0 ? "当前没有待处理信号" : `优先看 ${previewSignals.length} 条`}
+              </p>
+            </div>
+            {previewSignals.map((item) => (
+              <div
+                key={item.id}
+                data-testid={`room-workbench-signal-${item.id}`}
+                className={cn("border-2 border-[var(--shock-ink)] px-3 py-3 shadow-[var(--shock-shadow-sm)]", signalTone(item.kind))}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="border border-[var(--shock-ink)] bg-white/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-[var(--shock-ink)]">
+                    {signalLabel(item.kind)}
+                  </span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.16em] opacity-70">{item.time}</span>
+                </div>
+                <p className="mt-2 font-display text-[18px] font-bold leading-6">{item.title}</p>
+                <p className="mt-2 text-[13px] leading-6 opacity-85">{item.summary}</p>
+              </div>
             ))}
           </div>
-        </Panel>
-        <Panel tone="paper">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前在线</p>
-          <p className="mt-2 font-display text-[20px] font-bold leading-6">{activeAgents.length} 个在线智能体</p>
-          <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
-            最近执行线仍挂在这个讨论间上的智能体会在这里持续可见，不再只留在总览页角标里。
-          </p>
-          <div className="mt-4 space-y-2">
-            {activeAgents.slice(0, 3).map((agent) => (
+
+          <div className="space-y-3">
+            <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接跟进</p>
+              <p className="mt-1.5 text-sm font-semibold">
+                {relatedHandoffs.length === 0 ? "当前没有待跟进交接" : `当前挂着 ${relatedHandoffs.length} 条`}
+              </p>
+            </div>
+            {relatedHandoffs.slice(0, 3).map((handoff) => (
               <Link
-                key={agent.id}
-                href={buildProfileHref("agent", agent.id)}
-                data-testid={`room-workbench-active-agent-${agent.id}`}
-                className="block border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)]"
+                key={handoff.id}
+                href={`/mailbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
+                data-testid={`room-workbench-handoff-${handoff.id}`}
+                className="block rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
               >
-                <p className="font-display text-[16px] font-semibold leading-5">{agent.name}</p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                  {agent.state}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-display text-[18px] font-bold leading-6">{handoff.title}</p>
+                  <span
+                    className={cn(
+                      "rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
+                      handoffStatusTone(handoff.status)
+                    )}
+                  >
+                    {handoffStatusLabel(handoff.status)}
+                  </span>
+                </div>
+                <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">
+                  {handoff.fromAgent} {"->"} {handoff.toAgent}
                 </p>
+                <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
               </Link>
             ))}
           </div>
-        </Panel>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-2">
-        <Panel tone="yellow">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">工具调用</p>
-          <p className="mt-2 font-display text-[28px] font-bold leading-none">{run.toolCalls.length}</p>
-          <p className="mt-2 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.tool ?? "当前还没有工具调用"}</p>
-          <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{run.toolCalls[0]?.summary ?? "等待下一条执行事件"}</p>
-        </Panel>
-        <Panel tone="white">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">时间线</p>
-          <p className="mt-2 font-display text-[28px] font-bold leading-none">{run.timeline.length}</p>
-          <p className="mt-2 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.label ?? "暂无事件"}</p>
-          <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{latestTimelineEvent?.at ?? "等待同步"}</p>
-        </Panel>
-      </div>
-
-      <RoomRelatedSignalsPanel roomId={room.id} relatedSignals={relatedSignals} recentSignals={recentSignals} />
-      <RoomMailboxPanel roomId={room.id} handoffs={relatedHandoffs} />
+        </div>
+        {!hasPendingItems ? (
+          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.68)]">
+            当前这条讨论间没有新的审批、阻塞、评审或交接需要继续处理。
+          </p>
+        ) : null}
+      </Panel>
     </div>
   );
 }
@@ -1773,7 +1592,8 @@ function RoomWorkbenchRailSummary({
   issueTitle,
   activeTab,
   activeSection,
-  activeAgentsCount,
+  activeAgents,
+  machineProfileHref,
   relatedSignals,
   relatedHandoffs,
   pullRequestActionLabel,
@@ -1790,7 +1610,8 @@ function RoomWorkbenchRailSummary({
   issueTitle?: string;
   activeTab: RoomWorkbenchTab;
   activeSection: RoomRailSummaryTab;
-  activeAgentsCount: number;
+  activeAgents: Array<Pick<PhaseZeroState["agents"][number], "id" | "name" | "state">>;
+  machineProfileHref?: string | null;
   relatedSignals: ApprovalCenterItem[];
   relatedHandoffs: AgentHandoff[];
   pullRequestActionLabel: string;
@@ -1804,122 +1625,146 @@ function RoomWorkbenchRailSummary({
   const contextPanelTestId = activeTab === "context" ? "room-rail-context-panel" : "room-workbench-context-panel";
   const runPanelTestId = activeTab === "run" ? "room-rail-run-panel" : "room-workbench-run-panel";
   const prPanelTestId = activeTab === "pr" ? "room-rail-pr-panel" : "room-workbench-pr-panel";
+  const previewAgents = activeAgents.slice(0, 3);
 
   return (
     <div data-testid={contextPanelTestId} className="space-y-3">
       {activeSection === "overview" ? (
-        <>
-          <Panel tone="paper">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">房间焦点</p>
-            <p className="mt-2 font-display text-[22px] font-bold leading-6">{room.topic.title}</p>
-            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{room.topic.summary}</p>
-            <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+        <Panel tone="paper">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">房间焦点</p>
+              <p className="mt-2 font-display text-[22px] font-bold leading-6">{room.topic.title}</p>
+              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{room.topic.summary}</p>
+            </div>
+            <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2.5">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">主视图</p>
+              <p className="mt-1.5 text-sm font-semibold">{ROOM_WORKBENCH_TAB_LABEL[activeTab]}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
               <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">事项</p>
               <p className="mt-1.5 text-sm font-semibold">{room.issueKey}</p>
               <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待事项详情同步"}</p>
             </div>
-          </Panel>
-
-          <Panel tone="white">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前状态</p>
-            <div className="mt-3 grid gap-2">
-              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2.5">
-                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">主视图</p>
-                <p className="mt-1.5 text-sm font-semibold">{ROOM_WORKBENCH_TAB_LABEL[activeTab]}</p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">智能体</p>
-                  <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} 个在线</p>
-                </div>
-                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板</p>
-                  <p className="mt-1.5 text-sm font-semibold">{room.boardCount} 张卡片</p>
-                </div>
-                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">信号</p>
-                  <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条待处理</p>
-                </div>
-                <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
-                  <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条跟进中</p>
-                </div>
-              </div>
+            <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板</p>
+              <p className="mt-1.5 text-sm font-semibold">{room.boardCount} 张卡片</p>
             </div>
-          </Panel>
-        </>
-      ) : null}
-
-      {activeSection === "delivery" ? (
-        <>
-          <Panel tone="white">
-            <div data-testid={prPanelTestId}>
+            <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">信号</p>
+              <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条待处理</p>
+            </div>
+            <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
+              <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条跟进中</p>
+            </div>
+          </div>
+          {machineProfileHref || previewAgents.length > 0 ? (
+            <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
-                  <h3 data-testid="room-workbench-pr-label" className="mt-2 font-display text-[18px] font-bold leading-5">
-                    {pullRequest?.label ?? run.pullRequest ?? "未创建"}
-                  </h3>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">执行成员</p>
+                  <p className="mt-1.5 text-sm font-semibold">
+                    {activeAgents.length === 0 ? "当前没有在线智能体" : `${activeAgents.length} 个在线智能体`}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  data-testid="room-workbench-pr-action"
-                  disabled={pullRequestActionDisabled}
-                  onClick={() => void onPullRequestAction?.()}
-                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
-                >
-                  {pullRequestActionLabel}
-                </button>
-              </div>
-              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-                {pullRequestActionStatus}
-              </p>
-              {(pullRequestActionStatus === "blocked" ||
-                pullRequestActionStatus === "signed_out" ||
-                pullRequestActionStatus === "review_only" ||
-                pullRequestActionStatus === "merged") ? (
-                <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">{pullRequestBoundary}</p>
-              ) : null}
-              <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
-                {pullRequest?.reviewSummary ?? run.nextAction}
-              </p>
-              {prError ? (
-                <p data-testid="room-workbench-pr-error" className="mt-2 font-mono text-[11px] text-[var(--shock-pink)]">
-                  {prError}
-                </p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href={buildRoomWorkbenchHref(room.id, "pr")}
-                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                >
-                  房间 PR
-                </Link>
-                {pullRequest ? (
+                {machineProfileHref ? (
                   <Link
-                    href={`/pull-requests/${pullRequest.id}`}
-                    data-testid="room-workbench-pr-detail-link"
+                    href={machineProfileHref}
+                    data-testid="room-workbench-machine-profile"
                     className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                   >
-                    PR 详情
+                    机器档案
                   </Link>
                 ) : null}
               </div>
+              {previewAgents.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {previewAgents.map((agent) => (
+                    <Link
+                      key={agent.id}
+                      href={buildProfileHref("agent", agent.id)}
+                      data-testid={`room-workbench-active-agent-${agent.id}`}
+                      className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 text-sm font-semibold transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)]"
+                    >
+                      {agent.name}
+                      <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.56)]">
+                        {agentStatusLabel(agent.state)}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
             </div>
-          </Panel>
+          ) : null}
+        </Panel>
+      ) : null}
 
-          <Panel tone="paper">
-            <div className="grid gap-2">
-              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+      {activeSection === "delivery" ? (
+        <Panel tone="white">
+          <div data-testid={prPanelTestId}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">PR</p>
+                <h3 data-testid="room-workbench-pr-label" className="mt-2 font-display text-[18px] font-bold leading-5">
+                  {pullRequest?.label ?? run.pullRequest ?? "未创建"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                data-testid="room-workbench-pr-action"
+                disabled={pullRequestActionDisabled}
+                onClick={() => void onPullRequestAction?.()}
+                className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+              >
+                {pullRequestActionLabel}
+              </button>
+            </div>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+              {pullRequestActionStatus}
+            </p>
+            {(pullRequestActionStatus === "blocked" ||
+              pullRequestActionStatus === "signed_out" ||
+              pullRequestActionStatus === "review_only" ||
+              pullRequestActionStatus === "merged") ? (
+              <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">{pullRequestBoundary}</p>
+            ) : null}
+            <p className="mt-2 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
+              {pullRequest?.reviewSummary ?? run.nextAction}
+            </p>
+            {prError ? (
+              <p data-testid="room-workbench-pr-error" className="mt-2 font-mono text-[11px] text-[var(--shock-pink)]">
+                {prError}
+              </p>
+            ) : null}
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2.5">
                 <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">待处理信号</p>
                 <p className="mt-1.5 text-sm font-semibold">{relatedSignals.length} 条</p>
               </div>
-              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
+              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2.5">
                 <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接箱</p>
                 <p className="mt-1.5 text-sm font-semibold">{relatedHandoffs.length} 条</p>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href={buildRoomWorkbenchHref(room.id, "pr")}
+                className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+              >
+                房间 PR
+              </Link>
+              {pullRequest ? (
+                <Link
+                  href={`/pull-requests/${pullRequest.id}`}
+                  data-testid="room-workbench-pr-detail-link"
+                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                >
+                  PR 详情
+                </Link>
+              ) : null}
               <Link
                 href="/inbox"
                 data-testid="room-workbench-open-inbox"
@@ -1935,69 +1780,46 @@ function RoomWorkbenchRailSummary({
                 交接箱
               </Link>
             </div>
-          </Panel>
-        </>
+          </div>
+        </Panel>
       ) : null}
 
       {activeSection === "system" ? (
-        <>
-          <Panel tone="white">
-            <div data-testid={runPanelTestId}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
-                  <p className="mt-2 font-display text-[18px] font-bold leading-5">{run.id}</p>
-                </div>
-                <span
-                  data-testid="room-workbench-run-status"
-                  className={cn(
-                    "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
-                    currentRunStatus === "paused"
-                      ? "bg-[var(--shock-paper)]"
-                      : currentRunStatus === "blocked"
-                        ? "bg-[var(--shock-pink)] text-white"
-                        : currentRunStatus === "review"
-                          ? "bg-[var(--shock-lime)]"
-                          : currentRunStatus === "done"
-                            ? "bg-[var(--shock-ink)] text-white"
-                            : "bg-[var(--shock-yellow)]"
-                  )}
-                >
-                  {runStatusLabel(currentRunStatus)}
-                </span>
+        <Panel tone="paper">
+          <div data-testid={runPanelTestId}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">执行</p>
+                <p className="mt-2 font-display text-[18px] font-bold leading-5">{run.id}</p>
               </div>
-              <p className="mt-3 font-mono text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
-                {session?.branch ?? run.branch}
-              </p>
-              <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
-                {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href={buildRoomWorkbenchHref(room.id, "run")}
-                  className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                >
-                  房间执行
-                </Link>
-                <Link
-                  href={`/runs/${run.id}`}
-                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                >
-                  执行详情
-                </Link>
-              </div>
+              <span
+                data-testid="room-workbench-run-status"
+                className={cn(
+                  "rounded-[4px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  currentRunStatus === "paused"
+                    ? "bg-[var(--shock-paper)]"
+                    : currentRunStatus === "blocked"
+                      ? "bg-[var(--shock-pink)] text-white"
+                      : currentRunStatus === "review"
+                        ? "bg-[var(--shock-lime)]"
+                        : currentRunStatus === "done"
+                          ? "bg-[var(--shock-ink)] text-white"
+                          : "bg-[var(--shock-yellow)]"
+                )}
+              >
+                {runStatusLabel(currentRunStatus)}
+              </span>
             </div>
-          </Panel>
-
-          <Panel tone="paper">
-            <div className="grid gap-2">
+            <p className="mt-3 font-mono text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">
+              {session?.branch ?? run.branch}
+            </p>
+            <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.68)]">
+              {session?.worktreePath || run.worktreePath || session?.worktree || run.worktree}
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
                 <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前状态</p>
                 <p className="mt-1.5 text-sm font-semibold">{runStatusLabel(currentRunStatus)}</p>
-              </div>
-              <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">智能体</p>
-                <p className="mt-1.5 text-sm font-semibold">{activeAgentsCount} 个在线</p>
               </div>
               <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
                 <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">下一步</p>
@@ -2006,8 +1828,60 @@ function RoomWorkbenchRailSummary({
                 </p>
               </div>
             </div>
-          </Panel>
-        </>
+            {machineProfileHref || previewAgents.length > 0 ? (
+              <div className="mt-4 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前执行成员</p>
+                    <p className="mt-1.5 text-sm font-semibold">
+                      {activeAgents.length === 0 ? "当前没有在线智能体" : `${activeAgents.length} 个在线智能体`}
+                    </p>
+                  </div>
+                  {machineProfileHref ? (
+                    <Link
+                      href={machineProfileHref}
+                      data-testid="room-workbench-machine-profile"
+                      className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                    >
+                      机器档案
+                    </Link>
+                  ) : null}
+                </div>
+                {previewAgents.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {previewAgents.map((agent) => (
+                      <Link
+                        key={agent.id}
+                        href={buildProfileHref("agent", agent.id)}
+                        data-testid={`room-workbench-active-agent-${agent.id}`}
+                        className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 text-sm font-semibold transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)]"
+                      >
+                        {agent.name}
+                        <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.56)]">
+                          {agentStatusLabel(agent.state)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href={buildRoomWorkbenchHref(room.id, "run")}
+                className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+              >
+                房间执行
+              </Link>
+              <Link
+                href={`/runs/${run.id}`}
+                className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+              >
+                执行详情
+              </Link>
+            </div>
+          </div>
+        </Panel>
       ) : null}
     </div>
   );
@@ -3489,19 +3363,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
         prefer: "agent",
       })
     : null;
-  const runOwnerProfileHref = run
-    ? buildNamedProfileHref(run.owner, {
-        agents: state.agents,
-        members: state.auth.members,
-        prefer: "agent",
-      })
-    : null;
   const machineProfileHref = run ? buildMachineProfileHref(state, run.machine) : null;
-  const sessionMemoryPaths =
-    session && session.memoryPaths.length > 0
-      ? session.memoryPaths
-      : ["当前 session 还没有暴露 memory paths"];
-  const latestTimelineEvent = run ? run.timeline[run.timeline.length - 1] : undefined;
   const sidebarChannels = loading || error ? [] : state.channels;
   const sidebarRooms = loading || error ? [] : state.rooms;
   const sidebarMachines = loading || error ? [] : state.machines;
@@ -3704,28 +3566,11 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
         room={room}
         run={run}
         session={session}
-        pullRequest={pullRequest}
         issueTitle={issue?.title}
-        activeAgents={activeAgents}
         topicOwnerProfileHref={topicOwnerProfileHref}
-        runOwnerProfileHref={runOwnerProfileHref}
-        machineProfileHref={machineProfileHref}
-        sessionMemoryPaths={sessionMemoryPaths}
-        latestTimelineEvent={latestTimelineEvent}
-        relatedGuards={relatedGuards}
         relatedSignals={relatedSignals}
         recentSignals={recentSignals}
         relatedHandoffs={relatedHandoffs}
-        canControlRun={canControlRun}
-        runControlStatus={runControlStatus}
-        runControlBoundary={runControlBoundary}
-        onRunControl={handleRunControl}
-        pullRequestActionLabel={pullRequestActionLabel}
-        pullRequestActionDisabled={pullRequestActionDisabled}
-        onPullRequestAction={pullRequestActionHandler}
-        pullRequestActionStatus={pullRequestActionStatus}
-        pullRequestBoundary={pullRequestBoundary}
-        prError={prError}
       />
     ) : null;
 
@@ -4101,7 +3946,8 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                     issueTitle={issue?.title}
                     activeTab={activeWorkbenchTab}
                     activeSection={railSummaryTab}
-                    activeAgentsCount={activeAgents.length}
+                    activeAgents={activeAgents}
+                    machineProfileHref={machineProfileHref}
                     relatedSignals={relatedSignals}
                     relatedHandoffs={relatedHandoffs}
                     pullRequestActionLabel={pullRequestActionLabel}

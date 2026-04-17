@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 16 日先收 shared control / topic route 这一刀：`RunControlSurface` 去掉长解释段，统一压成状态摘要 + 权限信号；`/topics/:topicId` 删除重复的 `topic-resume-context` 卡；同时把 headed verification scripts 对齐当前控制真值。当前 `pnpm typecheck:web`、`pnpm lint:web`、`pnpm build:web`、`pnpm test:headed-topic-route-resume-lifecycle` 与 `pnpm test:headed-stop-resume-follow-thread` 已通过，因此这条 subtractive sweep 用例当前转为 `Pass`，下一轮继续收 room `context` tab 与 governance 重复块。
+- 业务结论: 2026 年 4 月 17 日继续收第二刀：room `context` tab 已压成“当前焦点 + 待处理”，`RoomWorkbenchRailSummary` 则把 `overview / delivery / system` 的重复双卡压回单卡表达，并补回 `room-workbench-machine-profile` 与 `room-workbench-active-agent-*` 等档案深链锚点。当前 `pnpm typecheck:web`、`pnpm lint:web`、`pnpm build:web`、`pnpm test:headed-topic-route-resume-lifecycle`、`pnpm test:headed-stop-resume-follow-thread`、`pnpm test:headed-profile-surface`、`pnpm test:headed-room-workbench-topic-context` 与 `pnpm test:headed-agent-mailbox-handoff` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`，下一轮继续收 Inbox 与 governance surface 的重复块。
 
 ## TC-097 Explicit Provider Thread State Persistence
 
