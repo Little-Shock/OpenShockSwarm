@@ -1606,9 +1606,13 @@
   - `/agents` 的人工接管卡已删掉泛化 `打开接管链路` 动作；blocked 状态继续由 escalation queue 和 Inbox 持有主导航，不再在右栏再堆一层重复入口
   - `orchestration-governance-human-override` 锚点保持不变；planner replay 仍能围 `关注 / 需要处理` 状态前滚，不需要额外 open-link 才能表达当前治理状态
   - headed planner replay 已新增“human-override 不再渲染重复 open-link”断言，避免后续又把第二层人工接管入口堆回右栏
+- 当前已收第九刀:
+  - `/mailbox` 与 `/agents` 的 cross-room governance rollup 已删掉重复 `latestSummary` 和次级 `查看该讨论` 链接；列表卡继续只保留 room 热点、双状态与主推进动作，room 上下文与导航统一回到 `GovernanceEscalationGraph`
+  - `mailbox-governance-escalation-rollup-room-*`、`orchestration-governance-escalation-rollup-room-*`、`...route-status-*`、`...graph-*` 与 `打开下一步` / `创建自动交接` 热路径保持不变；减法后 mailbox / agents 仍围同一份 cross-room governance truth 前滚
+  - headed cross-room orchestration 已新增“rollup 卡不再重复 latest-summary，也不再渲染次级 room-link”断言，避免后续又把 graph 已持有的 room context / navigation 再堆回列表卡
 - 最新证据:
-  - `node --check scripts/headed-planner-dispatch-replay.mjs`
   - `node --check scripts/headed-cross-room-governance-orchestration.mjs`
+  - `node --check scripts/headed-planner-dispatch-replay.mjs`
   - `pnpm typecheck:web`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-mailbox-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`

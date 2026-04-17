@@ -438,6 +438,16 @@ try {
     !compactRollupText.includes("下一步建议"),
     "mailbox cross-room rollup should not duplicate next-route guidance that is already owned by the dependency graph"
   );
+  if (readyState.rollup.latestSummary?.trim()) {
+    assert(
+      !compactRollupText.includes(readyState.rollup.latestSummary),
+      "mailbox cross-room rollup should not repeat latest-summary copy that is already owned by the dependency graph"
+    );
+  }
+  assert(
+    (await compactRollupCard.getByRole("link", { name: "查看该讨论" }).count()) === 0,
+    "mailbox cross-room rollup should not keep a secondary room-link CTA once the dependency graph already owns room navigation"
+  );
   await capture(page, "mailbox-cross-room-route-ready");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
@@ -473,6 +483,16 @@ try {
   assert(
     !orchestrationRollupText.includes("下一步建议"),
     "orchestration cross-room rollup should not duplicate next-route guidance that is already owned by the dependency graph"
+  );
+  if (readyState.rollup.latestSummary?.trim()) {
+    assert(
+      !orchestrationRollupText.includes(readyState.rollup.latestSummary),
+      "orchestration cross-room rollup should not repeat latest-summary copy that is already owned by the dependency graph"
+    );
+  }
+  assert(
+    (await orchestrationRollupCard.getByRole("link", { name: "查看该讨论" }).count()) === 0,
+    "orchestration cross-room rollup should not keep a secondary room-link CTA once the dependency graph already owns room navigation"
   );
   await capture(page, "orchestration-cross-room-route-ready");
 

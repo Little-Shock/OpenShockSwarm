@@ -924,7 +924,6 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                               </div>
                             </div>
                             {entry.latestLabel ? <p className="mt-2 font-display text-base font-semibold">{entry.latestLabel}</p> : null}
-                            {entry.latestSummary ? <p className="mt-2 text-sm leading-6 opacity-70">{entry.latestSummary}</p> : null}
                             <div className="mt-3 flex flex-wrap gap-2">
                               {entry.nextRouteHref ? (
                                 <Link
@@ -932,14 +931,6 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                                   className="inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
                                 >
                                   打开下一步
-                                </Link>
-                              ) : null}
-                              {entry.href ? (
-                                <Link
-                                  href={entry.href}
-                                  className="inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                                >
-                                  查看该讨论
                                 </Link>
                               ) : null}
                             </div>
