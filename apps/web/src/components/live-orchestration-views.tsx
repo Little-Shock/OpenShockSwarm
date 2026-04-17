@@ -863,15 +863,6 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                             </span>
                           </div>
                           <p className="mt-2 text-sm leading-6">{entry.summary}</p>
-                          <p className="mt-2 text-sm leading-6 opacity-70">{entry.nextStep}</p>
-                          {entry.href ? (
-                            <Link
-                              href={entry.href}
-                              className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                            >
-                              打开升级事项
-                            </Link>
-                          ) : null}
                         </div>
                       ))
                     )}
@@ -999,14 +990,6 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
               {governanceStatusLabel(governance.humanOverride.status)}
             </p>
             <p className="mt-3 text-sm leading-6">{governance.humanOverride.summary}</p>
-            {governance.humanOverride.href ? (
-              <Link
-                href={governance.humanOverride.href}
-                className="mt-4 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-              >
-                打开接管链路
-              </Link>
-            ) : null}
           </Panel>
 
           <Panel tone={governanceTone(governance.responseAggregation.status)}>

@@ -415,6 +415,10 @@ try {
     (await page.getByText(/^协作规则$/).count()) === 0,
     "orchestration page should not render a second standalone governance rules panel once routing rules are already present"
   );
+  assert(
+    (await page.getByRole("link", { name: "打开接管链路" }).count()) === 0,
+    "orchestration human-override card should not render a second generic open-link once escalation queue and inbox already hold the actionable navigation"
+  );
   await waitFor(
     async () => (await readText(page, "orchestration-governance-step-handoff")).includes("blocked"),
     "handoff walkthrough step did not expose blocked status"

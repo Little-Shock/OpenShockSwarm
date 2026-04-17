@@ -1602,6 +1602,10 @@
   - `/agents` 的 walkthrough 卡组已删掉逐步 helper/detail copy，只保留步骤标题、当前摘要和状态，不再把 `Mailbox ledger` / `review verdict` / `final-response aggregation` 这类说明层再重复一遍
   - `orchestration-governance-step-*` 锚点保持不变；planner replay 仍能围 `issue / handoff` 当前摘要前滚，不需要额外 helper 文案才能理解当前治理状态
   - headed planner replay 已新增“walkthrough 不再渲染 handoff / review helper copy”断言，避免后续又把第二层说明堆回关键流程卡
+- 当前已收第八刀:
+  - `/agents` 的人工接管卡已删掉泛化 `打开接管链路` 动作；blocked 状态继续由 escalation queue 和 Inbox 持有主导航，不再在右栏再堆一层重复入口
+  - `orchestration-governance-human-override` 锚点保持不变；planner replay 仍能围 `关注 / 需要处理` 状态前滚，不需要额外 open-link 才能表达当前治理状态
+  - headed planner replay 已新增“human-override 不再渲染重复 open-link”断言，避免后续又把第二层人工接管入口堆回右栏
 - 最新证据:
   - `node --check scripts/headed-planner-dispatch-replay.mjs`
   - `node --check scripts/headed-cross-room-governance-orchestration.mjs`

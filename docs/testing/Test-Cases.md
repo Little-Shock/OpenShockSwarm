@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.31
+**版本:** 1.32
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 18 日继续收第七刀：在前一轮 room `/context`、`/mailbox` rollup、`/inbox` governed compose 与 `/agents` governance mirror 减法的基础上，`/agents` 的 walkthrough 也已压回“步骤标题 + 当前摘要 + 状态”，不再把 `Mailbox ledger`、`review verdict` 这类 helper/detail copy 再写一遍；当前治理镜像继续由 step summary、escalation queue、human override、response aggregation 和 cross-room graph 持有正式真相。当前 `node --check scripts/headed-planner-dispatch-replay.mjs`、`pnpm typecheck:web`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`、`pnpm build:web`、`pnpm test:headed-planner-dispatch-replay` 与 `pnpm test:headed-governance-escalation-rollup` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先收 `/agents` walkthrough 剩余的泛化动作层，以及 Inbox/room 里仍重复的 owner/status/action truth。
+- 业务结论: 2026 年 4 月 18 日继续收第八刀：在前一轮 room `/context`、`/mailbox` rollup、`/inbox` governed compose 与 `/agents` governance mirror 减法的基础上，`/agents` 的人工接管卡也已删掉泛化 `打开接管链路` 动作；blocked 状态继续由 escalation queue、Inbox、human override 状态文本和 cross-room graph 持有正式真相，不再在右栏再堆一层重复入口。当前 `node --check scripts/headed-planner-dispatch-replay.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`、`pnpm typecheck:web`、`pnpm build:web`、`pnpm test:headed-planner-dispatch-replay` 与 `pnpm test:headed-governance-escalation-rollup` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先收 `/agents` escalation queue / rollup 里剩余的动作与说明层，以及 Inbox/room 里仍重复的 owner/status/action truth。
 
 ## TC-097 Explicit Provider Thread State Persistence
 
