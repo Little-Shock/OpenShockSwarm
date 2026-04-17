@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.24
+**版本:** 1.25
 **更新日期:** 2026 年 4 月 17 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -139,7 +139,7 @@
 - `GAP-66 / TKT-97`
   - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
 - `GAP-70 / TKT-101`
-  - Phase 0 shell 前端减法已收三刀；shared `RunControlSurface` 已压短，`/topics/:topicId` 的重复继续入口卡已删掉，room `context` tab 也已压成“当前焦点 + 待处理”，右侧 `RoomWorkbenchRailSummary` 把 `overview / delivery / system` 的重复双卡收回单卡表达，并补回房间内 agent / machine profile 深链锚点；`/mailbox` 的 cross-room governance rollup 现在也把 owner / next-route 解释收回 graph 主视图，列表卡只保留 room 热点、route 状态与动作入口。下一步继续收 Inbox 和 `/agents` governance mirror 上重复的 owner/status/action truth，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
+  - Phase 0 shell 前端减法已收四刀；shared `RunControlSurface` 已压短，`/topics/:topicId` 的重复继续入口卡已删掉，room `context` tab 也已压成“当前焦点 + 待处理”，右侧 `RoomWorkbenchRailSummary` 把 `overview / delivery / system` 的重复双卡收回单卡表达，并补回房间内 agent / machine profile 深链锚点；`/mailbox` 的 cross-room governance rollup 现在也把 owner / next-route 解释收回 graph 主视图，列表卡只保留 room 热点、route 状态与动作入口；`/inbox` 上 governed handoff compose 也已改成“自动建议优先、手动表单次级展开”，不再把两套 source/target/title/summary 真相一起摊在首屏。下一步继续收 `/agents` governance mirror 和 Inbox/room 内仍重复的 owner/status/action truth，让 chat-first 路径更顺、更轻、更舒服，而不是继续加一层层次级面板。
 
 ### 2026-04-16 已收口
 

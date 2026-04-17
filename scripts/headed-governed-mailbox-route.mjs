@@ -459,6 +459,14 @@ async function readText(page, testId) {
   return (await page.getByTestId(testId).textContent())?.trim() ?? "";
 }
 
+async function isVisibleByTestId(page, testId) {
+  const locator = page.getByTestId(testId);
+  if ((await locator.count()) === 0) {
+    return false;
+  }
+  return locator.first().isVisible();
+}
+
 async function waitForTestIdText(page, testId, expectedText, timeout = 30_000) {
   await page.waitForFunction(
     ({ id, text }) => document.querySelector(`[data-testid="${id}"]`)?.textContent?.trim() === text,
@@ -615,6 +623,14 @@ try {
     (await readText(page, "mailbox-compose-governed-route-status")) === governanceStatusLabel("ready"),
     "governed compose route should start in ready state"
   );
+  await page.getByTestId("mailbox-compose-manual-toggle").waitFor({ state: "visible" });
+  assert(
+    !(await isVisibleByTestId(page, "mailbox-compose-title")),
+    "manual compose form should stay collapsed by default when governed route is available"
+  );
+  await page.getByTestId("mailbox-compose-manual-toggle").click();
+  await page.getByTestId("mailbox-compose-manual-panel").waitFor({ state: "visible" });
+  await page.getByTestId("mailbox-compose-title").waitFor({ state: "visible" });
   await page.getByTestId("mailbox-compose-governed-route-create").waitFor({ state: "visible" });
   await capture(page, "governed-compose-ready");
 
@@ -671,7 +687,7 @@ try {
   let reportTestCase = "TC-053";
   let reportScope = "governed default route、active handoff focus、blocked fallback";
   let resultLines = [
-    "- `/mailbox` 与 Inbox compose 都会读取 `workspace.governance.routingPolicy.suggestedHandoff`，并在 `ready` 状态下显式给出 `Create Governed Handoff` 一键起单入口 -> PASS",
+    "- `/mailbox` 与 Inbox compose 都会读取 `workspace.governance.routingPolicy.suggestedHandoff`；当 route 已可用时，Inbox 会默认把自由表单折成次级入口，只保留 `Create Governed Handoff` 热路径在首屏 -> PASS",
     "- 通过 governed route 一键起单后，`/mailbox` 与 Inbox compose 会一起切到 `active`，并提供聚焦当前 handoff 的回链，防止同一路由被重复创建 -> PASS",
     "- 完成当前 reviewer handoff 后，两处 governed surface 会一起前滚到下一条 lane；当 QA lane 缺少可映射 agent 时，状态会显式转成 `blocked`，不会静默回退到随机接收方 -> PASS",
   ];

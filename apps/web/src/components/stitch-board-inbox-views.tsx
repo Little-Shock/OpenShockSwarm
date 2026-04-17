@@ -693,6 +693,7 @@ export function StitchInboxView() {
   const [composeToAgentId, setComposeToAgentId] = useState("");
   const [composeTitle, setComposeTitle] = useState("把当前任务交给下一位智能体");
   const [composeSummary, setComposeSummary] = useState("请继续处理这条任务，并在交接箱里更新进展或结果。");
+  const [manualComposeExpanded, setManualComposeExpanded] = useState(false);
   const [creatingHandoff, setCreatingHandoff] = useState(false);
   const [handoffNotes, setHandoffNotes] = useState<Record<string, string>>({});
   const [mailboxCommentActors, setMailboxCommentActors] = useState<Record<string, string>>({});
@@ -712,6 +713,7 @@ export function StitchInboxView() {
   const canManageMailbox = hasSessionPermission(session, "run.execute");
   const mailboxSurfaceActive = pathname === "/mailbox";
   const governedSuggestion = state.workspace.governance.routingPolicy.suggestedHandoff;
+  const governedComposeAvailable = governedSuggestion.roomId === composeRoomId;
 
   const recommendedMailboxAgents = useCallback((roomId: string) => {
     if (governedSuggestion.roomId === roomId && governedSuggestion.status === "ready") {
@@ -794,6 +796,13 @@ export function StitchInboxView() {
       setComposeSummary(defaults.summary);
     }
   }, [composeRoomId, contextRoomId, error, loading, recommendedMailboxAgents, state.agents, state.rooms]);
+
+  useEffect(() => {
+    if (loading || error || !composeRoomId) {
+      return;
+    }
+    setManualComposeExpanded(!governedComposeAvailable);
+  }, [composeRoomId, error, governedComposeAvailable, loading]);
 
   useEffect(() => {
     if (!mailboxSurfaceActive || loading || error) {
@@ -1432,7 +1441,7 @@ export function StitchInboxView() {
                       </span>
                     </div>
                     <div className="mt-4 space-y-3">
-                      {governedSuggestion.roomId === composeRoomId ? (
+                      {governedComposeAvailable ? (
                         <div
                           data-testid="mailbox-compose-governed-route"
                           className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
@@ -1508,94 +1517,120 @@ export function StitchInboxView() {
                           </div>
                         </div>
                       ) : null}
-                      <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">讨论</span>
-                        <select
-                          data-testid="mailbox-compose-room"
-                          value={composeRoomId}
-                          disabled={!canManageMailbox}
-                          onChange={(event) => applyRoomDefaults(event.target.value)}
-                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                        >
-                          {sidebarRooms.map((room) => (
-                            <option key={room.id} value={room.id}>
-                              {room.title}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">发起方</span>
-                        <select
-                          data-testid="mailbox-compose-from-agent"
-                          value={composeFromAgentId}
-                          disabled={!canManageMailbox}
-                          onChange={(event) => setComposeFromAgentId(event.target.value)}
-                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                        >
-                          {sidebarAgents.map((agent) => (
-                            <option key={agent.id} value={agent.id}>
-                              {agent.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">接收方</span>
-                        <select
-                          data-testid="mailbox-compose-to-agent"
-                          value={composeToAgentId}
-                          disabled={!canManageMailbox}
-                          onChange={(event) => setComposeToAgentId(event.target.value)}
-                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                        >
-                          {sidebarAgents.map((agent) => (
-                            <option key={agent.id} value={agent.id}>
-                              {agent.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">标题</span>
-                        <input
-                          data-testid="mailbox-compose-title"
-                          value={composeTitle}
-                          disabled={!canManageMailbox}
-                          onChange={(event) => setComposeTitle(event.target.value)}
-                          className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                          placeholder="这次交接要接什么"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">说明</span>
-                        <textarea
-                          data-testid="mailbox-compose-summary"
-                          value={composeSummary}
-                          disabled={!canManageMailbox}
-                          onChange={(event) => setComposeSummary(event.target.value)}
-                          className="mt-2 min-h-[132px] w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
-                          placeholder="把交接背景写清楚"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        data-testid="mailbox-compose-submit"
-                        disabled={
-                          creatingHandoff ||
-                          !canManageMailbox ||
-                          !composeRoomId ||
-                          !composeFromAgentId ||
-                          !composeToAgentId ||
-                          composeFromAgentId === composeToAgentId ||
-                          !composeTitle.trim() ||
-                          !composeSummary.trim()
-                        }
-                        onClick={() => void handleCreateHandoff()}
-                        className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
-                      >
-                        {creatingHandoff ? "创建中..." : "创建交接"}
-                      </button>
+                      {governedComposeAvailable ? (
+                        <div className="border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
+                                手动改写
+                              </p>
+                              <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+                                自动建议已经覆盖默认 source / target / 说明；只有需要偏离治理建议时再展开手动表单。
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              data-testid="mailbox-compose-manual-toggle"
+                              onClick={() => setManualComposeExpanded((current) => !current)}
+                              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                            >
+                              {manualComposeExpanded ? "收起手动表单" : "展开手动表单"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                      {manualComposeExpanded || !governedComposeAvailable ? (
+                        <div data-testid="mailbox-compose-manual-panel" className="space-y-3 border-2 border-[var(--shock-ink)] bg-white p-3">
+                          <label className="block">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">讨论</span>
+                            <select
+                              data-testid="mailbox-compose-room"
+                              value={composeRoomId}
+                              disabled={!canManageMailbox}
+                              onChange={(event) => applyRoomDefaults(event.target.value)}
+                              className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                            >
+                              {sidebarRooms.map((room) => (
+                                <option key={room.id} value={room.id}>
+                                  {room.title}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">发起方</span>
+                            <select
+                              data-testid="mailbox-compose-from-agent"
+                              value={composeFromAgentId}
+                              disabled={!canManageMailbox}
+                              onChange={(event) => setComposeFromAgentId(event.target.value)}
+                              className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                            >
+                              {sidebarAgents.map((agent) => (
+                                <option key={agent.id} value={agent.id}>
+                                  {agent.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">接收方</span>
+                            <select
+                              data-testid="mailbox-compose-to-agent"
+                              value={composeToAgentId}
+                              disabled={!canManageMailbox}
+                              onChange={(event) => setComposeToAgentId(event.target.value)}
+                              className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                            >
+                              {sidebarAgents.map((agent) => (
+                                <option key={agent.id} value={agent.id}>
+                                  {agent.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">标题</span>
+                            <input
+                              data-testid="mailbox-compose-title"
+                              value={composeTitle}
+                              disabled={!canManageMailbox}
+                              onChange={(event) => setComposeTitle(event.target.value)}
+                              className="mt-2 w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                              placeholder="这次交接要接什么"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">说明</span>
+                            <textarea
+                              data-testid="mailbox-compose-summary"
+                              value={composeSummary}
+                              disabled={!canManageMailbox}
+                              onChange={(event) => setComposeSummary(event.target.value)}
+                              className="mt-2 min-h-[132px] w-full border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                              placeholder="把交接背景写清楚"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            data-testid="mailbox-compose-submit"
+                            disabled={
+                              creatingHandoff ||
+                              !canManageMailbox ||
+                              !composeRoomId ||
+                              !composeFromAgentId ||
+                              !composeToAgentId ||
+                              composeFromAgentId === composeToAgentId ||
+                              !composeTitle.trim() ||
+                              !composeSummary.trim()
+                            }
+                            onClick={() => void handleCreateHandoff()}
+                            className="w-full border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] disabled:opacity-60"
+                          >
+                            {creatingHandoff ? "创建中..." : "创建交接"}
+                          </button>
+                        </div>
+                      ) : null}
                       {!canManageMailbox ? (
                         <p className="text-[12px] leading-6 text-[color:rgba(24,20,14,0.68)]">
                           {permissionBoundaryCopy(session, "run.execute")}
