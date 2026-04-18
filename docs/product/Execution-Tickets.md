@@ -1614,7 +1614,12 @@
   - `/agents` 的升级时限卡已删掉 `下一次升级` helper copy；升级节奏继续由 SLA 摘要和下方 escalation queue 持有，不再在卡头再写一层重复时间提示
   - `orchestration-governance-escalation-entry-*`、`orchestration-governance-escalation-status-*`、`协作规则和通知一页看清`、`升级时限`、`通知策略` 与 escalation queue 主体锚点保持不变；减法后 `/agents` 仍围同一份治理镜像前滚
   - headed escalation queue 已新增“升级时限卡不再渲染 `下一次升级：` helper copy”断言，避免后续又把 queue 已持有的升级真相重新堆回卡头
+- 当前已收第十一刀:
+  - `/inbox` 的 approval-center 桌面信号卡已删掉右侧重复 `打开详情` 链接；在 `Room / Run / PR / PR Detail` 已经提供主导航时，不再额外堆同一张卡的次级 deep-link
+  - `approval-center-room-link-*`、`approval-center-run-link-*`、`approval-center-pr-link-*`、`approval-center-pr-detail-link-*`、`approval-center-action-*` 与移动端 `approval-center-open-context-mobile-*` 热路径保持不变；减法后桌面 triage 仍围同一份 signal truth 前滚
+  - headed approval-center lifecycle 已新增“桌面 signal 不再渲染重复 `打开详情` 次级入口”断言，避免后续又把已由 Room/Run/PR 链接持有的导航重复堆回右栏
 - 最新证据:
+  - `node --check scripts/headed-approval-center-lifecycle.mjs`
   - `node --check scripts/headed-governance-escalation-queue.mjs`
   - `node --check scripts/headed-cross-room-governance-orchestration.mjs`
   - `node --check scripts/headed-planner-dispatch-replay.mjs`

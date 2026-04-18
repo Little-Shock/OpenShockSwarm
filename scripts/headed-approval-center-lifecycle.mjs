@@ -290,10 +290,20 @@ try {
 
   await page.getByTestId("approval-center-filter-review").click();
   await page.getByTestId("approval-center-signal-inbox-review-copy").waitFor({ state: "visible" });
+  const reviewSignal = page.getByTestId("approval-center-signal-inbox-review-copy");
   assert((await page.getByTestId("approval-center-room-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox?tab=pr", "review signal should link back to PR tab in room workbench");
   assert((await page.getByTestId("approval-center-run-link-inbox-review-copy").getAttribute("href")) === "/rooms/room-inbox?tab=run", "review signal should link back to run tab in room workbench");
   assert((await page.getByTestId("approval-center-pr-link-inbox-review-copy").getAttribute("href"))?.endsWith("/pull/22"), "review signal should link back to PR");
   assert((await page.getByTestId("approval-center-unread-inbox-review-copy").textContent())?.trim() === "未读", "review signal should surface unread hotspot");
+  assert(
+    (await reviewSignal.locator("a").evaluateAll((nodes) =>
+      nodes.filter((node) => {
+        const element = /** @type {HTMLElement} */ (node);
+        return element.textContent?.trim() === "打开详情" && element.offsetParent !== null;
+      }).length
+    )) === 0,
+    "approval center desktop signal should not keep a secondary open-detail link once room/run/pr links already own navigation"
+  );
   await capture(page, screenshotsDir, "review-signal-backlinks");
 
   await page.getByTestId("approval-center-filter-approval").click();

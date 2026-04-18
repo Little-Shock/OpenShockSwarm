@@ -1343,9 +1343,6 @@ export function StitchInboxView() {
                             {decisionLabel(decision)}
                           </button>
                         ))}
-                        <Link href={item.href} className="hidden font-mono text-[10px] text-[color:rgba(24,20,14,0.6)] underline underline-offset-2 md:inline-flex">
-                          打开详情
-                        </Link>
                         {actionError?.id === item.id ? (
                           <p className="max-w-[200px] text-left font-mono text-[10px] text-[var(--shock-pink)] md:text-right">{actionError.message}</p>
                         ) : null}
