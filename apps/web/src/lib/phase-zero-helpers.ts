@@ -890,6 +890,17 @@ function sanitizeSession(session: Session): Session {
 }
 
 function sanitizeRunRecoveryAudit(item: RunDetail["recoveryAudit"]): RunDetail["recoveryAudit"] {
+  const sanitizeHandoffFollowup = (followup: NonNullable<RunDetail["recoveryAudit"]["handoffAutoFollowup"]>) => ({
+    ...followup,
+    kind: sanitizeDisplayText(followup.kind ?? "", ""),
+    handoffId: sanitizeDisplayText(followup.handoffId ?? "", ""),
+    toAgentId: sanitizeDisplayText(followup.toAgentId ?? "", ""),
+    toAgent: sanitizeDisplayText(followup.toAgent ?? "", ""),
+    status: sanitizeDisplayText(followup.status ?? "", ""),
+    summary: sanitizeDisplayText(followup.summary ?? "", "当前交接继续摘要正在整理中。"),
+    lastAction: sanitizeDisplayText(followup.lastAction ?? "", "当前交接继续动作正在整理中。"),
+  });
+
   return {
     ...item,
     status: sanitizeDisplayText(item.status ?? "", ""),
@@ -897,16 +908,8 @@ function sanitizeRunRecoveryAudit(item: RunDetail["recoveryAudit"]): RunDetail["
     summary: sanitizeDisplayText(item.summary ?? "", "当前恢复摘要正在整理中。"),
     preview: sanitizeDisplayText(item.preview ?? "", "当前恢复预览正在整理中。"),
     sessionReplay: sanitizeDisplayText(item.sessionReplay ?? "", ""),
-    roomAutoFollowup: item.roomAutoFollowup
-      ? {
-          ...item.roomAutoFollowup,
-          toAgentId: sanitizeDisplayText(item.roomAutoFollowup.toAgentId ?? "", ""),
-          toAgent: sanitizeDisplayText(item.roomAutoFollowup.toAgent ?? "", ""),
-          status: sanitizeDisplayText(item.roomAutoFollowup.status ?? "", ""),
-          summary: sanitizeDisplayText(item.roomAutoFollowup.summary ?? "", "当前自动接棒摘要正在整理中。"),
-          lastAction: sanitizeDisplayText(item.roomAutoFollowup.lastAction ?? "", "当前自动接棒动作正在整理中。"),
-        }
-      : undefined,
+    handoffAutoFollowup: item.handoffAutoFollowup ? sanitizeHandoffFollowup(item.handoffAutoFollowup) : undefined,
+    roomAutoFollowup: item.roomAutoFollowup ? sanitizeHandoffFollowup(item.roomAutoFollowup) : undefined,
     runtimeReplay: item.runtimeReplay
       ? {
           ...item.runtimeReplay,

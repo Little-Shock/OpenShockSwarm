@@ -39,7 +39,23 @@
     ".next-fresh-stack/types/**/*.ts",
     ".next-fresh-stack/dev/types/**/*.ts",
     ".next-e2e-*/types/**/*.ts",
-    ".next-e2e-*/dev/types/**/*.ts"
+    ".next-e2e-*/dev/types/**/*.ts",
+    ".next-e2e-agent-mailbox-handoff/types/**/*.ts",
+    ".next-e2e-agent-mailbox-handoff/dev/types/**/*.ts",
+    ".next-e2e-cross-room-governance/types/**/*.ts",
+    ".next-e2e-cross-room-governance/dev/types/**/*.ts",
+    ".next-e2e-governance-escalation-rollup/types/**/*.ts",
+    ".next-e2e-governance-escalation-rollup/dev/types/**/*.ts",
+    ".next-e2e-governed-mailbox-route/types/**/*.ts",
+    ".next-e2e-governed-mailbox-route/dev/types/**/*.ts",
+    ".next-e2e-planner-dispatch-replay/types/**/*.ts",
+    ".next-e2e-planner-dispatch-replay/dev/types/**/*.ts",
+    ".next-e2e-control-plane-runtime-governance/types/**/*.ts",
+    ".next-e2e-control-plane-runtime-governance/dev/types/**/*.ts",
+    ".next-e2e-governance-escalation-queue/types/**/*.ts",
+    ".next-e2e-governance-escalation-queue/dev/types/**/*.ts",
+    ".next-e2e-multi-agent-governance/types/**/*.ts",
+    ".next-e2e-multi-agent-governance/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

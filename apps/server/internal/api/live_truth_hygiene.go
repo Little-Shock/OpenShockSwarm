@@ -31,8 +31,8 @@ func sanitizeLivePayload(payload any) any {
 		return sanitizeRunDetail(typed)
 	case store.RunRecoveryAudit:
 		return sanitizeRunRecoveryAudit(typed)
-	case store.RunRecoveryRoomAutoFollowup:
-		return sanitizeRunRecoveryRoomAutoFollowup(typed)
+	case store.RunRecoveryHandoffAutoFollowup:
+		return sanitizeRunRecoveryHandoffAutoFollowup(typed)
 	case store.RunRecoveryRuntimeReplay:
 		return sanitizeRunRecoveryRuntimeReplay(typed)
 	case store.RunHistoryPage:
@@ -668,8 +668,12 @@ func sanitizeRunRecoveryAudit(item store.RunRecoveryAudit) store.RunRecoveryAudi
 	item.Summary = sanitizeDisplayText(item.Summary, "当前恢复摘要正在整理中。")
 	item.Preview = sanitizeDisplayText(item.Preview, "当前恢复预览正在整理中。")
 	item.SessionReplay = sanitizeDisplayText(item.SessionReplay, "")
+	if item.HandoffAutoFollowup != nil {
+		sanitized := sanitizeRunRecoveryHandoffAutoFollowup(*item.HandoffAutoFollowup)
+		item.HandoffAutoFollowup = &sanitized
+	}
 	if item.RoomAutoFollowup != nil {
-		sanitized := sanitizeRunRecoveryRoomAutoFollowup(*item.RoomAutoFollowup)
+		sanitized := sanitizeRunRecoveryHandoffAutoFollowup(*item.RoomAutoFollowup)
 		item.RoomAutoFollowup = &sanitized
 	}
 	if item.RuntimeReplay != nil {
@@ -679,12 +683,14 @@ func sanitizeRunRecoveryAudit(item store.RunRecoveryAudit) store.RunRecoveryAudi
 	return item
 }
 
-func sanitizeRunRecoveryRoomAutoFollowup(item store.RunRecoveryRoomAutoFollowup) store.RunRecoveryRoomAutoFollowup {
+func sanitizeRunRecoveryHandoffAutoFollowup(item store.RunRecoveryHandoffAutoFollowup) store.RunRecoveryHandoffAutoFollowup {
+	item.Kind = sanitizeDisplayText(item.Kind, "")
+	item.HandoffID = sanitizeDisplayText(item.HandoffID, "")
 	item.ToAgentID = sanitizeDisplayText(item.ToAgentID, "")
 	item.ToAgent = sanitizeDisplayText(item.ToAgent, "")
 	item.Status = sanitizeDisplayText(item.Status, "")
-	item.Summary = sanitizeDisplayText(item.Summary, "当前自动接棒摘要正在整理中。")
-	item.LastAction = sanitizeDisplayText(item.LastAction, "当前自动接棒动作正在整理中。")
+	item.Summary = sanitizeDisplayText(item.Summary, "当前交接继续摘要正在整理中。")
+	item.LastAction = sanitizeDisplayText(item.LastAction, "当前交接继续动作正在整理中。")
 	return item
 }
 

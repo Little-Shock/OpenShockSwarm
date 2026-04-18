@@ -183,14 +183,19 @@ func buildRunRecoveryAudit(snapshot State, run Run, session Session) RunRecovery
 		audit.SessionReplay = sessionRecoveryReplayAnchor(session.ID)
 	}
 
-	if followup, ok := findLatestRunRecoveryRoomAutoFollowup(snapshot, run.RoomID); ok {
-		audit.RoomAutoFollowup = &RunRecoveryRoomAutoFollowup{
+	if followup, ok := findLatestRunRecoveryHandoffAutoFollowup(snapshot, run.RoomID); ok {
+		audit.HandoffAutoFollowup = &RunRecoveryHandoffAutoFollowup{
+			Kind:       strings.TrimSpace(followup.Kind),
 			HandoffID:  followup.ID,
 			ToAgentID:  strings.TrimSpace(followup.ToAgentID),
 			ToAgent:    strings.TrimSpace(followup.ToAgent),
 			Status:     strings.TrimSpace(followup.AutoFollowup.Status),
 			Summary:    strings.TrimSpace(followup.AutoFollowup.Summary),
 			LastAction: strings.TrimSpace(followup.LastAction),
+		}
+		if strings.TrimSpace(followup.Kind) == handoffKindRoomAuto {
+			alias := *audit.HandoffAutoFollowup
+			audit.RoomAutoFollowup = &alias
 		}
 	}
 
@@ -207,14 +212,14 @@ func buildRunRecoveryAudit(snapshot State, run Run, session Session) RunRecovery
 	return audit
 }
 
-func findLatestRunRecoveryRoomAutoFollowup(snapshot State, roomID string) (AgentHandoff, bool) {
+func findLatestRunRecoveryHandoffAutoFollowup(snapshot State, roomID string) (AgentHandoff, bool) {
 	roomID = strings.TrimSpace(roomID)
 	if roomID == "" {
 		return AgentHandoff{}, false
 	}
 	for index := range snapshot.Mailbox {
 		item := snapshot.Mailbox[index]
-		if item.RoomID != roomID || item.Kind != handoffKindRoomAuto || item.AutoFollowup == nil {
+		if item.RoomID != roomID || !handoffKindSupportsAutoFollowup(item.Kind) || item.AutoFollowup == nil {
 			continue
 		}
 		switch strings.TrimSpace(item.AutoFollowup.Status) {

@@ -1090,17 +1090,19 @@ type RunDetail struct {
 }
 
 type RunRecoveryAudit struct {
-	Status           string                       `json:"status,omitempty"`
-	Source           string                       `json:"source,omitempty"`
-	Summary          string                       `json:"summary,omitempty"`
-	Preview          string                       `json:"preview,omitempty"`
-	ResumeEligible   bool                         `json:"resumeEligible,omitempty"`
-	SessionReplay    string                       `json:"sessionReplay,omitempty"`
-	RoomAutoFollowup *RunRecoveryRoomAutoFollowup `json:"roomAutoFollowup,omitempty"`
-	RuntimeReplay    *RunRecoveryRuntimeReplay    `json:"runtimeReplay,omitempty"`
+	Status              string                          `json:"status,omitempty"`
+	Source              string                          `json:"source,omitempty"`
+	Summary             string                          `json:"summary,omitempty"`
+	Preview             string                          `json:"preview,omitempty"`
+	ResumeEligible      bool                            `json:"resumeEligible,omitempty"`
+	SessionReplay       string                          `json:"sessionReplay,omitempty"`
+	HandoffAutoFollowup *RunRecoveryHandoffAutoFollowup `json:"handoffAutoFollowup,omitempty"`
+	RoomAutoFollowup    *RunRecoveryHandoffAutoFollowup `json:"roomAutoFollowup,omitempty"`
+	RuntimeReplay       *RunRecoveryRuntimeReplay       `json:"runtimeReplay,omitempty"`
 }
 
-type RunRecoveryRoomAutoFollowup struct {
+type RunRecoveryHandoffAutoFollowup struct {
+	Kind       string `json:"kind,omitempty"`
 	HandoffID  string `json:"handoffId,omitempty"`
 	ToAgentID  string `json:"toAgentId,omitempty"`
 	ToAgent    string `json:"toAgent,omitempty"`

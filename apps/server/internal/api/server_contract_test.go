@@ -4054,6 +4054,9 @@ func TestRunDetailRouteBuildsRecoveryAuditFromInterruptedSessionAndFollowupTruth
 	if !detail.RecoveryAudit.ResumeEligible || !strings.Contains(detail.RecoveryAudit.Preview, "第一段检查") {
 		t.Fatalf("run detail recovery audit = %#v, want resume eligible preview", detail.RecoveryAudit)
 	}
+	if detail.RecoveryAudit.HandoffAutoFollowup == nil || detail.RecoveryAudit.HandoffAutoFollowup.Kind != "room-auto" || detail.RecoveryAudit.HandoffAutoFollowup.Status != "blocked" {
+		t.Fatalf("run detail generic handoff followup = %#v, want blocked room-auto followup", detail.RecoveryAudit.HandoffAutoFollowup)
+	}
 	if detail.RecoveryAudit.RoomAutoFollowup == nil || detail.RecoveryAudit.RoomAutoFollowup.Status != "blocked" {
 		t.Fatalf("run detail room-auto followup = %#v, want blocked followup", detail.RecoveryAudit.RoomAutoFollowup)
 	}
@@ -4065,6 +4068,64 @@ func TestRunDetailRouteBuildsRecoveryAuditFromInterruptedSessionAndFollowupTruth
 	}
 	if detail.RecoveryAudit.RuntimeReplay.LastCursor != 1 || detail.RecoveryAudit.RuntimeReplay.CloseoutReason != "pending_turn_interrupted" {
 		t.Fatalf("run detail runtime replay = %#v, want closeout cursor/reason", detail.RecoveryAudit.RuntimeReplay)
+	}
+}
+
+func TestRunDetailRouteBuildsRecoveryAuditFromFormalHandoffFollowupTruth(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+
+	_, handoff, err := s.CreateHandoff(store.MailboxCreateInput{
+		Kind:        "governed",
+		RoomID:      "room-runtime",
+		Title:       "继续 reviewer lane",
+		Summary:     "请正式接住 reviewer lane，并把恢复链路继续收口。",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(governed) error = %v", err)
+	}
+	if _, _, err := s.AdvanceHandoff(handoff.ID, store.MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged) error = %v", err)
+	}
+	if _, _, err := s.UpdateRoomAutoHandoffFollowup(handoff.ID, "blocked", "当前还未登录模型服务"); err != nil {
+		t.Fatalf("UpdateRoomAutoHandoffFollowup(governed blocked) error = %v", err)
+	}
+
+	server := httptest.NewServer(New(s, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/runs/run_runtime_01/detail")
+	if err != nil {
+		t.Fatalf("GET run detail envelope error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET run detail envelope status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var detail store.RunDetail
+	decodeJSON(t, resp, &detail)
+	if detail.RecoveryAudit.HandoffAutoFollowup == nil || detail.RecoveryAudit.HandoffAutoFollowup.Kind != "governed" {
+		t.Fatalf("run detail generic handoff followup = %#v, want governed followup", detail.RecoveryAudit.HandoffAutoFollowup)
+	}
+	if detail.RecoveryAudit.HandoffAutoFollowup.Status != "blocked" || !strings.Contains(detail.RecoveryAudit.HandoffAutoFollowup.Summary, "未登录模型服务") {
+		t.Fatalf("run detail generic handoff followup = %#v, want blocked summary", detail.RecoveryAudit.HandoffAutoFollowup)
+	}
+	if detail.RecoveryAudit.RoomAutoFollowup != nil {
+		t.Fatalf("run detail room-auto alias = %#v, want nil for governed followup", detail.RecoveryAudit.RoomAutoFollowup)
 	}
 }
 

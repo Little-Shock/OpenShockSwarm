@@ -1073,7 +1073,8 @@ export type SessionRecovery = {
   events?: SessionRecoveryEvent[];
 };
 
-export type RunRecoveryRoomAutoFollowup = {
+export type RunRecoveryHandoffAutoFollowup = {
+  kind?: string;
   handoffId?: string;
   toAgentId?: string;
   toAgent?: string;
@@ -1097,7 +1098,8 @@ export type RunRecoveryAudit = {
   preview?: string;
   resumeEligible?: boolean;
   sessionReplay?: string;
-  roomAutoFollowup?: RunRecoveryRoomAutoFollowup;
+  handoffAutoFollowup?: RunRecoveryHandoffAutoFollowup;
+  roomAutoFollowup?: RunRecoveryHandoffAutoFollowup;
   runtimeReplay?: RunRecoveryRuntimeReplay;
 };
 

@@ -484,6 +484,12 @@ export function RunDetailView({
   const recoveryReplay = recoveryAudit?.sessionReplay ?? resumeSession.recovery?.replayAnchor;
   const recoveryEligible =
     recoveryAudit?.resumeEligible ?? resumeSession.pendingTurn?.resumeEligible;
+  const handoffFollowup = recoveryAudit?.handoffAutoFollowup ?? recoveryAudit?.roomAutoFollowup;
+  const handoffFollowupTitle =
+    handoffFollowup?.kind === "room-auto" ? "Room Auto 接棒" : handoffFollowup ? "正式交接继续" : "";
+  const handoffFollowupSummary =
+    handoffFollowup?.summary ??
+    (handoffFollowup?.kind === "room-auto" ? "当前自动接棒摘要正在整理中。" : "当前交接继续摘要正在整理中。");
 
   return (
     <div className="space-y-4">
@@ -690,20 +696,20 @@ export function RunDetailView({
               恢复预览：{recoveryPreview}
             </p>
           ) : null}
-          {recoveryAudit?.roomAutoFollowup ? (
+          {handoffFollowup ? (
             <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-display text-lg font-semibold">Room Auto 接棒</p>
+                <p className="font-display text-lg font-semibold">{handoffFollowupTitle}</p>
                 <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]">
-                  {recoveryAudit.roomAutoFollowup.status || "待同步"}
+                  {handoffFollowup.status || "待同步"}
                 </span>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <Metric label="目标智能体" value={recoveryAudit.roomAutoFollowup.toAgent || "待同步"} />
-                <Metric label="Handoff" value={recoveryAudit.roomAutoFollowup.handoffId || "待同步"} />
-                <Metric label="最后动作" value={recoveryAudit.roomAutoFollowup.lastAction || "待同步"} />
+                <Metric label="目标智能体" value={handoffFollowup.toAgent || "待同步"} />
+                <Metric label="Handoff" value={handoffFollowup.handoffId || "待同步"} />
+                <Metric label="最后动作" value={handoffFollowup.lastAction || "待同步"} />
               </div>
-              <p className="mt-3 text-sm leading-6">{recoveryAudit.roomAutoFollowup.summary || "当前自动接棒摘要正在整理中。"}</p>
+              <p className="mt-3 text-sm leading-6">{handoffFollowupSummary}</p>
             </div>
           ) : null}
           {recoveryAudit?.runtimeReplay ? (
