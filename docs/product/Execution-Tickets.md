@@ -1622,6 +1622,10 @@
   - `/mailbox` 的人工确认卡已删掉泛化 `打开处理入口` 动作；blocked / required 状态继续由 escalation queue、Inbox 和 handoff ledger 持有主导航，不再在右栏再堆一层重复入口
   - `mailbox-governance-human-override`、`mailbox-governance-escalation-queue`、`mailbox-card-*` 与 handoff action 热路径保持不变；减法后 `/mailbox` 仍围同一份治理镜像前滚
   - headed multi-agent governance 已新增“mailbox human-override 不再渲染重复 open-link”断言，避免后续又把第二层人工确认入口堆回右栏
+- 当前已收第十三刀:
+  - `/mailbox` 的 governance escalation queue 单卡已删掉重复 `nextStep` 和泛化 `打开详情` 入口；active / blocked entry 现在只保留 label、chips、status 与 summary，不再把 handoff ledger、Inbox 已持有的下一步说明和导航再堆一层
+  - `mailbox-governance-escalation-entry-*`、`mailbox-governance-escalation-status-*`、`mailbox-governance-escalation-chip-*` 与 escalation queue 主体锚点保持不变；减法后 `/mailbox` 仍能围同一份治理镜像继续 `requested -> blocked -> cleared` 前滚
+  - headed escalation queue 已新增“mailbox escalation entry 不再渲染 standalone next-step helper copy，也不再渲染 generic `打开详情` CTA”断言，避免后续又把 queue、Inbox 与 handoff ledger 已持有的导航/动作真相重新堆回列表卡
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`
@@ -1634,6 +1638,7 @@
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-board-inbox-views.tsx'`
   - `pnpm build:web`
   - `pnpm test:headed-planner-dispatch-replay`
+  - `pnpm test:headed-governance-escalation-queue`
   - `pnpm test:headed-governance-escalation-rollup`
   - `pnpm test:headed-cross-room-governance-orchestration`
   - `pnpm test:headed-cross-room-governance-auto-closeout`

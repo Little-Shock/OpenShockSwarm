@@ -389,6 +389,16 @@ try {
     parseCountText(await readText(page, "mailbox-governance-escalation-count")) === baselineQueueCount + 1,
     "mailbox queue should expose one additional active handoff entry after create"
   );
+  const mailboxActiveEntryText =
+    (await page.getByTestId(`mailbox-governance-escalation-entry-${handoffEntryId}`).textContent())?.trim() ?? "";
+  assert(
+    !mailboxActiveEntryText.includes("SLA 内继续围当前 handoff ledger 推进"),
+    "mailbox escalation queue should not keep standalone next-step helper copy once the handoff ledger already exposes the same escalation intent"
+  );
+  assert(
+    !mailboxActiveEntryText.includes("打开详情"),
+    "mailbox escalation queue should not keep a generic open-detail CTA once the mailbox ledger already owns actionable navigation"
+  );
   await capture(page, "mailbox-escalation-requested");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });
@@ -443,6 +453,16 @@ try {
   assert(
     parseCountText(await readText(page, "mailbox-governance-escalation-count")) === baselineQueueCount + 2,
     "mailbox queue should expose handoff + inbox blocker entries after block"
+  );
+  const mailboxBlockedEntryText =
+    (await page.getByTestId(`mailbox-governance-escalation-entry-${blockerEntryId}`).textContent())?.trim() ?? "";
+  assert(
+    !mailboxBlockedEntryText.includes("决定 unblock / reroute"),
+    "mailbox escalation queue should not repeat unblock helper copy that already belongs to inbox and human-override surfaces"
+  );
+  assert(
+    !mailboxBlockedEntryText.includes("打开详情"),
+    "mailbox escalation queue should not keep a generic open-detail CTA once inbox and handoff ledger already own navigation"
   );
   await capture(page, "mailbox-escalation-blocked");
 

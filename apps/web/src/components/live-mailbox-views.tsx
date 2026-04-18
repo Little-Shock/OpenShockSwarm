@@ -891,15 +891,6 @@ export function LiveMailboxPageContent() {
                             </span>
                           </div>
                           <p className="mt-3 text-sm leading-6">{entry.summary}</p>
-                          <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{entry.nextStep}</p>
-                          {entry.href ? (
-                            <Link
-                              href={entry.href}
-                              className="mt-3 inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                            >
-                              打开详情
-                            </Link>
-                          ) : null}
                         </div>
                       ))
                     )}
