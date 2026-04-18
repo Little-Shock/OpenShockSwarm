@@ -1634,6 +1634,10 @@
   - room PR panel 已继续只保留 PR 专属导航；泛化的 `收件箱评审` 与 `话题上下文` CTA 已删掉，Inbox 入口继续由 shell / room context 持有，context tab 切换继续由 room workbench 顶部 tabs 持有
   - `room-workbench-pr-panel`、`room-workbench-pr-primary-action`、`room-pr-detail-link` 与 PR review summary 锚点保持不变；减法后 PR panel 仍可直接完成 review / merge、打开 PR detail 和远端 PR
   - headed room workbench regression 已新增“PR panel 不再渲染 generic inbox-review / context-tab CTA”断言，避免后续又把 shell / tabs 已持有的导航重新堆回 PR panel
+- 当前已收第十六刀:
+  - room delivery rail 在用户已位于 PR tab 时，不再渲染自引用 `房间 PR` CTA；该入口只在其他 tab 里作为跳转保留，避免在同一屏里出现“自己跳自己”的无效导航
+  - `room-rail-pr-panel`、`room-workbench-pr-panel`、`room-workbench-pr-primary-action` 与 `room-workbench-pr-detail-link` 锚点保持不变；减法后 PR tab 里仍保留 PR detail / remote PR 等真正专属导航
+  - headed room workbench regression 已新增“PR tab 下的 delivery rail 不再渲染 self-referential room-pr CTA”断言，避免后续又把自引用导航堆回同一屏
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`

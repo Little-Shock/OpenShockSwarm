@@ -283,6 +283,12 @@ try {
     (await page.getByTestId("room-workbench-pr-panel").getByRole("link", { name: "话题上下文", exact: true }).count()) === 0,
     "room PR sheet should not keep a context-tab CTA once the room workbench tabs already own that navigation"
   );
+  await page.getByTestId("room-rail-summary-delivery").click();
+  await waitForVisible(page.locator('[data-testid="room-rail-pr-panel"]'), "room delivery rail panel did not render");
+  assert(
+    (await page.getByTestId("room-rail-pr-panel").getByRole("link", { name: "房间 PR", exact: true }).count()) === 0,
+    "room delivery rail should not keep a self-referential room-pr CTA when the user is already inside the PR tab"
+  );
   await capture(page, "room-pr");
   results.push("- PR sheet 继续保留在 room 语境里，可直接看到 review / merge 入口，而不是强制跳走。");
 

@@ -1720,12 +1720,14 @@ function RoomWorkbenchRailSummary({
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link
-                href={buildRoomWorkbenchHref(room.id, "pr")}
-                className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-              >
-                房间 PR
-              </Link>
+              {activeTab !== "pr" ? (
+                <Link
+                  href={buildRoomWorkbenchHref(room.id, "pr")}
+                  className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+                >
+                  房间 PR
+                </Link>
+              ) : null}
               {pullRequest ? (
                 <Link
                   href={`/pull-requests/${pullRequest.id}`}

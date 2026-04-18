@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 18 日继续收第十五刀：在前一轮 room PR sheet 已减掉 duplicate inbox / mailbox 导航和 per-signal 二级 CTA 的基础上，PR panel 里泛化的 `收件箱评审 / 话题上下文` 也继续被收掉；PR panel 现在只保留 `PR 详情 / 打开远端 PR` 这类 PR 专属导航，Inbox 入口继续由 shell / room context 持有，context tab 切换继续由 room workbench 顶部 tabs 持有，不再把同一条 generic route 反复塞回 PR panel。当前 `node --check scripts/headed-room-workbench-topic-context.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`、`pnpm typecheck:web`、`pnpm build:web` 与 `pnpm test:headed-room-workbench-topic-context` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox 里仍重复的次级 deep-link、owner/status/action truth。
+- 业务结论: 2026 年 4 月 18 日继续收第十六刀：在前一轮 PR panel 已删掉 generic `收件箱评审 / 话题上下文` 的基础上，room delivery rail 里“自己跳自己”的 `房间 PR` CTA 也继续被收掉；当用户已经位于 PR tab 时，delivery rail 不再重复渲染自引用跳转，只保留 `PR 详情 / 打开远端 PR` 这类真正的 PR 专属导航，而 `房间 PR` 只在其他 tab 场景里继续承担切换入口。当前 `node --check scripts/headed-room-workbench-topic-context.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`、`pnpm typecheck:web`、`pnpm build:web` 与 `pnpm test:headed-room-workbench-topic-context` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox 里仍重复的次级 deep-link、owner/status/action truth。
 
 ## TC-097 Explicit Provider Thread State Persistence
 
