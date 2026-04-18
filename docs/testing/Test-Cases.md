@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.36
+**版本:** 1.37
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 18 日继续收第二十六刀：在前一轮 `/topics/:topicId` overview 已把 generic `回到讨论间` 收掉的基础上，`/settings` “来源信号”面板顶部的 generic `打开收件箱` 也继续被收掉；settings 本身已经挂在统一 `OpenShockShell` 内，Inbox 主入口由全局壳层导航持有，所以这个 source panel 现在只保留 routed signal 真相与 `打开账号中心` 恢复路径，不再把通知摘要区堆成第二个 inbox action strip。当前 headed notification preference delivery 已锁住“settings 页不再包含 generic `打开收件箱` link”这条路径，并确认页面仍保留至少一条 `打开账号中心` 恢复路径；`node --check scripts/headed-notification-preference-delivery.mjs`、`pnpm test:headed-notification-preference-delivery`、`pnpm typecheck:web` 与 `pnpm build:web` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox / topic route / settings 里仍重复的次级 deep-link、owner/status/action truth。
+- 业务结论: 2026 年 4 月 18 日继续收第二十七刀：在前一轮 `/settings` 已把 source panel 顶部的 generic `打开收件箱` 收掉的基础上，`/pull-requests/:pullRequestId` 的 `review-merge` delivery gate 上泛化 `打开详情` 也继续被收掉；这条 gate 原先只会自引用回当前 PR detail 页，所以现在 release gate 区只保留 status / summary 真相，真正的跨页 drill-in 继续交给 `run-usage` 和 template/settings 等具体 gate。当前 headed delivery entry release gate 已锁住“review merge gate 不再包含 generic `打开详情` link、run usage gate 仍保留 run-detail deep link”这条路径；server contract 也已锁住 `review-merge.href` 为空；`bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run TestPullRequestDetailRouteReturnsConversationAndBacklinks -count=1'`、`node --check scripts/headed-delivery-entry-release-gate.mjs`、`pnpm test:headed-delivery-entry-release-gate`、`pnpm typecheck:web` 与 `pnpm build:web` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox / topic route / settings / PR detail 里仍重复的次级 deep-link、owner/status/action truth。
 
 ## TC-097 Explicit Provider Thread State Persistence
 

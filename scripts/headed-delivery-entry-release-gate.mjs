@@ -315,6 +315,14 @@ try {
   assert((await readText(page, "delivery-handoff-status")) === liveHandoffStatusLabel, "handoff status should match API detail");
   const handoffLines = await page.locator('[data-testid="delivery-handoff-note"] li').count();
   assert(handoffLines === detail.delivery.handoffNote.lines.length, "handoff note line count should match API detail");
+  assert(
+    (await page.getByTestId("delivery-gate-review-merge").getByRole("link", { name: "打开详情" }).count()) === 0,
+    "review merge gate should not render a self-link back to the current PR detail page"
+  );
+  assert(
+    (await page.getByTestId("delivery-gate-run-usage").getByRole("link", { name: "打开详情" }).count()) === 1,
+    "run usage gate should keep its run-detail deep link"
+  );
   await capture(page, "pull-request-delivery-entry");
 
   const templateCard = page.getByTestId(templateTestID(detail.delivery.templates[0]));

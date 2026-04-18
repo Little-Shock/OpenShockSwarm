@@ -1304,6 +1304,9 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 	if gateByID["review-merge"].Status != "ready" {
 		t.Fatalf("review gate = %#v, want ready", gateByID["review-merge"])
 	}
+	if gateByID["review-merge"].Href != "" {
+		t.Fatalf("review gate href = %#v, want empty self-link", gateByID["review-merge"])
+	}
 	if gateByID["notification-delivery"].Status != "ready" {
 		t.Fatalf("notification gate = %#v, want ready", gateByID["notification-delivery"])
 	}

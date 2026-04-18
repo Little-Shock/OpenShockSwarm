@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.33
+**版本:** 1.34
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1678,6 +1678,10 @@
   - `/settings` 的“来源信号”面板不再继续渲染泛化 `打开收件箱` CTA；settings 本身已经挂在统一 `OpenShockShell` 内，Inbox 主入口继续由全局壳层导航持有，不再把同一条跳转在通知来源摘要上重复堆一层
   - `notification-source-*` 锚点保持不变；减法后 settings 里的 routed signal 仍继续保留 kind / title / summary / time 这些通知真相，而账号恢复入口继续由 `打开账号中心` 持有，不再把 source panel 伪装成第二个 inbox action strip
   - headed notification preference delivery 已新增“settings 页不再包含 generic `打开收件箱` link”的断言，并同时确认页面仍保留至少一条 `打开账号中心` 恢复路径，避免后续又把全局 Inbox 导航重新堆回设置摘要区
+- 当前已收第二十七刀:
+  - `/pull-requests/:pullRequestId` 的 `review-merge` delivery gate 不再继续渲染泛化 `打开详情` CTA；这条 gate 原先只会自引用回当前 PR detail 页，本身不提供新的 drill-in，因此现在只保留 status / label / summary 真相，不再把当前页堆成第二个自链接动作
+  - `delivery-gate-review-merge` 与 `delivery-gate-run-usage` 锚点保持不变；减法后 `run-usage` 等真正的跨页 gate 深链仍继续保留，只有 review gate 的自引用 jump 被收掉，避免把 release gate 区做成混杂的真假导航条
+  - headed delivery entry release gate 已新增“review merge gate 不再包含 generic `打开详情` link、run usage gate 仍保留 run-detail deep link”的断言；server contract 也显式锁住 `review-merge.href` 为空，避免后续又把当前页自链接重新投回 API truth
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`
@@ -1685,9 +1689,12 @@
   - `node --check scripts/headed-governance-escalation-queue.mjs`
   - `node --check scripts/headed-room-workbench-topic-context.mjs`
   - `node --check scripts/headed-notification-preference-delivery.mjs`
+  - `node --check scripts/headed-delivery-entry-release-gate.mjs`
   - `node --check scripts/headed-governed-mailbox-route.mjs`
   - `node --check scripts/headed-cross-room-governance-orchestration.mjs`
   - `node --check scripts/headed-planner-dispatch-replay.mjs`
+  - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run TestPullRequestDetailRouteReturnsConversationAndBacklinks -count=1'`
+  - `pnpm test:headed-delivery-entry-release-gate`
   - `pnpm typecheck:web`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-shell-primitives.tsx'`

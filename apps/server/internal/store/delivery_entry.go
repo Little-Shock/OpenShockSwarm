@@ -541,7 +541,6 @@ func buildPullRequestDeliveryReviewGate(snapshot State, pr PullRequest) PullRequ
 		Label:   "Review / Merge Gate",
 		Status:  status,
 		Summary: defaultString(strings.TrimSpace(guard.Reason), "当前 review / merge gate 正在整理中。"),
-		Href:    fmt.Sprintf("/pull-requests/%s", pr.ID),
 	}
 }
 
