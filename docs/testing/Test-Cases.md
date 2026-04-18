@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 18 日继续收第二十一刀：在前一轮 room PR 面板尾部 `RoomRelatedSignalsPanel` 已删掉 generic `打开收件箱` 的基础上，`/mailbox` focused handoff detail card 上残留的 generic `打开收件箱` 也继续被收掉；focused card 现在只保留 `room / parent / response` 这些具体 lineage 导航和正式推进动作，不再把 inbox 当成抽象中转层。当前 `node --check scripts/headed-agent-mailbox-handoff.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-mailbox-views.tsx'`、`pnpm typecheck:web`、`pnpm build:web` 与 `pnpm test:headed-agent-mailbox-handoff` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox 里仍重复的次级 deep-link、owner/status/action truth。
+- 业务结论: 2026 年 4 月 18 日继续收第二十二刀：在前一轮 `/mailbox` focused handoff detail card 已删掉 generic `打开收件箱` 的基础上，`/rooms/:roomId?tab=context` pending panel 上残留的 generic `打开交接箱` 也继续被收掉；当当前 room 没有待跟进交接时，这块现在只明确显示空态，并保留 `打开收件箱` 作为主 triage 入口，不再把 mailbox 当成抽象兜底跳转。当前 `node --check scripts/headed-room-workbench-topic-context.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`、`pnpm typecheck:web`、`pnpm build:web` 与 `pnpm test:headed-room-workbench-topic-context` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox 里仍重复的次级 deep-link、owner/status/action truth。
 
 ## TC-097 Explicit Provider Thread State Persistence
 

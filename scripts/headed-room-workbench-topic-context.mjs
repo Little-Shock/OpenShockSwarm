@@ -302,6 +302,14 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForUrlIncludes(page, "?tab=context");
   await waitForVisible(page.locator('[data-testid="room-workbench-context-panel"]'), "context tab did not survive reload");
+  assert(
+    (await page.getByTestId("room-workbench-open-mailbox").count()) === 0,
+    "room context pending panel should not keep a generic open-mailbox CTA once inbox owns the primary triage entry and handoff cards already link into mailbox"
+  );
+  assert(
+    (await page.getByText("当前没有待跟进交接", { exact: true }).count()) > 0,
+    "room context should make mailbox absence explicit instead of keeping a generic open-mailbox CTA"
+  );
   await capture(page, "room-context");
   results.push("- Context sheet 继续支持 query-state reload，并保留 issue / board / inbox back-links。");
 

@@ -1658,6 +1658,10 @@
   - `/mailbox` focused handoff detail card 不再保留泛化 `打开收件箱` CTA；卡片继续保留 `room / parent / response` 这些具体 lineage 导航与正式推进动作，不再额外堆一层抽象 jump
   - `mailbox-room-link-*`、`mailbox-parent-link-*`、`mailbox-response-link-*` 与各类 `mailbox-action-*` 锚点保持不变；减法后 focused mailbox card 只暴露具体目的地，而不是再把 inbox 当成通用中转层
   - headed agent mailbox handoff 已新增“focused mailbox handoff card 不再渲染 generic open-inbox CTA”断言，并继续验证 handoff 完成后 `/inbox?handoffId=...` 里的 mailbox ledger truth 仍可见
+- 当前已收第二十二刀:
+  - `/rooms/:roomId?tab=context` 的 pending panel 不再保留泛化 `打开交接箱` CTA；当当前房间没有待跟进交接时，这块只明确显示“当前没有待跟进交接”，不再把 mailbox 当抽象兜底跳转
+  - `room-workbench-open-inbox` 与 `room-workbench-handoff-*` 锚点保持不变；减法后 inbox 仍是 room 里的主 triage 入口，而 handoff 恢复继续由具体 card 深链持有，不再额外堆一层 generic mailbox jump
+  - headed room workbench topic context 已新增“context panel 不再渲染 generic open-mailbox CTA”断言，并显式验证当前 fixture 会把“没有待跟进交接”写回 panel，避免后续又把空态信息区重新堆成导航区
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`

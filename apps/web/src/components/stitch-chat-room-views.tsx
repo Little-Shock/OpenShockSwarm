@@ -1225,13 +1225,6 @@ function RoomContextPanels({
             >
               打开收件箱
             </Link>
-            <Link
-              href={`/mailbox?roomId=${room.id}`}
-              data-testid="room-workbench-open-mailbox"
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              打开交接箱
-            </Link>
           </div>
         </div>
         <div className="mt-4 grid gap-3 xl:grid-cols-2">
