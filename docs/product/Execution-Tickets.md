@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.31
+**版本:** 1.32
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1670,6 +1670,10 @@
   - `/pull-requests/:pullRequestId` 右栏的 `相关收件箱提醒` 卡不再继续渲染泛化 `打开详情` CTA；PR detail 页头已经持有 `返回收件箱` 主导航，这块现在只保留 reminder summary 和 kind，不再把同一条 inbox 跳转在信息卡里重复堆一层
   - `pull-request-related-inbox-*` 锚点保持不变；减法后 related inbox 仍继续同步 delegation / reply / history truth，但导航职责交回 PR detail 主动作区，不再把摘要卡伪装成第二个 action strip
   - headed governed mailbox delegation 已新增“PR detail related inbox signal 不再包含 generic `打开详情` 文案”的断言，避免后续又把页头 `返回收件箱` 已持有的导航重新堆回 summary card
+- 当前已收第二十五刀:
+  - `/topics/:topicId` overview 不再继续渲染泛化 `回到讨论间` CTA；topic route 已经通过 `打开讨论页话题` 持有回到 room topic workbench 的正式 backlink，不再把 room return path 在同一块 overview 里重复堆一层
+  - `topic-route-overview` 与 `topic-open-room-workbench` 锚点保持不变；减法后 standalone topic route 仍继续保留 guidance、run control、reload continuity 和 room-topic backlink，不再把 overview 做成第二条导航条
+  - headed topic-route resume lifecycle 已新增“topic-route-overview 不再包含 `回到讨论间` link”的断言，避免后续又把 room-topic backlink 已持有的返回路径重新堆回 topic overview
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`
@@ -1683,6 +1687,7 @@
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-shell-primitives.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/pull-request-detail-view.tsx'`
+  - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-detail-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-board-inbox-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-mailbox-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`
@@ -1692,6 +1697,7 @@
   - `pnpm test:headed-agent-mailbox-handoff`
   - `pnpm test:headed-governed-mailbox-delegation`
   - `pnpm test:headed-room-workbench-topic-context`
+  - `pnpm test:headed-topic-route-resume-lifecycle`
   - `pnpm test:headed-planner-dispatch-replay`
   - `pnpm test:headed-governance-escalation-queue`
   - `pnpm test:headed-governance-escalation-rollup`

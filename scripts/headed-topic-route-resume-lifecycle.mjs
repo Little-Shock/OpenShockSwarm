@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { accessSync, constants as fsConstants, createWriteStream } from "node:fs";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
@@ -237,6 +238,10 @@ try {
   await page.locator('[data-testid="run-detail-open-topic"]').click();
   await waitForUrlIncludes(page, "/topics/topic-runtime");
   await waitForVisible(page.locator('[data-testid="topic-route-overview"]'), "topic route overview did not render");
+  assert(
+    (await page.getByTestId("topic-route-overview").getByRole("link", { name: "回到讨论间", exact: true }).count()) === 0,
+    "topic route overview should not keep a generic back-to-room CTA once the room-topic backlink already owns the room return path"
+  );
   await waitForVisible(page.locator('[data-testid="topic-guidance-draft"]'), "topic guidance composer did not render");
   await capture(page, "topic-route");
   results.push("- `/topics/:topicId` now resolves as a standalone route with topic, room, run and continuity truth on one page.");

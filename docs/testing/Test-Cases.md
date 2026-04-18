@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.34
+**版本:** 1.35
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 18 日继续收第二十四刀：在前一轮 `/rooms/:roomId?tab=context` 已把桌面端 generic `打开收件箱` 收回 shell sidebar 的基础上，`/pull-requests/:pullRequestId` 右栏 `相关收件箱提醒` 卡里的 generic `打开详情` 也继续被收掉；PR detail 页头已经持有 `返回收件箱` 主导航，所以 related inbox 卡现在只保留 signal summary 和 kind，不再把信息卡伪装成第二个 action strip。当前 headed governed mailbox delegation 已锁住“PR detail related inbox signal 不再包含 generic `打开详情` 文案”这条路径；`node --check scripts/headed-governed-mailbox-route.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/pull-request-detail-view.tsx'`、`pnpm typecheck:web`、`pnpm build:web` 与 `pnpm test:headed-governed-mailbox-delegation` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox 里仍重复的次级 deep-link、owner/status/action truth。
+- 业务结论: 2026 年 4 月 18 日继续收第二十五刀：在前一轮 `/pull-requests/:pullRequestId` 已把 related inbox 卡上的 generic `打开详情` 收掉的基础上，`/topics/:topicId` overview 里的 generic `回到讨论间` 也继续被收掉；topic route 已经持有 `打开讨论页话题` 这条具体 backlink，所以 overview 现在只保留 topic summary、run deep-link、issue context 和 room-topic backlink，不再把同一条 room return path 堆成第二条返回导航。当前 headed topic-route resume lifecycle 已锁住“topic-route-overview 不再包含 `回到讨论间` link”这条路径；`node --check scripts/headed-topic-route-resume-lifecycle.mjs`、`bash -lc 'cd apps/web && pnpm exec eslint src/components/live-detail-views.tsx'`、`pnpm typecheck:web`、`pnpm build:web` 与 `pnpm test:headed-topic-route-resume-lifecycle` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox / topic route 里仍重复的次级 deep-link、owner/status/action truth。
 
 ## TC-097 Explicit Provider Thread State Persistence
 

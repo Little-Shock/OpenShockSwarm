@@ -1295,12 +1295,6 @@ export function LiveTopicPageContent({ topicId }: { topicId: string }) {
               >
                 打开讨论页话题
               </Link>
-              <Link
-                href={`/rooms/${room.id}`}
-                className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
-              >
-                回到讨论间
-              </Link>
               {run ? (
                 <Link
                   href={`/runs/${run.id}`}
