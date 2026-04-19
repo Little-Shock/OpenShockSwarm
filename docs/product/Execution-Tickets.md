@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.37
+**版本:** 1.38
 **更新日期:** 2026 年 4 月 19 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1694,6 +1694,10 @@
   - `/pull-requests/:pullRequestId` 的 delivery template 卡不再继续渲染逐卡 `打开详情` CTA；每张 template 原先都只会重复跳到同一个 `/settings`，现在这块只保留 template label / status / ready-blocked-sent-failed 真相，不再把信息卡伪装成并排的设置入口
   - `delivery-template-*` 锚点保持不变；减法后 `/settings` 的正式导航继续由 `delivery-gate-notification-delivery` 持有，template 卡只承担聚合读数，不再和 notification gate 争夺同一条设置跳转
   - headed delivery entry release gate 已新增“notification delivery gate 继续保留 settings 入口，而 template card 不再包含 generic `打开详情` link”的断言，避免后续又把逐卡 settings CTA 堆回 PR detail
+- 当前已收第三十一刀:
+  - `/agents` 的 orchestration cross-room rollup 在 route `ready` 时不再继续渲染 `打开下一步` CTA；当前 `/agents` 页里 governance graph 已经持有 next-route 说明和正式深链，所以 rollup summary 现在只保留 room/status/source 真相，不再和 graph 争夺同一条 route surface
+  - `orchestration-governance-escalation-rollup-room-*`、`orchestration-governance-escalation-rollup-route-status-*` 与 `orchestration-governance-escalation-graph-route-*` 锚点保持不变；减法后 ready 态的 route deep-link 统一由 graph 持有，route 进入 active 后 rollup 仍可继续恢复 `打开下一步`
+  - headed cross-room governance orchestration 已新增“`/agents` ready 态 rollup card 不再包含 `打开下一步`，但 active 态会恢复 next-step link”的断言，避免后续又把 ready-stage 的重复 route CTA 堆回 orchestration summary
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`
@@ -1713,6 +1717,7 @@
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-shell-primitives.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/pull-request-detail-view.tsx'`
+  - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-orchestration-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-detail-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-board-inbox-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/live-mailbox-views.tsx'`

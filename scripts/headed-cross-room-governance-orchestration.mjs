@@ -502,6 +502,10 @@ try {
     (await orchestrationRollupCard.getByRole("link", { name: "查看该讨论" }).count()) === 0,
     "orchestration cross-room rollup should not keep a secondary room-link CTA once the dependency graph already owns room navigation"
   );
+  assert(
+    (await orchestrationRollupCard.getByRole("link", { name: "打开下一步" }).count()) === 0,
+    "orchestration cross-room rollup should not keep a ready-state next-step CTA once the governance graph already owns that route surface"
+  );
   await capture(page, "orchestration-cross-room-route-ready");
 
   await page.goto(`${webURL}/mailbox?roomId=${targetRoom.id}`, { waitUntil: "load" });
@@ -561,6 +565,10 @@ try {
     async () =>
       (await readText(page, `orchestration-governance-escalation-graph-route-${targetRoom.id}`)).includes("进行中"),
     "orchestration governance graph should flip the route node to active after create"
+  );
+  assert(
+    (await page.getByTestId(`orchestration-governance-escalation-rollup-room-${targetRoom.id}`).getByRole("link", { name: "打开下一步" }).count()) === 1,
+    "orchestration cross-room rollup should restore the next-step deep link after route becomes active"
   );
   await capture(page, "orchestration-cross-room-route-active");
 

@@ -920,7 +920,7 @@ function GovernanceReplaySurface({ governance }: { governance: WorkspaceGovernan
                             </div>
                             {entry.latestLabel ? <p className="mt-2 font-display text-base font-semibold">{entry.latestLabel}</p> : null}
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {entry.nextRouteHref ? (
+                              {entry.nextRouteHref && entry.nextRouteStatus !== "ready" ? (
                                 <Link
                                   href={entry.nextRouteHref}
                                   className="inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
