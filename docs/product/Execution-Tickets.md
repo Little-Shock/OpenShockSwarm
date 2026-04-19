@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.36
+**版本:** 1.37
 **更新日期:** 2026 年 4 月 19 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1690,6 +1690,10 @@
   - `/mailbox` 的 cross-room governance rollup 在 route `ready` 时不再同时保留 `创建自动交接` 与 `打开下一步` 两个主动作；ready 态现在只保留正式 mutation `创建自动交接`，避免同一张紧凑卡片在真正起单前就堆两条推进按钮
   - `mailbox-governance-escalation-rollup-route-create-*`、`mailbox-governance-escalation-rollup-route-status-*` 与 active 后的 `nextRouteHref` 仍保持正式真相；减法后 ready 态只剩一个主动作，route 进入 active 后仍继续通过 `打开下一步` deep link 跳进正式 governed handoff
   - headed cross-room governance orchestration 已新增“ready 态 compact rollup card 只保留 `创建自动交接`，不再保留 `打开下一步`；active 态仍保留 next-step link”的断言，避免后续又把 ready-stage 的双主动作堆回 mailbox rollup
+- 当前已收第三十刀:
+  - `/pull-requests/:pullRequestId` 的 delivery template 卡不再继续渲染逐卡 `打开详情` CTA；每张 template 原先都只会重复跳到同一个 `/settings`，现在这块只保留 template label / status / ready-blocked-sent-failed 真相，不再把信息卡伪装成并排的设置入口
+  - `delivery-template-*` 锚点保持不变；减法后 `/settings` 的正式导航继续由 `delivery-gate-notification-delivery` 持有，template 卡只承担聚合读数，不再和 notification gate 争夺同一条设置跳转
+  - headed delivery entry release gate 已新增“notification delivery gate 继续保留 settings 入口，而 template card 不再包含 generic `打开详情` link”的断言，避免后续又把逐卡 settings CTA 堆回 PR detail
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`

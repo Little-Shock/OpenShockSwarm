@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.39
+**版本:** 1.40
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 19 日继续收第二十九刀：在前一轮 room run rail 已把自引用 `房间执行` 收掉的基础上，`/mailbox` cross-room governance rollup 在 route `ready` 时也继续把双主动作压回一个，只保留正式 mutation `创建自动交接`；`打开下一步` 现在会等 route 进入 active 后才出现，避免同一张 compact rollup card 在起单前就堆两条推进按钮。当前 headed cross-room governance orchestration 已锁住“ready 态 compact rollup card 不再包含 `打开下一步`，但 active 态仍保留 next-step link”这条路径；`node --check scripts/headed-cross-room-governance-orchestration.mjs`、`pnpm test:headed-cross-room-governance-orchestration`、`pnpm --dir apps/web exec eslint src/components/live-mailbox-views.tsx`、`pnpm typecheck:web` 与 `pnpm build:web` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 governance rollup / graph 在 ready 态里仍重复的 route CTA、helper copy 和次级 deep-link。
+- 业务结论: 2026 年 4 月 19 日继续收第三十刀：在前一轮 `/mailbox` cross-room governance rollup 已把 ready 态双主动作压回一个的基础上，`/pull-requests/:pullRequestId` 的 delivery template 卡上逐卡 `/settings` 泛化 `打开详情` 也继续被收掉；settings 正式入口现在统一交回 `delivery-gate-notification-delivery`，template 卡只保留 ready / blocked / sent / failed 聚合读数，不再把信息卡并排堆成多个设置入口。当前 headed delivery entry release gate 已锁住“notification delivery gate 继续保留 settings 入口，而 template card 不再包含 generic `打开详情` link”这条路径；`node --check scripts/headed-delivery-entry-release-gate.mjs`、`pnpm test:headed-delivery-entry-release-gate`、`pnpm --dir apps/web exec eslint src/components/pull-request-detail-view.tsx`、`pnpm typecheck:web` 与 `pnpm build:web` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 governance rollup / graph 在 ready 态里仍重复的 route CTA、helper copy 和次级 deep-link，并回头检查 room topic 面板上的 `回到聊天` 是否还能继续减法。
 
 ## TC-097 Explicit Provider Thread State Persistence
 

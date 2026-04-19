@@ -428,14 +428,6 @@ function DeliveryTemplateCard({ template }: { template: PullRequestDeliveryTempl
         <FactTile label="已发送" value={String(template.sentReceipts)} />
         <FactTile label="失败" value={String(template.failedReceipts)} />
       </div>
-      {template.href ? (
-        <Link
-          href={template.href}
-          className="mt-4 inline-flex border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
-        >
-          打开详情
-        </Link>
-      ) : null}
     </article>
   );
 }

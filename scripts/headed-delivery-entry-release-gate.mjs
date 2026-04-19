@@ -323,12 +323,20 @@ try {
     (await page.getByTestId("delivery-gate-run-usage").getByRole("link", { name: "打开详情" }).count()) === 1,
     "run usage gate should keep its run-detail deep link"
   );
+  assert(
+    (await page.getByTestId("delivery-gate-notification-delivery").getByRole("link", { name: "打开详情" }).count()) === 1,
+    "notification delivery gate should keep the shared settings entry"
+  );
+  assert(
+    (await page.getByTestId(templateTestID(detail.delivery.templates[0])).getByRole("link", { name: "打开详情" }).count()) === 0,
+    "delivery template cards should not repeat a generic settings CTA once notification delivery gate already owns that route"
+  );
   await capture(page, "pull-request-delivery-entry");
 
-  const templateCard = page.getByTestId(templateTestID(detail.delivery.templates[0]));
+  const notificationGate = page.getByTestId("delivery-gate-notification-delivery");
   await Promise.all([
     page.waitForURL((url) => url.pathname === "/settings"),
-    templateCard.getByRole("link", { name: "打开详情" }).click(),
+    notificationGate.getByRole("link", { name: "打开详情" }).click(),
   ]);
   await page.getByTestId("settings-advanced-notifications-toggle").click();
   await page.getByTestId("notification-worker-summary").waitFor({ state: "visible" });
@@ -366,7 +374,7 @@ try {
     `- \`/pull-requests/${PULL_REQUEST_ID}\` 已把 delivery status、release ready、${detail.delivery.gates.length} 个 gate、${detail.delivery.templates.length} 个 template 和 ${detail.delivery.evidence.length} 条 evidence 收到同一页，不再散在 room / settings / runbook。当前判断结果 = \`${detail.delivery.status}\` / releaseReady=\`${detail.delivery.releaseReady}\`。`,
     `- release gate 当前全部可复核：${detail.delivery.gates.map((gate) => `${gate.id}:${gate.status}`).join(" / ")}。`,
     `- operator handoff note 已有 ${detail.delivery.handoffNote.lines.length} 条可执行说明，并且 UI 与 API 都把当前状态显示为 \`${liveHandoffStatusLabel}\`。`,
-    "- browser walkthrough 已验证 delivery template 可回到 `/settings`，room PR backlink 可回到同一条 PR workbench，run usage gate 也能回到对应 run context。",
+    "- browser walkthrough 已验证 notification delivery gate 可回到 `/settings`，room PR backlink 可回到同一条 PR workbench，run usage gate 也能回到对应 run context。",
     "",
     "## Evidence",
     "",
