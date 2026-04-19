@@ -1,7 +1,7 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.34
-**更新日期:** 2026 年 4 月 18 日
+**版本:** 1.35
+**更新日期:** 2026 年 4 月 19 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -1682,6 +1682,10 @@
   - `/pull-requests/:pullRequestId` 的 `review-merge` delivery gate 不再继续渲染泛化 `打开详情` CTA；这条 gate 原先只会自引用回当前 PR detail 页，本身不提供新的 drill-in，因此现在只保留 status / label / summary 真相，不再把当前页堆成第二个自链接动作
   - `delivery-gate-review-merge` 与 `delivery-gate-run-usage` 锚点保持不变；减法后 `run-usage` 等真正的跨页 gate 深链仍继续保留，只有 review gate 的自引用 jump 被收掉，避免把 release gate 区做成混杂的真假导航条
   - headed delivery entry release gate 已新增“review merge gate 不再包含 generic `打开详情` link、run usage gate 仍保留 run-detail deep link”的断言；server contract 也显式锁住 `review-merge.href` 为空，避免后续又把当前页自链接重新投回 API truth
+- 当前已收第二十八刀:
+  - `/rooms/:roomId?tab=run` 的右侧 run rail 不再继续渲染自引用 `房间执行` CTA；当前用户已经位于 room run tab，这条 link 只会回到同一个 room run 工作区，因此现在只保留 run status / owner / workspace / agents 等摘要真相
+  - `room-rail-run-panel`、`room-workbench-run-panel` 与 `room-run-control-*` 锚点保持不变；减法后 room 内 stop / resume / follow_thread 仍在 run workbench 内可用，真正跨页的 `执行详情` deep link 继续保留
+  - headed room workbench topic context 已新增“run rail 不再包含 `房间执行` self-link、但仍保留 `执行详情` deep link”的断言，避免后续又把当前 tab 自链接重新堆回 run rail
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`
@@ -1695,6 +1699,7 @@
   - `node --check scripts/headed-planner-dispatch-replay.mjs`
   - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run TestPullRequestDetailRouteReturnsConversationAndBacklinks -count=1'`
   - `pnpm test:headed-delivery-entry-release-gate`
+  - `pnpm test:headed-room-workbench-topic-context`
   - `pnpm typecheck:web`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-shell-primitives.tsx'`

@@ -261,6 +261,14 @@ try {
     const text = await page.locator('[data-testid="room-run-follow-thread-status"]').textContent();
     return text?.includes("跟随当前线程");
   }, "follow_thread did not persist on room workbench");
+  assert(
+    (await page.getByTestId("room-rail-run-panel").getByRole("link", { name: "房间执行", exact: true }).count()) === 0,
+    "room run sheet should not keep a self-referential room-run CTA when the user is already inside the run tab"
+  );
+  assert(
+    (await page.getByTestId("room-rail-run-panel").getByRole("link", { name: "执行详情", exact: true }).count()) === 1,
+    "room run sheet should keep the concrete run-detail deep link"
+  );
   await capture(page, "room-run");
   results.push("- Run sheet 仍可在 room 内直接执行 stop / resume / follow_thread，不需要被拆成完全独立的新工作流。");
 
