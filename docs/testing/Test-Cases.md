@@ -1,6 +1,6 @@
 # OpenShock Test Cases
 
-**版本:** 1.38
+**版本:** 1.39
 **更新日期:** 2026 年 4 月 18 日
 **关联文档:** [Product Checklist](../product/Checklist.md) · [PRD](../product/PRD.md)
 
@@ -1353,7 +1353,7 @@
   4. 确认房间主面仍保持 chat-first，不把 `Topic / Run / PR / Context` 再抬回一级 IA。
   5. 输出 headed walkthrough 与前后对照截图。
 - 预期结果: 主要路径必须更短、更顺，且不以加更多 panel、helper copy、summary 卡片为代价。
-- 业务结论: 2026 年 4 月 19 日继续收第二十八刀：在前一轮 PR detail 已把 `review-merge` gate 的 generic `打开详情` 收掉的基础上，`/rooms/:roomId?tab=run` 右侧 run rail 上自引用的 `房间执行` 也继续被收掉；当前用户已经位于 room run tab，所以这块现在只保留 run truth、room 内 stop / resume / follow_thread 控制和真正跨页的 `执行详情` deep link，不再把当前 tab 堆成第二个 self-link。当前 headed room workbench topic context 已锁住“room run rail 不再包含 `房间执行` self-link、但仍保留 `执行详情` deep link”这条路径；`node --check scripts/headed-room-workbench-topic-context.mjs`、`pnpm test:headed-room-workbench-topic-context`、`pnpm --dir apps/web exec eslint src/components/stitch-chat-room-views.tsx`、`pnpm typecheck:web` 与 `pnpm build:web` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 room / mailbox / inbox / topic route / settings / PR detail / run rail 里仍重复的次级 deep-link、owner/status/action truth。
+- 业务结论: 2026 年 4 月 19 日继续收第二十九刀：在前一轮 room run rail 已把自引用 `房间执行` 收掉的基础上，`/mailbox` cross-room governance rollup 在 route `ready` 时也继续把双主动作压回一个，只保留正式 mutation `创建自动交接`；`打开下一步` 现在会等 route 进入 active 后才出现，避免同一张 compact rollup card 在起单前就堆两条推进按钮。当前 headed cross-room governance orchestration 已锁住“ready 态 compact rollup card 不再包含 `打开下一步`，但 active 态仍保留 next-step link”这条路径；`node --check scripts/headed-cross-room-governance-orchestration.mjs`、`pnpm test:headed-cross-room-governance-orchestration`、`pnpm --dir apps/web exec eslint src/components/live-mailbox-views.tsx`、`pnpm typecheck:web` 与 `pnpm build:web` 已通过，因此这条 subtractive sweep 用例继续保持 `Pass`；下一轮优先继续压 governance rollup / graph 在 ready 态里仍重复的 route CTA、helper copy 和次级 deep-link。
 
 ## TC-097 Explicit Provider Thread State Persistence
 

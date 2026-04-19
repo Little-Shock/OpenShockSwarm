@@ -448,6 +448,14 @@ try {
     (await compactRollupCard.getByRole("link", { name: "查看该讨论" }).count()) === 0,
     "mailbox cross-room rollup should not keep a secondary room-link CTA once the dependency graph already owns room navigation"
   );
+  assert(
+    (await compactRollupCard.getByRole("button", { name: "创建自动交接" }).count()) === 1,
+    "mailbox cross-room rollup should keep create-governed-handoff as the single ready-state primary action"
+  );
+  assert(
+    (await compactRollupCard.getByRole("link", { name: "打开下一步" }).count()) === 0,
+    "mailbox cross-room rollup should not keep a second next-step CTA while route is only ready"
+  );
   await capture(page, "mailbox-cross-room-route-ready");
 
   await page.goto(`${webURL}/agents`, { waitUntil: "load" });

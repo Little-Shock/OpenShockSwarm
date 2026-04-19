@@ -1,6 +1,6 @@
 # OpenShock Execution Tickets
 
-**版本:** 1.35
+**版本:** 1.36
 **更新日期:** 2026 年 4 月 19 日
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -1686,6 +1686,10 @@
   - `/rooms/:roomId?tab=run` 的右侧 run rail 不再继续渲染自引用 `房间执行` CTA；当前用户已经位于 room run tab，这条 link 只会回到同一个 room run 工作区，因此现在只保留 run status / owner / workspace / agents 等摘要真相
   - `room-rail-run-panel`、`room-workbench-run-panel` 与 `room-run-control-*` 锚点保持不变；减法后 room 内 stop / resume / follow_thread 仍在 run workbench 内可用，真正跨页的 `执行详情` deep link 继续保留
   - headed room workbench topic context 已新增“run rail 不再包含 `房间执行` self-link、但仍保留 `执行详情` deep link”的断言，避免后续又把当前 tab 自链接重新堆回 run rail
+- 当前已收第二十九刀:
+  - `/mailbox` 的 cross-room governance rollup 在 route `ready` 时不再同时保留 `创建自动交接` 与 `打开下一步` 两个主动作；ready 态现在只保留正式 mutation `创建自动交接`，避免同一张紧凑卡片在真正起单前就堆两条推进按钮
+  - `mailbox-governance-escalation-rollup-route-create-*`、`mailbox-governance-escalation-rollup-route-status-*` 与 active 后的 `nextRouteHref` 仍保持正式真相；减法后 ready 态只剩一个主动作，route 进入 active 后仍继续通过 `打开下一步` deep link 跳进正式 governed handoff
+  - headed cross-room governance orchestration 已新增“ready 态 compact rollup card 只保留 `创建自动交接`，不再保留 `打开下一步`；active 态仍保留 next-step link”的断言，避免后续又把 ready-stage 的双主动作堆回 mailbox rollup
 - 最新证据:
   - `node --check scripts/headed-multi-agent-governance.mjs`
   - `node --check scripts/headed-approval-center-lifecycle.mjs`
@@ -1700,6 +1704,7 @@
   - `bash -lc 'cd apps/server && ../../scripts/go.sh test ./internal/api -run TestPullRequestDetailRouteReturnsConversationAndBacklinks -count=1'`
   - `pnpm test:headed-delivery-entry-release-gate`
   - `pnpm test:headed-room-workbench-topic-context`
+  - `pnpm test:headed-cross-room-governance-orchestration`
   - `pnpm typecheck:web`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-chat-room-views.tsx'`
   - `bash -lc 'cd apps/web && pnpm exec eslint src/components/stitch-shell-primitives.tsx'`

@@ -997,7 +997,7 @@ export function LiveMailboxPageContent() {
                                 {busyKey === `governed-rollup:${entry.roomId}` ? "创建中..." : "创建自动交接"}
                               </button>
                             ) : null}
-                            {entry.nextRouteHref ? (
+                            {entry.nextRouteHref && entry.nextRouteStatus !== "ready" ? (
                               <Link
                                 href={entry.nextRouteHref}
                                 className="inline-flex rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
