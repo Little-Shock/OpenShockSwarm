@@ -794,7 +794,7 @@ function AgentProfileSurface({
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              智能体自己的 `SOUL.md / MEMORY.md / notes/*` 文件栈。当前会话或下一次执行预览若会读到这些文件，也会同步标出。
+              当前会话或下一次执行会用到的文件，会直接标在卡片上。
             </p>
             {agentFileStack.length > 0 ? (
               <div className="mt-3 space-y-2" data-testid="profile-agent-file-stack">
@@ -849,7 +849,7 @@ function AgentProfileSurface({
           <Panel tone="paper">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">凭据范围</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              已绑定的凭据档案。密钥不显示。
+              只显示绑定关系，不显示密钥。
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-4">
               <ProfileMetric label="已绑定" value={String(agent.credentialProfileIds?.length ?? 0)} testId="profile-credential-bound-count" />
@@ -883,7 +883,7 @@ function AgentProfileSurface({
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              默认沙箱档位和白名单。新执行会先继承这些规则，再按任务范围收紧。
+              新执行默认按这组规则起步。
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <CapabilityChips items={[sandboxPolicySummary(agent.sandbox)]} />
@@ -897,17 +897,17 @@ function AgentProfileSurface({
 
           <Panel tone="white">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">智能体档案编辑</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">编辑档案</p>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
                 {canEdit ? "可编辑" : "只读"}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              可直接修改角色、头像、提示词、供应商、模型、机器偏好、记忆绑定、召回和沙箱策略。
+              改完就直接写回当前智能体。
             </p>
             {!canEdit ? (
               <p className="mt-3 rounded-[16px] border-2 border-dashed border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm leading-6">
-                当前账号只能查看。
+                当前账号只能查看，不能改档案。
               </p>
             ) : null}
             <form className="mt-4 space-y-4" onSubmit={handleSave}>
@@ -1161,7 +1161,7 @@ function AgentProfileSurface({
           <Panel tone="paper">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">下一次执行预览</p>
             <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-              下一次执行会带上的提示词骨架、召回策略和挂载文件。档案保存后，预览会立刻更新。
+              保存后会立刻刷新。
             </p>
             {centerLoading ? (
               <p className="mt-3 rounded-[16px] border border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">正在同步下一次执行预览…</p>

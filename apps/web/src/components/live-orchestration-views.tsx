@@ -227,6 +227,31 @@ function runtimeSchedulerStrategyLabel(strategy: string) {
   }
 }
 
+function agentBoundaryState(agent: AgentStatus, relatedPullRequests: PullRequest[]) {
+  return [
+    {
+      label: "调度变更",
+      status: "只读",
+      detail: agent.state === "running" ? "当前先保持稳定执行，不在这里直接暂停或改派。" : "当前不在这里直接改派，避免把状态和动作混在一起。",
+    },
+    {
+      label: "运行环境",
+      status: "自动选择",
+      detail: agent.runtimePreference?.trim()
+        ? `当前默认跑在 ${agent.runtimePreference}，需要改派时再去机器或设置页处理。`
+        : "当前按自动调度选择运行环境，需要改派时再到机器页处理。",
+    },
+    {
+      label: "自动合并",
+      status: relatedPullRequests.length > 0 ? "看合并候选" : "等待 PR",
+      detail:
+        relatedPullRequests.length > 0
+          ? "合并条件已经可见，但真正合并仍要经过人工拍板。"
+          : "先等 PR 出现，再看是否进入合并条件检查。",
+    },
+  ];
+}
+
 function runtimeLeaseIsActive(status?: string) {
   return Boolean(status && status.trim() && status !== "done");
 }
@@ -1332,30 +1357,30 @@ export function AgentControlSurface({
   );
   const relatedPullRequests = pullRequests.filter((pullRequest) => runsForAgent.some((run) => run.id === pullRequest.runId));
   const runtime = resolveAgentRuntime(agent, runtimes);
+  const boundaryItems = agentBoundaryState(agent, relatedPullRequests);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <Panel tone="paper">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">智能体控制</p>
-        <h3 className="mt-3 font-display text-3xl font-bold">高风险动作先保持只读</h3>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前边界</p>
+        <h3 className="mt-3 font-display text-3xl font-bold">先看现在能动到哪里</h3>
         <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-          调度、切换和恢复状态会先展示清楚，但暂停、改派和自动合并这类高风险动作仍保持只读，不伪造可点即生效的按钮。
+          这里先说明真实边界，不再放看起来能点、实际不会生效的假按钮。
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {[
-            { label: "暂停调度", detail: "当前仍保持只读，避免伪造调度变更。" },
-            { label: "切换运行环境", detail: "自动切换已经生效；手动改派仍留在后续。" },
-            { label: "申请自动合并", detail: "合并门槛与高风险边界仍保留人工拍板。" },
-          ].map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              disabled
-              className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4 text-left opacity-70"
+          {boundaryItems.map((item) => (
+            <article
+              key={item.label}
+              className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
             >
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{action.label}</p>
-              <p className="mt-2 text-sm leading-6">{action.detail}</p>
-            </button>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{item.label}</p>
+                <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em]">
+                  {item.status}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6">{item.detail}</p>
+            </article>
           ))}
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -1409,7 +1434,7 @@ export function AgentControlSurface({
       </Panel>
 
       <Panel tone="lime">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">控制概览</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em]">当前概览</p>
         <div className="mt-4 space-y-3">
           <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">最近执行</p>
@@ -1424,7 +1449,7 @@ export function AgentControlSurface({
             <p className="mt-2 text-sm leading-6">{relatedPullRequests.length} 条</p>
           </div>
           <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            这位智能体当前的机器占用、需要你拍板的事项和合并状态都已可见；高风险操作仍保持只读，避免误触。
+            先看机器、待拍板事项和合并候选；真正的高风险变更继续留在对应的执行面处理。
           </p>
         </div>
       </Panel>

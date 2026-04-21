@@ -512,7 +512,7 @@ try {
     }, "created planner session never appeared in live state"));
 
   await page.goto(`${webURL}/board`, { waitUntil: "load" });
-  await page.getByTestId(`board-card-issue-${createdIssue.key}`).waitFor({ state: "visible" });
+  await page.getByTestId(`board-card-room-${createdIssue.key}`).waitFor({ state: "visible" });
   await capture(page, "board-website-issue-visible");
 
   const initialQueue = await readPlannerQueue(serverURL);

@@ -252,9 +252,18 @@ try {
   await page.getByTestId("board-context-issue-link").waitFor();
   await capture(page, "board-from-room");
 
-  const firstIssueLink = page.locator('[data-testid^="board-card-issue-"]').first();
-  await firstIssueLink.waitFor();
-  await firstIssueLink.click();
+  const firstRoomLink = page.locator('[data-testid^="board-card-room-"]').first();
+  await firstRoomLink.waitFor();
+  await firstRoomLink.click();
+  await page.getByTestId("room-open-planning-mirror").waitFor();
+  await capture(page, "room-from-board-card");
+
+  await page.getByTestId("room-open-planning-mirror").click();
+  await page.waitForURL(/\/board\?/);
+  await page.getByTestId("board-context-room-link").waitFor();
+  await page.getByTestId("board-context-issue-link").waitFor();
+
+  await page.getByTestId("board-context-issue-link").click();
   await page.getByTestId("issue-open-planning-mirror").waitFor();
   await capture(page, "issue-detail");
 
@@ -279,7 +288,7 @@ try {
     "",
     "- 从 `/rooms/room-runtime` 进入 `/board` 时，任务板会带上讨论间和事项上下文，并提供 `回讨论间 / 看事项` 回跳按钮 -> PASS",
     "- 任务板顶栏与摘要条已经压成次级镜像面，不再保留伪 tabs、宽黄条和超宽主工作台 -> PASS",
-    "- 任务板卡片已经收成轻量语言：保留状态、PR、当前处理人与 `回讨论间 / 看事项` 两个动作，不再堆重复的讨论间元数据 -> PASS",
+    "- 任务板卡片现在只保留一个主动作 `讨论间`；事项详情改走顶栏上下文回跳，不再在每张卡片上重复放第二个 CTA -> PASS",
     "- 从任务板打开事项后，事项详情也能回到 `/board`，再返回同一条讨论间，不会把任务板变成默认首页 -> PASS",
     "",
     "## 截图",

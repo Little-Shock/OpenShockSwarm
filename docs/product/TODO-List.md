@@ -1,7 +1,7 @@
 # OpenShock To Do List
 
-**版本:** 1.58
-**更新日期:** 2026 年 4 月 20 日
+**版本:** 1.59
+**更新日期:** 2026 年 4 月 21 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -303,3 +303,6 @@
   - 新增 1 个真实 developer agent `Build Pilot`，让“网站需求 4 棒接力”不再卡死在 seed/mock 只有 3 个 agent 的缺口上。
   - 新增 `scripts/headed-website-four-agent-delivery.mjs`，覆盖网站需求的 `setup -> board visible truth -> planner assignment -> architect -> developer -> reviewer -> qa -> final response` 链路。
   - `scripts/headed-planner-dispatch-replay.mjs` 已补 external live stack 复用入口；当前沙箱里 failure point 已前移到外部 `healthz` 不可达，而不是本地 `listen EPERM`。
+  - 任务板卡片继续做前端减法：每张事项卡只保留 `讨论间` 一个主动作，事项详情改走上下文回跳，不再在卡片上重复渲染第二个 CTA。
+  - Agent 档案页继续压短解释文案：文件记忆、凭据范围、沙箱策略、编辑区和下一次执行预览都改成对象 / 结果本身，减少“页面在解释自己”的阅读成本。
+  - `headed-board-planning-surface` 和 `headed-website-four-agent-delivery` 已跟随单 CTA 任务板更新断言，负向 DOM 检查确认 board 卡片没有 `board-card-issue-*` 第二按钮，Agent 档案页没有 disabled 假按钮。

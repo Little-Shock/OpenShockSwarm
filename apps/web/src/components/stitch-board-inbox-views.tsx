@@ -597,14 +597,7 @@ export function StitchBoardView() {
                                 data-testid={`board-card-room-${card.key}`}
                                 className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
                               >
-                                回讨论间
-                              </Link>
-                              <Link
-                                href={`/issues/${card.key}`}
-                                data-testid={`board-card-issue-${card.key}`}
-                                className="rounded-[12px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-                              >
-                                看事项
+                                讨论间
                               </Link>
                             </div>
                           </article>
