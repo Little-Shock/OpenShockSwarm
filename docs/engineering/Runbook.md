@@ -237,6 +237,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 
 - `GET /healthz`
 - `GET /v1/state`
+- `GET /v1/state/stream`
 - `GET /v1/experience-metrics`
 - `GET /v1/workspace`
 - `GET /v1/channels`
@@ -247,6 +248,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 - `POST /v1/rooms/:id/messages/stream`
 - `GET /v1/runs`
 - `GET /v1/runs/:id`
+- `POST /v1/runs/:id/control`
 - `GET /v1/agents`
 - `GET/PATCH /v1/agents/:id`
 - `GET /v1/sessions`
@@ -290,6 +292,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 - `GET /v1/control-plane/debug/rejections`
 - `GET/POST/DELETE /v1/runtime/pairing`
 - `GET /v1/runtime`
+- `GET /v1/runtime/registry`
 - `GET/POST /v1/runtime/publish`
 - `GET /v1/runtime/publish/replay`
 - `GET /v1/runtime/live-service`

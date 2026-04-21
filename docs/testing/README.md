@@ -17,11 +17,22 @@
 - 根 README 和 Release Gate 都以这里为索引，不再各自维护第三套最小命令集。
 - 如果你只是做前台快检，再继续看下面这组高频链路。
 
+## 最新增量真值
+
+除了下面的历史报告索引，最近两批新增验证主要先写回 [Test Cases](./Test-Cases.md)：
+
+- `2026-04-16` daemon continuity / scoped Codex home / provider thread state persistence
+  - 代表命令：`go test -tags=integration ./apps/daemon/internal/integration`、`go test ./apps/daemon/...`
+- `2026-04-19` subtractive sweep
+  - 代表命令：`pnpm test:headed-cross-room-governance-orchestration`、`pnpm typecheck:web`、`pnpm build:web`
+
+如果你要看“最新新增能力”而不是“历史代表性报告”，先看这里，再往下翻归档。
+
 ## 前台高频链路快检
 
 如果你只是想快速判断“现在这套产品大体站没站住”，可以补跑下面这几条，再往下翻完整归档。
 
-| 场景 | 命令 | 当前推荐报告 | 结果 |
+| 场景 | 命令 | 代表性报告 | 结果 |
 | --- | --- | --- | --- |
 | 静态门 + no-shadow-truth | `pnpm verify:web` | [Verification Sweep Report 2026-04-13](./Test-Report-2026-04-13-verification-sweep.md) | PASS |
 | 首次启动 / 首屏引导 | `pnpm test:headed-onboarding-studio` | [Headed First-Start Journey Report 2026-04-13](../../output/testing/headed-onboarding-studio-report.md) | PASS |

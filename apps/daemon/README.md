@@ -2,6 +2,12 @@
 
 Go local runtime bridge for the OpenShock machine lane.
 
+Canonical product/start/release docs:
+
+- root `README.md`
+- `docs/engineering/Runbook.md`
+- `docs/engineering/Release-Gate.md`
+
 Current live baseline:
 
 - `cmd/openshock-daemon/main.go` exposes a local HTTP daemon

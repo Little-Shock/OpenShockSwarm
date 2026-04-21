@@ -1,7 +1,7 @@
 # OpenShock Phase 0 MVP
 
-**版本:** 0.91
-**版本日期:** 2026 年 4 月 21 日
+**版本:** 0.92
+**版本日期:** 2026 年 4 月 22 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -44,6 +44,9 @@
 - direct message、message-surface collections、topic guidance 与 mailbox handoff contract
 - planner queue / session assignment / PR auto-merge guard contract
 - 文件级记忆与 version/governance contract
+- daemon per-session workspace envelope：`MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/work-log.md`
+- session-scoped `OPENSHOCK_CODEX_HOME` continuity
+- provider thread state 持久化到 `SESSION.json.appServerThreadId`
 - memory center provider orchestration + health/recovery truth：`workspace-file / search-sidecar / external-persistent`
 - memory center policy / cleanup / provider / promotion 路由
 - 版本化 `/v1/control-plane/*` command / event / debug read-model
@@ -182,6 +185,7 @@ Inbox 必须能把：
 - exec / exec stream 稳定性
 - worktree ensure
 - runtime heartbeat 真值
+- same-session continuity、thread-state persistence 与 restart recovery
 
 ### 4. Docs 票
 

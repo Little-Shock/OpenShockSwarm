@@ -2,6 +2,12 @@
 
 Next.js frontend for the OpenShock Phase 0 shell.
 
+Canonical product/start docs:
+
+- root `README.md`
+- `docs/engineering/Runbook.md`
+- `docs/testing/README.md`
+
 ## Current Responsibilities
 
 - `Chat` as the primary workspace shell, with `Rooms / Inbox / Board / Runs / Mailbox / Memory / Settings` around it

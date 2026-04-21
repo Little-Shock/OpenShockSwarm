@@ -2,6 +2,12 @@
 
 Go API for the OpenShock local-first control plane baseline.
 
+Canonical product/start/release docs:
+
+- root `README.md`
+- `docs/engineering/Runbook.md`
+- `docs/engineering/Release-Gate.md`
+
 Current live baseline:
 
 - `cmd/openshock-server/main.go` exposes a small standard-library HTTP server

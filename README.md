@@ -20,18 +20,18 @@
   <img alt="Status" src="https://img.shields.io/badge/status-phase%200%20baseline-00f5a0?style=for-the-badge" />
 </p>
 
-<p><strong>Slock 的壳，Multica 的骨，Lody 的 worktree 隔离。</strong></p>
-<p><strong>Agent-first collaboration OS for local-first AI software teams.</strong></p>
+<p><strong>把聊天、执行、交付和交接收进同一工作台。</strong></p>
+<p><strong>A local-first workspace for AI software teams.</strong></p>
 
 </div>
 
 ## OpenShock 是什么
 
-OpenShock 不是“聊天框 + 看板”的拼接物。
+OpenShock 是一个本地优先的协作工作台。
 
-它当前在这个仓库里的定义是：
+在这个仓库里，它由三层组成：
 
-- `apps/web` 提供一个 chat-first 的协作壳
+- `apps/web` 提供 chat-first 的协作壳
 - `apps/server` 提供 Go 写的 Phase 0 控制面 API
 - `apps/daemon` 提供 Go 写的本地 runtime bridge、CLI 执行和 worktree lane 能力
 
