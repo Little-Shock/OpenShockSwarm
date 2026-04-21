@@ -35,6 +35,13 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - `apps/server` 提供 Go 写的 Phase 0 控制面 API
 - `apps/daemon` 提供 Go 写的本地 runtime bridge、CLI 执行和 worktree lane 能力
 
+你现在可以直接把它当成一个本地优先的协作产品来用：
+
+- 在同一套 workspace shell 里处理 `聊天 / 讨论间 / 收件箱 / 任务板 / 运行 / PR / 档案 / 设置`
+- 用首启引导和 `/setup` 配好模板、仓库、GitHub、运行环境和默认智能体
+- 在讨论间里把 `聊天 / 话题 / 运行 / PR / 上下文` 收在一个 workbench 里持续推进
+- 用 Agent / Machine / Human 档案、Memory Center、通知和治理规则管理多人多智能体协作
+
 当前仓库已经不是纯静态设计稿。它已经具备一条可跑通的 Phase 0 基线：
 
 - web 壳已经把 `Chat / Inbox / Board / Setup / Issues / Runs / Agents / Memory / Access / Settings` 收进同一套 workspace shell
@@ -52,12 +59,13 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 - Web 主壳：
   - `/chat/[channelId]`
+  - `/rooms`
   - `/board`
   - `/inbox`
   - `/issues`、`/issues/[issueKey]`
   - `/rooms/[roomId]`、`/rooms/[roomId]/runs/[runId]`
   - `/topics/[topicId]`
-  - `/agents`、`/agents/[agentId]`
+  - `/agents`
   - `/profiles/[kind]/[profileId]`
   - `/pull-requests/[pullRequestId]`
   - `/mailbox`
@@ -145,8 +153,7 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 - 未完成功能拆票: [docs/product/Execution-Tickets.md](./docs/product/Execution-Tickets.md)
 - 全量测试用例: [docs/testing/Test-Cases.md](./docs/testing/Test-Cases.md)
 - 测试报告索引: [docs/testing/README.md](./docs/testing/README.md)
-- 最新全量有头回归: [docs/testing/Test-Report-2026-04-09-windows-chrome-full-suite.md](./docs/testing/Test-Report-2026-04-09-windows-chrome-full-suite.md)
-- 最新壳层走查: [docs/testing/Test-Report-2026-04-09-windows-chrome-work-shell-smoke.md](./docs/testing/Test-Report-2026-04-09-windows-chrome-work-shell-smoke.md)
+- 当前验证入口与最新报告索引: [docs/testing/README.md](./docs/testing/README.md)
 
 ## 仓库结构
 
@@ -169,41 +176,49 @@ OpenShock 不是“聊天框 + 看板”的拼接物。
 
 ## 快速开始
 
-### 最简单启动
-
-如果你在 Windows 上，只想直接打开一个干净的新工作区，不想自己记命令：
-
-- 双击 [START_OPENSHOCK.cmd](./START_OPENSHOCK.cmd)
-- 停止时双击 [STOP_OPENSHOCK.cmd](./STOP_OPENSHOCK.cmd)
-- 看状态时双击 [STATUS_OPENSHOCK.cmd](./STATUS_OPENSHOCK.cmd)
-
-启动成功后，默认入口是：
-
-- 脚本会打印一条 `Entry:` 地址
-- 通常是 `http://127.0.0.1:3000/onboarding`
-- 如果 `3000` 被占用，会自动换一个空闲端口
-
-这条入口会给你一个附在真实工作台上的首启引导层：
-
-- 四周会做模糊玻璃化，只保留第一次真正要填的信息
-- 填完后直接进入聊天，不会先把你扔进一整页高级设置
-- 默认绑定当前仓库目录；如果要换目录，可通过 `OPENSHOCK_FRESH_WORKSPACE_ROOT` 指定
-
-这条 fresh 入口会给你一个干净的工作区状态：
-
-- 1 个空频道 `#all`
-- 1 个可编辑的 `启动智能体`
-- 没有旧的 room / issue / run / PR / inbox 历史
-
-正常情况下你不需要先去 `/access` 或 `/setup` 折腾，跟着引导走完就行。
-
 ### 1. 安装依赖
 
 ```bash
 pnpm install
 ```
 
-### 2. 启动 web
+### 2. 推荐启动方式：fresh stack
+
+如果你想最快看到一个干净、可验证、带首启引导的产品入口，优先用根脚本：
+
+```bash
+pnpm dev:fresh:start
+pnpm dev:fresh:status
+pnpm dev:fresh:stop
+```
+
+这条 managed path 会一次拉起 `web + server + daemon`，并打印：
+
+- `Entry`
+- `Access`
+- `Onboarding`
+- `Chat`
+- `Setup`
+
+默认会给你一份干净的工作区状态：
+
+- 1 个空频道 `#all`
+- 1 个可编辑的 `启动智能体`
+- 没有旧的 room / issue / run / PR / inbox 历史
+
+正常情况下你不需要先去 `/access` 或 `/setup` 兜圈子，跟着首启引导走完就行。要换工作区目录，可通过 `OPENSHOCK_FRESH_WORKSPACE_ROOT` 指定。
+
+如果你在 Windows 上只想双击启动，也可以继续用：
+
+- [START_OPENSHOCK.cmd](./START_OPENSHOCK.cmd)
+- [STATUS_OPENSHOCK.cmd](./STATUS_OPENSHOCK.cmd)
+- [STOP_OPENSHOCK.cmd](./STOP_OPENSHOCK.cmd)
+
+### 3. 手动启动 web / server / daemon
+
+如果你要单独调某一段，或者想接管已有 live stack，再退回手动 3 进程方式。
+
+### 3.1 启动 web
 
 ```bash
 pnpm dev
@@ -213,7 +228,7 @@ pnpm dev
 
 - `http://127.0.0.1:3000`
 
-### 3. 启动 server
+### 3.2 启动 server
 
 根 `package.json` 里的 `dev:server` / `dev:daemon` 现在已经是 Bash 入口，并会转到 `scripts/go.sh`。如果你当前就在 PowerShell 里直接启动，下面这条 Go 命令最稳。
 
@@ -234,7 +249,7 @@ go run ./cmd/openshock-server
 
 - `http://127.0.0.1:8080/healthz`
 
-### 4. 启动 daemon
+### 3.3 启动 daemon
 
 ```bash
 cd apps/daemon
@@ -252,7 +267,7 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 
 - `http://127.0.0.1:8090/healthz`
 
-### 5. 打开 Setup 页
+### 3.4 打开 Setup 页
 
 进入：
 
@@ -260,7 +275,26 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 
 这是当前最接近“真实链路”的页面：repo、GitHub readiness、runtime pairing、bridge console 都在这里。
 
-## 最小验证
+## 发布前最小验证
+
+先跑静态门：
+
+```bash
+pnpm lint:web
+pnpm typecheck:web
+pnpm build:web
+pnpm check:live-truth-hygiene
+```
+
+再跑当前最有代表性的浏览器链路：
+
+```bash
+OPENSHOCK_E2E_HEADLESS=1 pnpm test:headed-board-planning-surface
+OPENSHOCK_E2E_HEADLESS=1 pnpm test:headed-notification-preference-delivery
+OPENSHOCK_E2E_HEADLESS=1 pnpm test:headed-restricted-sandbox-policy
+```
+
+如果你在本地已经起好了 fresh stack，也可以继续用 HTTP 做最小活性确认：
 
 先检查 web / server / daemon 三段是否在线：
 

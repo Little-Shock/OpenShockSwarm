@@ -1,5 +1,22 @@
 # Testing Docs
 
+## 先看这 5 条
+
+如果你只是想快速判断“现在这套产品大体站没站住”，先跑下面这几条，再往下翻完整归档。
+
+| 场景 | 命令 | 当前推荐报告 | 结果 |
+| --- | --- | --- | --- |
+| 静态门 + no-shadow-truth | `pnpm verify:web` | [Verification Sweep Report 2026-04-13](./Test-Report-2026-04-13-verification-sweep.md) | PASS |
+| 首次启动 / 首屏引导 | `pnpm test:headed-onboarding-studio` | [Headed First-Start Journey Report 2026-04-13](../../output/testing/headed-onboarding-studio-report.md) | PASS |
+| 讨论间 workbench | `pnpm test:headed-room-workbench-topic-context` | [Test Report 2026-04-11 Windows Chrome Room Simplified Sheet / Topic Context](./Test-Report-2026-04-11-windows-chrome-room-simplified-sheet-topic-context.md) | PASS |
+| 任务板 planning mirror | `pnpm test:headed-board-planning-surface` | [Test Report 2026-04-11 Windows Chrome Board Planning Mirror Surface](./Test-Report-2026-04-11-windows-chrome-board-planning-surface.md) | PASS |
+| 交付入口 / release gate | `pnpm test:headed-delivery-entry-release-gate` | [Test Report 2026-04-11 Windows Chrome Delivery Entry / Release Gate](./Test-Report-2026-04-11-windows-chrome-delivery-entry-release-gate.md) | PASS |
+
+说明：
+
+- 上面这 5 条是当前最快的信任路径，不替代完整回归。
+- 下面的长列表按时间与专题保留，适合查历史证据和深挖单能力。
+
 - [Verification Sweep Report 2026-04-13](./Test-Report-2026-04-13-verification-sweep.md)
   - 本轮 dev 分支收口报告，汇总 `verify:server`、`verify:web`、handoff contract 回归，以及已闭环的发送流 browser 回放
 - [Headed First-Start Journey Report 2026-04-13](../../output/testing/headed-onboarding-studio-report.md)

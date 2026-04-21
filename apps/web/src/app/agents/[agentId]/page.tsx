@@ -1,4 +1,6 @@
-import { LiveProfilePageContent } from "@/components/live-profile-views";
+import { redirect } from "next/navigation";
+
+import { buildProfileHref } from "@/lib/profile-surface";
 
 export default async function AgentPage({
   params,
@@ -6,5 +8,5 @@ export default async function AgentPage({
   params: Promise<{ agentId: string }>;
 }) {
   const { agentId } = await params;
-  return <LiveProfilePageContent kind="agent" profileId={agentId} />;
+  redirect(buildProfileHref("agent", agentId));
 }

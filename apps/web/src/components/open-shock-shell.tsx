@@ -17,7 +17,6 @@ import {
 } from "@/components/stitch-shell-primitives";
 
 type ShellView = AppTab | "setup" | "issues" | "runs" | "agents" | "settings" | "memory" | "access" | "profiles" | "mailbox" | "topic";
-type Tone = "yellow" | "pink" | "lime";
 
 type OpenShockShellProps = {
   view: ShellView;
@@ -79,17 +78,6 @@ function topBarHrefFromView(view: ShellView) {
       return "/mailbox";
     default:
       return undefined;
-  }
-}
-
-function statTone(tone: Tone) {
-  switch (tone) {
-    case "yellow":
-      return "bg-[var(--shock-yellow)]";
-    case "pink":
-      return "bg-[var(--shock-pink)] text-white";
-    case "lime":
-      return "bg-[var(--shock-lime)]";
   }
 }
 
@@ -299,6 +287,7 @@ export function OpenShockShell({
     });
   }
   const quickSearch = useQuickSearchController(resolvedState);
+  const statsSummary = stats.map((stat) => `${stat.label} ${stat.value}`).join(" · ");
 
   return (
     <main className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-[var(--shock-paper)] text-[var(--shock-ink)]">
@@ -347,19 +336,9 @@ export function OpenShockShell({
                   {contextDescription}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {stats.map((stat) => (
-                  <span
-                    key={stat.label}
-                    className={cn(
-                      "rounded-[10px] border border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
-                      statTone(stat.tone)
-                    )}
-                  >
-                    {stat.label} {stat.value}
-                  </span>
-                ))}
-              </div>
+              <p className="rounded-[10px] border border-[color:rgba(24,20,14,0.26)] bg-white/70 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:rgba(24,20,14,0.64)]">
+                {statsSummary}
+              </p>
             </div>
           </div>
 
@@ -371,12 +350,11 @@ export function OpenShockShell({
               <div className="flex-1 overflow-y-auto p-2.5">
                 {contextBody ?? (
                   <section className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-white p-2.5 shadow-[var(--shock-shadow-sm)]">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">当前原则</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em]">继续方式</p>
                     <ul className="mt-2.5 space-y-1.5 text-[12px] leading-5 text-[color:rgba(24,20,14,0.76)]">
-                      <li>频道负责轻松讨论，不直接背负执行压力。</li>
-                      <li>严肃工作必须进入讨论间，并和当前运行保持绑定。</li>
-                      <li>话题可见，会话继续留在系统内部。</li>
-                      <li>任务板只做辅助，不取代聊天和房间。</li>
+                      <li>先在聊天里说清楚要做什么。</li>
+                      <li>需要执行时进入讨论间。</li>
+                      <li>任务板只排优先级，不替代讨论。</li>
                     </ul>
                   </section>
                 )}

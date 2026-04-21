@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { LiveRoomsPageContent } from "@/components/live-detail-views";
 
 export default function RoomsPage() {
-  redirect("/chat/all");
+  return <LiveRoomsPageContent />;
 }

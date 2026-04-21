@@ -5,13 +5,11 @@ import { startTransition, useEffect, useState, type FormEvent } from "react";
 
 import { OpenShockShell } from "@/components/open-shock-shell";
 import {
-  AgentControlSurface,
   LiveOrchestrationBoard,
   type RuntimeRegistryRecord,
 } from "@/components/live-orchestration-views";
 import { RunSandboxSurface } from "@/components/run-sandbox-surface";
 import {
-  AgentDetailView,
   AgentsListView,
   DetailRail,
   IssueDetailView,
@@ -25,7 +23,6 @@ import { buildRunHistoryEntries, sanitizePlannerQueue, sanitizeRunDetail, saniti
 import { resolveLiveRunDetail } from "@/lib/run-detail-view-model";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus } from "@/lib/session-authz";
 import type {
-  AgentHandoff,
   CredentialProfile,
   Issue,
   Message,
@@ -201,90 +198,6 @@ function LiveStateNotice({
       <p className="font-display text-[22px] font-bold leading-7">{title}</p>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{message}</p>
     </div>
-  );
-}
-
-function handoffStatusLabel(status: AgentHandoff["status"]) {
-  switch (status) {
-    case "acknowledged":
-      return "已接手";
-    case "blocked":
-      return "阻塞";
-    case "completed":
-      return "已完成";
-    default:
-      return "待接手";
-  }
-}
-
-function handoffStatusTone(status: AgentHandoff["status"]) {
-  switch (status) {
-    case "acknowledged":
-      return "bg-[var(--shock-lime)]";
-    case "blocked":
-      return "bg-[var(--shock-pink)] text-white";
-    case "completed":
-      return "bg-[var(--shock-ink)] text-white";
-    default:
-      return "bg-[var(--shock-yellow)]";
-  }
-}
-
-function AgentMailboxPanel({
-  agentId,
-  handoffs,
-}: {
-  agentId: string;
-  handoffs: AgentHandoff[];
-}) {
-  return (
-    <Panel tone="paper">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接</p>
-          <h3 className="mt-2 font-display text-2xl font-bold">
-            {handoffs.length} 条交接任务
-          </h3>
-        </div>
-        <Link
-          href={`/mailbox?agentId=${agentId}`}
-          className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
-        >
-          交接箱
-        </Link>
-      </div>
-      <div className="mt-4 space-y-3">
-        {handoffs.length === 0 ? (
-          <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-            当前还没有需要这位智能体继续跟进的交接任务。新交接出现后会显示在列表中。
-          </p>
-        ) : (
-          handoffs.slice(0, 3).map((handoff) => (
-            <Link
-              key={handoff.id}
-              href={`/mailbox?handoffId=${handoff.id}&roomId=${handoff.roomId}`}
-              className="block rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-display text-lg font-semibold">{handoff.title}</p>
-                <span
-                  className={cn(
-                    "rounded-full border-2 border-[var(--shock-ink)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
-                    handoffStatusTone(handoff.status)
-                  )}
-                >
-                  {handoffStatusLabel(handoff.status)}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                {handoff.fromAgent} {"->"} {handoff.toAgent}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">{handoff.lastAction}</p>
-            </Link>
-          ))
-        )}
-      </div>
-    </Panel>
   );
 }
 
@@ -824,98 +737,6 @@ export function LiveAgentsPageContent() {
           <AgentsListView agentsList={agents} />
         </div>
       )}
-    </OpenShockShell>
-  );
-}
-
-export function LiveAgentPageContent({ agentId }: { agentId: string }) {
-  const { state, loading, error } = usePhaseZeroState();
-  const agent = loading || error ? undefined : state.agents.find((candidate) => candidate.id === agentId);
-
-  if (loading) {
-    return (
-      <OpenShockShell
-        view="agents"
-        eyebrow="智能体详情"
-        title="正在载入智能体"
-        description="正在获取当前智能体详情。"
-        contextTitle="智能体详情"
-        contextDescription="请稍候，页面正在同步最新信息。"
-      >
-        <LiveStateNotice title="载入中" message="正在获取智能体详情和最近执行记录。" />
-      </OpenShockShell>
-    );
-  }
-
-  if (error) {
-    return (
-      <OpenShockShell
-        view="agents"
-        eyebrow="智能体详情"
-        title="智能体载入失败"
-        description="暂时无法获取当前智能体详情。"
-        contextTitle="智能体详情"
-        contextDescription="请检查服务是否正常，然后重试。"
-      >
-        <LiveStateNotice title="载入失败" message={error} />
-      </OpenShockShell>
-    );
-  }
-
-  if (!agent) {
-    return (
-      <OpenShockShell
-        view="agents"
-        eyebrow="智能体详情"
-        title="未找到智能体"
-        description="这个智能体可能已被删除，或当前数据尚未更新。"
-        contextTitle="智能体详情"
-        contextDescription="请返回智能体列表后重新进入。"
-      >
-        <LiveStateNotice title="未找到智能体" message={`当前找不到 \`${agentId}\` 对应的智能体记录。`} />
-      </OpenShockShell>
-    );
-  }
-
-  const runsForAgent = state.runs.filter((run) => agent.recentRunIds.includes(run.id));
-  const relatedPullRequests = state.pullRequests.filter((pullRequest) =>
-    runsForAgent.some((run) => run.id === pullRequest.runId)
-  );
-  const relatedHandoffs = state.mailbox.filter(
-    (handoff) => handoff.fromAgentId === agent.id || handoff.toAgentId === agent.id
-  );
-
-  return (
-    <OpenShockShell
-      view="agents"
-      eyebrow="智能体详情"
-      title={agent.name}
-      description={agent.description}
-      contextTitle={agent.lane}
-      contextDescription="当前绑定的运行环境和服务偏好。"
-      contextBody={
-        <DetailRail
-          label="绑定关系"
-          items={[
-            { label: "服务通道", value: agent.providerPreference },
-            { label: "模型", value: agent.modelPreference },
-            { label: "运行环境", value: agent.runtimePreference },
-            { label: "状态语气", value: agent.mood },
-          ]}
-        />
-      }
-    >
-      <div className="space-y-4">
-        <AgentControlSurface
-          agent={agent}
-          runsForAgent={runsForAgent}
-          pullRequests={relatedPullRequests}
-          inbox={state.inbox}
-          runtimes={readRuntimeRegistry(state)}
-        />
-        <AgentMailboxPanel agentId={agent.id} handoffs={relatedHandoffs} />
-        <AgentDetailView agent={agent} runsForAgent={runsForAgent} />
-      </div>
     </OpenShockShell>
   );
 }

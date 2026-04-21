@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -134,7 +135,7 @@ func buildMessageSurfaceQuickSearchEntries(state State) []SearchResult {
 			Title:    agent.Name,
 			Summary:  defaultString(agent.Description, fmt.Sprintf("%s · %s", agent.Provider, agent.RuntimePreference)),
 			Meta:     fmt.Sprintf("agent · %s · %s", agent.State, agent.Provider),
-			Href:     fmt.Sprintf("/agents/%s", agent.ID),
+			Href:     fmt.Sprintf("/profiles/agent/%s", url.PathEscape(agent.ID)),
 			Keywords: normalizeMessageSearchText(agent.ID, agent.Name, agent.Description, agent.State, agent.Provider, agent.RuntimePreference, agent.Lane, strings.Join(agent.MemorySpaces, " "), "agent"),
 			Order:    6,
 		})

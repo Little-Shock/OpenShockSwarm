@@ -468,11 +468,11 @@ export function SetupFirstStartJourneyPanel() {
           <h2 className="mt-2 font-display text-[28px] font-bold leading-[1.15]">现在先做哪一步</h2>
         </div>
         <span
-          data-testid="setup-first-start-next-route"
           className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
         >
-          {journey.nextHref}
+          {journey.nextSurfaceLabel}
         </span>
+        <span data-testid="setup-first-start-next-route" className="sr-only">{journey.nextHref}</span>
       </div>
       <p
         data-testid="setup-first-start-summary"
@@ -482,7 +482,8 @@ export function SetupFirstStartJourneyPanel() {
       </p>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <WorkspaceMetric label="现在做什么" value={journey.nextLabel} testID="setup-first-start-next-label" />
-        <WorkspaceMetric label="准备好后进入" value={journey.launchHref} testID="setup-first-start-launch-route" />
+        <WorkspaceMetric label="准备好后进入" value={journey.launchSurfaceLabel} />
+        <p className="sr-only" data-testid="setup-first-start-launch-route">{journey.launchHref}</p>
         <WorkspaceMetric label="当前进度" value={onboardingLabel} testID="setup-first-start-onboarding-status" />
       </div>
       <div className="mt-5 grid gap-3 lg:grid-cols-2">

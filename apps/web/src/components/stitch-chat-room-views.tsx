@@ -1253,7 +1253,7 @@ function RoomContextPanels({
             <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
               <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">交接跟进</p>
               <p className="mt-1.5 text-sm font-semibold">
-                {relatedHandoffs.length === 0 ? "暂无待跟进交接" : `当前挂着 ${relatedHandoffs.length} 条`}
+                {relatedHandoffs.length === 0 ? "当前没有待跟进交接" : `当前挂着 ${relatedHandoffs.length} 条`}
               </p>
             </div>
             {relatedHandoffs.slice(0, 3).map((handoff) => (

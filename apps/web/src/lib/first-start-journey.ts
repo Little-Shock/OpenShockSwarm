@@ -15,9 +15,11 @@ export type FirstStartJourney = {
   onboardingDone: boolean;
   onboardingStarted: boolean;
   nextHref: string;
+  nextSurfaceLabel: string;
   nextLabel: string;
   nextSummary: string;
   launchHref: string;
+  launchSurfaceLabel: string;
   steps: FirstStartJourneyStep[];
 };
 
@@ -97,6 +99,31 @@ function launchHref(session: AuthSession) {
   return "/chat/all";
 }
 
+export function firstStartSurfaceLabel(href: string) {
+  if (href.startsWith("/chat/")) {
+    return "聊天";
+  }
+  if (href.startsWith("/rooms")) {
+    return "讨论间";
+  }
+  if (href.startsWith("/board")) {
+    return "任务板";
+  }
+  if (href.startsWith("/inbox")) {
+    return "收件箱";
+  }
+  if (href.startsWith("/onboarding")) {
+    return "引导";
+  }
+  if (href.startsWith("/setup")) {
+    return "设置";
+  }
+  if (href.startsWith("/access")) {
+    return "身份";
+  }
+  return "下一步";
+}
+
 function accessSummary(session: AuthSession) {
   if (!sessionIsActive(session)) {
     return "先输入邮箱进入工作区。";
@@ -119,7 +146,7 @@ function identitySummary(session: AuthSession) {
 
 function setupSummary(workspace: WorkspaceSnapshot) {
   if (onboardingIsDone(workspace)) {
-    return `工作区已经准备好，下一步会进入 ${setupResumeHref(workspace)}。`;
+    return `工作区已经准备好，下一步进入 ${firstStartSurfaceLabel(setupResumeHref(workspace))}。`;
   }
 
   const template = onboardingTemplateLabel(workspace);
@@ -149,12 +176,15 @@ export function buildFirstStartJourney(workspace: WorkspaceSnapshot, session: Au
   } else if (onboardingDone) {
     nextHref = finalLaunchHref;
     nextLabel = "进入聊天";
-    nextSummary = `工作区已经准备好，直接进入 ${finalLaunchHref}。`;
+    nextSummary = `工作区已经准备好，直接进入 ${firstStartSurfaceLabel(finalLaunchHref)}。`;
   } else {
     nextHref = resumeHref;
     nextLabel = onboardingStarted ? "继续引导" : "开始引导";
     nextSummary = "下一步在向导里完成模板、仓库、运行环境和智能体设置，然后即可进入工作区。";
   }
+
+  const nextSurfaceLabel = firstStartSurfaceLabel(nextHref);
+  const launchSurfaceLabel = firstStartSurfaceLabel(finalLaunchHref);
 
   const steps: FirstStartJourneyStep[] = [
     {
@@ -185,9 +215,11 @@ export function buildFirstStartJourney(workspace: WorkspaceSnapshot, session: Au
     onboardingDone,
     onboardingStarted,
     nextHref,
+    nextSurfaceLabel,
     nextLabel,
     nextSummary,
     launchHref: finalLaunchHref,
+    launchSurfaceLabel,
     steps,
   };
 }

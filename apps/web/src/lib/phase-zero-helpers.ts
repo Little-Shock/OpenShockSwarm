@@ -139,7 +139,7 @@ export function hrefTargetLabel(href?: string) {
   if (trimmed.startsWith("/inbox")) {
     return "收件箱";
   }
-  if (trimmed.startsWith("/agents/")) {
+  if (trimmed.startsWith("/profiles/agent/") || trimmed.startsWith("/agents/")) {
     return "智能体详情";
   }
   if (trimmed.startsWith("/memory")) {

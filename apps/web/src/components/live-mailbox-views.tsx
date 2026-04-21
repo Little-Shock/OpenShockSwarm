@@ -10,6 +10,7 @@ import { DetailRail, Panel } from "@/components/phase-zero-views";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { governanceSuggestedHandoffHrefLabel } from "@/lib/phase-zero-helpers";
 import type { AgentHandoff, WorkspaceGovernanceSuggestedHandoff } from "@/lib/phase-zero-types";
+import { buildProfileHref } from "@/lib/profile-surface";
 import { hasSessionPermission, permissionBoundaryCopy, permissionStatus, permissionStatusSurfaceLabel } from "@/lib/session-authz";
 
 type MailboxAdvanceAction = "acknowledged" | "blocked" | "comment" | "completed";
@@ -1439,8 +1440,8 @@ export function LiveMailboxPageContent() {
                 </Panel>
                 {mailboxForRoom.map((handoff) => {
                 const room = state.rooms.find((item) => item.id === handoff.roomId);
-                const fromAgentHref = `/agents/${handoff.fromAgentId}`;
-                const toAgentHref = `/agents/${handoff.toAgentId}`;
+                const fromAgentHref = buildProfileHref("agent", handoff.fromAgentId);
+                const toAgentHref = buildProfileHref("agent", handoff.toAgentId);
                 const active = highlightedHandoffId === handoff.id;
                 const parentHandoff = findMailboxParent(state.mailbox, handoff);
                 const responseHandoff =

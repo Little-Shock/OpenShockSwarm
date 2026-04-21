@@ -318,7 +318,7 @@ try {
   await page.getByTestId("quick-search-input").fill("Codex Dockmaster");
   await expectHighlightedResult(page, "quick-search-result-agent-agent-codex-dockmaster");
   await page.getByTestId("quick-search-result-agent-agent-codex-dockmaster").click();
-  await waitForPath(page, "/agents/agent-codex-dockmaster");
+  await waitForPath(page, "/profiles/agent/agent-codex-dockmaster");
   await waitForPageText(page, "Codex Dockmaster");
   await capture(page, "agent-dockmaster");
 
@@ -327,7 +327,7 @@ try {
   await expectHighlightedResult(page, "quick-search-result-dm-dm-mina");
   await page.getByTestId("quick-search-result-dm-dm-mina").click();
   await waitForPath(page, "/chat/dm-mina");
-  await waitForPageText(page, "saved later 不应该像任务板");
+  await waitForPageText(page, "稍后查看不应该像任务板");
   await capture(page, "dm-mina");
 
   await openQuickSearchWithHotkey(page);
@@ -348,7 +348,7 @@ try {
 
   await openQuickSearchWithHotkey(page);
   await page.getByTestId("quick-search-input").fill("zzzz-not-found");
-  await waitForPageText(page, "还没有匹配结果");
+  await waitForPageText(page, "没有匹配结果");
   await capture(page, "no-matches");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => !document.querySelector('[data-testid="quick-search-dialog"]'), undefined, { timeout: 30_000 });
@@ -376,7 +376,7 @@ try {
     "### Highlight / Empty State",
     "",
     "- 搜索命中项会在标题或摘要里显式高亮关键字，验证了 `roadmap`、`OPS-19`、`run_runtime_01`、`Codex Dockmaster`、`Mina`、`runtime sync thread`、`Longwen default-entry` 的 `<mark>` 呈现 -> PASS",
-    "- 输入 `zzzz-not-found` 时不会误跳转，而是稳定展示“还没有匹配结果”；`Esc` 可正常关闭面板 -> PASS",
+    "- 输入 `zzzz-not-found` 时不会误跳转，而是稳定展示“没有匹配结果”；`Esc` 可正常关闭面板 -> PASS",
     "",
     "### Scope Boundary",
     "",

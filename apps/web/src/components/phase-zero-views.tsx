@@ -1035,7 +1035,7 @@ export function IssueDetailView({
                 data-testid="issue-open-planning-mirror"
                 className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em]"
               >
-                Planning mirror
+                回任务板
               </Link>
             </div>
         </Panel>

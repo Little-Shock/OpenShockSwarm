@@ -1210,14 +1210,14 @@ function FirstStartJourneyPanel() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">下一步</p>
-          <h2 className="mt-2 font-display text-3xl font-bold">登录后去哪里</h2>
+          <h2 className="mt-2 font-display text-3xl font-bold">现在先做什么</h2>
         </div>
         <span
-          data-testid="access-first-start-next-route"
           className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]"
         >
-          {journey.nextHref}
+          {journey.nextSurfaceLabel}
         </span>
+        <span data-testid="access-first-start-next-route" className="sr-only">{journey.nextHref}</span>
       </div>
       <p
         data-testid="access-first-start-summary"
@@ -1228,7 +1228,7 @@ function FirstStartJourneyPanel() {
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <Metric label="现在做什么" value={journey.nextLabel} />
         <p className="sr-only" data-testid="access-first-start-next-label">{journey.nextLabel}</p>
-        <Metric label="准备好后进入" value={journey.launchHref} />
+        <Metric label="准备好后进入" value={journey.launchSurfaceLabel} />
         <p className="sr-only" data-testid="access-first-start-launch-route">{journey.launchHref}</p>
         <Metric label="当前进度" value={onboardingLabel} />
         <p className="sr-only" data-testid="access-first-start-onboarding-status">{onboardingLabel}</p>
@@ -1306,7 +1306,7 @@ export function LiveAccessContextRail() {
         { label: "设备", value: deviceAuthLabel(session.deviceAuthStatus) },
         { label: "成员", value: `${state.auth.members.length} 人 / ${ownerCount} 位所有者` },
         { label: "模板", value: `${valueOrPlaceholder(state.workspace.onboarding.templateId, "未选模板")} / ${onboardingStatusLabel(state.workspace.onboarding.status)}` },
-        { label: "下一步", value: `${journey.nextLabel} / ${journey.nextHref}` },
+        { label: "下一步", value: `${journey.nextLabel} / ${journey.nextSurfaceLabel}` },
         { label: "权限", value: `${session.permissions.length} 项` },
       ]}
     />

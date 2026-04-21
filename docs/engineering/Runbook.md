@@ -22,6 +22,8 @@
 
 ## 2. 先知道这几个事实
 
+- `pnpm dev:fresh:start` 是当前最省心的启动方式；它会一起拉起 `web + server + daemon`
+- `pnpm dev:fresh:status` / `pnpm dev:fresh:stop` 是对应的状态和清理入口
 - `pnpm dev` 只启动 web
 - server 和 daemon 需要分别启动
 - 根 `package.json` 里的 `dev:server` / `dev:daemon` 现在已经是 Bash 入口，并会转到 `scripts/go.sh`
@@ -90,7 +92,27 @@ $env:OPENSHOCK_LIVE_OWNER = "@Max_开发"
 
 ---
 
-## 4. 启动 3 个进程
+## 4. 启动方式
+
+### 推荐：fresh stack
+
+如果你是第一次本地验证，或者想要一份干净的新工作区，优先用：
+
+```bash
+pnpm dev:fresh:start
+pnpm dev:fresh:status
+pnpm dev:fresh:stop
+```
+
+这条 managed path 会：
+
+- 自动找空闲端口拉起 `web / server / daemon`
+- 打印 `Entry / Access / Onboarding / Chat / Setup` 入口
+- 生成一份 fresh workspace state，方便首启和有头链路复核
+
+如果你需要单独调试某一段，再退回下面的手动 3 进程方式。
+
+### 手动：启动 3 个进程
 
 打开 3 个终端。
 
@@ -184,17 +206,32 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 
 ### Web 路由
 
+- `/`
 - `/chat/all`
+- `/rooms`
 - `/board`
 - `/inbox`
 - `/issues`
 - `/issues/[issueKey]`
 - `/rooms/[roomId]`
 - `/rooms/[roomId]/runs/[runId]`
+- `/topics/[topicId]`
+- `/runs`
+- `/runs/[runId]`
 - `/agents`
-- `/agents/[agentId]`
+- `/profiles/[kind]/[profileId]`
+- `/pull-requests/[pullRequestId]`
+- `/mailbox`
+- `/onboarding`
+- `/memory`
+- `/access`
 - `/setup`
 - `/settings`
+
+说明：
+
+- `/agents/[agentId]` 现在只保留兼容跳转，canonical profile route 已统一到 `/profiles/[kind]/[profileId]`
+- `/rooms` 现在是独立讨论间索引，不再只是 `/chat/all` 的跳转壳
 
 ### Server 路由
 
@@ -211,14 +248,50 @@ go run ./cmd/openshock-daemon --workspace-root E:\00.Lark_Projects\00_OpenShock
 - `GET /v1/runs`
 - `GET /v1/runs/:id`
 - `GET /v1/agents`
+- `GET/PATCH /v1/agents/:id`
 - `GET /v1/sessions`
 - `GET /v1/sessions/:id`
+- `GET /v1/topics/:id`
+- `PATCH /v1/topics/:id`
 - `GET /v1/inbox`
+- `GET/POST /v1/mailbox`
+- `GET/POST /v1/mailbox/:id`
+- `POST /v1/mailbox/governed`
 - `GET /v1/memory`
+- `GET /v1/memory/:id`
+- `POST /v1/memory/:id/feedback`
+- `POST /v1/memory/:id/forget`
+- `GET /v1/memory-center`
+- `POST /v1/memory-center/cleanup`
+- `GET/POST /v1/memory-center/policy`
+- `GET/POST /v1/memory-center/providers`
+- `POST /v1/memory-center/promotions`
 - `GET /v1/pull-requests`
 - `GET/POST /v1/pull-requests/:id`
+- `GET /v1/auth/session`
+- `POST /v1/auth/session`
+- `DELETE /v1/auth/session`
+- `POST /v1/auth/recovery`
+- `GET/POST /v1/workspace/members`
+- `GET/PATCH /v1/workspace/members/:id`
+- `GET /v1/direct-messages`
+- `GET /v1/direct-messages/:id`
+- `POST /v1/direct-messages/:id/messages`
+- `POST /v1/message-surface/collections`
+- `GET /v1/notifications`
+- `GET /v1/approval-center`
+- `GET/POST /v1/credentials`
+- `GET /v1/planner/queue`
+- `POST /v1/planner/sessions/:id/assignment`
+- `GET/POST /v1/planner/pull-requests/:id/auto-merge`
+- `POST /v1/control-plane/commands`
+- `GET /v1/control-plane/events`
+- `GET /v1/control-plane/debug/commands/:id`
+- `GET /v1/control-plane/debug/rejections`
 - `GET/POST/DELETE /v1/runtime/pairing`
 - `GET /v1/runtime`
+- `GET/POST /v1/runtime/publish`
+- `GET /v1/runtime/publish/replay`
 - `GET /v1/runtime/live-service`
 - `GET /v1/workspace/branch-head-truth`
 - `GET /v1/workspace/live-rollout-parity`
@@ -354,14 +427,19 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
 
 打开：
 
+- `http://127.0.0.1:3000/onboarding`
 - `http://127.0.0.1:3000/setup`
 - `http://127.0.0.1:3000/issues`
+- `http://127.0.0.1:3000/rooms`
 - `http://127.0.0.1:3000/rooms/<roomId>`
 - `http://127.0.0.1:3000/rooms/<roomId>/runs/<runId>`
+- `http://127.0.0.1:3000/mailbox`
 
 期望：
 
+- onboarding 能先回答“现在先做什么”，而不是先暴露内部术语
 - Setup 上能看到 repo / GitHub / runtime / bridge 的状态
+- `/rooms` 能作为独立讨论间索引打开
 - 新 issue 能在 UI 里出现
 - run detail 能看到 runtime、branch、worktree、stdout/stderr、timeline 等字段
 

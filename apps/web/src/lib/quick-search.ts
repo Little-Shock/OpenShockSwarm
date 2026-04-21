@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { PhaseZeroState, SearchResult as PhaseZeroSearchResult, SearchResultKind } from "@/lib/phase-zero-types";
+import { buildProfileHref } from "@/lib/profile-surface";
 
 export type QuickSearchEntryKind = SearchResultKind;
 
@@ -128,7 +129,7 @@ function buildQuickSearchEntries(state: PhaseZeroState): SearchEntry[] {
       title: agent.name,
       summary: agent.description || `${agent.provider} · ${agent.runtimePreference}`,
       meta: `agent · ${agent.state} · ${agent.provider}`,
-      href: `/agents/${agent.id}`,
+      href: buildProfileHref("agent", agent.id),
       keywords: normalizeSearchText(agent.id, agent.name, agent.description, agent.state, agent.provider, agent.runtimePreference, agent.lane, ...agent.memorySpaces, "agent"),
       order: 6,
     })),

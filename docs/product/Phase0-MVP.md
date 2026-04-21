@@ -1,7 +1,7 @@
 # OpenShock Phase 0 MVP
 
-**版本:** 0.9
-**版本日期:** 2026 年 4 月 11 日
+**版本:** 0.91
+**版本日期:** 2026 年 4 月 21 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
 ---
@@ -25,7 +25,10 @@
 当前仓库已经有：
 
 - Next.js 前端壳
-- 统一的 workspace shell，`chat / inbox / board / setup / issues / runs / agents / memory / access / settings` 不再各走各的导航
+- 统一的 workspace shell，`chat / rooms / board / inbox / issues / runs / agents / mailbox / memory / onboarding / access / setup / settings` 不再各走各的导航
+- 当前前台主路由已经覆盖：
+  - `chat / rooms / issues / topics / runs / pull-requests / mailbox / profiles / onboarding`
+  - canonical profile route 以 `/profiles/[kind]/[profileId]` 为准；历史 `/agents/[id]` 只保留兼容跳转
 - Go server 控制面
 - Go daemon 本地 runtime bridge
 - 文件状态存储
@@ -37,8 +40,14 @@
 - 同源 `/api/control/*` proxy，Windows 有头浏览器下也能稳定读到 live control truth
 - PR 状态对象和 Inbox 卡片
 - `gh CLI / GitHub App` 双 auth path 的 PR contract
+- auth session / workspace members / recovery 基线
+- direct message、message-surface collections、topic guidance 与 mailbox handoff contract
+- planner queue / session assignment / PR auto-merge guard contract
 - 文件级记忆与 version/governance contract
 - memory center provider orchestration + health/recovery truth：`workspace-file / search-sidecar / external-persistent`
+- memory center policy / cleanup / provider / promotion 路由
+- 版本化 `/v1/control-plane/*` command / event / debug read-model
+- `/v1/runtime/publish*` replay evidence contract
 
 ### 2. 当前还不是 Phase 0 真值的部分
 
@@ -82,8 +91,12 @@
 - 讨论间
 - Board
 - Inbox
+- Mailbox
 - Issue 列表
+- Run 列表
 - Agent 列表
+- Profile drill-in
+- Onboarding / Access 首启链路
 - Setup
 - Settings
 
@@ -203,7 +216,15 @@ Inbox 必须能把：
 - `GET /v1/runtime`
 - `GET /v1/repo/binding`
 - `GET /v1/github/connection`
+- `GET /v1/auth/session`
+- `GET /v1/workspace/members`
+- `GET /v1/mailbox`
+- `GET /v1/memory-center`
+- `GET /v1/planner/queue`
 - `POST /v1/runtime/pairing`
+- `POST /v1/control-plane/commands`
+- `GET /v1/control-plane/events`
+- `GET /v1/runtime/publish/replay`
 - `POST /v1/issues`
 - `POST /v1/exec`
 

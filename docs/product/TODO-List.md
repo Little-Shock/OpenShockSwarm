@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.60
+**版本:** 1.62
 **更新日期:** 2026 年 4 月 21 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -39,7 +39,22 @@
 
 ---
 
-## 三、本轮已收口 / 当前必须先收的 GAP
+## 三、当前一屏视图
+
+如果你今天只想知道“下一步先做什么”，先看这 3 条：
+
+1. 继续做前端减法。
+   重点是 `shell / setup / settings / mailbox` 的层级、文案和密度，不再靠新增面板解决理解成本。
+2. 把记忆与 provider 继续收成 durable truth。
+   重点是 memory compaction、retention、external provider orchestration 与恢复证据。
+3. 扩 daemon continuity 的重验证矩阵。
+   重点是 multi-session / multi-agent recovery、runtime publish retry、degraded fallback，不再退回零散 fixture。
+
+---
+
+## 四、本轮已收口 / 当前必须先收的 GAP
+
+下面按日期保留的是最近收口归档，方便追溯；它们不是“今天优先做什么”的主视图。
 
 ### 2026-04-10 已收口
 
@@ -203,7 +218,7 @@
 
 ---
 
-## 四、推荐推进顺序
+## 五、推荐推进顺序
 
 1. 先收 `TKT-101`：持续做 room / inbox / run / governance 的 subtractive polish，但不再靠加新面板解决流畅度问题。
 2. 然后回到 `CHK-10` 的更重 memory compaction / retention / durable adapter。
@@ -211,7 +226,7 @@
 
 ---
 
-## 五、这轮知识回收带来的新增要求
+## 六、这轮知识回收带来的新增要求
 
 - 以后再看历史平行分支，默认顺序是:
   - `eng01/pr1-head-regression-fix`
@@ -244,7 +259,7 @@
 
 ---
 
-## 六、每张执行票最少要写清什么
+## 七、每张执行票最少要写清什么
 
 - `Goal`
 - `Scope`
@@ -259,7 +274,7 @@
 
 ---
 
-## 七、每一轮固定 Loop
+## 八、每一轮固定 Loop
 
 每一轮开发固定按这个顺序：
 
@@ -282,7 +297,7 @@
 
 ---
 
-## 八、维护规则
+## 九、维护规则
 
 - 每一轮收口后，先更新这份文档，再开下一轮 planning 票
 - 如果 live board 已经收掉某条 face，对应条目要同步从“下一步”挪到“已完成”
@@ -296,7 +311,7 @@
 
 ---
 
-## 九、最近进展
+## 十、最近进展
 
 - `2026-04-21`
   - Setup 协作预览现在会直接显示每条 governance lane 的默认智能体，`Architect / Developer / Reviewer / QA` 不再只有抽象 lane 名。
@@ -309,3 +324,11 @@
   - `settings` 里的凭证 / 通知支持流继续做减法：`工作区凭证 / 默认策略 / 当前浏览器接收 / 邮件接收 / 接收端列表 / 待发送来源` 这批标题、摘要和空态已改成对象或状态本身，不再反复解释页面怎么工作。
   - `run sandbox` 这轮顺手补齐了同页真相一致性：权限检查返回后，右侧 `当前判断`、放行条件和 `approval_required -> overridden` 状态现在会立刻读同一份最新 decision，不再出现顶部提示已更新但判断卡还停在旧状态的分裂。
   - `headed-notification-preference-delivery` 与 `headed-restricted-sandbox-policy` 已再次验证这两条 supporting flow；通知链路覆盖无效邮箱失败后修正恢复，sandbox 链路覆盖 `allowed -> approval_required -> same-target override -> reload persisted`。
+  - first-start 入口这轮继续收口成产品名而不是路径：`/access` 与 `/setup` 不再提示不存在的“首页设置”，`登录后去哪里 / 现在先做哪一步` 里的 `/access / /onboarding / /chat/all` 这批原始地址已改成 `身份 / 引导 / 聊天 / 设置` 这类前台口径，同时保留测试用 raw route 真值。
+  - `/rooms` 这轮重新收成真正的讨论间索引，不再硬跳 `/chat/all`；房间回到一等入口后，更接近 `slock` 那种 channel / room 并列的协作壳心智。
+  - `/agents/[id]` 这轮明确收成历史兼容跳转，canonical agent route 统一回到 `/profiles/agent/[id]`；`live-detail-views` 里无路由入口的旧 agent detail 页面和相关死代码也一起移除，减少维护噪音和双路由分裂。
+  - Quick Search、Mailbox agent 链接和 server 生成的搜索入口这轮也统一回到 canonical `/profiles/agent/[id]`，前台不再主动发出旧 `/agents/[id]` 深链，只保留兼容跳转。
+  - Issue detail 里遗留的英文 `Planning mirror` 已改成 `回任务板`，支持流不再混进英文 CTA。
+  - 根 README 与 `docs/README.md` 这轮继续产品化：入口说明改成“现在你能做什么、发布前最小验证、文档从哪里读真相”，并同步当前 canonical profile route、`/rooms` 入口和验证索引。
+  - `Runbook / Phase0-MVP / Testing Index` 这轮补齐当前真实 route/API inventory、`pnpm dev:fresh:*` 主启动路径和一屏测试信任矩阵；TODO 自身也切出“当前一屏视图”，避免新贡献者先读长归档。
+  - Room context 空态回到测试契约里的 `当前没有待跟进交接`，避免同一 supporting surface 因文案漂移打断 `headed-room-workbench-topic-context`。

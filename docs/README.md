@@ -9,9 +9,9 @@
 ### 入口级
 
 - [README](../README.md)
-  - 项目是什么、当前仓库真值、启动入口、最小验证
+  - 项目是什么、当前仓库真值、产品入口、`pnpm dev:fresh:*` 启动方式、发布前最小验证
 - [Runbook](./engineering/Runbook.md)
-  - Phase 0 本地怎么跑、怎么 pair runtime、怎么走最小验收链路
+  - Phase 0 本地怎么跑、怎么 pair runtime、当前真实路由/API 怎么看、怎么走最小验收链路
 
 ### 产品合同
 
@@ -31,11 +31,11 @@
 ### 测试与验证
 
 - [Testing Index](./testing/README.md)
-  - 当前全部测试报告、headed harness 和证据入口
+  - 当前全部测试报告、headed harness、最近验证入口和证据索引
 - [Test Cases](./testing/Test-Cases.md)
   - 按 `PRD -> Checklist -> Test Case` 整理的全量验证项
-- [Test Report 2026-04-08 Work Shell Smoke](./testing/Test-Report-2026-04-08-work-shell-smoke.md)
-  - 这轮 `chat / setup / issues / memory / inbox / board / room / run` 统一壳层走查结果
+- [Verification Sweep 2026-04-13](./testing/Test-Report-2026-04-13-verification-sweep.md)
+  - 当前这批高频能力的集中验证汇总入口
 
 ### 设计与品牌
 
@@ -65,6 +65,7 @@
 - 审批与通知：approval center lifecycle、browser push / email delivery 已有浏览器级证据
 - 执行控制：stop / resume / follow-thread、多 runtime scheduler / failover 已有浏览器级证据
 - 前端壳：real quick search、DM / followed / saved、room workbench、profile drill-in、board planning mirror 都已有 headed evidence
+- canonical profile 路由现在以 `/profiles/[kind]/[profileId]` 为准；历史 `/agents/[id]` 只保留兼容跳转
 - onboarding / mailbox / multi-agent：模板 onboarding、Agent Mailbox、governance topology、config persistence 都已有当前主线验证证据
 - control-plane / runtime replay：版本化 `/v1/control-plane/*`、`/v1/runtime/publish*`、runtime replay evidence packet 与 Windows Chrome 有头证据已经补齐
 - no-shadow-truth：visible truth hygiene、dirty projection fail-closed 与 `verify:web` regression gate 已进入主线
