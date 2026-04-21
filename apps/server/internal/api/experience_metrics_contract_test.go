@@ -65,6 +65,59 @@ func TestExperienceMetricsRouteReturnsSectionedSnapshot(t *testing.T) {
 	}
 }
 
+func TestExperienceMetricsTreatsCompletedFreshBootstrapAndEmptyInboxAsReady(t *testing.T) {
+	t.Setenv("OPENSHOCK_BOOTSTRAP_MODE", "fresh")
+
+	root := t.TempDir()
+	backingStore, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	if _, _, err := backingStore.UpdateWorkspaceConfig(store.WorkspaceConfigUpdateInput{
+		Onboarding: &store.WorkspaceOnboardingSnapshot{
+			Status:         "ready",
+			TemplateID:     "dev-team",
+			CurrentStep:    "bootstrap-finished",
+			CompletedSteps: []string{"template-selected", "repo-bound", "github-ready", "runtime-paired", "bootstrap-finished"},
+			ResumeURL:      "/onboarding?template=dev-team",
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	resp, err := http.Get(server.URL + "/v1/experience-metrics")
+	if err != nil {
+		t.Fatalf("GET /v1/experience-metrics error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/experience-metrics status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var snapshot store.ExperienceMetricsSnapshot
+	decodeJSON(t, resp, &snapshot)
+
+	product, ok := findMetricSection(snapshot.Sections, "product")
+	if !ok {
+		t.Fatalf("product section missing: %#v", snapshot.Sections)
+	}
+	onboardingCompletion, ok := findExperienceMetric(product, "onboarding-completion")
+	if !ok || onboardingCompletion.Status != "ready" {
+		t.Fatalf("onboarding-completion metric = %#v, want ready after bootstrap-finished normalization", onboardingCompletion)
+	}
+
+	experience, ok := findMetricSection(snapshot.Sections, "experience")
+	if !ok {
+		t.Fatalf("experience section missing: %#v", snapshot.Sections)
+	}
+	inboxCorrection, ok := findExperienceMetric(experience, "inbox-correction")
+	if !ok || inboxCorrection.Status != "ready" {
+		t.Fatalf("inbox-correction metric = %#v, want ready when no open signals exist", inboxCorrection)
+	}
+	templateOnboarding, ok := findExperienceMetric(experience, "template-onboarding")
+	if !ok || templateOnboarding.Status != "ready" {
+		t.Fatalf("template-onboarding metric = %#v, want ready after bootstrap-finished normalization", templateOnboarding)
+	}
+}
+
 func countMetrics(sections []store.ExperienceMetricSection) int {
 	total := 0
 	for _, section := range sections {

@@ -192,7 +192,7 @@ func buildProductMetrics(snapshot State, notificationCenter NotificationCenter, 
 		experienceMetric(
 			"onboarding-completion",
 			"Onboarding completion",
-			statusFromOnboarding(snapshot.Workspace.Onboarding.Status),
+			statusFromOnboarding(snapshot.Workspace.Onboarding),
 			fmt.Sprintf("%s / %d completed steps", defaultString(snapshot.Workspace.Onboarding.Status, "unknown"), len(snapshot.Workspace.Onboarding.CompletedSteps)),
 			"Onboarding should persist, resume, and finish from the current template truth.",
 			fmt.Sprintf("Tracks workspace onboarding status plus completed step count; current step = %s.", defaultString(snapshot.Workspace.Onboarding.CurrentStep, "unset")),
@@ -368,7 +368,7 @@ func buildExperienceMetricsSection(snapshot State, notificationCenter Notificati
 		experienceMetric(
 			"inbox-correction",
 			"Inbox correction actionability",
-			statusFromCoverage(actionableSignals, notificationCenter.ApprovalCenter.OpenCount),
+			statusFromInboxCorrection(actionableSignals, notificationCenter.ApprovalCenter.OpenCount),
 			fmt.Sprintf("%d/%d open signals already have direct decisions", actionableSignals, notificationCenter.ApprovalCenter.OpenCount),
 			"Users should be able to correct a blocked lane from Inbox without detouring through raw state.",
 			"Looks for decision options plus backlinks on each open approval/review/blocked signal.",
@@ -386,7 +386,7 @@ func buildExperienceMetricsSection(snapshot State, notificationCenter Notificati
 		experienceMetric(
 			"template-onboarding",
 			"Template onboarding -> first agent",
-			statusFromTemplateOnboarding(onboarding.Status, materializedAgents, materializedChannels),
+			statusFromTemplateOnboarding(onboarding, materializedAgents, materializedChannels),
 			fmt.Sprintf("%s / %d agents / %d channels", defaultString(onboarding.Status, "unknown"), materializedAgents, materializedChannels),
 			"Template onboarding should materialize the initial channels and agents instead of stopping at a wizard shell.",
 			"Uses persisted onboarding materialization truth plus current onboarding status.",
@@ -584,11 +584,36 @@ func statusFromPending(pending, total int) string {
 	}
 }
 
-func statusFromOnboarding(status string) string {
-	switch strings.TrimSpace(status) {
-	case workspaceOnboardingDone:
+func statusFromOnboarding(onboarding WorkspaceOnboardingSnapshot) string {
+	if workspaceOnboardingIsComplete(onboarding) {
 		return experienceMetricReady
+	}
+	switch strings.TrimSpace(onboarding.Status) {
 	case workspaceOnboardingReady, workspaceOnboardingInProgress:
+		return experienceMetricWarning
+	default:
+		return experienceMetricBlocked
+	}
+}
+
+func statusFromInboxCorrection(ok, total int) string {
+	switch {
+	case total == 0:
+		return experienceMetricReady
+	case ok == total:
+		return experienceMetricReady
+	case ok > 0:
+		return experienceMetricWarning
+	default:
+		return experienceMetricBlocked
+	}
+}
+
+func statusFromTemplateOnboarding(onboarding WorkspaceOnboardingSnapshot, materializedAgents, materializedChannels int) string {
+	switch {
+	case workspaceOnboardingIsComplete(onboarding) && materializedAgents > 0 && materializedChannels > 0:
+		return experienceMetricReady
+	case materializedAgents > 0 || materializedChannels > 0 || strings.TrimSpace(onboarding.Status) == workspaceOnboardingReady:
 		return experienceMetricWarning
 	default:
 		return experienceMetricBlocked
@@ -633,17 +658,6 @@ func statusFromAuthAndRuntime(sessionStatus string, authorizedDevice, pairedRunt
 	case authorizedDevice && pairedRuntime && onlineRuntimes > 0:
 		return experienceMetricReady
 	case authorizedDevice || pairedRuntime || onlineRuntimes > 0:
-		return experienceMetricWarning
-	default:
-		return experienceMetricBlocked
-	}
-}
-
-func statusFromTemplateOnboarding(status string, materializedAgents, materializedChannels int) string {
-	switch {
-	case strings.TrimSpace(status) == workspaceOnboardingDone && materializedAgents > 0 && materializedChannels > 0:
-		return experienceMetricReady
-	case materializedAgents > 0 || materializedChannels > 0 || strings.TrimSpace(status) == workspaceOnboardingReady:
 		return experienceMetricWarning
 	default:
 		return experienceMetricBlocked

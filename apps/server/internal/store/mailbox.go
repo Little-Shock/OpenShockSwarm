@@ -648,26 +648,13 @@ func (s *Store) createGovernedHandoffForRoomLocked(roomID string) (AgentHandoff,
 }
 
 func (s *Store) continueGovernedRouteLocked(completed AgentHandoff) error {
-	snapshot := cloneState(s.state)
-	suggestion := snapshot.Workspace.Governance.RoutingPolicy.SuggestedHandoff
-	if suggestion.Status != "ready" || suggestion.RoomID != completed.RoomID {
+	if strings.TrimSpace(completed.RoomID) == "" {
 		return nil
 	}
-	if strings.TrimSpace(suggestion.FromAgentID) == "" || strings.TrimSpace(suggestion.ToAgentID) == "" {
+	_, _, err := s.createGovernedHandoffForRoomLocked(completed.RoomID)
+	if errors.Is(err, ErrMailboxGovernedRouteNotReady) {
 		return nil
 	}
-	if strings.TrimSpace(suggestion.DraftTitle) == "" {
-		return nil
-	}
-
-	_, err := s.createHandoffLocked(MailboxCreateInput{
-		RoomID:      suggestion.RoomID,
-		FromAgentID: suggestion.FromAgentID,
-		ToAgentID:   suggestion.ToAgentID,
-		Title:       suggestion.DraftTitle,
-		Summary:     defaultString(suggestion.DraftSummary, "按当前治理链继续推进下一棒。"),
-		Kind:        handoffKindGoverned,
-	})
 	return err
 }
 

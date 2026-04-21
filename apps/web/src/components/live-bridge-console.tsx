@@ -295,7 +295,7 @@ export function LiveBridgeConsole() {
     setActionSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/v1/exec`, {
+      const response = await fetch(`${API_BASE}/v1/runtime/bridge-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -310,9 +310,9 @@ export function LiveBridgeConsole() {
       }
 
       setResult(payload);
-      setActionSuccess(`已把请求发送到 ${payload.provider}。`);
+      setActionSuccess(`已完成 ${payload.provider} 通道自检。`);
     } catch (bridgeError) {
-      setExecError(bridgeError instanceof Error ? bridgeError.message : "执行请求失败");
+      setExecError(bridgeError instanceof Error ? bridgeError.message : "连接测试失败");
     } finally {
       setLoading(false);
     }
@@ -560,10 +560,10 @@ export function LiveBridgeConsole() {
             disabled={loading || !effectiveRuntime || !isSchedulableRuntime(effectiveRuntime.state) || !canExec}
             className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "执行中..." : "发送提示词"}
+            {loading ? "检查中..." : "做连接测试"}
           </button>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">
-            当前页会默认把测试请求发到选中的机器；讨论间和执行页会按各自绑定的机器处理。
+            当前页只检查这台机器和通道是否可用；真正的执行会在聊天和讨论间里发生。
           </p>
         </div>
         <p data-testid="setup-exec-authz" className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">

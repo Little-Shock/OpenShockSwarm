@@ -31,26 +31,41 @@ func freshBootstrapDaemonURL() string {
 	return "http://127.0.0.1:8090"
 }
 
+func freshBootstrapGovernanceTopology() []WorkspaceGovernanceLaneConfig {
+	return []WorkspaceGovernanceLaneConfig{
+		{ID: "pm", Label: "PM", Role: "目标与验收", DefaultAgent: "Codex Dockmaster", Lane: "目标确认 / 最终回复"},
+		{ID: "architect", Label: "Architect", Role: "拆解与边界", DefaultAgent: "Codex Dockmaster", Lane: "拆解 / 边界"},
+		{ID: "developer", Label: "Developer", Role: "实现与推进", DefaultAgent: "Build Pilot", Lane: "实现 / 提交"},
+		{ID: "reviewer", Label: "Reviewer", Role: "评审与结论", DefaultAgent: "Claude Review Runner", Lane: "评审 / 回退"},
+		{ID: "qa", Label: "QA", Role: "验证与交付确认", DefaultAgent: "Memory Clerk", Lane: "验证 / 交付"},
+	}
+}
+
 func freshState(workspaceRoot string) State {
 	now := time.Now().UTC().Format(time.RFC3339)
 	seed := seedState()
 	daemonURL := freshBootstrapDaemonURL()
+	onboarding := defaultWorkspaceOnboarding(now)
+	onboarding.Materialization = workspaceOnboardingMaterialization(onboarding.TemplateID)
+	governanceTopology := freshBootstrapGovernanceTopology()
 
 	owner := newWorkspaceMember(
 		"member-owner",
 		"owner@openshock.local",
 		"Workspace Owner",
 		workspaceRoleOwner,
-		workspaceMemberStatusInvited,
+		workspaceMemberStatusActive,
 		"fresh-bootstrap",
 		now,
 		now,
 	)
 	owner.Preferences.StartRoute = "/chat/all"
 	owner.Preferences.UpdatedAt = now
+	device := newAuthDevice(owner.ID, "Local Browser", authDeviceStatusAuthorized, now, now, now)
+	owner.TrustedDeviceIDs = []string{device.ID}
 
-	session := signedOutAuthSession()
-	session.Preferences = owner.Preferences
+	session := authSessionFromMember(owner, now)
+	session = hydrateSessionWithDevice(session, device, "local-bootstrap")
 
 	runtimeProviders := append([]RuntimeProvider{}, seed.Runtimes[0].Providers...)
 
@@ -72,33 +87,22 @@ func freshState(workspaceRoot string) State {
 			GitHubInstallation: WorkspaceGitHubInstallSnapshot{
 				Provider:          "github",
 				PreferredAuthMode: "github-app",
-				ConnectionMessage: "这是一个全新的工作区，请先完成仓库、GitHub 和运行环境设置。",
+				ConnectionMessage: "先绑定仓库、接通 GitHub、配对运行环境，就能开始交接和交付。",
 				SyncedAt:          now,
 			},
-			Onboarding: WorkspaceOnboardingSnapshot{
-				Status:         workspaceOnboardingNotStarted,
-				TemplateID:     "blank-custom",
-				CurrentStep:    "account",
-				CompletedSteps: []string{},
-				ResumeURL:      "/onboarding",
-				Materialization: WorkspaceOnboardingMaterialization{
-					Label:              "空白自定义",
-					Channels:           []string{"#all"},
-					Roles:              []string{"所有者"},
-					Agents:             []string{"启动智能体"},
-					NotificationPolicy: "只推高优先级与显式评审事件",
-					Notes:              []string{"这是一个全新的空白工作区，当前没有历史消息和历史房间。"},
-				},
-				UpdatedAt: now,
+			Onboarding: onboarding,
+			Governance: WorkspaceGovernanceSnapshot{
+				ConfiguredTopology:     governanceTopology,
+				DeliveryDelegationMode: governanceDeliveryDelegationModeFormalHandoff,
 			},
 		},
 		Channels: []Channel{
 			{
 				ID:      "all",
 				Name:    "#all",
-				Summary: "全新工作区的默认频道，当前还没有历史消息。",
+				Summary: "先在这里确认目标、同步阻塞，再把正式工作推进到讨论间。",
 				Unread:  0,
-				Purpose: "先完成第一轮频道对话；后续再扩展正式频道。",
+				Purpose: "默认协作入口，先把目标和下一步说清楚。",
 			},
 		},
 		ChannelMessages: map[string][]Message{
@@ -113,29 +117,7 @@ func freshState(workspaceRoot string) State {
 		Rooms:                 []Room{},
 		RoomMessages:          map[string][]Message{},
 		Runs:                  []Run{},
-		Agents: []Agent{
-			{
-				ID:                    "agent-starter",
-				Name:                  "启动智能体",
-				Description:           "从空工作区开始配置你的第一个智能体。",
-				Mood:                  "等待你配置",
-				State:                 "idle",
-				Lane:                  "workspace-bootstrap",
-				Role:                  "工作区搭建",
-				Avatar:                "starter-spark",
-				Prompt:                "先完成当前 workspace 的基础配置，再开始执行。",
-				OperatingInstructions: "没有 room / issue 时先停在 setup，不提前制造历史执行痕迹。",
-				Provider:              "Codex CLI",
-				ProviderPreference:    "Codex CLI",
-				ModelPreference:       "gpt-5.3-codex",
-				RecallPolicy:          agentRecallPolicyBalanced,
-				RuntimePreference:     "shock-main",
-				MemorySpaces:          []string{"workspace"},
-				RecentRunIDs:          []string{},
-				ProfileAudit:          []AgentProfileAuditEntry{},
-				Sandbox:               defaultSandboxPolicy(now),
-			},
-		},
+		Agents: []Agent{},
 		Machines: []Machine{},
 		Runtimes: []RuntimeRecord{
 			normalizeRuntimeRecord(RuntimeRecord{
@@ -162,7 +144,7 @@ func freshState(workspaceRoot string) State {
 			Session: session,
 			Roles:   defaultWorkspaceRoles(),
 			Members: []WorkspaceMember{owner},
-			Devices: []AuthDevice{},
+			Devices: []AuthDevice{device},
 		},
 		Memory:         []MemoryArtifact{},
 		MemoryVersions: map[string][]MemoryArtifactVersion{},

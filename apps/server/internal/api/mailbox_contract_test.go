@@ -432,10 +432,10 @@ func mustPatchGovernedQATopology(t *testing.T, serverURL string) {
 	req, err := http.NewRequest(http.MethodPatch, serverURL+"/v1/workspace", bytes.NewReader([]byte(`{
 		"governance":{
 			"teamTopology":[
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}

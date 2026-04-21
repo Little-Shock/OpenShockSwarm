@@ -88,12 +88,12 @@ func workspaceOnboardingTemplateDefinition(templateID string) onboardingTemplate
 		return onboardingTemplateDefinition{
 			ID:                 "dev-team",
 			Label:              "开发团队",
-			Channels:           []string{"#shiproom", "#review-lane", "#ops-watch"},
+			Channels:           []string{"#all", "#shiproom", "#review-lane", "#ops-watch"},
 			Roles:              []string{"目标", "边界", "实现", "评审", "验证"},
-			Agents:             []string{"需求智能体", "开发智能体", "评审智能体", "测试智能体"},
+			Agents:             []string{"Codex Dockmaster", "Build Pilot", "Claude Review Runner", "Memory Clerk"},
 			NotificationPolicy: "优先推送阻塞、评审和发布门事件",
 			Notes: []string{
-				"系统会创建交付、评审和发布相关频道。",
+				"系统会创建 #all、交付、评审和发布相关频道。",
 				"适合需要多人协作推进需求和发布的团队。",
 				"后续可继续补充审批、通知和协作规则。",
 			},
@@ -256,6 +256,33 @@ func normalizeCompletedSteps(values []string, fallback []string) []string {
 	return normalized
 }
 
+func workspaceOnboardingIsComplete(onboarding WorkspaceOnboardingSnapshot) bool {
+	if strings.TrimSpace(strings.ToLower(onboarding.Status)) == workspaceOnboardingDone {
+		return true
+	}
+	if strings.TrimSpace(onboarding.CurrentStep) == "bootstrap-finished" {
+		return true
+	}
+	for _, step := range onboarding.CompletedSteps {
+		if strings.TrimSpace(step) == "bootstrap-finished" {
+			return true
+		}
+	}
+	return false
+}
+
+func completionResumeURL(current string) string {
+	trimmed := strings.TrimSpace(current)
+	switch {
+	case trimmed == "":
+		return "/chat/all"
+	case strings.HasPrefix(trimmed, "/onboarding"), strings.HasPrefix(trimmed, "/setup"), strings.HasPrefix(trimmed, "/access"):
+		return "/chat/all"
+	default:
+		return trimmed
+	}
+}
+
 func normalizeWorkspaceGovernanceTopology(values []WorkspaceGovernanceLaneConfig) ([]WorkspaceGovernanceLaneConfig, error) {
 	if len(values) < 2 {
 		return nil, fmt.Errorf("%w: at least 2 lanes are required", ErrWorkspaceGovernanceTopologyInvalid)
@@ -386,7 +413,12 @@ func syncWorkspaceSnapshotDefaults(workspace *WorkspaceSnapshot) {
 	} else {
 		workspace.Onboarding.CompletedSteps = normalizeCompletedSteps(workspace.Onboarding.CompletedSteps, defaultOnboarding.CompletedSteps)
 	}
-	if strings.TrimSpace(workspace.Onboarding.ResumeURL) == "" {
+	if workspaceOnboardingIsComplete(workspace.Onboarding) {
+		workspace.Onboarding.Status = workspaceOnboardingDone
+		workspace.Onboarding.CurrentStep = "bootstrap-finished"
+		workspace.Onboarding.CompletedSteps = normalizeCompletedSteps(append(workspace.Onboarding.CompletedSteps, "bootstrap-finished"), defaultOnboarding.CompletedSteps)
+		workspace.Onboarding.ResumeURL = completionResumeURL(workspace.Onboarding.ResumeURL)
+	} else if strings.TrimSpace(workspace.Onboarding.ResumeURL) == "" {
 		workspace.Onboarding.ResumeURL = defaultOnboarding.ResumeURL
 	}
 	workspace.Onboarding.Materialization = workspaceOnboardingMaterialization(workspace.Onboarding.TemplateID)
@@ -484,6 +516,11 @@ func (s *Store) ensureFreshOnboardingMaterializationLocked() error {
 
 	templateID := canonicalWorkspaceOnboardingTemplateID(s.state.Workspace.Onboarding.TemplateID)
 	template := governanceTemplateFor(templateID)
+	configuredTopology := append([]WorkspaceGovernanceLaneConfig{}, s.state.Workspace.Governance.ConfiguredTopology...)
+	if len(configuredTopology) == 0 {
+		configuredTopology = defaultWorkspaceGovernanceTopology(templateID)
+	}
+	effectiveTemplate := configuredGovernanceTemplate(template, configuredTopology)
 	materialization := workspaceOnboardingMaterialization(templateID)
 	changed := false
 
@@ -532,7 +569,7 @@ func (s *Store) ensureFreshOnboardingMaterializationLocked() error {
 	for _, agent := range s.state.Agents {
 		seenAgentNames[strings.ToLower(strings.TrimSpace(agent.Name))] = true
 	}
-	for _, lane := range template.Topology {
+	for _, lane := range effectiveTemplate.Topology {
 		agentName := strings.TrimSpace(lane.DefaultAgent)
 		if agentName == "" || seenAgentNames[strings.ToLower(agentName)] {
 			continue

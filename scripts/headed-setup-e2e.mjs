@@ -268,12 +268,13 @@ async function main() {
   const issueSummary = "Replay setup -> board -> room -> PR entry with headed Chromium evidence.";
   let webURL = providedServiceTargets?.webURL ?? "";
   let serverURL = providedServiceTargets?.serverURL ?? "";
+  let daemonURL = providedServiceTargets?.daemonURL ?? "";
 
   if (!providedServiceTargets) {
     const webPort = await freePort();
     const serverPort = await freePort();
     const daemonPort = await freePort();
-    const daemonURL = `http://127.0.0.1:${daemonPort}`;
+    daemonURL = `http://127.0.0.1:${daemonPort}`;
     const statePath = path.join(workspaceDir, "data", "phase0", "state.json");
 
     webURL = `http://127.0.0.1:${webPort}`;
@@ -329,15 +330,21 @@ async function main() {
     }, `daemon did not become healthy at ${daemonURL}/healthz`);
   }
 
+  if (!daemonURL) {
+    const runtime = await fetchJSON(`${serverURL}/v1/runtime`);
+    daemonURL = String(runtime.daemonUrl ?? "").trim();
+    assert(daemonURL, "expected external headed mode to expose daemonUrl via --daemon-url or /v1/runtime");
+  }
+
   await waitFor(async () => {
     const response = await fetch(`${serverURL}/healthz`);
     return response.ok;
   }, `server did not become healthy at ${serverURL}/healthz`);
 
   await waitFor(async () => {
-    const response = await fetch(`${webURL}/setup`);
+    const response = await fetch(webURL);
     return response.ok;
-  }, `web did not become ready at ${webURL}/setup`, 120_000);
+  }, `web did not become ready at ${webURL}`, 120_000);
 
   await waitFor(async () => {
     const state = await fetchJSON(`${serverURL}/v1/state`);
@@ -351,7 +358,18 @@ async function main() {
   await context.tracing.start({ screenshots: true, snapshots: true });
 
   const page = await context.newPage();
-  await page.goto(`${webURL}/setup`, { waitUntil: "load" });
+  await page.goto(webURL, { waitUntil: "load" });
+  await page.waitForURL(/\/(access|onboarding|chat\/all|setup)(\?|$)/, { timeout: 30_000 });
+  const firstStartURL = page.url();
+  await capture(page, "first-start-entry");
+  assert(
+    /\/(access|onboarding|chat\/all|setup)(\?|$)/.test(firstStartURL),
+    `expected / to redirect into a real first-start surface, got ${firstStartURL}`
+  );
+
+  if (!/\/setup(\?|$)/.test(firstStartURL)) {
+    await page.goto(`${webURL}/setup`, { waitUntil: "load" });
+  }
   await page.getByText("展开仓库与远端").click();
   await page.locator('[data-testid="setup-repo-binding"]:visible').waitFor({ state: "visible" });
   await capture(page, "setup-shell");
@@ -501,6 +519,7 @@ Chromium: ${chromiumExecutable}
 - Web: ${webURL}
 - Server: ${serverURL}
 - Daemon: ${daemonURL}
+- First Start Entry: ${firstStartURL}
 
 ## 设置检查
 
@@ -534,6 +553,7 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
 ## 结果
 
 - TC-001 Setup shell visibility: PASS
+- TC-000 Root first-start redirect: PASS
 - TC-002 Repo binding via Setup: PASS
 - TC-003 Runtime pairing and bridge prompt via Setup: PASS
 - TC-026 Headed Setup to PR entry-ready journey: PASS
@@ -547,6 +567,7 @@ ${screenshots.map((item) => `- ${item.name}: ${item.path}`).join("\n")}
     webURL,
     serverURL,
     daemonURL,
+    firstStartURL,
     chromiumExecutable,
     repoBindingStatus,
     repoBindingMessage,

@@ -333,7 +333,7 @@ func TestSanitizeAgentHandoffBackfillsKindLabel(t *testing.T) {
 		KindLabel:  "",
 		Title:      "补交 release 说明",
 		Summary:    "把 blocker 所需的补充信息回给 source。",
-		FromAgent:  "Spec Captain",
+		FromAgent:  "Codex Dockmaster",
 		ToAgent:    "Memory Clerk",
 		LastAction: "等待补充回复继续同步。",
 		Messages:   []store.MailboxMessage{},

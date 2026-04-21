@@ -1111,12 +1111,18 @@ func sanitizeOnboardingAgentLabels(lines []string) []string {
 	for _, line := range lines {
 		sanitized := sanitizeDisplayText(line, "")
 		switch sanitized {
+		case "Codex Dockmaster":
+			items = append(items, "需求智能体")
 		case "Spec Captain":
 			items = append(items, "需求智能体")
 		case "Build Pilot":
 			items = append(items, "开发智能体")
+		case "Claude Review Runner":
+			items = append(items, "评审智能体")
 		case "Review Runner", "Reviewer", "Peer Reviewer":
 			items = append(items, "评审智能体")
+		case "Memory Clerk":
+			items = append(items, "测试智能体")
 		case "QA Relay":
 			items = append(items, "测试智能体")
 		case "Lead Operator", "Research Lead":
@@ -1151,9 +1157,12 @@ func rewriteOnboardingPackageText(value string) string {
 		{"Owner / Member / Viewer", "所有者 / 成员 / 访客"},
 		{"Research Lead", "方向"},
 		{"Lead Operator", "总控智能体"},
+		{"Codex Dockmaster", "需求智能体"},
 		{"Spec Captain", "需求智能体"},
 		{"Build Pilot", "开发智能体"},
+		{"Claude Review Runner", "评审智能体"},
 		{"Review Runner", "评审智能体"},
+		{"Memory Clerk", "测试智能体"},
 		{"QA Relay", "测试智能体"},
 	}
 	next := value

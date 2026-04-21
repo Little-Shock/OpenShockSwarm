@@ -23,25 +23,10 @@ const RUNTIME_SCHEDULER_UNPAIRED = /^未配对 daemon，当前不可调度。$/;
 const RUNTIME_SCHEDULER_TIMELINE_FAILOVER = /^Runtime 已 failover 到 (.+)$/;
 const RUNTIME_SCHEDULER_TIMELINE_ASSIGNED = /^Runtime 已分配到 (.+)$/;
 const CUSTOMER_FACING_LITERAL_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
-  ["@Codex Dockmaster", "@主执行智能体"],
   ["blocked / review / release gate 优先推送", "优先推送阻塞、评审和发布门事件"],
   ["evidence ready / synthesis blocked / reviewer feedback 优先推送", "优先推送证据就绪、综合阻塞和复核反馈"],
   ["只推高优先级与显式 review 事件", "只推高优先级与显式评审事件"],
   ["Owner / Member / Viewer", "所有者 / 成员 / 访客"],
-  ["Claude Review Runner", "评审智能体"],
-  ["Codex Dockmaster", "主执行智能体"],
-  ["Memory Clerk", "记忆智能体"],
-  ["Spec Captain", "需求智能体"],
-  ["Build Pilot", "开发智能体"],
-  ["Review Runner", "评审智能体"],
-  ["QA Relay", "测试智能体"],
-  ["Lead Operator", "总控智能体"],
-  ["Field Collector", "一线采集"],
-  ["Research Lead", "研究负责人"],
-  ["Peer Reviewer", "交叉复核"],
-  ["Publisher", "发布收尾"],
-  ["Synthesizer", "归纳智能体"],
-  ["Collector", "采集智能体"],
   ["Architect", "架构"],
   ["Developer", "开发"],
   ["Reviewer", "评审"],
@@ -406,8 +391,11 @@ function sanitizeWorkspaceOnboarding(onboarding: WorkspaceSnapshot["onboarding"]
 
 function sanitizeOnboardingRoleLabels(lines: string[]) {
   return lines.flatMap((line) => {
-    const sanitized = sanitizeDisplayText(line, "");
-    switch (sanitized) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return [];
+    }
+    switch (trimmed) {
       case "Owner / Member / Viewer":
         return ["所有者", "成员", "访客"];
       case "PM":
@@ -435,6 +423,24 @@ function sanitizeOnboardingRoleLabels(lines: string[]) {
         return ["成员"];
       case "Viewer":
         return ["访客"];
+    }
+
+    const sanitized = sanitizeDisplayText(trimmed, "");
+    switch (sanitized) {
+      case "所有者 / 成员 / 访客":
+        return ["所有者", "成员", "访客"];
+      case "目标":
+      case "边界":
+      case "实现":
+      case "评审":
+      case "验证":
+      case "方向":
+      case "采集":
+      case "归纳":
+      case "所有者":
+      case "成员":
+      case "访客":
+        return [sanitized];
       default:
         return [sanitized];
     }
@@ -442,17 +448,23 @@ function sanitizeOnboardingRoleLabels(lines: string[]) {
 }
 
 function sanitizeOnboardingAgentLabels(lines: string[]) {
-  return lines.map((line) => {
-    const sanitized = sanitizeDisplayText(line, "");
-    switch (sanitized) {
+  return lines.flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return [];
+    }
+    switch (trimmed) {
+      case "Codex Dockmaster":
       case "Spec Captain":
         return "需求智能体";
       case "Build Pilot":
         return "开发智能体";
+      case "Claude Review Runner":
       case "Review Runner":
       case "Reviewer":
       case "Peer Reviewer":
         return "评审智能体";
+      case "Memory Clerk":
       case "QA Relay":
         return "测试智能体";
       case "Lead Operator":
@@ -463,8 +475,20 @@ function sanitizeOnboardingAgentLabels(lines: string[]) {
         return "采集智能体";
       case "Synthesizer":
         return "归纳智能体";
+    }
+
+    const sanitized = sanitizeDisplayText(trimmed, "");
+    switch (sanitized) {
+      case "需求智能体":
+      case "开发智能体":
+      case "评审智能体":
+      case "测试智能体":
+      case "总控智能体":
+      case "采集智能体":
+      case "归纳智能体":
+        return [sanitized];
       default:
-        return sanitized;
+        return [sanitized];
     }
   });
 }

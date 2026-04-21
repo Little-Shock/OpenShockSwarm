@@ -138,9 +138,9 @@ func TestMailboxLifecycleUpdatesGovernanceSnapshot(t *testing.T) {
 		!strings.Contains(afterComplete.Workspace.Governance.ResponseAggregation.FinalResponse, "最终响应") {
 		t.Fatalf("response aggregation after complete = %#v, want ready closeout note", afterComplete.Workspace.Governance.ResponseAggregation)
 	}
-	if afterComplete.Workspace.Governance.RoutingPolicy.SuggestedHandoff.Status != "blocked" ||
+	if afterComplete.Workspace.Governance.RoutingPolicy.SuggestedHandoff.Status != "ready" ||
 		afterComplete.Workspace.Governance.RoutingPolicy.SuggestedHandoff.ToLaneLabel != "QA" {
-		t.Fatalf("governed handoff after complete = %#v, want blocked reviewer -> QA next-route suggestion", afterComplete.Workspace.Governance.RoutingPolicy.SuggestedHandoff)
+		t.Fatalf("governed handoff after complete = %#v, want ready reviewer -> QA next-route suggestion", afterComplete.Workspace.Governance.RoutingPolicy.SuggestedHandoff)
 	}
 	if afterComplete.Workspace.Governance.ResponseAggregation.Aggregator == "" ||
 		len(afterComplete.Workspace.Governance.ResponseAggregation.AuditTrail) == 0 {
@@ -285,8 +285,8 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
 				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
@@ -365,13 +365,13 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 
 	afterDelegationReady := readStateSnapshot(t, server.URL)
 	readyAggregation := afterDelegationReady.Workspace.Governance.ResponseAggregation
-	if readyAggregation.Aggregator != "Spec Captain" ||
-		!strings.Contains(readyAggregation.FinalResponse, "Spec Captain") ||
+	if readyAggregation.Aggregator != "Codex Dockmaster" ||
+		!strings.Contains(readyAggregation.FinalResponse, "Codex Dockmaster") ||
 		!strings.Contains(readyAggregation.FinalResponse, "formal delivery closeout handoff") {
-		t.Fatalf("ready response aggregation = %#v, want delivery delegation handoff summary owned by Spec Captain", readyAggregation)
+		t.Fatalf("ready response aggregation = %#v, want delivery delegation handoff summary owned by Codex Dockmaster", readyAggregation)
 	}
 	readyAudit := findResponseAggregationAuditEntry(readyAggregation.AuditTrail, "交付收尾")
-	if readyAudit == nil || readyAudit.Actor != "Spec Captain" || !strings.Contains(readyAudit.Summary, "formal delivery closeout handoff") {
+	if readyAudit == nil || readyAudit.Actor != "Codex Dockmaster" || !strings.Contains(readyAudit.Summary, "formal delivery closeout handoff") {
 		t.Fatalf("ready response aggregation audit = %#v, want delivery closeout audit entry", readyAggregation.AuditTrail)
 	}
 
@@ -388,7 +388,7 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 
 	afterBlocked := readStateSnapshot(t, server.URL)
 	blockedAggregation := afterBlocked.Workspace.Governance.ResponseAggregation
-	if blockedAggregation.Aggregator != "Spec Captain" ||
+	if blockedAggregation.Aggregator != "Codex Dockmaster" ||
 		!strings.Contains(blockedAggregation.FinalResponse, blockNote) ||
 		!strings.Contains(blockedAggregation.FinalResponse, "unblock response") {
 		t.Fatalf("blocked response aggregation = %#v, want blocked delivery delegation summary", blockedAggregation)
@@ -421,16 +421,16 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 
 	afterResponseComplete := readStateSnapshot(t, server.URL)
 	responseCompleteAggregation := afterResponseComplete.Workspace.Governance.ResponseAggregation
-	if responseCompleteAggregation.Aggregator != "Spec Captain" ||
+	if responseCompleteAggregation.Aggregator != "Codex Dockmaster" ||
 		responseCompleteAggregation.Status != "blocked" ||
 		!strings.Contains(responseCompleteAggregation.FinalResponse, blockNote) ||
 		!strings.Contains(responseCompleteAggregation.FinalResponse, "已完成第 1 轮 unblock response") ||
-		!strings.Contains(responseCompleteAggregation.FinalResponse, "等待 Spec Captain 重新 acknowledge final delivery closeout") {
+		!strings.Contains(responseCompleteAggregation.FinalResponse, "等待 Codex Dockmaster 重新 acknowledge final delivery closeout") {
 		t.Fatalf("response-complete aggregation = %#v, want blocked delivery delegation summary with response progress", responseCompleteAggregation)
 	}
 	responseCompleteAudit := findResponseAggregationAuditEntry(responseCompleteAggregation.AuditTrail, "交付收尾")
 	if responseCompleteAudit == nil ||
-		responseCompleteAudit.Actor != "Spec Captain" ||
+		responseCompleteAudit.Actor != "Codex Dockmaster" ||
 		responseCompleteAudit.Status != "blocked" ||
 		responseCompleteAudit.Summary != responseCompleteAggregation.FinalResponse {
 		t.Fatalf("response-complete aggregation audit = %#v, want blocked delivery closeout audit entry synced to final response", responseCompleteAggregation.AuditTrail)
@@ -450,7 +450,7 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 
 	afterReAck := readStateSnapshot(t, server.URL)
 	reAckAggregation := afterReAck.Workspace.Governance.ResponseAggregation
-	if reAckAggregation.Aggregator != "Spec Captain" ||
+	if reAckAggregation.Aggregator != "Codex Dockmaster" ||
 		reAckAggregation.Status != "ready" ||
 		!strings.Contains(reAckAggregation.FinalResponse, "第 1 轮") ||
 		!strings.Contains(reAckAggregation.FinalResponse, "已重新 acknowledge final delivery closeout") ||
@@ -459,7 +459,7 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 	}
 	reAckAudit := findResponseAggregationAuditEntry(reAckAggregation.AuditTrail, "交付收尾")
 	if reAckAudit == nil ||
-		reAckAudit.Actor != "Spec Captain" ||
+		reAckAudit.Actor != "Codex Dockmaster" ||
 		reAckAudit.Status != "ready" ||
 		reAckAudit.Summary != reAckAggregation.FinalResponse {
 		t.Fatalf("re-ack response aggregation audit = %#v, want resumed delivery closeout audit entry synced to final response", reAckAggregation.AuditTrail)
@@ -480,7 +480,7 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 
 	afterParentComplete := readStateSnapshot(t, server.URL)
 	completedAggregation := afterParentComplete.Workspace.Governance.ResponseAggregation
-	if completedAggregation.Aggregator != "Spec Captain" ||
+	if completedAggregation.Aggregator != "Codex Dockmaster" ||
 		completedAggregation.Status != "ready" ||
 		!strings.Contains(completedAggregation.FinalResponse, "第 1 轮") ||
 		!strings.Contains(completedAggregation.FinalResponse, "也已完成 final delivery closeout") ||
@@ -489,7 +489,7 @@ func TestGovernanceResponseAggregationTracksDeliveryDelegationLifecycle(t *testi
 	}
 	completedAudit := findResponseAggregationAuditEntry(completedAggregation.AuditTrail, "交付收尾")
 	if completedAudit == nil ||
-		completedAudit.Actor != "Spec Captain" ||
+		completedAudit.Actor != "Codex Dockmaster" ||
 		completedAudit.Status != "done" ||
 		completedAudit.Summary != completedAggregation.FinalResponse ||
 		!strings.Contains(completedAudit.Summary, "也已完成 final delivery closeout") {

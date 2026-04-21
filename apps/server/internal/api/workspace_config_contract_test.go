@@ -35,7 +35,7 @@ func TestWorkspaceConfigRoutePersistsDurableSnapshot(t *testing.T) {
 				{"id":"lead","label":"Research Lead","role":"方向与验收","defaultAgent":"Lead Operator","lane":"scope / final synthesis"},
 				{"id":"collector","label":"Field Collector","role":"一线证据收集","defaultAgent":"Collector","lane":"intake -> evidence"},
 				{"id":"synthesizer","label":"Synthesizer","role":"归纳与草案","defaultAgent":"Synthesizer","lane":"evidence -> synthesis"},
-				{"id":"reviewer","label":"Peer Reviewer","role":"交叉复核","defaultAgent":"Review Runner","lane":"review / challenge"},
+				{"id":"reviewer","label":"Peer Reviewer","role":"交叉复核","defaultAgent":"Claude Review Runner","lane":"review / challenge"},
 				{"id":"publisher","label":"Publisher","role":"发布与归档","defaultAgent":"Lead Operator","lane":"publish / closeout"}
 			]
 		}

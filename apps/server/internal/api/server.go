@@ -226,6 +226,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/runtime/registry", s.handleRuntimeRegistry)
 	mux.HandleFunc("/v1/runtime/heartbeats", s.handleRuntimeHeartbeats)
 	mux.HandleFunc("/v1/runtime", s.handleRuntime)
+	mux.HandleFunc("/v1/runtime/bridge-check", s.handleRuntimeBridgeCheck)
 	mux.HandleFunc("/v1/runtime/pairing", s.handleRuntimePairing)
 	mux.HandleFunc("/v1/runtime/selection", s.handleRuntimeSelection)
 	mux.HandleFunc("/v1/repo/binding", s.handleRepoBinding)
@@ -1553,6 +1554,61 @@ func (s *Server) handleRuntimeRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, runtimeRegistryResponse(s.store.RuntimeSnapshot(time.Now())))
+}
+
+func (s *Server) handleRuntimeBridgeCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if !runExecuteGuard(s, w) {
+		return
+	}
+
+	var req ExecRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	startedAt := time.Now()
+	snapshot := s.store.RuntimeSnapshot(startedAt)
+	req.Provider = resolveExecProvider(snapshot, req.Provider)
+	if blocked := execProviderPreflightMessage("连接测试", snapshot, req.Provider); blocked != "" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": blocked})
+		return
+	}
+
+	daemonURL := s.currentWorkspaceDaemonURL()
+	if strings.TrimSpace(daemonURL) == "" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "连接测试当前还没有可用机器，请先完成机器连接。"})
+		return
+	}
+
+	runtimeSnapshot, err := s.fetchRuntimeSnapshot(daemonURL)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "连接测试暂时不可用，请先确认当前机器在线。"})
+		return
+	}
+
+	provider, ok := runtimeSnapshotProviderRecord(runtimeSnapshot, req.Provider)
+	if !ok {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "连接测试当前没有找到可用通道，请先检查本地模型连接。"})
+		return
+	}
+	if !runtimeProviderIsReady(provider) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": providerStatusMessage("连接测试", provider)})
+		return
+	}
+
+	providerLabel := defaultString(strings.TrimSpace(provider.Label), strings.TrimSpace(req.Provider))
+	runtimeLabel := defaultString(strings.TrimSpace(runtimeSnapshot.Machine), strings.TrimSpace(runtimeSnapshot.RuntimeID))
+	writeJSON(w, http.StatusOK, DaemonExecResponse{
+		Provider: req.Provider,
+		Command:  []string{"runtime", "bridge-check"},
+		Output:   fmt.Sprintf("%s 已连接，当前机器 %s 在线，可以开始执行。", providerLabel, runtimeLabel),
+		Duration: time.Since(startedAt).Round(time.Millisecond).String(),
+	})
 }
 
 func (s *Server) handleRuntimeHeartbeats(w http.ResponseWriter, r *http.Request) {
@@ -3929,6 +3985,19 @@ func runtimeProviderRecord(state store.State, want string) (store.RuntimeProvide
 	return store.RuntimeProvider{}, false
 }
 
+func runtimeSnapshotProviderRecord(runtime RuntimeSnapshotResponse, want string) (store.RuntimeProvider, bool) {
+	want = normalizeProviderID(want)
+	if want == "" {
+		return store.RuntimeProvider{}, false
+	}
+	for _, provider := range runtime.Providers {
+		if normalizeProviderID(defaultString(provider.ID, provider.Label)) == want {
+			return provider, true
+		}
+	}
+	return store.RuntimeProvider{}, false
+}
+
 func runtimeProviderIsReady(provider store.RuntimeProvider) bool {
 	status := strings.TrimSpace(provider.Status)
 	switch status {
@@ -3941,13 +4010,9 @@ func runtimeProviderIsReady(provider store.RuntimeProvider) bool {
 	}
 }
 
-func execProviderPreflightMessage(scope string, state store.State, provider string) string {
-	record, ok := runtimeProviderRecord(state, provider)
-	if !ok || runtimeProviderIsReady(record) {
-		return ""
-	}
-
-	switch strings.TrimSpace(record.Status) {
+func providerStatusMessage(scope string, provider store.RuntimeProvider) string {
+	status := strings.TrimSpace(provider.Status)
+	switch status {
 	case "auth_required":
 		return fmt.Sprintf("%s当前还未登录模型服务，请先完成登录。", scope)
 	case "unavailable":
@@ -3957,6 +4022,14 @@ func execProviderPreflightMessage(scope string, state store.State, provider stri
 	default:
 		return fmt.Sprintf("%s当前还不能直接发送，请先检查模型服务状态。", scope)
 	}
+}
+
+func execProviderPreflightMessage(scope string, state store.State, provider string) string {
+	record, ok := runtimeProviderRecord(state, provider)
+	if !ok || runtimeProviderIsReady(record) {
+		return ""
+	}
+	return providerStatusMessage(scope, record)
 }
 
 func normalizeProviderID(value string) string {

@@ -586,6 +586,62 @@ func TestExecRouteProxiesDaemonMetadata(t *testing.T) {
 	}
 }
 
+func TestRuntimeBridgeCheckReturnsFastRuntimeReadiness(t *testing.T) {
+	root := t.TempDir()
+
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/runtime" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, RuntimeSnapshotResponse{
+			RuntimeID: "shock-main",
+			DaemonURL: "http://127.0.0.1:65531",
+			Machine:   "shock-main",
+			Providers: []store.RuntimeProvider{
+				{
+					ID:     "codex",
+					Label:  "Codex CLI",
+					Ready:  true,
+					Status: "ready",
+				},
+			},
+			State: "online",
+		})
+	}))
+	defer daemon.Close()
+
+	_, server := newContractTestServer(t, root, daemon.URL)
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"provider": "codex",
+		"prompt":   "confirm bridge",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	resp, err := http.Post(server.URL+"/v1/runtime/bridge-check", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/runtime/bridge-check error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bridge check status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload DaemonExecResponse
+	decodeJSON(t, resp, &payload)
+	if payload.Provider != "codex" || len(payload.Command) != 2 || payload.Command[0] != "runtime" {
+		t.Fatalf("bridge check metadata = %#v, want runtime bridge-check payload", payload)
+	}
+	if !strings.Contains(payload.Output, "Codex CLI 已连接") || !strings.Contains(payload.Output, "shock-main 在线") {
+		t.Fatalf("bridge check output = %q, want ready runtime summary", payload.Output)
+	}
+}
+
 func TestRuntimePairingColdStartPrefersCurrentDaemonTruth(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -1423,9 +1479,9 @@ func TestPullRequestDetailRouteReflectsGovernedCloseout(t *testing.T) {
 		t.Fatalf("detail handoff note summary = %q, want governed closeout summary", detail.Delivery.HandoffNote.Summary)
 	}
 	if detail.Delivery.Delegation.Status != "ready" ||
-		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.TargetAgent != "Codex Dockmaster" ||
 		detail.Delivery.Delegation.InboxItemID != "inbox-delivery-delegation-pr-runtime-18" {
-		t.Fatalf("detail delegation = %#v, want ready Spec Captain delivery delegate", detail.Delivery.Delegation)
+		t.Fatalf("detail delegation = %#v, want ready Codex Dockmaster delivery delegate", detail.Delivery.Delegation)
 	}
 	if detail.Delivery.Delegation.HandoffID == "" || detail.Delivery.Delegation.HandoffStatus != "requested" {
 		t.Fatalf("detail delegation = %#v, want auto-created requested closeout handoff", detail.Delivery.Delegation)
@@ -1453,7 +1509,7 @@ func TestPullRequestDetailRouteReflectsGovernedCloseout(t *testing.T) {
 		t.Fatalf("governed closeout evidence href label = %#v, want explicit delivery-detail CTA", closeoutEvidence)
 	}
 	delegateEvidence, ok := evidenceByID["delivery-delegate"]
-	if !ok || delegateEvidence.Value != "Spec Captain" {
+	if !ok || delegateEvidence.Value != "Codex Dockmaster" {
 		t.Fatalf("detail delivery evidence = %#v, want delivery delegate evidence", detail.Delivery.Evidence)
 	}
 	if delegateEvidence.HrefLabel != "交付详情" {
@@ -1464,7 +1520,7 @@ func TestPullRequestDetailRouteReflectsGovernedCloseout(t *testing.T) {
 	for _, item := range detail.RelatedInbox {
 		if item.ID == "inbox-delivery-delegation-pr-runtime-18" {
 			relatedDelegation = true
-			if item.Href != "/pull-requests/pr-runtime-18" || !strings.Contains(item.Summary, "Spec Captain") {
+			if item.Href != "/pull-requests/pr-runtime-18" || !strings.Contains(item.Summary, "Codex Dockmaster") {
 				t.Fatalf("delegation inbox item = %#v, want PR delivery delegation backlink", item)
 			}
 		}
@@ -1485,7 +1541,7 @@ func TestPullRequestDetailRouteReflectsGovernedCloseout(t *testing.T) {
 	decodeJSON(t, handoffResp, &closeoutHandoff)
 	if closeoutHandoff.Kind != "delivery-closeout" ||
 		closeoutHandoff.FromAgent != "Memory Clerk" ||
-		closeoutHandoff.ToAgent != "Spec Captain" ||
+		closeoutHandoff.ToAgent != "Codex Dockmaster" ||
 		closeoutHandoff.Status != "requested" {
 		t.Fatalf("closeout handoff = %#v, want requested delivery-closeout handoff", closeoutHandoff)
 	}
@@ -1499,10 +1555,10 @@ func TestDelegatedCloseoutHandoffLifecycleReflectsInPullRequestDetail(t *testing
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -1917,10 +1973,10 @@ func TestDelegatedCloseoutResponseRetryAttemptsReflectInPullRequestDetail(t *tes
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -2122,10 +2178,10 @@ func TestDelegatedResponseCommentsReflectInPullRequestDetail(t *testing.T) {
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -2365,10 +2421,10 @@ func TestDelegatedResponseProgressReflectsInParentMailboxAndRun(t *testing.T) {
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -2636,10 +2692,10 @@ func TestDelegatedBlockedResponseReflectsInParentRoomTrace(t *testing.T) {
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -2841,10 +2897,10 @@ func TestSignalOnlyDeliveryDelegationPolicySkipsDelegatedCloseoutHandoff(t *test
 		"governance": {
 			"deliveryDelegationMode": "signal-only",
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -2923,7 +2979,7 @@ func TestSignalOnlyDeliveryDelegationPolicySkipsDelegatedCloseoutHandoff(t *test
 	var detail store.PullRequestDetail
 	decodeJSON(t, detailResp, &detail)
 	if detail.Delivery.Delegation.Status != "ready" ||
-		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.TargetAgent != "Codex Dockmaster" ||
 		detail.Delivery.Delegation.HandoffID != "" ||
 		detail.Delivery.Delegation.HandoffStatus != "" ||
 		!strings.Contains(detail.Delivery.Delegation.Summary, "signal-only") {
@@ -2968,10 +3024,10 @@ func TestDelegatedCloseoutCommentsSyncToPullRequestDetailAndInbox(t *testing.T) 
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -3076,7 +3132,7 @@ func TestDelegatedCloseoutCommentsSyncToPullRequestDetailAndInbox(t *testing.T) 
 		t.Fatalf("source-comment detail delegation = %#v, want requested summary with source comment", sourceDetail.Delivery.Delegation)
 	}
 
-	targetComment := "Spec Captain 已收到 checklist，会按这个顺序补最终 release note 和 receipt。"
+	targetComment := "Codex Dockmaster 已收到 checklist，会按这个顺序补最终 release note 和 receipt。"
 	targetCommentResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox/"+delegatedHandoff.ID, map[string]string{
 		"action":        "comment",
 		"actingAgentId": delegatedHandoff.ToAgentID,
@@ -3125,10 +3181,10 @@ func TestDeliveryDelegationCommunicationThreadRoute(t *testing.T) {
 	topologyResp := doJSONRequest(t, http.DefaultClient, http.MethodPatch, server.URL+"/v1/workspace", `{
 		"governance": {
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -3336,10 +3392,10 @@ func TestAutoCompleteDeliveryDelegationPolicyMarksCloseoutDoneWithoutHandoff(t *
 		"governance": {
 			"deliveryDelegationMode": "auto-complete",
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -3418,7 +3474,7 @@ func TestAutoCompleteDeliveryDelegationPolicyMarksCloseoutDoneWithoutHandoff(t *
 	var detail store.PullRequestDetail
 	decodeJSON(t, detailResp, &detail)
 	if detail.Delivery.Delegation.Status != "done" ||
-		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.TargetAgent != "Codex Dockmaster" ||
 		detail.Delivery.Delegation.HandoffID != "" ||
 		detail.Delivery.Delegation.HandoffStatus != "" ||
 		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {
@@ -3467,10 +3523,10 @@ func TestAutoCompleteDeliveryDelegationDoesNotPolluteCrossRoomGovernanceSnapshot
 		"governance": {
 			"deliveryDelegationMode": "auto-complete",
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -3623,10 +3679,10 @@ func TestAutoCompleteDeliveryDelegationKeepsBlockedRuntimeRoomHotButMarksRouteDo
 		"governance": {
 			"deliveryDelegationMode": "auto-complete",
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}
@@ -3802,10 +3858,10 @@ func TestAutoCompleteDeliveryDelegationDoesNotPolluteCrossRoomGovernanceSnapshot
 		"governance": {
 			"deliveryDelegationMode": "auto-complete",
 			"teamTopology": [
-				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Spec Captain","lane":"scope / final response"},
-				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Spec Captain","lane":"shape / split"},
+				{"id":"pm","label":"PM","role":"目标与验收","defaultAgent":"Codex Dockmaster","lane":"scope / final response"},
+				{"id":"architect","label":"Architect","role":"拆解与边界","defaultAgent":"Codex Dockmaster","lane":"shape / split"},
 				{"id":"developer","label":"Developer","role":"实现与分支推进","defaultAgent":"Build Pilot","lane":"issue -> branch"},
-				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Review Runner","lane":"review / blocker"},
+				{"id":"reviewer","label":"Reviewer","role":"exact-head verdict","defaultAgent":"Claude Review Runner","lane":"review / blocker"},
 				{"id":"qa","label":"QA","role":"verify / release evidence","defaultAgent":"Memory Clerk","lane":"test / release gate"}
 			]
 		}

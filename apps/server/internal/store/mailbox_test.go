@@ -693,12 +693,12 @@ func TestGovernanceSuggestedHandoffTracksDefaultRoleRoute(t *testing.T) {
 		t.Fatalf("AdvanceHandoff(completed) error = %v", err)
 	}
 
-	blockedNextSuggestion := completedState.Workspace.Governance.RoutingPolicy.SuggestedHandoff
-	if blockedNextSuggestion.Status != "blocked" ||
-		blockedNextSuggestion.FromLaneLabel != "Reviewer" ||
-		blockedNextSuggestion.ToLaneLabel != "QA" ||
-		!strings.Contains(blockedNextSuggestion.Reason, "还没有默认智能体") {
-		t.Fatalf("post-complete governed handoff = %#v, want blocked reviewer -> QA route due to missing target agent", blockedNextSuggestion)
+	nextSuggestion := completedState.Workspace.Governance.RoutingPolicy.SuggestedHandoff
+	if nextSuggestion.Status != "ready" ||
+		nextSuggestion.FromLaneLabel != "Reviewer" ||
+		nextSuggestion.ToLaneLabel != "QA" ||
+		nextSuggestion.ToAgent != "Memory Clerk" {
+		t.Fatalf("post-complete governed handoff = %#v, want ready reviewer -> QA route to Memory Clerk", nextSuggestion)
 	}
 }
 
@@ -839,6 +839,71 @@ func TestCreateGovernedHandoffForRoomUsesRoomSpecificSuggestion(t *testing.T) {
 	}
 }
 
+func TestGovernedHandoffContinueRouteCreatesNextGovernedLane(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	topology := defaultWorkspaceGovernanceTopology("dev-team")
+	topology[3].DefaultAgent = "Claude Review Runner"
+	topology[4].DefaultAgent = "Memory Clerk"
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			TeamTopology: topology,
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	_, handoff, err := s.CreateHandoff(MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-build-pilot",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "请 Reviewer 接手当前事项",
+		Summary:     "Build Pilot 已完成页面实现，交给 Reviewer 做 exact-head 复核。",
+		Kind:        handoffKindGoverned,
+	})
+	if err != nil {
+		t.Fatalf("CreateHandoff(governed) error = %v", err)
+	}
+
+	if _, _, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:        "acknowledged",
+		ActingAgentID: "agent-claude-review-runner",
+	}); err != nil {
+		t.Fatalf("AdvanceHandoff(acknowledged reviewer) error = %v", err)
+	}
+
+	nextState, completed, err := s.AdvanceHandoff(handoff.ID, MailboxUpdateInput{
+		Action:                "completed",
+		ActingAgentID:         "agent-claude-review-runner",
+		Note:                  "review 已完成，可以交 QA 做最终验证。",
+		ContinueGovernedRoute: true,
+	})
+	if err != nil {
+		t.Fatalf("AdvanceHandoff(completed reviewer continue) error = %v", err)
+	}
+	if completed.Status != "completed" {
+		t.Fatalf("completed handoff = %#v, want completed", completed)
+	}
+	if len(nextState.Mailbox) < 2 {
+		t.Fatalf("mailbox = %#v, want new governed followup at front", nextState.Mailbox)
+	}
+
+	followup := nextState.Mailbox[0]
+	if followup.ID == handoff.ID ||
+		followup.Kind != handoffKindGoverned ||
+		followup.Status != "requested" ||
+		followup.FromAgent != "Claude Review Runner" ||
+		followup.ToAgent != "Memory Clerk" {
+		t.Fatalf("followup handoff = %#v, want requested governed reviewer -> Memory Clerk handoff", followup)
+	}
+}
+
 func TestGovernedFinalLaneCompletionBridgesDeliveryCloseout(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
@@ -923,9 +988,9 @@ func TestGovernedFinalLaneCompletionBridgesDeliveryCloseout(t *testing.T) {
 		t.Fatalf("handoff note summary = %q, want governed closeout wording", detail.Delivery.HandoffNote.Summary)
 	}
 	if detail.Delivery.Delegation.Status != "ready" ||
-		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.TargetAgent != "Codex Dockmaster" ||
 		detail.Delivery.Delegation.TargetLane != "PM" {
-		t.Fatalf("delivery delegation = %#v, want ready Spec Captain / PM delegate", detail.Delivery.Delegation)
+		t.Fatalf("delivery delegation = %#v, want ready Codex Dockmaster / PM delegate", detail.Delivery.Delegation)
 	}
 	if detail.Delivery.Delegation.HandoffID == "" || detail.Delivery.Delegation.HandoffStatus != "requested" {
 		t.Fatalf("delivery delegation = %#v, want auto-created requested delivery closeout handoff", detail.Delivery.Delegation)
@@ -940,20 +1005,20 @@ func TestGovernedFinalLaneCompletionBridgesDeliveryCloseout(t *testing.T) {
 		t.Fatalf("delivery evidence = %#v, want governed closeout evidence", detail.Delivery.Evidence)
 	}
 	delegateEvidence := findDeliveryEvidence(detail.Delivery.Evidence, "delivery-delegate")
-	if delegateEvidence == nil || delegateEvidence.Value != "Spec Captain" {
+	if delegateEvidence == nil || delegateEvidence.Value != "Codex Dockmaster" {
 		t.Fatalf("delivery evidence = %#v, want delivery delegate evidence", detail.Delivery.Evidence)
 	}
 	delegationInbox := findInboxItemByID(finalState.Inbox, deliveryDelegationInboxItemID("pr-runtime-18"))
-	if delegationInbox == nil || delegationInbox.Href != "/pull-requests/pr-runtime-18" || !strings.Contains(delegationInbox.Summary, "Spec Captain") {
+	if delegationInbox == nil || delegationInbox.Href != "/pull-requests/pr-runtime-18" || !strings.Contains(delegationInbox.Summary, "Codex Dockmaster") {
 		t.Fatalf("delegation inbox = %#v, want PR delivery delegation inbox signal", finalState.Inbox)
 	}
 	closeoutHandoff := findHandoffByID(finalState.Mailbox, detail.Delivery.Delegation.HandoffID)
 	if closeoutHandoff == nil ||
 		closeoutHandoff.Kind != handoffKindDeliveryCloseout ||
 		closeoutHandoff.FromAgent != "Memory Clerk" ||
-		closeoutHandoff.ToAgent != "Spec Captain" ||
+		closeoutHandoff.ToAgent != "Codex Dockmaster" ||
 		closeoutHandoff.Status != "requested" {
-		t.Fatalf("delivery closeout handoff = %#v, want requested Memory Clerk -> Spec Captain delivery-closeout handoff", finalState.Mailbox)
+		t.Fatalf("delivery closeout handoff = %#v, want requested Memory Clerk -> Codex Dockmaster delivery-closeout handoff", finalState.Mailbox)
 	}
 }
 
@@ -2099,7 +2164,7 @@ func TestDeliveryDelegationSignalOnlyPolicySkipsAutoCreatedHandoff(t *testing.T)
 		t.Fatalf("PullRequestDetail() missing runtime PR detail")
 	}
 	if detail.Delivery.Delegation.Status != "ready" ||
-		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.TargetAgent != "Codex Dockmaster" ||
 		detail.Delivery.Delegation.HandoffID != "" ||
 		detail.Delivery.Delegation.HandoffStatus != "" ||
 		!strings.Contains(detail.Delivery.Delegation.Summary, "signal-only") {
@@ -2207,7 +2272,7 @@ func TestDelegatedCloseoutCommentsSyncToDeliveryContract(t *testing.T) {
 		t.Fatalf("source-comment delegation inbox = %#v, want source comment synced", sourceCommentState.Inbox)
 	}
 
-	targetComment := "Spec Captain 已收到 checklist，会按这个顺序补最终 release note 和 receipt。"
+	targetComment := "Codex Dockmaster 已收到 checklist，会按这个顺序补最终 release note 和 receipt。"
 	targetCommentState, _, err := s.AdvanceHandoff(delegatedHandoffID, MailboxUpdateInput{
 		Action:        "comment",
 		ActingAgentID: delegatedHandoff.ToAgentID,
@@ -2296,7 +2361,7 @@ func TestDeliveryDelegationAutoCompletePolicyMarksDelegationDoneWithoutHandoff(t
 		t.Fatalf("PullRequestDetail() missing runtime PR detail")
 	}
 	if detail.Delivery.Delegation.Status != "done" ||
-		detail.Delivery.Delegation.TargetAgent != "Spec Captain" ||
+		detail.Delivery.Delegation.TargetAgent != "Codex Dockmaster" ||
 		detail.Delivery.Delegation.HandoffID != "" ||
 		detail.Delivery.Delegation.HandoffStatus != "" ||
 		!strings.Contains(detail.Delivery.Delegation.Summary, "auto-complete") {

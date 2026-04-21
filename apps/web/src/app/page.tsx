@@ -15,13 +15,8 @@ export default function HomePage() {
       return;
     }
 
-    if (state.workspace.onboarding.status !== "done") {
-      router.replace("/onboarding");
-      return;
-    }
-
     const journey = buildFirstStartJourney(state.workspace, state.auth.session);
-    router.replace(journey.launchHref);
+    router.replace(journey.nextHref);
   }, [loading, router, state.auth.session, state.workspace]);
 
   return (

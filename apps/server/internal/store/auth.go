@@ -581,9 +581,6 @@ func (s *Store) claimFreshBootstrapOwnerLocked(input AuthLoginInput, now string)
 	if len(s.state.Auth.Members) != 1 {
 		return -1, false
 	}
-	if len(s.state.Issues) > 0 || len(s.state.Rooms) > 0 || len(s.state.Runs) > 0 || len(s.state.PullRequests) > 0 || len(s.state.Inbox) > 0 || len(s.state.Mailbox) > 0 {
-		return -1, false
-	}
 
 	member := s.state.Auth.Members[0]
 	if member.Role != workspaceRoleOwner || member.Source != "fresh-bootstrap" {
@@ -607,6 +604,13 @@ func (s *Store) claimFreshBootstrapOwnerLocked(input AuthLoginInput, now string)
 	member.RecoveryStatus = deriveMemberRecoveryStatus(member.EmailVerificationStatus, member.PasswordResetStatus)
 	member.LastSeenAt = now
 	member.TrustedDeviceIDs = []string{}
+	filteredDevices := s.state.Auth.Devices[:0]
+	for _, device := range s.state.Auth.Devices {
+		if device.MemberID != member.ID {
+			filteredDevices = append(filteredDevices, device)
+		}
+	}
+	s.state.Auth.Devices = filteredDevices
 	if name := strings.TrimSpace(input.Name); name != "" {
 		member.Name = name
 	} else {

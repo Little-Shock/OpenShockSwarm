@@ -53,7 +53,7 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 				{ID: "lead", Label: "Research Lead", Role: "方向与结论", DefaultAgent: "Lead Operator", Lane: "目标确认 / 最终回复"},
 				{ID: "collector", Label: "Collector", Role: "资料收集", DefaultAgent: "Collector", Lane: "收集 / 整理"},
 				{ID: "synthesizer", Label: "Synthesizer", Role: "归纳与草案", DefaultAgent: "Synthesizer", Lane: "整理 / 草案"},
-				{ID: "reviewer", Label: "Reviewer", Role: "结论复核", DefaultAgent: "Review Runner", Lane: "复核 / 发布"},
+				{ID: "reviewer", Label: "Reviewer", Role: "结论复核", DefaultAgent: "Claude Review Runner", Lane: "复核 / 发布"},
 			},
 		}
 	case "blank-custom":
@@ -79,11 +79,11 @@ func governanceTemplateFor(templateID string) governanceTemplateDefinition {
 			RetryBudget:       2,
 			EscalationChannel: "交接箱 -> 收件箱 -> 人工接管",
 			Topology: []governanceTemplateLaneDefinition{
-				{ID: "pm", Label: "PM", Role: "目标与验收", DefaultAgent: "Spec Captain", Lane: "目标确认 / 最终回复"},
-				{ID: "architect", Label: "Architect", Role: "拆解与边界", DefaultAgent: "Spec Captain", Lane: "拆解 / 边界"},
+				{ID: "pm", Label: "PM", Role: "目标与验收", DefaultAgent: "Codex Dockmaster", Lane: "目标确认 / 最终回复"},
+				{ID: "architect", Label: "Architect", Role: "拆解与边界", DefaultAgent: "Codex Dockmaster", Lane: "拆解 / 边界"},
 				{ID: "developer", Label: "Developer", Role: "实现与推进", DefaultAgent: "Build Pilot", Lane: "实现 / 提交"},
-				{ID: "reviewer", Label: "Reviewer", Role: "评审与结论", DefaultAgent: "Review Runner", Lane: "评审 / 回退"},
-				{ID: "qa", Label: "QA", Role: "验证与交付确认", DefaultAgent: "QA Relay", Lane: "验证 / 交付"},
+				{ID: "reviewer", Label: "Reviewer", Role: "评审与结论", DefaultAgent: "Claude Review Runner", Lane: "评审 / 回退"},
+				{ID: "qa", Label: "QA", Role: "验证与交付确认", DefaultAgent: "Memory Clerk", Lane: "验证 / 交付"},
 			},
 		}
 	}

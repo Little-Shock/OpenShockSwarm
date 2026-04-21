@@ -55,7 +55,9 @@ async function startFreshStack({ openBrowser }) {
     daemon: await resolvePort(8090),
   };
   const urls = {
+    home: `http://127.0.0.1:${ports.web}`,
     web: `http://127.0.0.1:${ports.web}`,
+    access: `http://127.0.0.1:${ports.web}/access`,
     onboarding: `http://127.0.0.1:${ports.web}/onboarding`,
     chat: `http://127.0.0.1:${ports.web}/chat/all`,
     setup: `http://127.0.0.1:${ports.web}/setup`,
@@ -136,7 +138,7 @@ async function startFreshStack({ openBrowser }) {
 
   try {
     await waitForURL(`${urls.server}/healthz`, (response, body) => response.ok && body.includes("ok"));
-    await waitForURL(urls.onboarding, (response, body) => response.ok && body.includes("data-testid=\"onboarding-overlay\""));
+    await waitForURL(urls.home, (response, body) => response.ok && body.includes("正在进入工作区"));
   } catch (error) {
     await stopFreshStack(false, { server, daemon, web });
     throw error;
@@ -156,11 +158,13 @@ async function startFreshStack({ openBrowser }) {
   );
 
   if (openBrowser) {
-    await openInBrowser(urls.onboarding);
+    await openInBrowser(urls.home);
   }
 
   console.log("OpenShock fresh stack is ready.");
-  console.log(`Entry: ${urls.onboarding}`);
+  console.log(`Entry: ${urls.home}`);
+  console.log(`Access: ${urls.access}`);
+  console.log(`Onboarding: ${urls.onboarding}`);
   console.log(`Chat: ${urls.chat}`);
   console.log(`Setup: ${urls.setup}`);
   console.log(`Workspace root: ${workspaceRoot}`);
@@ -195,7 +199,8 @@ async function printFreshStackStatus() {
     "OpenShock fresh stack status",
     `Status: ${metadata.status ?? "unknown"}`,
     `Started at: ${metadata.startedAt}`,
-    `Entry URL: ${metadata.urls.onboarding ?? metadata.urls.chat ?? metadata.urls.setup}`,
+    `Entry URL: ${metadata.urls.home ?? metadata.urls.onboarding ?? metadata.urls.chat ?? metadata.urls.setup}`,
+    `Access URL: ${metadata.urls.access ?? "-"}`,
     `Chat URL: ${metadata.urls.chat}`,
     `Setup URL: ${metadata.urls.setup}`,
     `Workspace root: ${metadata.workspaceRoot}`,

@@ -323,12 +323,12 @@ const ONBOARDING_TEMPLATE_DEFINITIONS: OnboardingTemplateDefinition[] = [
     defaultPlan: "开发团队启动",
     defaultBrowserPush: "阻塞 / 评审 / 发布门",
     defaultMemoryMode: "治理优先 / 交付笔记",
-    channels: ["#shiproom", "#review-lane", "#ops-watch"],
+    channels: ["#all", "#shiproom", "#review-lane", "#ops-watch"],
     roles: ["目标", "边界", "实现", "评审", "验证"],
     agents: ["需求智能体", "开发智能体", "评审智能体", "测试智能体"],
     notificationPolicy: "优先推送阻塞、评审和发布门事件",
     notes: [
-      "系统会创建交付、评审和发布相关频道。",
+      "系统会创建默认协作入口、交付、评审和发布相关频道。",
       "适合需要多人协作推进需求和发布的团队。",
     ],
   },
@@ -525,7 +525,7 @@ export function SetupFirstStartJourneyPanel() {
 }
 
 export function OnboardingStudioPanel() {
-  const { state, updateWorkspaceConfig, updateWorkspaceMemberPreferences } = usePhaseZeroState();
+  const { state, loading, error: stateError, updateWorkspaceConfig, updateWorkspaceMemberPreferences } = usePhaseZeroState();
   const workspace = state.workspace;
   const currentTemplate = onboardingTemplateDefinition(workspace.onboarding.templateId);
   const materialization = workspace.onboarding.materialization;
@@ -535,6 +535,20 @@ export function OnboardingStudioPanel() {
   const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  if (loading) {
+    return (
+      <SetupStateNotice
+        title="正在载入起步设置"
+        message="正在读取模板、分工和当前进度。"
+        tone="yellow"
+      />
+    );
+  }
+
+  if (stateError) {
+    return <SetupStateNotice title="起步设置暂时不可用" message={stateError} tone="pink" />;
+  }
 
   async function persistTemplate(templateId: string, options?: { finished?: boolean; syncTemplateDefaults?: boolean }) {
     const finished = options?.finished ?? false;

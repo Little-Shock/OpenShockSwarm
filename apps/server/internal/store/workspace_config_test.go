@@ -36,7 +36,7 @@ func TestWorkspaceConfigAndMemberPreferencesPersistAcrossReload(t *testing.T) {
 				{ID: "lead", Label: "Research Lead", Role: "方向与验收", DefaultAgent: "Lead Operator", Lane: "scope / final synthesis"},
 				{ID: "collector", Label: "Field Collector", Role: "一线证据收集", DefaultAgent: "Collector", Lane: "intake -> evidence"},
 				{ID: "synthesizer", Label: "Synthesizer", Role: "归纳与草案", DefaultAgent: "Synthesizer", Lane: "evidence -> synthesis"},
-				{ID: "reviewer", Label: "Peer Reviewer", Role: "交叉复核", DefaultAgent: "Review Runner", Lane: "review / challenge"},
+				{ID: "reviewer", Label: "Peer Reviewer", Role: "交叉复核", DefaultAgent: "Claude Review Runner", Lane: "review / challenge"},
 				{ID: "publisher", Label: "Publisher", Role: "发布与归档", DefaultAgent: "Lead Operator", Lane: "publish / closeout"},
 			},
 		},
@@ -140,5 +140,97 @@ func TestWorkspaceMemberPreferencesRejectUnknownAgent(t *testing.T) {
 		PreferredAgentID: "agent-missing",
 	}); !errorsIs(err, ErrWorkspacePreferredAgentNotFound) {
 		t.Fatalf("UpdateWorkspaceMemberPreferences(unknown agent) error = %v, want %v", err, ErrWorkspacePreferredAgentNotFound)
+	}
+}
+
+func TestFreshWorkspaceConfigMaterializesCustomGovernanceAgents(t *testing.T) {
+	t.Setenv("OPENSHOCK_BOOTSTRAP_MODE", "fresh")
+
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Onboarding: &WorkspaceOnboardingSnapshot{
+			Status:     workspaceOnboardingReady,
+			TemplateID: "dev-team",
+		},
+	}); err != nil {
+		t.Fatalf("UpdateWorkspaceConfig(onboarding) error = %v", err)
+	}
+
+	nextState, _, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Governance: &WorkspaceGovernanceConfigInput{
+			TeamTopology: []WorkspaceGovernanceLaneConfig{
+				{ID: "architect", Label: "Architect", Role: "网站信息架构与边界", DefaultAgent: "Codex Dockmaster", Lane: "scope / IA"},
+				{ID: "developer", Label: "Developer", Role: "页面实现与交互收口", DefaultAgent: "Build Pilot", Lane: "build / polish"},
+				{ID: "reviewer", Label: "Reviewer", Role: "exact-head 复核", DefaultAgent: "Claude Review Runner", Lane: "review / copy"},
+				{ID: "qa", Label: "QA", Role: "跨端验证与演示确认", DefaultAgent: "Memory Clerk", Lane: "verify / demo"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateWorkspaceConfig(governance) error = %v", err)
+	}
+
+	for _, agentID := range []string{
+		"agent-codex-dockmaster",
+		"agent-build-pilot",
+		"agent-claude-review-runner",
+		"agent-memory-clerk",
+	} {
+		if _, ok := findAgentByID(nextState.Agents, agentID); !ok {
+			t.Fatalf("fresh governance agents = %#v, want %s materialized", nextState.Agents, agentID)
+		}
+	}
+}
+
+func TestWorkspaceConfigNormalizesCompletedBootstrapToDone(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	nextState, workspace, err := s.UpdateWorkspaceConfig(WorkspaceConfigUpdateInput{
+		Onboarding: &WorkspaceOnboardingSnapshot{
+			Status:         workspaceOnboardingReady,
+			TemplateID:     "dev-team",
+			CurrentStep:    "bootstrap-finished",
+			CompletedSteps: []string{"workspace-created", "template-selected", "bootstrap-finished"},
+			ResumeURL:      "/onboarding?template=dev-team",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateWorkspaceConfig() error = %v", err)
+	}
+
+	if workspace.Onboarding.Status != workspaceOnboardingDone || workspace.Onboarding.CurrentStep != "bootstrap-finished" {
+		t.Fatalf("workspace onboarding = %#v, want normalized done/bootstrap-finished", workspace.Onboarding)
+	}
+	if workspace.Onboarding.ResumeURL != "/chat/all" {
+		t.Fatalf("workspace onboarding resume = %q, want /chat/all after completion", workspace.Onboarding.ResumeURL)
+	}
+	if got := workspace.Onboarding.Materialization.Agents; len(got) != 4 || got[0] != "Codex Dockmaster" || got[1] != "Build Pilot" || got[2] != "Claude Review Runner" || got[3] != "Memory Clerk" {
+		t.Fatalf("workspace onboarding agents = %#v, want concrete dev-team starter agents", got)
+	}
+	if nextState.Workspace.Onboarding.Status != workspaceOnboardingDone {
+		t.Fatalf("state onboarding = %#v, want done after normalization", nextState.Workspace.Onboarding)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reloaded) error = %v", err)
+	}
+
+	snapshot := reloaded.Snapshot()
+	if snapshot.Workspace.Onboarding.Status != workspaceOnboardingDone || snapshot.Workspace.Onboarding.ResumeURL != "/chat/all" {
+		t.Fatalf("reloaded onboarding = %#v, want durable done state with chat resume", snapshot.Workspace.Onboarding)
 	}
 }
