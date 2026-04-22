@@ -595,7 +595,7 @@ function LiveSettingsContextRail({ notifications }: { notifications: LiveNotific
   const workspace = state.workspace;
   return (
     <DetailRail
-      label="配置概览"
+      label="设置状态"
       items={[
         {
           label: "引导",
@@ -2065,7 +2065,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
       >
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
         <Panel tone="yellow">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">通知概览</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.24em]">通知状态</p>
           <h2 className="mt-3 font-display text-4xl font-bold">通知送达</h2>
           <p className="mt-3 max-w-3xl text-base leading-7">
             浏览器、邮件和最近发送放在一起，直接看谁会收到、哪里还卡着。
@@ -2154,7 +2154,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
           <p className="font-mono text-[11px] uppercase tracking-[0.24em]">默认通知</p>
           <h3 className="mt-3 font-display text-3xl font-bold">默认策略</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            接收端选择“继承工作区默认值”时，就使用这里。
+            接收端选择继承时，会使用这组默认值。
           </p>
           <div className="mt-5 space-y-4">
             <div>
@@ -2295,7 +2295,7 @@ function LiveSettingsView({ notifications }: { notifications: LiveNotificationsM
           <p className="font-mono text-[11px] uppercase tracking-[0.24em]">邮件通知</p>
           <h3 className="mt-3 font-display text-3xl font-bold">邮件接收</h3>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-            在这里保存接收邮箱。地址无效会直接报错。
+            保存接收邮箱，地址无效会直接报错。
           </p>
           <label className="mt-5 block">
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">邮箱地址</span>
@@ -2547,7 +2547,7 @@ export function LiveSettingsRoute() {
       eyebrow="设置"
       title="工作区设置"
       description="高频设置先放前面；治理、凭证和通知收进高级区。"
-      contextTitle="设置概览"
+      contextTitle="设置状态"
       contextDescription="工作区额度、启动、默认入口和团队协作。"
       contextBody={<LiveSettingsContextRail notifications={notifications} />}
     >

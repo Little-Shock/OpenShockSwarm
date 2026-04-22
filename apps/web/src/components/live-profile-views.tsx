@@ -699,10 +699,10 @@ function AgentProfileSurface({
       title={agent.name}
       description={agent.description}
       contextTitle="档案状态"
-      contextDescription="智能体档案把角色、提示词、记忆绑定和机器偏好放在同一页，供应商、模型和可用机器会自动对齐。"
+      contextDescription="角色、提示词、记忆绑定和机器偏好保持一致。"
       contextBody={
         <DetailRail
-          label="智能体概览"
+          label="智能体状态"
           items={[
             { label: "状态", value: agentStateLabel(agent.state) },
             { label: "角色", value: agent.role },
@@ -1279,7 +1279,7 @@ function MachineProfileSurface({
       contextDescription="机器状态、模型目录、最近执行和已绑定智能体。"
       contextBody={
         <DetailRail
-          label="机器概览"
+          label="机器状态"
           items={[
             { label: "状态", value: machineStateLabel(machine.state) },
             { label: "CLI", value: machine.cli },
@@ -1403,7 +1403,7 @@ function HumanProfileSurface({
       contextDescription="成员状态、权限和最近参与的工作。"
       contextBody={
         <DetailRail
-          label="成员概览"
+          label="成员状态"
           items={[
             { label: "状态", value: humanPresenceLabel(member, authSession) },
             { label: "角色", value: workspaceRoleLabel(member.role) },
@@ -1493,8 +1493,8 @@ export function LiveProfilePageContent({
         eyebrow="档案"
         title="未知档案"
         description="当前路由类型不在支持列表里。"
-        contextTitle="档案页面"
-        contextDescription="目前支持智能体、机器、成员三类。"
+        contextTitle="档案状态"
+        contextDescription="支持智能体、机器、成员三类。"
       >
         <SurfaceNotice title="不支持的档案类型" message={`当前不支持 ${kind}。`} />
       </OpenShockShell>
@@ -1508,8 +1508,8 @@ export function LiveProfilePageContent({
         eyebrow="档案"
         title="正在同步档案"
         description="等待服务端返回当前档案信息。"
-        contextTitle="档案页面"
-        contextDescription="正在同步当前档案信息。"
+        contextTitle="档案状态"
+        contextDescription="正在同步当前档案。"
       >
         <SurfaceNotice title="同步中" message="正在拉取智能体、机器和成员档案。" />
       </OpenShockShell>
@@ -1523,8 +1523,8 @@ export function LiveProfilePageContent({
         eyebrow="档案"
         title="档案同步失败"
         description="还没有拿到档案数据。"
-        contextTitle="档案页面"
-        contextDescription="先检查服务端是否在线，再刷新页面。"
+        contextTitle="档案状态"
+        contextDescription="先检查服务端是否在线，再刷新。"
       >
         <SurfaceNotice title="同步失败" message={error} />
       </OpenShockShell>
@@ -1540,7 +1540,7 @@ export function LiveProfilePageContent({
           eyebrow="智能体档案"
           title="未找到智能体"
           description="这个智能体可能已经不在当前列表里。"
-          contextTitle="档案页面"
+          contextTitle="档案状态"
           contextDescription="从主壳或讨论间重新进入，通常就能拿到最新对象。"
         >
           <SurfaceNotice title="未找到智能体" message={`当前找不到 ${profileId} 对应的智能体。`} />
@@ -1559,7 +1559,7 @@ export function LiveProfilePageContent({
           eyebrow="机器档案"
           title="未找到机器"
           description="这台机器可能已经不在当前列表里。"
-          contextTitle="档案页面"
+          contextTitle="档案状态"
           contextDescription="从主壳或设置页重新进入，通常就能拿到最新对象。"
         >
           <SurfaceNotice title="未找到机器" message={`当前找不到 ${profileId} 对应的机器。`} />
@@ -1577,7 +1577,7 @@ export function LiveProfilePageContent({
         eyebrow="成员档案"
         title="未找到成员"
         description="这个工作区成员可能已经不在当前列表里。"
-        contextTitle="档案页面"
+        contextTitle="档案状态"
         contextDescription="从主壳重新进入通常就能拿到最新对象。"
       >
         <SurfaceNotice title="未找到成员" message={`当前找不到 ${profileId} 对应的成员。`} />

@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.70
+**版本:** 1.71
 **更新日期:** 2026 年 4 月 22 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -154,7 +154,8 @@
 - `GAP-66 / TKT-97`
   - memory center 现在还补了正式 provider health / recovery；`workspace-file / search-sidecar / external-persistent` 的 `health summary / next action / failure count / activity timeline / recovery result` 会写回 durable truth，并在 `/memory` 与 preview prompt summary 同步投影。
 - `GAP-70 / TKT-101`
-  - Phase 0 shell 前端减法已收九十六刀；room/context/pr/mailbox/governance 里的重复 self-link、generic CTA、双卡解释和旧 fallback 已大幅收回 contract-level 目标名，PR/detail/topic/run/settings/setup 这些 supporting flow 现在优先暴露 `执行详情 / 事项详情 / 话题详情 / 交付详情 / 交接详情 / 通知设置 / 账号中心 / 远端 PR / GitHub 安装页` 这类真实目标，而不是继续堆空泛按钮。
+  - Phase 0 shell 前端减法已收九十七刀；room/context/pr/mailbox/governance 里的重复 self-link、generic CTA、双卡解释和旧 fallback 已大幅收回 contract-level 目标名，PR/detail/topic/run/settings/setup 这些 supporting flow 现在优先暴露 `执行详情 / 事项详情 / 话题详情 / 交付详情 / 交接详情 / 通知设置 / 账号中心 / 远端 PR / GitHub 安装页` 这类真实目标，而不是继续堆空泛按钮。
+  - 第九十七刀继续把 profile/settings/mailbox supporting flow 里的“概览/这里/载入”压成结果导向；档案、通知和交接状态改成更直接的对象状态与下一步提示，不再像内部控制台。
   - 第九十四刀继续把 supporting flow 的壳层从“所有/总览/概览”压回“现在能做什么”；`/access`、`/issues`、`/memory`、`/rooms`、`/agents`、`/runs` 的标题、上下文 rail 和空态改成确认账号、选择事项、决定资料、回到讨论、查看谁在干活、处理执行进度，避免继续把列表页读成内部控制台。
   - 第九十五刀继续把 detail loading/error/empty state 从“载入/详情/请稍候”压回“同步中/怎么继续”；事项、话题、执行详情在同步中、失败、未找到时都直接告诉用户重试、回到列表或回到讨论间，不再像后台详情面板。
   - 第九十六刀继续把 `access` supporting flow 压回结果导向；账号页加载提示和下一步提示不再写“读取当前登录状态 / 带你回到正确的位置”，统一改成确认账号、同步成员、确认完就继续当前工作。

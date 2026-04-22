@@ -671,7 +671,7 @@ export function LiveMailboxPageContent() {
       eyebrow="待办交接"
       title="先处理需要你接手的事"
       description="默认先看待处理和阻塞项；批量、创建和协作规则在后面继续保留。"
-      contextTitle="交接概览"
+      contextTitle="交接状态"
       contextDescription="当前待处理、阻塞和完成情况。"
       contextBody={
         <DetailRail
@@ -687,12 +687,12 @@ export function LiveMailboxPageContent() {
     >
       {loading ? (
         <Panel tone="paper">
-          <p className="font-display text-2xl font-bold">正在载入交接</p>
-          <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">正在获取当前交接。</p>
+          <p className="font-display text-2xl font-bold">正在同步交接</p>
+          <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">正在读取待处理和阻塞交接。</p>
         </Panel>
       ) : error ? (
         <Panel tone="pink">
-          <p className="font-display text-2xl font-bold">交接载入失败</p>
+          <p className="font-display text-2xl font-bold">交接同步失败</p>
           <p className="mt-3 text-sm leading-6 text-white/80">{error}</p>
         </Panel>
       ) : (
@@ -812,7 +812,7 @@ export function LiveMailboxPageContent() {
                   data-testid="mailbox-governance-summary"
                   className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.74)]"
                 >
-                  {governance.summary || "默认把升级、路由和最终收口放在这里复核。"}
+                  {governance.summary || "升级、路由和最终收口会一起复核。"}
                 </p>
               </div>
               <span
