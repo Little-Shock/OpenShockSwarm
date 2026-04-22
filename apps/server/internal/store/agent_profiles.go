@@ -269,7 +269,11 @@ func agentIncludesMemorySpace(agent Agent, want string) bool {
 func agentAllowsMemoryPath(agent Agent, path string) bool {
 	path = filepath.ToSlash(strings.TrimSpace(path))
 	switch {
-	case path == "MEMORY.md" || path == filepath.ToSlash(filepath.Join("notes", "work-log.md")):
+	case path == "MEMORY.md" ||
+		path == filepath.ToSlash(filepath.Join("notes", "channels.md")) ||
+		path == filepath.ToSlash(filepath.Join("notes", "operating-rules.md")) ||
+		path == filepath.ToSlash(filepath.Join("notes", "skills.md")) ||
+		path == filepath.ToSlash(filepath.Join("notes", "work-log.md")):
 		return agentIncludesMemorySpace(agent, "workspace")
 	case strings.HasPrefix(path, filepath.ToSlash(filepath.Join("notes", "rooms"))+"/"):
 		return agentIncludesMemorySpace(agent, "issue-room") || agentIncludesMemorySpace(agent, "room-notes")

@@ -22,16 +22,26 @@ preview_body() {
   printf '%s\n' "${body:0:200}"
 }
 
-request_json() {
-  local url="$1"
+request_json_with_method() {
+  local method="$1"
+  local url="$2"
+  local payload="${3:-}"
   local body_file
 
   body_file="$(mktemp)"
   trap 'rm -f "$body_file"' RETURN
-  last_status="$(curl -sS --max-time "$CURL_MAX_TIME" -o "$body_file" -w '%{http_code}' "$url")"
+  if [[ -n "$payload" ]]; then
+    last_status="$(curl -sS --max-time "$CURL_MAX_TIME" -X "$method" -H 'Content-Type: application/json' -o "$body_file" -w '%{http_code}' --data "$payload" "$url")"
+  else
+    last_status="$(curl -sS --max-time "$CURL_MAX_TIME" -X "$method" -o "$body_file" -w '%{http_code}' "$url")"
+  fi
   last_body="$(cat "$body_file")"
   rm -f "$body_file"
   trap - RETURN
+}
+
+request_json() {
+  request_json_with_method "GET" "$1"
 }
 
 assert_status() {
@@ -302,6 +312,15 @@ probe_github_connection() {
   preview_body "$last_body"
 }
 
+probe_run_control_fail_closed() {
+  echo "==> Server run control fail-closed"
+  request_json_with_method "POST" "$SERVER_URL/v1/runs/__ops_smoke_missing_run__/control" '{"action":"resume","note":"ops smoke fail-closed probe"}'
+  assert_status "404" "Server run control fail-closed"
+  assert_contains '"error"' "Server run control fail-closed"
+  assert_contains 'run not found' "Server run control fail-closed"
+  preview_body "$last_body"
+}
+
 require_cmd curl
 require_cmd node
 
@@ -324,6 +343,7 @@ preview_body "$experience_body"
 assert_experience_metrics_truth "$experience_body"
 probe "Server repo binding" "$SERVER_URL/v1/repo/binding" '"bindingStatus"'
 probe_github_connection "$SERVER_URL/v1/github/connection"
+probe_run_control_fail_closed
 
 echo "==> Server runtime registry"
 request_json "$SERVER_URL/v1/runtime/registry"

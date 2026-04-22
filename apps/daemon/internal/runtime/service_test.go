@@ -219,7 +219,12 @@ func TestRunPromptPersistsSessionWorkspaceEnvelope(t *testing.T) {
 	}
 
 	sessionDir := filepath.Join(root, ".openshock", "agent-sessions", "session-runtime")
+	assertFileContains(t, filepath.Join(sessionDir, "SOUL.md"), "Continue the same room/run/worktree")
 	assertFileContains(t, filepath.Join(sessionDir, "MEMORY.md"), "same session")
+	assertFileContains(t, filepath.Join(sessionDir, "notes", "channels.md"), "public room messages")
+	assertFileContains(t, filepath.Join(sessionDir, "notes", "operating-rules.md"), "Leave evidence")
+	assertFileContains(t, filepath.Join(sessionDir, "notes", "skills.md"), "adversarial verification")
+	assertFileContains(t, filepath.Join(sessionDir, "notes", "rooms", "room-runtime.md"), "roomId: room-runtime")
 	assertFileContains(t, filepath.Join(sessionDir, "CURRENT_TURN.md"), "first turn prompt")
 	assertFileContains(t, filepath.Join(sessionDir, "notes", "work-log.md"), "first turn prompt")
 

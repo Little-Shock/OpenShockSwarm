@@ -1123,14 +1123,27 @@ func buildMemoryInjectionPreview(snapshot State, policy MemoryInjectionPolicy, p
 		agentSlug := slugify(ownerName)
 		if agentSlug != "" {
 			// The mounted file list drives profile-level preview badges, so the owner
-			// agent memory file must survive preview trimming whenever it is selected.
-			addCandidate(filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), "owner agent memory", true)
+			// agent rule stack must survive preview trimming whenever it is selected.
+			agentStack := []struct {
+				path   string
+				reason string
+			}{
+				{path: filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "SOUL.md")), reason: "owner agent soul"},
+				{path: filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "MEMORY.md")), reason: "owner agent memory"},
+				{path: filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "notes", "channels.md")), reason: "owner agent channel rules"},
+				{path: filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "notes", "operating-rules.md")), reason: "owner agent operating rules"},
+				{path: filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "notes", "skills.md")), reason: "owner agent skills"},
+				{path: filepath.ToSlash(filepath.Join(".openshock", "agents", agentSlug, "notes", "work-log.md")), reason: "owner agent work log"},
+			}
+			for _, item := range agentStack {
+				addCandidate(item.path, item.reason, true)
+			}
 		}
 	}
 
 	if policy.IncludePromotedArtifacts {
-		addCandidate(filepath.ToSlash(filepath.Join("notes", "skills.md")), "approved skill ledger", false)
-		addCandidate(filepath.ToSlash(filepath.Join("notes", "policies.md")), "approved policy ledger", false)
+		addCandidate(filepath.ToSlash(filepath.Join("notes", "skills.md")), "approved skill ledger", true)
+		addCandidate(filepath.ToSlash(filepath.Join("notes", "policies.md")), "approved policy ledger", true)
 	}
 
 	items := make([]MemoryInjectionPreviewItem, 0, len(candidates))
@@ -1292,12 +1305,16 @@ func memoryPreviewKindPriority(kind string) int {
 		return 0
 	case "decision", "skill-ledger":
 		return 1
-	case "memory":
+	case "soul":
 		return 2
-	case "room-note":
+	case "memory":
 		return 3
-	default:
+	case "notes":
 		return 4
+	case "room-note":
+		return 5
+	default:
+		return 6
 	}
 }
 

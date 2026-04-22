@@ -239,7 +239,13 @@ export function buildRunHistoryEntries(state: PhaseZeroState, roomId?: string): 
 }
 
 function buildDefaultSessionMemoryPaths(roomId: string, issueKey: string) {
-  const paths = ["MEMORY.md", "notes/work-log.md"];
+  const paths = [
+    "MEMORY.md",
+    "notes/channels.md",
+    "notes/operating-rules.md",
+    "notes/skills.md",
+    "notes/work-log.md",
+  ];
   if (roomId.trim()) {
     paths.push(`notes/rooms/${roomId}.md`);
   }

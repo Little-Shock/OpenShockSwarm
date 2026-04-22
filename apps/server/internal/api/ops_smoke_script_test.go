@@ -29,6 +29,10 @@ func TestOpsSmokePassesWhenPairingMatchesDaemonTruth(t *testing.T) {
 	defer daemon.Close()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runs/__ops_smoke_missing_run__/control" {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "run not found"})
+			return
+		}
 		switch r.URL.Path {
 		case "/healthz":
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})
@@ -124,6 +128,10 @@ func TestOpsSmokeFailsWhenPairingDriftsFromDaemonTruth(t *testing.T) {
 	defer daemon.Close()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runs/__ops_smoke_missing_run__/control" {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "run not found"})
+			return
+		}
 		switch r.URL.Path {
 		case "/healthz":
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "openshock-server"})

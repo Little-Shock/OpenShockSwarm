@@ -776,7 +776,7 @@ func (s *Service) prepareSessionWorkspace(req ExecRequest) (sessionWorkspace, er
 	if err := os.MkdirAll(workspace.CodexHomePath, 0o755); err != nil {
 		return sessionWorkspace{}, err
 	}
-	if err := ensureSessionMemoryFile(workspace.MemoryPath); err != nil {
+	if err := ensureSessionScaffoldFiles(workspace, req); err != nil {
 		return sessionWorkspace{}, err
 	}
 	if err := writeSessionWorkspaceFile(workspace.SessionFilePath, req, workspace); err != nil {
@@ -836,12 +836,73 @@ func sanitizeWorkspaceSegment(value string) string {
 }
 
 func ensureSessionMemoryFile(path string) error {
+	content := "# OpenShock Agent Session Memory\n\n- This folder persists context for the same session across turns.\n- Keep `notes/work-log.md` as the running continuity ledger.\n"
+	return ensureSessionFile(path, content)
+}
+
+func ensureSessionScaffoldFiles(workspace sessionWorkspace, req ExecRequest) error {
+	if err := ensureSessionMemoryFile(workspace.MemoryPath); err != nil {
+		return err
+	}
+	files := []struct {
+		path    string
+		content string
+	}{
+		{
+			path: filepath.Join(workspace.Dir, "SOUL.md"),
+			content: "# OpenShock Session Rules\n\n" +
+				"- Continue the same room/run/worktree unless the server gives a new target.\n" +
+				"- Read MEMORY.md and notes/* before expanding outside this session workspace.\n",
+		},
+		{
+			path: filepath.Join(workspace.Dir, "notes", "channels.md"),
+			content: "# Channels\n\n" +
+				"- Keep public room messages short and useful.\n" +
+				"- Move formal work through the current room and run record.\n",
+		},
+		{
+			path: filepath.Join(workspace.Dir, "notes", "operating-rules.md"),
+			content: "# Operating Rules\n\n" +
+				"- Claim only the current work when you are ready to continue it.\n" +
+				"- Leave evidence in the work log before handing off or closing out.\n",
+		},
+		{
+			path: filepath.Join(workspace.Dir, "notes", "skills.md"),
+			content: "# Skills\n\n" +
+				"- Use lightweight exploration before broad edits.\n" +
+				"- Run adversarial verification before marking work complete.\n",
+		},
+	}
+
+	if roomID := sanitizeWorkspaceSegment(req.RoomID); roomID != "" {
+		files = append(files, struct {
+			path    string
+			content string
+		}{
+			path: filepath.Join(workspace.Dir, "notes", "rooms", roomID+".md"),
+			content: "# Room Context\n\n" +
+				"- roomId: " + strings.TrimSpace(req.RoomID) + "\n" +
+				"- Keep room-specific decisions here when a turn needs extra context.\n",
+		})
+	}
+
+	for _, file := range files {
+		if err := ensureSessionFile(file.path, file.content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureSessionFile(path, content string) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	content := "# OpenShock Agent Session Memory\n\n- This folder persists context for the same session across turns.\n- Keep `notes/work-log.md` as the running continuity ledger.\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 

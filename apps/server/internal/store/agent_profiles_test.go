@@ -72,11 +72,21 @@ func TestUpdateAgentProfilePersistsAuditAndPreview(t *testing.T) {
 	if !strings.Contains(preview.PromptSummary, "Delivery Lead") || !strings.Contains(preview.PromptSummary, "Claude Code CLI") || !strings.Contains(preview.PromptSummary, "claude-sonnet-4") || !strings.Contains(preview.PromptSummary, "shock-main") || !strings.Contains(preview.PromptSummary, "agent-first") {
 		t.Fatalf("preview summary = %q, want updated profile fields", preview.PromptSummary)
 	}
-	if !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
-		t.Fatalf("preview items = %#v, want owner agent memory path after user binding", preview.Items)
+	requiredPreviewPaths := []string{
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "SOUL.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "channels.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "operating-rules.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "skills.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "work-log.md")),
 	}
-	if !stringSliceContains(preview.Files, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
-		t.Fatalf("preview files = %#v, want owner agent memory path exposed in mounted file list", preview.Files)
+	for _, path := range requiredPreviewPaths {
+		if !previewContainsPath(preview.Items, path) {
+			t.Fatalf("preview items = %#v, want %q", preview.Items, path)
+		}
+		if !stringSliceContains(preview.Files, path) {
+			t.Fatalf("preview files = %#v, want %q", preview.Files, path)
+		}
 	}
 	if previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join("notes", "rooms", "room-runtime.md"))) {
 		t.Fatalf("preview items = %#v, room note should be absent after dropping issue-room binding", preview.Items)

@@ -77,7 +77,7 @@ func TestBuildRoomExecPromptIncludesRoomRunAndRecentContext(t *testing.T) {
 		"继续把 session continuity 做实",
 		"读取边界：",
 		"- 默认只围当前 room / run / worktree 和当前接手智能体的记忆继续推进。",
-		"- 如果需要补上下文，先看当前工作目录里的 MEMORY.md、notes/work-log.md 和当前 room 对应笔记，再决定是否继续扩展。",
+		"- 如果需要补上下文，先看当前工作目录里的 MEMORY.md、notes/channels.md、notes/operating-rules.md、notes/skills.md、notes/work-log.md 和当前 room 对应笔记，再决定是否继续扩展。",
 		"- 不要主动去翻别的 room、别的 issue、别的 worktree，或其他智能体的记忆空间。",
 		"- 只有用户明确要求，或当前回合必须排查系统级问题时，才扩大读取范围；扩大后必须在公开回复里同步原因。",
 		"- 先在内部判断这条消息是否需要公开回复、是否需要你接手，再决定输出。",

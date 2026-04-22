@@ -73,6 +73,7 @@ pnpm ops:smoke
 - `GET /v1/runtime`
 - `GET /v1/repo/binding`
 - `GET /v1/github/connection`
+- `POST /v1/runs/__ops_smoke_missing_run__/control`
 - daemon `GET /v1/runtime`
 
 其中 runtime gate 现在按 fail-closed 读：
@@ -81,6 +82,12 @@ pnpm ops:smoke
 - registry 里 `pairedRuntime` 对应 runtime 的 `daemonUrl` 必须一致
 - server `GET /v1/runtime` 打到的 live daemon URL 也必须一致
 - 任一 surface 漂移，`pnpm ops:smoke` 必须直接失败并指出 mismatch
+
+run control gate 现在按 fail-closed 读：
+
+- `pnpm ops:smoke` 会用一个不存在的 run ID 触发 `POST /v1/runs/:id/control`
+- 正确结果必须是 `404` 和结构化 `run not found` 错误
+- 这条默认不改 live run 状态，只证明发布栈已暴露控制路由且边界不会误写
 
 如果你希望把 GitHub readiness 也收成硬 gate，再加：
 

@@ -65,11 +65,21 @@ func TestAgentProfileRouteSupportsEditAndPreviewWriteback(t *testing.T) {
 	if !strings.Contains(preview.PromptSummary, "Delivery Lead") || !strings.Contains(preview.PromptSummary, "Claude Code CLI") || !strings.Contains(preview.PromptSummary, "claude-sonnet-4") || !strings.Contains(preview.PromptSummary, "shock-main") || !strings.Contains(preview.PromptSummary, "agent-first") {
 		t.Fatalf("promptSummary = %q, want updated profile fields", preview.PromptSummary)
 	}
-	if !previewHasPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
-		t.Fatalf("preview items = %#v, want owner agent memory path", preview.Items)
+	requiredPreviewPaths := []string{
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "SOUL.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "channels.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "operating-rules.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "skills.md")),
+		filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "notes", "work-log.md")),
 	}
-	if !stringSliceHasPath(preview.Files, filepath.ToSlash(filepath.Join(".openshock", "agents", "codex-dockmaster", "MEMORY.md"))) {
-		t.Fatalf("preview files = %#v, want owner agent memory path in mounted preview files", preview.Files)
+	for _, path := range requiredPreviewPaths {
+		if !previewHasPath(preview.Items, path) {
+			t.Fatalf("preview items = %#v, want %q", preview.Items, path)
+		}
+		if !stringSliceHasPath(preview.Files, path) {
+			t.Fatalf("preview files = %#v, want %q", preview.Files, path)
+		}
 	}
 	if previewHasPath(preview.Items, filepath.ToSlash(filepath.Join("notes", "rooms", "room-runtime.md"))) {
 		t.Fatalf("preview items = %#v, room note should be absent after binding change", preview.Items)

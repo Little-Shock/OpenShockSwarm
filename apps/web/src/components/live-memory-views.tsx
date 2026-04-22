@@ -774,7 +774,7 @@ export function LiveMemoryView() {
             </span>
           </div>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-            资料、来源和下一次任务预览。
+            资料、规则栈和下一次任务预览。
           </p>
 
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-1">
@@ -1484,13 +1484,13 @@ export function LiveMemoryView() {
 
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">附带文件</p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">规则栈与附带文件</p>
                         <div className="mt-3 space-y-2">
                           {preview.files.map((path) => (
                             <StatusRow
                               key={path}
                               label={path}
-                              value="会带入下一次任务"
+                              value="下一次任务会读取"
                               tone="white"
                               testID={`memory-preview-file-${toTestID(path)}`}
                             />

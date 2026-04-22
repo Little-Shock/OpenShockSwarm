@@ -14,7 +14,7 @@ Current live baseline:
 - `GET /healthz` returns liveness
 - `GET /v1/runtime` reports detected local providers and runtime snapshot
 - `POST /v1/exec` and `POST /v1/exec/stream` execute prompts through local CLI tools
-- per-session execution now persists `MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/work-log.md` under the daemon session workspace root
+- per-session execution now persists `SOUL.md / MEMORY.md / SESSION.json / CURRENT_TURN.md / notes/channels.md / notes/operating-rules.md / notes/skills.md / notes/rooms/<room>.md / notes/work-log.md` under the daemon session workspace root
 - Codex session continuity now uses a session-scoped `OPENSHOCK_CODEX_HOME` under the same workspace root
 - provider thread state can now be written back through the daemon thread-state file contract and persisted into `SESSION.json.appServerThreadId`
 - detects local CLI binaries like `codex` and `claude`

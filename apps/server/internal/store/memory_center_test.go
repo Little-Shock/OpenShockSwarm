@@ -47,8 +47,11 @@ func TestMemoryCenterBuildsInjectionPreviewAndPromotionLifecycle(t *testing.T) {
 	}
 
 	preview = findMemoryPreviewBySession(updatedCenter.Previews, "session-memory")
-	if preview == nil || !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) {
-		t.Fatalf("preview after policy update = %#v, want owner agent memory", preview)
+	if preview == nil ||
+		!previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "SOUL.md"))) ||
+		!previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) ||
+		!previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "notes", "operating-rules.md"))) {
+		t.Fatalf("preview after policy update = %#v, want owner agent file stack", preview)
 	}
 
 	roomArtifact := findMemoryArtifactByPath(s.Snapshot(), filepath.ToSlash(filepath.Join("notes", "rooms", "room-memory.md")))
@@ -204,8 +207,10 @@ func TestMemoryCenterPreviewPrefersCurrentOwnerOverStaleRecentRunAgent(t *testin
 	if !strings.Contains(preview.PromptSummary, "Memory Clerk") {
 		t.Fatalf("preview summary = %q, want current owner Memory Clerk", preview.PromptSummary)
 	}
-	if !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) {
-		t.Fatalf("preview items = %#v, want current owner Memory Clerk memory path", preview.Items)
+	if !previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "SOUL.md"))) ||
+		!previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) ||
+		!previewContainsPath(preview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "notes", "skills.md"))) {
+		t.Fatalf("preview items = %#v, want current owner Memory Clerk file stack", preview.Items)
 	}
 	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusHealthy {
 		t.Fatalf("preview search provider = %#v, want healthy provider for current owner preview", got)
@@ -237,8 +242,10 @@ func TestMemoryCenterPreviewPrefersCurrentOwnerOverStaleRecentRunAgent(t *testin
 	if !strings.Contains(reloadedPreview.PromptSummary, "Memory Clerk") {
 		t.Fatalf("reloaded preview summary = %q, want persisted current owner Memory Clerk", reloadedPreview.PromptSummary)
 	}
-	if !previewContainsPath(reloadedPreview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) {
-		t.Fatalf("reloaded preview items = %#v, want persisted current owner Memory Clerk memory path", reloadedPreview.Items)
+	if !previewContainsPath(reloadedPreview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "SOUL.md"))) ||
+		!previewContainsPath(reloadedPreview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "MEMORY.md"))) ||
+		!previewContainsPath(reloadedPreview.Items, filepath.ToSlash(filepath.Join(".openshock", "agents", "memory-clerk", "notes", "skills.md"))) {
+		t.Fatalf("reloaded preview items = %#v, want persisted current owner Memory Clerk file stack", reloadedPreview.Items)
 	}
 	if got := findMemoryProviderByKind(reloadedPreview.Providers, memoryProviderKindSearchSidecar); got == nil || got.Status != memoryProviderStatusHealthy {
 		t.Fatalf("reloaded preview search provider = %#v, want persisted healthy provider", got)

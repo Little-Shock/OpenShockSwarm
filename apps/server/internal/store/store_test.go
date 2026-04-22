@@ -52,12 +52,15 @@ func TestCreateIssueInitializesSessionMemoryPaths(t *testing.T) {
 		t.Fatalf("session %q not found", result.SessionID)
 	}
 
-	if len(session.MemoryPaths) != 4 {
-		t.Fatalf("expected 4 session memory paths, got %d: %#v", len(session.MemoryPaths), session.MemoryPaths)
+	if len(session.MemoryPaths) != 7 {
+		t.Fatalf("expected 7 session memory paths, got %d: %#v", len(session.MemoryPaths), session.MemoryPaths)
 	}
 
 	want := []string{
 		"MEMORY.md",
+		filepath.ToSlash(filepath.Join("notes", "channels.md")),
+		filepath.ToSlash(filepath.Join("notes", "operating-rules.md")),
+		filepath.ToSlash(filepath.Join("notes", "skills.md")),
 		"notes/work-log.md",
 		filepath.ToSlash(filepath.Join("notes", "rooms", "room-session-memory-ready.md")),
 		filepath.ToSlash(filepath.Join("decisions", "ops-28.md")),

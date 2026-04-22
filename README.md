@@ -51,6 +51,7 @@ OpenShock 是一个本地优先的协作工作台。
 - server 已补齐版本化 `/v1/control-plane/*` command / event / debug read-model，以及 `/v1/runtime/publish*` replay evidence contract
 - memory center 已把 `workspace-file / search-sidecar / external-persistent` provider binding、health/recovery timeline、next-run preview 和 degraded fallback 收进同一份可回放的工作区记忆基线
 - daemon 可以探测本地 `codex` / `claude`，支持同步执行、流式执行，以及 `git worktree` lane 创建
+- daemon 会为同一 session 复用本地规则栈：`SOUL.md / MEMORY.md / CURRENT_TURN.md / SESSION.json / notes/*`
 - 当前 `main` 已经收住了 approval center、notification delivery、memory governance、stop/resume/follow-thread、agent mailbox / handoff、routing SLA / aggregation、profile editor、machine capability binding、workspace config，以及 multi-runtime scheduler / failover 的第一轮闭环
 
 ## 当前仓库真值
@@ -129,7 +130,7 @@ OpenShock 是一个本地优先的协作工作台。
 - 状态与文件写回：
   - server 默认把 Phase 0 状态落到 `data/phase0/state.json`
   - issue 创建时会生成 room、run、session，并尝试创建对应 worktree lane
-  - 工作区会生成 `MEMORY.md`、`notes/`、`decisions/`、`.openshock/agents/...`
+  - 工作区会生成 `MEMORY.md`、`notes/`、`decisions/`、`.openshock/agents/...`，下一次任务预览会带上 owner agent 的 `SOUL.md / MEMORY.md / notes/*`
   - memory artifact 已有 version / governance / detail contract
   - workspace config 已能把 onboarding / browser push / memory mode / sandbox baseline 写回同一份状态快照
   - profile / mailbox / runtime / approval 等前台都已经读同一份 live state，而不是各自维护一套本地假状态

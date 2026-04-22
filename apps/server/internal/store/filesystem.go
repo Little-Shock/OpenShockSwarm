@@ -288,6 +288,9 @@ func newArtifact(root, scope, kind, absolutePath, summary string) MemoryArtifact
 func defaultSessionMemoryPaths(roomID, issueKey string) []string {
 	paths := []string{
 		"MEMORY.md",
+		filepath.ToSlash(filepath.Join("notes", "channels.md")),
+		filepath.ToSlash(filepath.Join("notes", "operating-rules.md")),
+		filepath.ToSlash(filepath.Join("notes", "skills.md")),
 		filepath.ToSlash(filepath.Join("notes", "work-log.md")),
 	}
 	if strings.TrimSpace(roomID) != "" {

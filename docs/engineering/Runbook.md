@@ -464,11 +464,14 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
   - 默认检查：
     - `GET /healthz`
     - `GET /v1/state`
+    - `GET /v1/state/stream`
+    - `GET /v1/experience-metrics`
     - `GET /v1/runtime/registry`
     - `GET /v1/runtime/pairing`
     - `GET /v1/runtime`
     - `GET /v1/repo/binding`
     - `GET /v1/github/connection`
+    - `POST /v1/runs/__ops_smoke_missing_run__/control`
     - daemon `GET /v1/runtime`
   - 关键真值：
     - `pairing.daemonUrl`
@@ -476,6 +479,7 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
     - server `GET /v1/runtime` 返回的 `daemonUrl`
     - daemon `GET /v1/runtime` 的 advertise URL
   - 任一 URL 不一致时，smoke 直接失败并指出 mismatch surface
+  - `run control` 现在按 fail-closed 读：不存在的 run ID 必须返回 `404 + run not found`，默认 smoke 不会直接改 live run
   - `pnpm ops:experience-metrics`
     - 对已经启动的 server 拉一份 derived metrics snapshot
     - 统一回答 onboarding completion、handoff ack、memory provenance、design visibility 是否前滚

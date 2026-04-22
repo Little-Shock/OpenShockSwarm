@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.63
+**版本:** 1.64
 **更新日期:** 2026 年 4 月 22 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -223,7 +223,7 @@
 - `P0-Mailbox 减法`
   - `/mailbox` 默认只保留待你处理的交接、阻塞原因和下一步按钮；升级队列、团队分工、规则、自动续接都进入二级视图。
 - `P0-Release Gate 加硬`
-  - `ops:smoke` 要覆盖 `/v1/state/stream`、`/v1/experience-metrics`、runtime pairing drift；后续继续补 `run control` 和默认 fail-closed GitHub readiness。
+  - `ops:smoke` 已覆盖 `/v1/state/stream`、`/v1/experience-metrics`、runtime pairing drift、`run control` fail-closed；下一步是把 strict GitHub readiness 更常态化，而不是只靠发布时手动加环境变量。
 - `P1-文件级记忆产品面`
   - 把 `SOUL.md / MEMORY.md / notes/channels.md / notes/operating-rules.md / notes/skills.md / notes/work-log.md` 变成默认可见、可回放、可注入的工作面。
 - `P1-协议化协作闭环`
@@ -239,10 +239,51 @@
   - 首屏已改成“先处理需要你接手的事”，把待处理交接和下一步动作提前到最前面。
 - `ops:smoke`
   - 已覆盖 `/v1/state/stream` 与 `/v1/experience-metrics`，并锁进脚本测试。
+  - 已补 `POST /v1/runs/__ops_smoke_missing_run__/control` fail-closed 探测；默认 smoke 现在会证明控制路由在线且不会误写 live run。
+- `文件级记忆`
+  - session 默认记忆路径已前滚到 `MEMORY.md + notes/channels.md + notes/operating-rules.md + notes/skills.md + notes/work-log.md + room/decision`。
+  - `/memory` next-run preview 与 agent profile file stack 现在会默认露出 owner agent 的 `SOUL.md + MEMORY.md + notes/*` 规则栈，而不再只露一条 `MEMORY.md`。
+- `daemon continuity`
+  - daemon session workspace 已从最小 envelope 前滚到 `SOUL.md + MEMORY.md + notes/channels.md + notes/operating-rules.md + notes/skills.md + notes/rooms/<room>.md + notes/work-log.md`。
 
 ### 当前必须先收的 GAP
 
 当前需要优先收的已不再是“能不能配 topology”“能不能正式对话”“能不能给下一棒默认路由”“能不能一键起单”“能不能自动续下一棒”“能不能把 final lane 接回 delivery entry”“能不能显式给出 delivery delegate”“能不能自动创建 delegated closeout handoff”“能不能把 delegated lifecycle / latest comment 回写到 PR contract”“能不能把 delivery delegation policy 做成正式配置 / auto-complete 策略”“能不能把 blocked delegated closeout 物化成 response handoff”“能不能把第二轮 retry attempt 显式收成产品真相”“能不能把 response handoff formal comment 回写到统一 delivery contract”“能不能把 response progress 回推父级 delegated handoff / inbox / next action”“能不能把 parent/child response orchestration 直接做进 mailbox shell”“能不能从 child ledger 直接恢复 parent closeout”“能不能把 parent 恢复后的 reply 历史继续留在统一 delivery contract”“能不能让 child ledger 直接看见 parent 最终有没有被接住”“能不能把 parent 自己的 mailbox/run context 也保住 response history”“能不能让 child ledger 的正文与 child inbox signal 一起跟上 parent 真相”“能不能让 child ledger 时间线和 latest formal comment 也跟上 parent follow-through”“能不能让 parent 自己的 timeline 也完整回放 child response 轨迹”“能不能把这些关键 child response sync 也写进 Room 主消息流”“能不能把 parent / child formal communication 拉平成 PR detail 上可回放的统一 thread”“能不能直接在 PR detail 内执行当前 delegated closeout / reply action”“能不能把 escalation 从 aggregate SLA 计数落成正式 queue truth”“能不能把 workspace 级 hot room 收成跨 room rollup”“能不能让 hot room 直接起 governed next handoff”，而是前端减法、更重的长期记忆整理、外部 provider 编排、durable governance，以及下一层的 multi-room dependency graph / auto-closeout；同时要继续把刚站住的 daemon continuity harness 扩成更重的 multi-session / multi-agent recovery 矩阵。
+
+### 本轮已转成执行票
+
+#### `TKT-103` Release Smoke 补齐 Run Control Fail-Closed
+
+- Goal: 让 `pnpm ops:smoke` 不只证明主链连通，还证明 `run control` 路由在线且边界不会误写 live run。
+- Scope: `scripts/ops-smoke.sh`、`apps/server/internal/api/ops_smoke_script_test.go`、`docs/engineering/Release-Gate.md`、`docs/testing/README.md`。
+- Dependencies: 现有 `POST /v1/runs/:id/control` contract、`TC-018` 浏览器级 exact replay、`TC-021` release gate pairing smoke。
+- Self-Check: `bash -n scripts/ops-smoke.sh`、`go test ./internal/api -run TestOpsSmoke -count=1`。
+- Review Gate: 负向 probe 必须返回 `404 + run not found`，不能默默 200、302 或写坏任一现有 run。
+- Merge Gate: live stack smoke 继续能在真实 server/daemon 端口上通过。
+- Related Checklist IDs: `CHK-15`
+- Related Test Case IDs: `TC-018` `TC-021`
+
+#### `TKT-104` 文件级记忆默认规则栈产品化
+
+- Goal: 让文件记忆不再只是 `MEMORY.md + work-log`，而是默认把 workspace 规则栈和 owner agent 规则栈都带进下一次任务。
+- Scope: session 默认 `memoryPaths`、`/memory` next-run preview、agent profile file stack、room prompt 的读取边界文案。
+- Dependencies: 当前 `CHK-10` memory center provider preview、`TC-036` agent profile edit、`TC-088` owner continuity。
+- Self-Check: `go test ./internal/store -run 'TestMemoryCenter|TestUpdateAgentProfilePersistsAuditAndPreview|TestCreateIssueCreatesMemoryArtifactsAndSessionLinks' -count=1`、`go test ./internal/api -run 'TestAgentProfileRouteSupportsEditAndPreviewWriteback|TestBuildRoomExecPromptIncludesRoomRunAndRecentContext' -count=1`。
+- Review Gate: preview 必须显式露出 `SOUL.md + MEMORY.md + notes/channels.md + notes/operating-rules.md + notes/skills.md + notes/work-log.md`，且 room note/decision 仍受 policy 与 memory space 约束。
+- Merge Gate: profile preview badge、memory center preview 和 store reload 后的 owner continuity 不能回退。
+- Related Checklist IDs: `CHK-10` `CHK-22`
+- Related Test Case IDs: `TC-013` `TC-019` `TC-036` `TC-088`
+
+#### `TKT-105` Daemon Session Workspace 规则栈前滚
+
+- Goal: 让 daemon 恢复链默认拥有可检查的规则栈，而不是只剩 `MEMORY.md / CURRENT_TURN.md / work-log`。
+- Scope: `apps/daemon/internal/runtime/service.go` session scaffold、对应 runtime tests、daemon README/测试索引同步。
+- Dependencies: `TKT-100` same-session recovery harness、`TKT-99` scoped Codex home continuity、local slock 文件记忆参考。
+- Self-Check: `go test ./apps/daemon/internal/runtime -count=1`。
+- Review Gate: 同一 session 第二轮执行必须继续复用同一目录，且新增 `SOUL.md + notes/* + room note` 不得覆盖已有手工内容。
+- Merge Gate: `CURRENT_TURN.md` 刷新、`notes/work-log.md` 累积、`SESSION.json` thread state persistence 继续保持。
+- Related Checklist IDs: `CHK-10` `CHK-14` `CHK-22`
+- Related Test Case IDs: `TC-043` `TC-088` `TC-091`
 
 ---
 

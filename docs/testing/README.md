@@ -7,7 +7,7 @@
 | 目的 | 命令 | 说明 |
 | --- | --- | --- |
 | repo gate | `pnpm verify:release` | 统一跑静态门、Go 测试和 release gate 自检 |
-| live stack gate | `pnpm ops:smoke` | 直接打当前 server / daemon live stack，检查 pairing、registry、repo、GitHub readiness |
+| live stack gate | `pnpm ops:smoke` | 直接打当前 server / daemon live stack，检查 pairing、registry、repo、GitHub readiness、run control fail-closed |
 | strict GitHub gate | `OPENSHOCK_REQUIRE_GITHUB_READY=1 pnpm ops:smoke` | 只有这次发布明确要求 GitHub fully ready 才加这一条 |
 | 代表性浏览器链路 | `OPENSHOCK_E2E_HEADLESS=1 pnpm test:headed-onboarding-studio` | 确认首启、恢复和真实前台主链没漂 |
 
@@ -27,6 +27,7 @@
   - 代表命令：`pnpm test:headed-cross-room-governance-orchestration`、`pnpm typecheck:web`、`pnpm build:web`
 - `2026-04-22` 九分冲刺首屏与 release gate 加硬
   - 代表命令：`OPENSHOCK_E2E_HEADLESS=1 pnpm test:headed-work-shell-smoke -- --report docs/testing/Test-Report-2026-04-22-work-shell-smoke.md`、`OPENSHOCK_E2E_HEADLESS=1 pnpm test:headed-agent-mailbox-handoff`、`OPENSHOCK_SERVER_URL=http://127.0.0.1:45068 OPENSHOCK_DAEMON_URL=http://127.0.0.1:45054 pnpm ops:smoke`
+  - 增量范围：`ops:smoke` 继续补 `run control` fail-closed 探测；memory preview / daemon session workspace 前滚到 `SOUL.md + MEMORY.md + notes/*` 规则栈。
 
 如果你要看“最新新增能力”而不是“历史代表性报告”，先看这里，再往下翻归档。
 
