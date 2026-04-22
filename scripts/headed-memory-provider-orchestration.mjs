@@ -219,6 +219,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1660, height: 1220 } });
   await page.goto(`${webURL}/memory`, { waitUntil: "load" });
 
+  await page.getByTestId("memory-provider-details-summary").click();
   await waitForVisible(page, "memory-provider-card-workspace-file");
   await waitForVisible(page, "memory-provider-toggle-search-sidecar");
   await waitForVisible(page, "memory-provider-toggle-external-persistent");
@@ -244,6 +245,7 @@ try {
   await capture(page, screenshotsDir, "preview-provider-orchestration");
 
   await page.reload({ waitUntil: "load" });
+  await page.getByTestId("memory-provider-details-summary").click();
   await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
   await waitForContains(page, "memory-provider-status-external-persistent", "异常");
   await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");

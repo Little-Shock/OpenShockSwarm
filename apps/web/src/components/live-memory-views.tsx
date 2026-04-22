@@ -10,6 +10,7 @@ import {
   type MemoryProviderActivityRun,
   type MemoryInjectionPolicy,
   type MemoryInjectionPreview,
+  type MemoryInjectionPreviewItem,
   type MemoryProviderBinding,
   type MemoryPromotion,
   type MemoryPromotionKind,
@@ -174,6 +175,37 @@ function previewLabel(preview: MemoryInjectionPreview) {
     parts.push(preview.runId);
   }
   return parts.join(" / ");
+}
+
+function previewReasonLabel(item: Pick<MemoryInjectionPreviewItem, "kind" | "reason" | "required">) {
+  switch (item.reason) {
+    case "session recall path":
+      return "当前任务默认会读这份文件。";
+    case "owner agent soul":
+      return "保留当前智能体的角色边界和做事方式。";
+    case "owner agent memory":
+      return "保留当前智能体自己的长期记忆。";
+    case "owner agent channel rules":
+      return "保留频道和协作规则。";
+    case "owner agent operating rules":
+      return "保留执行要求和工作约束。";
+    case "owner agent skills":
+      return "保留共享技能与操作标准。";
+    case "owner agent work log":
+      return "保留最近一轮工作痕迹。";
+    case "approved skill ledger":
+      return "带上已通过的共享技能。";
+    case "approved policy ledger":
+      return "带上已通过的长期规则。";
+    default:
+      if (item.kind === "room-note") {
+        return item.required ? "保留当前房间上下文。" : "按当前设置补充房间记录。";
+      }
+      if (item.kind === "decision") {
+        return item.required ? "保留当前决策记录。" : "按当前设置补充决策记录。";
+      }
+      return item.required ? "这是默认带入文件。" : "按当前设置补充带入。";
+  }
 }
 
 function promotionKindLabel(kind: MemoryPromotionKind) {
@@ -551,6 +583,12 @@ export function LiveMemoryView() {
   const previousVersion = versions.length > 1 ? versions[versions.length - 2] : undefined;
   const diff = buildDiffPreview(previousVersion?.content, latestVersion?.content ?? resolvedDetail?.content);
   const preview = center.previews.find((item) => item.sessionId === resolvedSessionId) ?? center.previews[0];
+  const previewItems = preview?.items ?? [];
+  const previewFiles = preview?.files ?? [];
+  const previewProviders = preview?.providers ?? [];
+  const previewRequiredItems = previewItems.filter((item) => item.required);
+  const previewOptionalItems = previewItems.filter((item) => !item.required);
+  const previewDegradedProviders = previewProviders.filter((provider) => provider.status === "degraded");
   const decisionArtifacts = memory.filter((item) => item.kind === "decision").length;
   const governedArtifacts = memory.filter((item) => item.governance?.mode).length;
   const promotedLedgers = memory.filter((item) => item.kind === "skill-ledger" || item.kind === "policy-ledger").length;
@@ -762,6 +800,224 @@ export function LiveMemoryView() {
         />
       </div>
 
+      <Panel tone="yellow" className="!p-3.5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">默认带入</p>
+            <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">下一次任务会先看这些文件</h2>
+          </div>
+          {center.previews.length > 0 ? (
+            <select
+              data-testid="memory-preview-session"
+              value={resolvedSessionId}
+              onChange={(event) => setSelectedSessionId(event.target.value)}
+              className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none"
+            >
+              {center.previews.map((item) => (
+                <option key={item.sessionId} value={item.sessionId}>
+                  {previewLabel(item)}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+        <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+          先确认默认文件栈，再决定要不要改带入设置或资料来源。
+        </p>
+
+        {preview ? (
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_0.92fr]">
+            <div className="space-y-3">
+              <div
+                data-testid="memory-default-stack"
+                className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">默认文件栈</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">这次会挂进任务上下文的文件</h3>
+                  </div>
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    {previewFiles.length} 个文件
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {previewFiles.length === 0 ? (
+                    <EmptyState title="暂无默认文件" message="同步后会显示下一次任务的默认文件栈。" />
+                  ) : (
+                    previewFiles.map((path) => {
+                      const item = previewItems.find((entry) => entry.path === path);
+                      return (
+                        <StatusRow
+                          key={path}
+                          label={path}
+                          value={item ? previewReasonLabel(item) : "下一次任务会读取"}
+                          tone={item?.required ? "yellow" : "white"}
+                          testID={`memory-preview-file-${toTestID(path)}`}
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">当前摘要</p>
+                    <h3 className="mt-2 font-display text-2xl font-bold">{preview.title}</h3>
+                  </div>
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    {previewRequiredItems.length} 条必带 / {previewOptionalItems.length} 条补充
+                  </span>
+                </div>
+
+                <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">任务摘要</p>
+                  <pre data-testid="memory-preview-summary" className="mt-3 whitespace-pre-wrap font-mono text-[12px] leading-6">
+                    {preview.promptSummary}
+                  </pre>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {previewItems.map((item) => (
+                    <div
+                      key={`${item.path}-${item.reason}`}
+                      data-testid={`memory-preview-item-${toTestID(item.path)}`}
+                      className={cn("rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4", governanceTone(item.governance))}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+                            {item.scope} / {item.kind}
+                          </p>
+                          <p className="mt-2 font-display text-2xl font-bold">{item.path}</p>
+                        </div>
+                        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                          {item.required ? "必带" : "补充"}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6">{previewReasonLabel(item)}</p>
+                      <p className="mt-2 text-sm leading-6">{item.latestWrite || item.summary}</p>
+                      {item.snippet ? (
+                        <pre className="mt-3 whitespace-pre-wrap rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[12px] leading-6">
+                          {item.snippet}
+                        </pre>
+                      ) : null}
+                      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.6)]">
+                        {summarizeGovernance(item.governance)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <StatusRow label="当前会话" value={previewLabel(preview)} tone="white" />
+              <StatusRow
+                label="带入方式"
+                value={`${policyModeLabel(center.policy.mode)} / 最多 ${center.policy.maxItems} 条`}
+                tone="yellow"
+              />
+              <StatusRow
+                label="资料来源"
+                value={
+                  previewDegradedProviders.length > 0
+                    ? `${previewProviders.length} 个来源 / ${previewDegradedProviders.length} 个需要处理`
+                    : `${previewProviders.length} 个来源 / 当前正常`
+                }
+                tone={previewDegradedProviders.length > 0 ? "pink" : "lime"}
+              />
+              <StatusRow
+                label="待处理"
+                value={
+                  center.cleanup.due && center.pendingCount > 0
+                    ? `${center.pendingCount} 条待审核 / ${center.cleanup.dueCount} 条待清理`
+                    : center.pendingCount > 0
+                      ? `${center.pendingCount} 条待审核`
+                      : center.cleanup.due
+                        ? `${center.cleanup.dueCount} 条待清理`
+                        : "当前没有待处理项"
+                }
+                tone={center.pendingCount > 0 || center.cleanup.due ? "yellow" : "white"}
+              />
+
+              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">使用中的来源</p>
+                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    {previewProviders.length} 个
+                  </span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {previewProviders.map((provider) => (
+                    <div
+                      key={provider.id}
+                      data-testid={`memory-preview-provider-${provider.id}`}
+                      className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
+                            {providerKindLabel(provider.kind)}
+                          </p>
+                          <p className="mt-2 font-display text-xl font-bold leading-6">{provider.label}</p>
+                        </div>
+                        <span
+                          className={cn(
+                            "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
+                            providerStatusTone(provider.status) === "lime" && "bg-[var(--shock-lime)]",
+                            providerStatusTone(provider.status) === "pink" && "bg-[var(--shock-pink)] text-white",
+                            providerStatusTone(provider.status) === "white" && "bg-white"
+                          )}
+                        >
+                          {providerStatusLabel(provider.status)}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6">{provider.summary}</p>
+                      {provider.lastSummary ? <p className="mt-3 text-sm leading-6">{provider.lastSummary}</p> : null}
+                      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
+                        {providerScopeSummary(provider)}
+                      </p>
+                      {provider.lastError ? (
+                        <p className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-3 text-sm leading-6 text-white">
+                          {provider.lastError}
+                        </p>
+                      ) : null}
+                      {provider.nextAction ? (
+                        <p className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
+                          下一步：{provider.nextAction}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">可用工具</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {preview.tools.map((tool) => (
+                    <span
+                      key={tool}
+                      className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+                    >
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyState title="预览暂不可用" message="同步后会显示下一次任务的默认文件栈。" />
+          </div>
+        )}
+      </Panel>
+
       <div className="grid gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
         <Panel tone="paper" className="!p-3.5">
           <div className="flex items-start justify-between gap-3">
@@ -774,7 +1030,7 @@ export function LiveMemoryView() {
             </span>
           </div>
           <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.74)]">
-            资料、规则栈和下一次任务预览。
+            选中一条文件后，可以查看内容、修正记录和历史版本。
           </p>
 
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-1">
@@ -1011,19 +1267,30 @@ export function LiveMemoryView() {
             </div>
           </Panel>
 
-          <Panel tone={canMutate ? "paper" : "white"} className="!p-3.5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">记忆来源</p>
-                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">资料来源</h2>
+          <details
+            data-testid="memory-provider-details"
+            className={cn(
+              "group rounded-[24px] border-2 border-[var(--shock-ink)] px-4 py-4",
+              canMutate ? "bg-[var(--shock-paper)]" : "bg-white"
+            )}
+          >
+            <summary
+              data-testid="memory-provider-details-summary"
+              className="list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">资料来源</p>
+                  <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">需要时再管理来源和恢复</h2>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {centerLoading ? "同步中" : `${activeProviders} 可用 / ${degradedProviders} 异常`}
+                </span>
               </div>
-              <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {centerLoading ? "同步中" : `${activeProviders} 可用 / ${degradedProviders} 异常`}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              本地文件、搜索索引和外部记忆来源。
-            </p>
+              <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                首屏先看默认文件栈；这里只放来源开关、检查和恢复。
+              </p>
+            </summary>
 
             <div className="mt-5 space-y-4">
               {providerDrafts.map((provider) => {
@@ -1301,21 +1568,32 @@ export function LiveMemoryView() {
                 {providerDirty ? "有未保存修改。" : "已保存。"}
               </p>
             </div>
-          </Panel>
+          </details>
 
-          <Panel tone={canMutate ? "yellow" : "paper"} className="!p-3.5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">带入设置</p>
-                <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">下一次任务会带什么</h2>
+          <details
+            data-testid="memory-policy-details"
+            className={cn(
+              "group rounded-[24px] border-2 border-[var(--shock-ink)] px-4 py-4",
+              canMutate ? "bg-[var(--shock-yellow)]" : "bg-[var(--shock-paper)]"
+            )}
+          >
+            <summary
+              data-testid="memory-policy-details-summary"
+              className="list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">带入设置</p>
+                  <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">需要时再调整带入方式</h2>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {canMutate ? "可编辑" : "只读"}
+                </span>
               </div>
-              <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                {canMutate ? "可编辑" : "只读"}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
-              可以控制讨论记录、决策、Agent 资料等内容是否带入下一次任务。
-            </p>
+              <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                当前是 {policyModeLabel(center.policy.mode)}，最多带 {center.policy.maxItems} 条资料。
+              </p>
+            </summary>
 
             {!canMutate ? (
               <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
@@ -1325,284 +1603,159 @@ export function LiveMemoryView() {
               </div>
             ) : null}
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-[0.95fr_minmax(0,1.05fr)]">
-              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前设置</p>
-                  <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                    {policyDirty ? "有修改" : "已保存"}
-                  </span>
-                </div>
+            <div className="mt-5 rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">当前设置</p>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {policyDirty ? "有修改" : "已保存"}
+                </span>
+              </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {(["governed-first", "balanced"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      data-testid={`memory-policy-mode-${mode}`}
-                      disabled={!canMutate || busyAction !== null}
-                      onClick={() => {
-                        setPolicyModeDraft(mode);
-                        setPolicyDirty(true);
-                      }}
-                      className={cn(
-                        "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
-                        policyModeDraft === mode ? "bg-[var(--shock-yellow)] shadow-[4px_4px_0_0_var(--shock-ink)]" : "bg-white"
-                      )}
-                    >
-                      <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{policyModeLabel(mode)}</p>
-                      <p className="mt-2 text-sm leading-6">
-                        {mode === "governed-first" ? "优先带入固定资料和已确认内容。" : "平衡当前会话和长期资料。"}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {(["governed-first", "balanced"] as const).map((mode) => (
                   <button
+                    key={mode}
                     type="button"
-                    data-testid="memory-policy-room"
+                    data-testid={`memory-policy-mode-${mode}`}
                     disabled={!canMutate || busyAction !== null}
-                    onClick={() => onPolicyToggle(!includeRoomNotesDraft, setIncludeRoomNotesDraft)}
-                    className={cn(
-                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
-                      includeRoomNotesDraft ? "bg-[var(--shock-lime)]" : "bg-white"
-                    )}
-                  >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">讨论记录</p>
-                    <p className="mt-2 text-sm leading-6">{includeRoomNotesDraft ? "带入讨论记录" : "不带入讨论记录"}</p>
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="memory-policy-decision"
-                    disabled={!canMutate || busyAction !== null}
-                    onClick={() => onPolicyToggle(!includeDecisionLedgerDraft, setIncludeDecisionLedgerDraft)}
-                    className={cn(
-                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
-                      includeDecisionLedgerDraft ? "bg-[var(--shock-lime)]" : "bg-white"
-                    )}
-                  >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">决策记录</p>
-                    <p className="mt-2 text-sm leading-6">{includeDecisionLedgerDraft ? "带入决策记录" : "不带入决策记录"}</p>
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="memory-policy-agent"
-                    disabled={!canMutate || busyAction !== null}
-                    onClick={() => onPolicyToggle(!includeAgentMemoryDraft, setIncludeAgentMemoryDraft)}
-                    className={cn(
-                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
-                      includeAgentMemoryDraft ? "bg-[var(--shock-lime)]" : "bg-white"
-                    )}
-                  >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Agent 资料</p>
-                    <p className="mt-2 text-sm leading-6">{includeAgentMemoryDraft ? "带入 Agent 资料" : "只用工作区和讨论资料"}</p>
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="memory-policy-promoted"
-                    disabled={!canMutate || busyAction !== null}
-                    onClick={() => onPolicyToggle(!includePromotedArtifactsDraft, setIncludePromotedArtifactsDraft)}
-                    className={cn(
-                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
-                      includePromotedArtifactsDraft ? "bg-[var(--shock-lime)]" : "bg-white"
-                    )}
-                  >
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">复用规则</p>
-                    <p className="mt-2 text-sm leading-6">{includePromotedArtifactsDraft ? "带入已沉淀的技能和规则" : "不带入复用规则"}</p>
-                  </button>
-                </div>
-
-                <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
-                  <label className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]" htmlFor="memory-policy-max-items">
-                    最多带入条数
-                  </label>
-                  <select
-                    id="memory-policy-max-items"
-                    data-testid="memory-policy-max-items"
-                    value={maxItemsDraft}
-                    onChange={(event) => {
-                      setMaxItemsDraft(Number(event.target.value));
+                    onClick={() => {
+                      setPolicyModeDraft(mode);
                       setPolicyDirty(true);
                     }}
-                    disabled={!canMutate || busyAction !== null}
-                    className="mt-3 w-full rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                    className={cn(
+                      "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
+                      policyModeDraft === mode ? "bg-[var(--shock-yellow)] shadow-[4px_4px_0_0_var(--shock-ink)]" : "bg-white"
+                    )}
                   >
-                    {POLICY_MAX_ITEM_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option} 条
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    data-testid="memory-policy-save"
-                    disabled={!canMutate || busyAction !== null || !policyDirty}
-                    onClick={() => void handleSavePolicy()}
-                    className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
-                  >
-                    {busyAction === "save-policy" ? "保存中..." : "保存设置"}
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em]">{policyModeLabel(mode)}</p>
+                    <p className="mt-2 text-sm leading-6">
+                      {mode === "governed-first" ? "优先带入固定资料和已确认内容。" : "平衡当前会话和长期资料。"}
+                    </p>
                   </button>
-                  <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
-                    最近更新：{valueOrFallback(center.policy.updatedBy, "未记录")} / {formatTimestamp(center.policy.updatedAt)}
-                  </p>
-                </div>
+                ))}
               </div>
 
-              <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">预览</p>
-                    <h3 className="mt-2 font-display text-2xl font-bold">{preview ? preview.title : "等待会话"}</h3>
-                  </div>
-                  <select
-                    data-testid="memory-preview-session"
-                    value={resolvedSessionId}
-                    onChange={(event) => setSelectedSessionId(event.target.value)}
-                    className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3 text-sm outline-none"
-                  >
-                    {center.previews.map((item) => (
-                      <option key={item.sessionId} value={item.sessionId}>
-                        {previewLabel(item)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  data-testid="memory-policy-room"
+                  disabled={!canMutate || busyAction !== null}
+                  onClick={() => onPolicyToggle(!includeRoomNotesDraft, setIncludeRoomNotesDraft)}
+                  className={cn(
+                    "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
+                    includeRoomNotesDraft ? "bg-[var(--shock-lime)]" : "bg-white"
+                  )}
+                >
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em]">讨论记录</p>
+                  <p className="mt-2 text-sm leading-6">{includeRoomNotesDraft ? "带入讨论记录" : "不带入讨论记录"}</p>
+                </button>
+                <button
+                  type="button"
+                  data-testid="memory-policy-decision"
+                  disabled={!canMutate || busyAction !== null}
+                  onClick={() => onPolicyToggle(!includeDecisionLedgerDraft, setIncludeDecisionLedgerDraft)}
+                  className={cn(
+                    "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
+                    includeDecisionLedgerDraft ? "bg-[var(--shock-lime)]" : "bg-white"
+                  )}
+                >
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em]">决策记录</p>
+                  <p className="mt-2 text-sm leading-6">{includeDecisionLedgerDraft ? "带入决策记录" : "不带入决策记录"}</p>
+                </button>
+                <button
+                  type="button"
+                  data-testid="memory-policy-agent"
+                  disabled={!canMutate || busyAction !== null}
+                  onClick={() => onPolicyToggle(!includeAgentMemoryDraft, setIncludeAgentMemoryDraft)}
+                  className={cn(
+                    "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
+                    includeAgentMemoryDraft ? "bg-[var(--shock-lime)]" : "bg-white"
+                  )}
+                >
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em]">Agent 资料</p>
+                  <p className="mt-2 text-sm leading-6">{includeAgentMemoryDraft ? "带入 Agent 资料" : "只用工作区和讨论资料"}</p>
+                </button>
+                <button
+                  type="button"
+                  data-testid="memory-policy-promoted"
+                  disabled={!canMutate || busyAction !== null}
+                  onClick={() => onPolicyToggle(!includePromotedArtifactsDraft, setIncludePromotedArtifactsDraft)}
+                  className={cn(
+                    "rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4 text-left disabled:opacity-60",
+                    includePromotedArtifactsDraft ? "bg-[var(--shock-lime)]" : "bg-white"
+                  )}
+                >
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em]">复用规则</p>
+                  <p className="mt-2 text-sm leading-6">{includePromotedArtifactsDraft ? "带入已沉淀的技能和规则" : "不带入复用规则"}</p>
+                </button>
+              </div>
 
-                {preview ? (
-                  <>
-                    <StatusRow label="读取规则" value={preview.recallPolicy} tone="yellow" />
-                    <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">任务摘要</p>
-                      <pre data-testid="memory-preview-summary" className="mt-3 whitespace-pre-wrap font-mono text-[12px] leading-6">
-                        {preview.promptSummary}
-                      </pre>
-                    </div>
+              <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+                <label className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]" htmlFor="memory-policy-max-items">
+                  最多带入条数
+                </label>
+                <select
+                  id="memory-policy-max-items"
+                  data-testid="memory-policy-max-items"
+                  value={maxItemsDraft}
+                  onChange={(event) => {
+                    setMaxItemsDraft(Number(event.target.value));
+                    setPolicyDirty(true);
+                  }}
+                  disabled={!canMutate || busyAction !== null}
+                  className="mt-3 w-full rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm outline-none disabled:opacity-60"
+                >
+                  {POLICY_MAX_ITEM_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option} 条
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">规则栈与附带文件</p>
-                        <div className="mt-3 space-y-2">
-                          {preview.files.map((path) => (
-                            <StatusRow
-                              key={path}
-                              label={path}
-                              value="下一次任务会读取"
-                              tone="white"
-                              testID={`memory-preview-file-${toTestID(path)}`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">可用工具</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {preview.tools.map((tool) => (
-                            <span key={tool} className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]">
-                              {tool}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">使用中的来源</p>
-                        <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                          {preview.providers.length} 个
-                        </span>
-                      </div>
-                      <div className="mt-3 grid gap-3 xl:grid-cols-3">
-                        {preview.providers.map((provider) => (
-                          <div
-                            key={provider.id}
-                            data-testid={`memory-preview-provider-${provider.id}`}
-                            className="rounded-[16px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-3"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-                                  {providerKindLabel(provider.kind)}
-                                </p>
-                                <p className="mt-2 font-display text-xl font-bold leading-6">{provider.label}</p>
-                              </div>
-                              <span
-                                className={cn(
-                                  "rounded-full border-2 border-[var(--shock-ink)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]",
-                                  providerStatusTone(provider.status) === "lime" && "bg-[var(--shock-lime)]",
-                                  providerStatusTone(provider.status) === "pink" && "bg-[var(--shock-pink)] text-white",
-                                  providerStatusTone(provider.status) === "white" && "bg-white"
-                                )}
-                              >
-                                {providerStatusLabel(provider.status)}
-                              </span>
-                            </div>
-                            <p className="mt-3 text-sm leading-6">{provider.summary}</p>
-                            {provider.lastSummary ? <p className="mt-3 text-sm leading-6">{provider.lastSummary}</p> : null}
-                            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
-                              {providerScopeSummary(provider)}
-                            </p>
-                            {provider.lastError ? (
-                              <p className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-[var(--shock-pink)] px-3 py-3 text-sm leading-6 text-white">
-                                {provider.lastError}
-                              </p>
-                            ) : null}
-                            {provider.nextAction ? (
-                              <p className="mt-3 rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 text-sm leading-6">
-                                下一步：{provider.nextAction}
-                              </p>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-3 space-y-3">
-                      {preview.items.map((item) => (
-                        <div
-                          key={`${item.path}-${item.reason}`}
-                          data-testid={`memory-preview-item-${toTestID(item.path)}`}
-                          className={cn("rounded-[18px] border-2 border-[var(--shock-ink)] px-4 py-4", governanceTone(item.governance))}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
-                                {item.scope} / {item.kind}
-                              </p>
-                              <p className="mt-2 font-display text-2xl font-bold">{item.path}</p>
-                            </div>
-                            <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-                              {item.required ? "必带" : item.reason}
-                            </span>
-                          </div>
-                          <p className="mt-3 text-sm leading-6">{item.latestWrite || item.summary}</p>
-                          {item.snippet ? (
-                            <pre className="mt-3 whitespace-pre-wrap rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3 font-mono text-[12px] leading-6">
-                              {item.snippet}
-                            </pre>
-                          ) : null}
-                          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.6)]">
-                            {summarizeGovernance(item.governance)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <EmptyState title="预览暂不可用" message="同步后会显示下一次任务预览。" />
-                )}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  data-testid="memory-policy-save"
+                  disabled={!canMutate || busyAction !== null || !policyDirty}
+                  onClick={() => void handleSavePolicy()}
+                  className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+                >
+                  {busyAction === "save-policy" ? "保存中..." : "保存设置"}
+                </button>
+                <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                  最近更新：{valueOrFallback(center.policy.updatedBy, "未记录")} / {formatTimestamp(center.policy.updatedAt)}
+                </p>
               </div>
             </div>
+          </details>
 
-            <MutationFeedback error={mutationError} success={mutationSuccess} />
-          </Panel>
+          <MutationFeedback error={mutationError} success={mutationSuccess} />
 
-          <Panel tone="white">
+          <details
+            data-testid="memory-cleanup-details"
+            className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+          >
+            <summary
+              data-testid="memory-cleanup-details-summary"
+              className="list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">清理记录</p>
+                  <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">需要时再清理过期内容</h2>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {center.cleanup.due ? `${center.cleanup.dueCount} 待清理` : "当前正常"}
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                重复、过期或已移除来源的内容放在这里处理。
+              </p>
+            </summary>
+
+            <div className="mt-4">
+              <Panel tone="white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">清理记录</p>
@@ -1738,9 +1891,37 @@ export function LiveMemoryView() {
                 </div>
               </div>
             </div>
-          </Panel>
+              </Panel>
+            </div>
+          </details>
 
-          <Panel tone={canMutate ? "paper" : "white"}>
+          <details
+            data-testid="memory-promotion-details"
+            className={cn(
+              "rounded-[24px] border-2 border-[var(--shock-ink)] px-4 py-4",
+              canMutate ? "bg-[var(--shock-paper)]" : "bg-white"
+            )}
+          >
+            <summary
+              data-testid="memory-promotion-details-summary"
+              className="list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">沉淀经验</p>
+                  <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">需要时再整理成规则和技能</h2>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {center.pendingCount} 待处理 / {center.approvedCount} 已通过
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                只有确认值得长期复用时，再展开申请和审核。
+              </p>
+            </summary>
+
+            <div className="mt-4">
+              <Panel tone={canMutate ? "paper" : "white"}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">沉淀经验</p>
@@ -1912,9 +2093,34 @@ export function LiveMemoryView() {
                 </div>
               </div>
             </div>
-          </Panel>
+              </Panel>
+            </div>
+          </details>
 
-          <Panel tone="paper">
+          <details
+            data-testid="memory-history-details"
+            className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4"
+          >
+            <summary
+              data-testid="memory-history-details-summary"
+              className="list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">历史版本</p>
+                  <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">需要时再翻版本轨迹</h2>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {versions.length} 条
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                版本对比和来源回放都保留在这里，不占默认工作面。
+              </p>
+            </summary>
+
+            <div className="mt-4">
+              <Panel tone="paper">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">历史版本</p>
@@ -1951,7 +2157,9 @@ export function LiveMemoryView() {
                 ))
               )}
             </div>
-          </Panel>
+              </Panel>
+            </div>
+          </details>
         </div>
       </div>
     </div>

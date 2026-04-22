@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.74
+**版本:** 1.75
 **更新日期:** 2026 年 4 月 22 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -46,7 +46,7 @@
 1. 把首页和主壳继续收成真正产品入口。
    重点是 `/`、`shell`、`rooms`：先回答“我现在能做什么”，再展示统计和支撑信息。
 2. 把 supporting flow 继续做减法。
-   重点是 `/setup`、`/mailbox`、`/settings`：默认只保留下一步，诊断、治理、调度、配额都后移。
+   重点是 `/setup`、`/mailbox`、`/memory`、`/settings`：默认只保留下一步，诊断、治理、调度、配额都后移。
 3. 把 release gate 从“能连通”推进到“能证明主链可用”。
    重点是 `state stream / experience metrics / runtime drift`，后续再补 `run control` 和 GitHub hard gate。
 
@@ -224,6 +224,9 @@
 - `GAP-72 / TKT-109`
   - `/mailbox` 默认首屏现在只保留手头交接、阻塞原因、下一步按钮和当前卡片列表；治理、发起新交接、批量处理已后移到默认折叠区，不再一进来就像内部控制台。
   - 相关 headed 脚本已同步改成显式展开二级区块后再验证治理、自动交接和批量处理，避免“前端做减法”把浏览器验收误打成假失败。
+- `GAP-73 / TKT-104`
+  - `/memory` 默认首屏现在先显示“下一次任务会先看这些文件”，把默认文件栈、当前会话摘要、资料来源状态和待处理项前置；用户一进来先看到下次任务会带什么，而不是先掉进控制台。
+  - 带入设置、资料来源、清理记录、沉淀经验和历史版本都已后移到默认折叠区；相关 headed 脚本也已改成显式展开 policy / provider / promotion 二级区后再继续验证。
 
 ### 2026-04-22 九分冲刺待收
 
@@ -264,6 +267,7 @@
 - `文件级记忆`
   - session 默认记忆路径已前滚到 `MEMORY.md + notes/channels.md + notes/operating-rules.md + notes/skills.md + notes/work-log.md + room/decision`。
   - `/memory` next-run preview 与 agent profile file stack 现在会默认露出 owner agent 的 `SOUL.md + MEMORY.md + notes/*` 规则栈，而不再只露一条 `MEMORY.md`。
+  - `/memory` 默认顶栏已改成 next-run 文件栈优先；provider / policy / cleanup / promotion / version 这些维护动作都后移到二级视图。
 - `daemon continuity`
   - daemon session workspace 已从最小 envelope 前滚到 `SOUL.md + MEMORY.md + notes/channels.md + notes/operating-rules.md + notes/skills.md + notes/rooms/<room>.md + notes/work-log.md`。
 
@@ -286,6 +290,7 @@
 
 #### `TKT-104` 文件级记忆默认规则栈产品化
 
+- Status: 2026-04-22 已收口；保留这张票只作追溯，不再算当前 active。
 - Goal: 让文件记忆不再只是 `MEMORY.md + work-log`，而是默认把 workspace 规则栈和 owner agent 规则栈都带进下一次任务。
 - Scope: session 默认 `memoryPaths`、`/memory` next-run preview、agent profile file stack、room prompt 的读取边界文案。
 - Dependencies: 当前 `CHK-10` memory center provider preview、`TC-036` agent profile edit、`TC-088` owner continuity。
@@ -355,7 +360,7 @@
 ## 五、推荐推进顺序
 
 1. 先收 `TKT-101`：持续做 room / inbox / run / governance 的 subtractive polish，但不再靠加新面板解决流畅度问题。
-2. 然后回到 `CHK-10` 的更重 memory compaction / retention / durable adapter。
+2. 然后回到 `CHK-10` 的更重 memory compaction / retention / durable adapter，不再继续在 `/memory` 首屏堆管理控件。
 3. 后续所有多智能体 continuity / recovery 票默认接 `TKT-100` 这套 real-process harness，不再回退到手搓零散 fixture。
 
 ---

@@ -270,6 +270,7 @@ try {
   await waitForContains(page, "memory-preview-summary", "session-memory");
   await waitForVisible(page, "memory-preview-item-decisions-ops-27-md");
 
+  await page.getByTestId("memory-policy-details-summary").click();
   await page.getByTestId("memory-policy-agent").click();
   await page.getByTestId("memory-policy-max-items").selectOption("8");
   await page.getByTestId("memory-policy-save").click();
@@ -278,6 +279,7 @@ try {
   await capture(page, screenshotsDir, "policy-preview-updated");
 
   await page.getByTestId("memory-artifact-notes-rooms-room-memory-md").click();
+  await page.getByTestId("memory-promotion-details-summary").click();
   await page.getByTestId("memory-promotion-kind-skill").click();
   await page.getByTestId("memory-promotion-title").fill("Room Conflict Triage");
   await page.getByTestId("memory-promotion-rationale").fill("把房间内反复出现的冲突处理步骤提升成可复用 skill。");
