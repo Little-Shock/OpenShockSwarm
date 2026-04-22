@@ -1,6 +1,6 @@
 # OpenShock To Do List
 
-**版本:** 1.75
+**版本:** 1.76
 **更新日期:** 2026 年 4 月 22 日
 **关联文档:** [PRD](./PRD.md) · [Product Checklist](./Checklist.md) · [Test Cases](../testing/Test-Cases.md)
 
@@ -43,10 +43,10 @@
 
 如果你今天只想知道“下一步先做什么”，先看这 3 条：
 
-1. 把首页和主壳继续收成真正产品入口。
-   重点是 `/`、`shell`、`rooms`：先回答“我现在能做什么”，再展示统计和支撑信息。
-2. 把 supporting flow 继续做减法。
-   重点是 `/setup`、`/mailbox`、`/memory`、`/settings`：默认只保留下一步，诊断、治理、调度、配额都后移。
+1. 把 `shell / rooms / /rooms/[id]` 继续收成真正的继续入口。
+   重点是房间索引卡、房间顶部摘要、context / topic 重复入口：先回答“现在去哪继续”，再保留次级深链。
+2. 把 `board / settings / agents` supporting flow 继续做减法。
+   重点是 planning 镜像、通知/治理摘要、资料说明：默认只保留当前对象和下一步，把说明腔和重复自链接继续后移。
 3. 把 release gate 从“能连通”推进到“能证明主链可用”。
    重点是 `state stream / experience metrics / runtime drift`，后续再补 `run control` 和 GitHub hard gate。
 
@@ -230,20 +230,18 @@
 
 ### 2026-04-22 九分冲刺待收
 
-- `P0-首页产品化`
-  - `/` 不能再只是跳转中间页；要直接回答“现在可以继续聊天、继续设置、回到最近讨论、处理待办交接”。
-- `P0-主壳减法`
-  - `shell / rooms` 继续压噪音：统计、摘要 rail、重复 self-link 和多层次级标签默认后移，主视觉只保留聊天和当前目标。
-- `P0-Setup 减法`
-  - `/setup` 默认只保留模板、仓库、GitHub、运行环境 4 个 checkpoint；runtime inventory、governance、lease、调度、配额全部降到高级区域。
-- `P0-Mailbox 减法`
-  - `/mailbox` 默认只保留待你处理的交接、阻塞原因和下一步按钮；升级队列、团队分工、规则、自动续接都进入二级视图。
+- `P0-shell / rooms 收尾`
+  - `/rooms` 索引卡继续压回单主动作；`/rooms/[id]` 顶部摘要、context/topic 双摘要、房间内重复深链和泛化跳转继续收平。
+- `P0-board / settings / agents 减法`
+  - planning 镜像、通知/治理摘要、资料说明和 profile 支持流继续压短；默认只保留当前对象、状态和下一步，不再让 supporting flow 读起来像后台控制台。
 - `P0-Release Gate 加硬`
   - `ops:smoke` 已覆盖 `/v1/state/stream`、`/v1/experience-metrics`、runtime pairing drift、`run control` fail-closed；下一步是把 strict GitHub readiness 更常态化，而不是只靠发布时手动加环境变量。
-- `P1-文件级记忆产品面`
-  - 把 `SOUL.md / MEMORY.md / notes/channels.md / notes/operating-rules.md / notes/skills.md / notes/work-log.md` 变成默认可见、可回放、可注入的工作面。
+- `P1-长期记忆整理与外部 provider 编排`
+  - 文件级记忆默认工作面已站住；下一步是压缩、标签、后台整理和真实 external durable adapter，不再只停在可见与可切换。
 - `P1-协议化协作闭环`
   - 把 `claim -> execute -> handoff -> resume -> closeout` 做成显式主链，绑定 actor、thread、evidence 和 SLA，减少“有能力但没有强协议”的使用落差。
+- `P1-多 session / 多 agent 恢复矩阵`
+  - 把 daemon continuity 从单 session 验证继续扩到多智能体交接恢复、publish retry、provider degraded fallback，避免恢复链只在单条 happy path 上成立。
 
 本轮已落地：
 

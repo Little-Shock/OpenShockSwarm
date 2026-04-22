@@ -1127,35 +1127,9 @@ function RoomContextPanels({
       <Panel tone="white">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前焦点</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前话题</p>
             <p className="mt-2 font-display text-[20px] font-bold leading-6">{room.topic.title}</p>
             <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">{room.topic.summary}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/issues/${room.issueKey}`}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              事项
-            </Link>
-            <Link
-              href={buildRoomWorkbenchHref(room.id, "run")}
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              运行
-            </Link>
-            <Link
-              href={buildRoomWorkbenchHref(room.id, "pr")}
-              className="border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              PR
-            </Link>
-            <Link
-              href="/board"
-              className="border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)]"
-            >
-              看板
-            </Link>
           </div>
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -1226,9 +1200,11 @@ function RoomContextPanels({
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">待处理</p>
             <p className="mt-2 font-display text-[20px] font-bold leading-6">
-              {relatedSignals.length} 条收件箱 / {relatedHandoffs.length} 条交接
+              {hasPendingItems ? "先处理这批" : "当前已清空"}
             </p>
-            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">只放当前待处理项。</p>
+            <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.68)]">
+              收件箱 {relatedSignals.length} 条 · 交接 {relatedHandoffs.length} 条
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -1322,32 +1298,32 @@ function RoomTopicWorkbenchPanel({
     <div data-testid="room-workbench-topic-panel" className="space-y-4">
       <Panel tone="paper" className="shadow-[6px_6px_0_0_var(--shock-yellow)]">
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">
-          {room.issueKey} / 话题
+          {room.issueKey} / 当前话题
         </p>
         <h3 className="mt-2 font-display text-3xl font-bold">{room.topic.title}</h3>
         <p className="mt-4 text-base leading-7">{room.topic.summary}</p>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">当前处理人</p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <div className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">当前处理人</p>
             {topicOwnerProfileHref ? (
               <Link
                 href={topicOwnerProfileHref}
                 data-testid="room-topic-owner-profile"
-                className="mt-2 block font-display text-xl font-semibold underline decoration-[1.5px] underline-offset-4"
+                className="mt-1 block text-sm font-semibold underline decoration-[1.5px] underline-offset-4"
               >
                 {room.topic.owner}
               </Link>
             ) : (
-              <p className="mt-2 font-display text-xl font-semibold">{room.topic.owner}</p>
+              <p className="mt-1 text-sm font-semibold">{room.topic.owner}</p>
             )}
           </div>
-          <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">看板镜像</p>
-            <p className="mt-2 font-display text-xl font-semibold">{room.boardCount} 张卡片</p>
+          <div className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">事项</p>
+            <p className="mt-1 text-sm font-semibold leading-5">{issueTitle ?? room.issueKey}</p>
           </div>
-          <div className="rounded-[20px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">事项标题</p>
-            <p className="mt-2 text-sm font-semibold leading-6">{issueTitle ?? "等待事项详情同步"}</p>
+          <div className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2">
+            <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板镜像</p>
+            <p className="mt-1 text-sm font-semibold">{room.boardCount} 张卡片</p>
           </div>
         </div>
       </Panel>
@@ -1355,8 +1331,8 @@ function RoomTopicWorkbenchPanel({
       <Panel tone="white">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">话题引导</p>
-            <p className="mt-2 font-display text-[20px] font-bold leading-6">最近讨论语境</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">最近消息</p>
+            <p className="mt-2 font-display text-[20px] font-bold leading-6">最近三条</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -1592,7 +1568,7 @@ function RoomWorkbenchRailSummary({
         <Panel tone="paper">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">房间焦点</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.48)]">当前话题</p>
               <p className="mt-2 font-display text-[22px] font-bold leading-6">{room.topic.title}</p>
               <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.7)]">{room.topic.summary}</p>
             </div>
@@ -1601,15 +1577,11 @@ function RoomWorkbenchRailSummary({
               <p className="mt-1.5 text-sm font-semibold">{ROOM_WORKBENCH_TAB_LABEL[activeTab]}</p>
             </div>
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
               <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">事项</p>
               <p className="mt-1.5 text-sm font-semibold">{room.issueKey}</p>
               <p className="mt-1 text-[11px] leading-5 text-[color:rgba(24,20,14,0.62)]">{issueTitle ?? "等待事项详情同步"}</p>
-            </div>
-            <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">看板</p>
-              <p className="mt-1.5 text-sm font-semibold">{room.boardCount} 张卡片</p>
             </div>
             <div className="rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5">
               <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">信号</p>
@@ -3378,6 +3350,14 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
       : state.guards.filter((guard) => guard.roomId === room.id || guard.runId === run.id);
   const roomRunHistory = loading || error || !room ? [] : buildRunHistoryEntries(state, room.id);
   const shellProfileEntries = buildShellProfileEntries(state, loading || Boolean(error));
+  const topBarDescription = loading
+    ? "正在获取讨论间和执行状态。"
+    : error
+      ? error
+      : room
+        ? `当前处理人 ${room.topic.owner}`
+        : "等待讨论间同步。";
+  const roomTopicSummary = room?.topic.summary ?? room?.summary ?? "当前讨论还在同步。";
 
   function replaceRoomQueryState(next: {
     tab?: RoomWorkbenchTab;
@@ -3555,13 +3535,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
           <StitchTopBar
             eyebrow="讨论间"
             title={loading ? "讨论间同步中" : error ? "讨论间同步失败" : room?.title ?? roomId}
-            description={
-              loading
-                ? "正在获取讨论间和执行状态。"
-                : error
-                  ? error
-                  : room?.summary ?? "讨论摘要还没同步。"
-            }
+            description={topBarDescription}
             searchPlaceholder="搜索讨论间 / 事项 / 执行"
             onOpenQuickSearch={quickSearch.onOpenQuickSearch}
             tabs={roomWorkbenchTabs}
@@ -3589,7 +3563,7 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       {room?.topic.title ?? "等待讨论间同步"}
                     </p>
                     <p className="mt-1 text-[12px] leading-5 text-[color:rgba(24,20,14,0.66)]">
-                      {room?.topic.summary ?? "讨论主题摘要还在同步。"}
+                      {roomTopicSummary}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -3597,14 +3571,14 @@ export function StitchDiscussionView({ roomId }: { roomId: string }) {
                       href={room ? `/issues/${room.issueKey}` : "/issues"}
                       className="flex min-h-[44px] items-center rounded-[14px] border-2 border-[var(--shock-ink)] bg-white px-3 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[var(--shock-shadow-sm)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-[var(--shock-paper)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
-                      事项
+                      事项详情
                     </Link>
                     <Link
                       href={planningMirrorHref}
                       data-testid="room-open-planning-mirror"
                       className="flex min-h-[44px] items-center rounded-[14px] border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 text-[12px] text-[color:rgba(24,20,14,0.74)] transition-[background-color,transform] duration-150 hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shock-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     >
-                      看板
+                      任务板
                     </Link>
                   </div>
                 </div>

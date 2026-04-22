@@ -348,6 +348,15 @@ function FactTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SnapshotChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2">
+      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.56)]">{label}</p>
+      <p className="mt-1 text-sm font-semibold leading-5">{value}</p>
+    </div>
+  );
+}
+
 function RoomSnapshotCard({
   room,
   issue,
@@ -375,16 +384,22 @@ function RoomSnapshotCard({
           {runStatusLabel(room.topic.status)}
         </span>
       </div>
-      <p className="mt-2.5 text-sm leading-6">{room.summary}</p>
-      <div className="mt-4 grid gap-2 md:grid-cols-4">
-        <FactTile label="当前话题" value={room.topic.title} />
-        <FactTile label="当前处理人" value={room.topic.owner} />
-        <FactTile label="当前执行" value={run?.id ?? room.runId} />
-        <FactTile label="未读" value={`${room.unread} 条`} />
+      <p className="mt-2.5 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{room.summary}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <SnapshotChip label="当前话题" value={room.topic.title} />
+        <SnapshotChip label="当前处理人" value={room.topic.owner} />
+        <SnapshotChip label="执行" value={run?.id ?? room.runId} />
+        <SnapshotChip label="未读" value={room.unread > 0 ? `${room.unread} 条` : "已读"} />
       </div>
-      <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.7)]">
-        {run?.branch ?? "分支待接入"} · 任务卡 {room.boardCount} 张{issue ? ` · ${priorityLabel(issue.priority)}` : ""}
-      </p>
+      <div className="mt-3 flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.58)]">
+        <span className="rounded-full border border-[var(--shock-ink)] bg-[var(--shock-paper)] px-2.5 py-1">
+          {run?.branch ?? "分支待接入"}
+        </span>
+        <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2.5 py-1">{room.boardCount} 张卡片</span>
+        {issue ? (
+          <span className="rounded-full border border-[var(--shock-ink)] bg-white px-2.5 py-1">{priorityLabel(issue.priority)}</span>
+        ) : null}
+      </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={`/rooms/${room.id}`}
@@ -395,31 +410,31 @@ function RoomSnapshotCard({
       </div>
       <details className="mt-3 rounded-[16px] border-2 border-[var(--shock-ink)] bg-white px-3 py-3">
         <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
-          更多入口
+          更多
         </summary>
         <div className="mt-3 flex flex-wrap gap-2">
-        <Link
-          href={`/topics/${room.topic.id}`}
-          className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
-        >
-          话题详情
-        </Link>
-        {run ? (
           <Link
-            href={`/runs/${run.id}`}
-            className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
-          >
-            执行详情
-          </Link>
-        ) : null}
-        {issue ? (
-          <Link
-            href={`/issues/${issue.key}`}
+            href={`/topics/${room.topic.id}`}
             className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
           >
-            事项详情
+            话题详情
           </Link>
-        ) : null}
+          {run ? (
+            <Link
+              href={`/runs/${run.id}`}
+              className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+            >
+              执行详情
+            </Link>
+          ) : null}
+          {issue ? (
+            <Link
+              href={`/issues/${issue.key}`}
+              className="rounded-xl border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em]"
+            >
+              事项详情
+            </Link>
+          ) : null}
         </div>
       </details>
     </Panel>
