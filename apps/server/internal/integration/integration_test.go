@@ -19,6 +19,8 @@ import (
 	"time"
 )
 
+const integrationAuthTokenHeader = "X-OpenShock-Auth-Token"
+
 func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	projectRoot := projectRoot(t)
 	repoRoot := createTempGitRepo(t)
@@ -53,30 +55,58 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	)
 	waitForHealth(t, serverURL+"/healthz", server)
 
+	loginChallenge := postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
+		"action": "request_login_challenge",
+		"email":  "larkspur@openshock.dev",
+	}, http.StatusOK, "")
+	loginChallengePayload, ok := loginChallenge["challenge"].(map[string]any)
+	if !ok {
+		t.Fatalf("login challenge payload malformed: %#v", loginChallenge["challenge"])
+	}
 	login := postJSON(t, serverURL+"/v1/auth/session", map[string]any{
 		"email":       "larkspur@openshock.dev",
 		"deviceLabel": "Owner Browser",
-	}, http.StatusOK)
+		"challengeId": stringField(t, loginChallengePayload, "id"),
+	}, http.StatusOK, "")
+	authToken := stringField(t, login, "token")
 	session, ok := login["session"].(map[string]any)
 	if !ok {
 		t.Fatalf("login session payload malformed: %#v", login["session"])
 	}
 	if stringField(t, session, "emailVerificationStatus") != "verified" {
+		verifyChallenge := postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
+			"action": "request_verify_email_challenge",
+			"email":  "larkspur@openshock.dev",
+		}, http.StatusOK, authToken)
+		verifyChallengePayload, ok := verifyChallenge["challenge"].(map[string]any)
+		if !ok {
+			t.Fatalf("verify challenge payload malformed: %#v", verifyChallenge["challenge"])
+		}
 		postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
 			"action": "verify_email",
 			"email":  "larkspur@openshock.dev",
-		}, http.StatusOK)
+			"challengeId": stringField(t, verifyChallengePayload, "id"),
+		}, http.StatusOK, authToken)
 	}
 	if stringField(t, session, "deviceAuthStatus") != "authorized" {
-		postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
-			"action":   "authorize_device",
+		authorizeChallenge := postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
+			"action":   "request_authorize_device_challenge",
 			"deviceId": stringField(t, session, "deviceId"),
-		}, http.StatusOK)
+		}, http.StatusOK, authToken)
+		authorizeChallengePayload, ok := authorizeChallenge["challenge"].(map[string]any)
+		if !ok {
+			t.Fatalf("authorize challenge payload malformed: %#v", authorizeChallenge["challenge"])
+		}
+		postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
+			"action":      "authorize_device",
+			"deviceId":    stringField(t, session, "deviceId"),
+			"challengeId": stringField(t, authorizeChallengePayload, "id"),
+		}, http.StatusOK, authToken)
 	}
 
 	pairing := postJSON(t, serverURL+"/v1/runtime/pairing", map[string]any{
 		"daemonUrl": daemonURL,
-	}, http.StatusOK)
+	}, http.StatusOK, authToken)
 	pairingState, ok := pairing["state"].(map[string]any)
 	if !ok {
 		t.Fatalf("pairing state payload malformed: %#v", pairing["state"])
@@ -89,7 +119,7 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		t.Fatalf("pairedRuntime should not be empty after pairing")
 	}
 
-	repoBinding := postJSON(t, serverURL+"/v1/repo/binding", map[string]any{}, http.StatusOK)
+	repoBinding := postJSON(t, serverURL+"/v1/repo/binding", map[string]any{}, http.StatusOK, authToken)
 	binding, ok := repoBinding["binding"].(map[string]any)
 	if !ok {
 		t.Fatalf("repo binding payload malformed: %#v", repoBinding["binding"])
@@ -103,7 +133,7 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	if stringField(t, binding, "authMode") != "local-git-origin" {
 		t.Fatalf("bound auth mode = %q, want local-git-origin", stringField(t, binding, "authMode"))
 	}
-	githubConnection := getJSON(t, serverURL+"/v1/github/connection")
+	githubConnection := getJSON(t, serverURL+"/v1/github/connection", authToken)
 	if stringField(t, githubConnection, "repo") != "example/integration-loop" {
 		t.Fatalf("github connection repo = %q, want example/integration-loop", stringField(t, githubConnection, "repo"))
 	}
@@ -117,7 +147,7 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		"owner":    "Claude Review Runner",
 		"priority": "critical",
 	}
-	created := postJSON(t, serverURL+"/v1/issues", createIssue, http.StatusCreated)
+	created := postJSON(t, serverURL+"/v1/issues", createIssue, http.StatusCreated, authToken)
 	roomID := stringField(t, created, "roomId")
 	runID := stringField(t, created, "runId")
 	sessionID := stringField(t, created, "sessionId")
@@ -126,14 +156,14 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		streamResp := postStream(t, serverURL+"/v1/rooms/"+roomID+"/messages/stream", map[string]any{
 			"provider": "claude",
 			"prompt":   "请只回复两行：stream-ready 和 done",
-		}, http.StatusOK)
+		}, http.StatusOK, authToken)
 
 		streamText := strings.ToLower(strings.Join(streamResp.deltas, " ") + " " + streamResp.output)
 		if !strings.Contains(streamText, "stream-ready") {
 			t.Fatalf("stream output = %q, want substring stream-ready", streamText)
 		}
 
-		stateAfterStream := getJSON(t, serverURL+"/v1/state")
+		stateAfterStream := getJSON(t, serverURL+"/v1/state", authToken)
 		roomMessagesRaw, ok := stateAfterStream["roomMessages"].(map[string]any)
 		if !ok {
 			t.Fatalf("roomMessages payload malformed: %#v", stateAfterStream["roomMessages"])
@@ -144,14 +174,14 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		}
 	}
 
-	prCreated := postJSON(t, serverURL+"/v1/rooms/"+roomID+"/pull-request", map[string]any{}, http.StatusOK)
+	prCreated := postJSON(t, serverURL+"/v1/rooms/"+roomID+"/pull-request", map[string]any{}, http.StatusOK, authToken)
 	pullRequestID := stringField(t, prCreated, "pullRequestId")
 
 	postJSON(t, serverURL+"/v1/pull-requests/"+pullRequestID, map[string]any{
 		"status": "merged",
-	}, http.StatusOK)
+	}, http.StatusOK, authToken)
 
-	state := getJSON(t, serverURL+"/v1/state")
+	state := getJSON(t, serverURL+"/v1/state", authToken)
 	issue := findByField(t, state["issues"], "roomId", roomID)
 	run := findByField(t, state["runs"], "id", runID)
 	runSession := findByField(t, state["sessions"], "id", sessionID)
@@ -215,6 +245,7 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new delete pairing request: %v", err)
 	}
+	deleteReq.Header.Set(integrationAuthTokenHeader, authToken)
 	deleteResp, err := http.DefaultClient.Do(deleteReq)
 	if err != nil {
 		t.Fatalf("delete pairing: %v", err)
@@ -225,7 +256,7 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 		t.Fatalf("delete pairing status = %d, want %d, body=%s", deleteResp.StatusCode, http.StatusOK, string(payload))
 	}
 
-	runtimeAfterDelete := getJSON(t, serverURL+"/v1/runtime")
+	runtimeAfterDelete := getJSON(t, serverURL+"/v1/runtime", authToken)
 	if stringField(t, runtimeAfterDelete, "state") != "offline" {
 		t.Fatalf("runtime state after delete = %q, want offline", stringField(t, runtimeAfterDelete, "state"))
 	}
@@ -454,10 +485,17 @@ func waitForHealth(t *testing.T, url string, cmd *exec.Cmd) {
 	t.Fatalf("health check not ready: %s", url)
 }
 
-func getJSON(t *testing.T, url string) map[string]any {
+func getJSON(t *testing.T, url, authToken string) map[string]any {
 	t.Helper()
 
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("new GET %s: %v", url, err)
+	}
+	if strings.TrimSpace(authToken) != "" {
+		req.Header.Set(integrationAuthTokenHeader, authToken)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
@@ -475,7 +513,7 @@ func getJSON(t *testing.T, url string) map[string]any {
 	return payload
 }
 
-func postJSON(t *testing.T, url string, body map[string]any, wantStatus int) map[string]any {
+func postJSON(t *testing.T, url string, body map[string]any, wantStatus int, authToken string) map[string]any {
 	t.Helper()
 
 	data, err := json.Marshal(body)
@@ -487,6 +525,9 @@ func postJSON(t *testing.T, url string, body map[string]any, wantStatus int) map
 		t.Fatalf("new request %s: %v", url, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(authToken) != "" {
+		req.Header.Set(integrationAuthTokenHeader, authToken)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST %s: %v", url, err)
@@ -505,7 +546,7 @@ func postJSON(t *testing.T, url string, body map[string]any, wantStatus int) map
 	return payload
 }
 
-func postStream(t *testing.T, url string, body map[string]any, wantStatus int) streamResponse {
+func postStream(t *testing.T, url string, body map[string]any, wantStatus int, authToken string) streamResponse {
 	t.Helper()
 
 	data, err := json.Marshal(body)
@@ -517,6 +558,9 @@ func postStream(t *testing.T, url string, body map[string]any, wantStatus int) s
 		t.Fatalf("new request %s: %v", url, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(authToken) != "" {
+		req.Header.Set(integrationAuthTokenHeader, authToken)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST %s: %v", url, err)

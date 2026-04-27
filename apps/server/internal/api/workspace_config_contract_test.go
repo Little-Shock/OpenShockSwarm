@@ -130,7 +130,7 @@ func TestWorkspaceMemberPreferencesRouteAllowsSelfServiceButProtectsOtherMembers
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session error = %v", err)
 	}
@@ -188,7 +188,7 @@ func TestWorkspaceMemberPreferencesRouteRejectsInternalStartRoute(t *testing.T) 
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session error = %v", err)
 	}

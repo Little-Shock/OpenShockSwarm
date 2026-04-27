@@ -420,6 +420,7 @@ export type AuthChallenge = {
   kind: string;
   memberId?: string;
   email?: string;
+  deviceId?: string;
   status: string;
   issuedAt?: string;
   expiresAt?: string;

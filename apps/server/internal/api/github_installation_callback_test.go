@@ -104,6 +104,7 @@ func TestGitHubInstallationCallbackPersistsInstallTruthAndRefreshesRepoBinding(t
 		GitHub:        client,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(GitHubInstallationCallbackRequest{
 		InstallationID: "67890",
@@ -191,6 +192,7 @@ func TestGitHubInstallationCallbackRejectsMissingInstallationID(t *testing.T) {
 		GitHub:        client,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(GitHubInstallationCallbackRequest{})
 	if err != nil {

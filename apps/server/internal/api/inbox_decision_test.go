@@ -174,6 +174,7 @@ func TestInboxDecisionRouteSyncsReviewItem(t *testing.T) {
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]string{"decision": "changes_requested"})
 	if err != nil {
@@ -237,6 +238,7 @@ func TestInboxDecisionRouteReturnsFailureContractForReviewSyncFailure(t *testing
 		GitHub:        &fakeGitHubClient{syncErr: errors.New("synthetic github sync failure")},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]string{"decision": "changes_requested"})
 	if err != nil {

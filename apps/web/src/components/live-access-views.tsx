@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import type { AuthDevice, AuthSession, WorkspaceMember, WorkspaceRole } from "@/lib/phase-zero-types";
 import { DetailRail, Panel } from "@/components/phase-zero-views";
+import { buildWorkspaceContinueTarget } from "@/lib/continue-target";
 import { buildFirstStartJourney, type FirstStartJourneyStepStatus } from "@/lib/first-start-journey";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { permissionLabel } from "@/lib/session-authz";
@@ -246,7 +247,7 @@ function PermissionProbe({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">权限检查</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">常用入口</p>
           
           <h3 className="mt-2 font-display text-2xl font-bold">{label}</h3>
         </div>
@@ -257,14 +258,13 @@ function PermissionProbe({
             allowed ? "bg-white" : "bg-[var(--shock-paper)]"
           )}
         >
-          {allowed ? "可进入" : "受限"}
+          {allowed ? "可打开" : "按身份"}
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">{summary}</p>
-      <div className="mt-4 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.6)]">所需权限</p>
-        <p className="mt-2 text-sm leading-6">{permissionLabel(permission)}</p>
-      </div>
+      <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.58)]">
+        {permissionLabel(permission)}
+      </p>
     </Link>
   );
 }
@@ -1451,9 +1451,26 @@ export function LiveAccessOverview() {
   const invitedMembers = members.filter((member) => member.status === "invited").length;
   const suspendedMembers = members.filter((member) => member.status === "suspended").length;
   const manageAllowed = canManageMembers(session);
-  const journey = buildFirstStartJourney(state.workspace, session);
+  const workspaceContinue = buildWorkspaceContinueTarget(state);
+  const journey = workspaceContinue.journey;
+  const continueTarget = workspaceContinue.target;
   const accessReady = journey.accessReady;
   const onboardingDone = journey.onboardingDone;
+  const readyHref = onboardingDone
+    ? continueTarget.source === "journey"
+      ? journey.launchHref
+      : continueTarget.href
+    : journey.nextHref;
+  const readyActionLabel = onboardingDone
+    ? continueTarget.source === "journey"
+      ? `回到${journey.launchSurfaceLabel}`
+      : `回到${continueTarget.ctaLabel}`
+    : journey.nextLabel;
+  const readySummary = onboardingDone
+    ? continueTarget.source === "journey"
+      ? `当前账号、邮箱和设备都没问题，回到${journey.launchSurfaceLabel}即可。`
+      : `${continueTarget.reason}，直接回到当前工作。`
+    : "当前账号、邮箱和设备都已确认，继续完成工作区配置。";
   const showSessionAction = !accessReady && !sessionIsActive(session);
   const showRecovery = !accessReady && sessionIsActive(session);
   const primaryGatePanel = !accessReady
@@ -1469,13 +1486,9 @@ export function LiveAccessOverview() {
       {accessReady ? (
         <AccessReadyPanel
           title={onboardingDone ? "你已经进入工作区" : "你已经登录"}
-          summary={
-            onboardingDone
-              ? "当前账号、邮箱和设备都没问题，回到聊天即可。"
-              : "当前账号、邮箱和设备都已确认，继续完成工作区配置。"
-          }
-          href={journey.nextHref}
-          actionLabel={journey.nextLabel}
+          summary={readySummary}
+          href={readyHref}
+          actionLabel={readyActionLabel}
         />
       ) : null}
 
@@ -1502,7 +1515,7 @@ export function LiveAccessOverview() {
           data-testid="access-advanced-toggle"
           className="cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.72)]"
         >
-          切换成员和更多设置
+          更多账号操作
         </summary>
         <div className="mt-4 space-y-4">
           {accessReady ? <SessionActionPanel session={session} members={members} /> : null}
@@ -1510,46 +1523,46 @@ export function LiveAccessOverview() {
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_0.95fr]">
             <Panel tone="paper" className="shadow-[8px_8px_0_0_var(--shock-yellow)]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">权限</p>
-                  <h2 className="mt-2 font-display text-3xl font-bold">当前身份能做什么</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">高级入口</p>
+              <h2 className="mt-2 font-display text-3xl font-bold">需要时再看可进入的页面</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                平时只要能登录并继续工作就够了。只有排查权限或跳到特定页面时，再展开下面这些入口。
+              </p>
+              <details className="mt-5 rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">
+                <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
+                  查看高级页面入口
+                </summary>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <PermissionProbe
+                    label="事项 / 看板"
+                    permission="issue.create"
+                    summary="新建事项并推进执行"
+                    href="/board"
+                    session={session}
+                  />
+                  <PermissionProbe
+                    label="讨论间 / 执行"
+                    permission="room.reply"
+                    summary="在房间里发言并驱动执行"
+                    href="/rooms"
+                    session={session}
+                  />
+                  <PermissionProbe
+                    label="收件箱 / 评审"
+                    permission="inbox.review"
+                    summary="处理评审和阻塞事项"
+                    href="/inbox"
+                    session={session}
+                  />
+                  <PermissionProbe
+                    label="设置 / 运行环境"
+                    permission="runtime.manage"
+                    summary="修改仓库和运行环境"
+                    href="/setup"
+                    session={session}
+                  />
                 </div>
-                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
-                  {session.permissions.length} 项权限
-                </span>
-              </div>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">高级权限默认收起，先进入工作区即可。</p>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <PermissionProbe
-                  label="事项 / 看板"
-                  permission="issue.create"
-                  summary="新建事项并推进执行"
-                  href="/board"
-                  session={session}
-                />
-                <PermissionProbe
-                  label="讨论间 / 执行"
-                  permission="room.reply"
-                  summary="在房间里发言并驱动执行"
-                  href="/rooms"
-                  session={session}
-                />
-                <PermissionProbe
-                  label="收件箱 / 评审"
-                  permission="inbox.review"
-                  summary="处理评审和阻塞事项"
-                  href="/inbox"
-                  session={session}
-                />
-                <PermissionProbe
-                  label="设置 / 运行环境"
-                  permission="runtime.manage"
-                  summary="修改仓库和运行环境"
-                  href="/setup"
-                  session={session}
-                />
-              </div>
+              </details>
             </Panel>
 
             <Panel tone="ink" className="shadow-[6px_6px_0_0_var(--shock-pink)]">

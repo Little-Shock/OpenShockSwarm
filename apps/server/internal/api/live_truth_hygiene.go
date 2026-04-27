@@ -1420,6 +1420,7 @@ func sanitizeAuthChallenge(item store.AuthChallenge) store.AuthChallenge {
 	item.MemberID = sanitizeDisplayText(item.MemberID, "")
 	item.Kind = sanitizeDisplayText(item.Kind, "")
 	item.Email = sanitizeDisplayText(item.Email, "")
+	item.DeviceID = sanitizeDisplayText(item.DeviceID, "")
 	item.Status = sanitizeDisplayText(item.Status, "")
 	return item
 }

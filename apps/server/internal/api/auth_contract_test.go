@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
@@ -31,12 +34,25 @@ func TestAuthSessionRouteSupportsLoginAndLogout(t *testing.T) {
 		t.Fatalf("initial auth session = %#v, want signed_out session", initial)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session error = %v", err)
 	}
 	if loginResp.StatusCode != http.StatusOK {
 		t.Fatalf("POST /v1/auth/session status = %d, want %d", loginResp.StatusCode, http.StatusOK)
+	}
+	authCookie := authCookieFromResponse(loginResp)
+	if authCookie == nil {
+		t.Fatalf("login response missing %s cookie", authTokenCookieName)
+	}
+	if !authCookie.HttpOnly || authCookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("login cookie = %#v, want HttpOnly + SameSiteLax", authCookie)
+	}
+	if authCookie.Secure {
+		t.Fatalf("login cookie = %#v, want insecure cookie on plain http test server", authCookie)
+	}
+	if authCookie.MaxAge <= 0 || authCookie.Expires.IsZero() {
+		t.Fatalf("login cookie = %#v, want positive lifetime", authCookie)
 	}
 
 	var loginPayload struct {
@@ -65,6 +81,13 @@ func TestAuthSessionRouteSupportsLoginAndLogout(t *testing.T) {
 	if deleteResp.StatusCode != http.StatusOK {
 		t.Fatalf("DELETE /v1/auth/session status = %d, want %d", deleteResp.StatusCode, http.StatusOK)
 	}
+	clearCookie := authCookieFromResponse(deleteResp)
+	if clearCookie == nil {
+		t.Fatalf("logout response missing %s cookie", authTokenCookieName)
+	}
+	if clearCookie.MaxAge >= 0 || clearCookie.Value != "" {
+		t.Fatalf("logout cookie = %#v, want cleared cookie", clearCookie)
+	}
 
 	var deletePayload struct {
 		Session store.AuthSession `json:"session"`
@@ -73,6 +96,225 @@ func TestAuthSessionRouteSupportsLoginAndLogout(t *testing.T) {
 	decodeJSON(t, deleteResp, &deletePayload)
 	if deletePayload.Session.Status != "signed_out" || deletePayload.State.Auth.Session.Status != "signed_out" {
 		t.Fatalf("delete payload = %#v, want signed_out session", deletePayload)
+	}
+}
+
+func TestAuthSessionRouteFailsClosedWithoutChallenge(t *testing.T) {
+	root := t.TempDir()
+	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session without challenge error = %v", err)
+	}
+	if loginResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /v1/auth/session without challenge status = %d, want %d", loginResp.StatusCode, http.StatusBadRequest)
+	}
+
+	var payload map[string]string
+	decodeJSON(t, loginResp, &payload)
+	if payload["error"] != store.ErrAuthChallengeRequired.Error() {
+		t.Fatalf("POST /v1/auth/session without challenge payload = %#v, want %q", payload, store.ErrAuthChallengeRequired.Error())
+	}
+}
+
+func TestLoginChallengeRouteIssuesOneTimeChallengeForKnownMember(t *testing.T) {
+	root := t.TempDir()
+	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"request_login_challenge","email":"mina@openshock.dev"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery request_login_challenge error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/recovery request_login_challenge status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Challenge store.AuthChallenge `json:"challenge"`
+	}
+	decodeJSON(t, resp, &payload)
+	if payload.Challenge.ID == "" || payload.Challenge.Kind != "login" || payload.Challenge.Status != "pending" {
+		t.Fatalf("request_login_challenge payload = %#v, want pending login challenge", payload)
+	}
+}
+
+func TestRecoveryChallengeRoutesConsumeVerifyAndAuthorizeOnce(t *testing.T) {
+	root := t.TempDir()
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	inviteResp, err := http.Post(server.URL+"/v1/workspace/members", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","name":"Reviewer","role":"member"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/workspace/members error = %v", err)
+	}
+	if inviteResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/workspace/members status = %d, want %d", inviteResp.StatusCode, http.StatusCreated)
+	}
+
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session error = %v", err)
+	}
+	if loginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session status = %d, want %d", loginResp.StatusCode, http.StatusOK)
+	}
+
+	var loginPayload struct {
+		Session store.AuthSession `json:"session"`
+	}
+	decodeJSON(t, loginResp, &loginPayload)
+
+	verifyChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action": "request_verify_email_challenge",
+		"email":  "reviewer@openshock.dev",
+	})
+	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev","challengeId":"`+verifyChallenge.ID+`"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery verify_email error = %v", err)
+	}
+	if verifyResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/recovery verify_email status = %d, want %d", verifyResp.StatusCode, http.StatusOK)
+	}
+
+	verifyReplayResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev","challengeId":"`+verifyChallenge.ID+`"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery verify_email replay error = %v", err)
+	}
+	if verifyReplayResp.StatusCode != http.StatusConflict {
+		t.Fatalf("POST /v1/auth/recovery verify_email replay status = %d, want %d", verifyReplayResp.StatusCode, http.StatusConflict)
+	}
+
+	authorizeChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action":   "request_authorize_device_challenge",
+		"deviceId": loginPayload.Session.DeviceID,
+	})
+	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`","challengeId":"`+authorizeChallenge.ID+`"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery authorize_device error = %v", err)
+	}
+	if authorizeResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/recovery authorize_device status = %d, want %d", authorizeResp.StatusCode, http.StatusOK)
+	}
+
+	authorizeReplayResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`","challengeId":"`+authorizeChallenge.ID+`"}`)))
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery authorize_device replay error = %v", err)
+	}
+	if authorizeReplayResp.StatusCode != http.StatusConflict {
+		t.Fatalf("POST /v1/auth/recovery authorize_device replay status = %d, want %d", authorizeReplayResp.StatusCode, http.StatusConflict)
+	}
+}
+
+func TestRequestScopedAuthSessionUsesCookieAndExpiresTokensFailClosed(t *testing.T) {
+	previousNow := requestAuthTimeNow
+	previousTTL := requestAuthTokenTTL
+	baseTime := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	requestAuthTimeNow = func() time.Time { return baseTime }
+	requestAuthTokenTTL = 90 * time.Second
+	t.Cleanup(func() {
+		requestAuthTimeNow = previousNow
+		requestAuthTokenTTL = previousTTL
+	})
+
+	root := t.TempDir()
+	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	memberClient := plainContractHTTPClient()
+	memberLoginResp, err := postContractAuthSessionJSON(t, memberClient, server.URL, `{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session member login error = %v", err)
+	}
+	if memberLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session member login status = %d, want %d", memberLoginResp.StatusCode, http.StatusOK)
+	}
+
+	memberCookie := authCookieFromResponse(memberLoginResp)
+	if memberCookie == nil {
+		t.Fatalf("member login response missing %s cookie", authTokenCookieName)
+	}
+	if memberCookie.MaxAge != int((90*time.Second)/time.Second) {
+		t.Fatalf("member login cookie = %#v, want MaxAge 90", memberCookie)
+	}
+	if !memberCookie.Expires.Equal(baseTime.Add(90 * time.Second)) {
+		t.Fatalf("member login cookie = %#v, want expiry %s", memberCookie, baseTime.Add(90*time.Second).Format(time.RFC3339))
+	}
+
+	ownerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
+	}
+	if ownerLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session owner login status = %d, want %d", ownerLoginResp.StatusCode, http.StatusOK)
+	}
+
+	memberSessionReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/auth/session", nil)
+	if err != nil {
+		t.Fatalf("new GET /v1/auth/session member cookie request error = %v", err)
+	}
+	memberSessionReq.Header.Set("Cookie", authTokenCookieName+"="+memberCookie.Value)
+	memberSessionResp, err := memberClient.Do(memberSessionReq)
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session member cookie error = %v", err)
+	}
+	if memberSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session member cookie status = %d, want %d", memberSessionResp.StatusCode, http.StatusOK)
+	}
+
+	var memberSession store.AuthSession
+	decodeJSON(t, memberSessionResp, &memberSession)
+	if memberSession.Email != "mina@openshock.dev" || memberSession.Role != "member" {
+		t.Fatalf("member cookie session = %#v, want mina member", memberSession)
+	}
+
+	requestAuthTimeNow = func() time.Time { return baseTime.Add(91 * time.Second) }
+
+	expiredSessionReq, err := http.NewRequest(http.MethodGet, server.URL+"/v1/auth/session", nil)
+	if err != nil {
+		t.Fatalf("new GET /v1/auth/session expired cookie request error = %v", err)
+	}
+	expiredSessionReq.Header.Set("Cookie", authTokenCookieName+"="+memberCookie.Value)
+	expiredSessionResp, err := memberClient.Do(expiredSessionReq)
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session expired cookie error = %v", err)
+	}
+	if expiredSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session expired cookie status = %d, want %d", expiredSessionResp.StatusCode, http.StatusOK)
+	}
+
+	var expiredSession store.AuthSession
+	decodeJSON(t, expiredSessionResp, &expiredSession)
+	if expiredSession.Status != "signed_out" || expiredSession.Email != "" {
+		t.Fatalf("expired cookie session = %#v, want signed_out", expiredSession)
+	}
+}
+
+func TestAuthSessionRouteMarksCookieSecureWhenForwardedHTTPS(t *testing.T) {
+	root := t.TempDir()
+	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	client := plainContractHTTPClient()
+	req := newContractAuthSessionRequest(t, client, server.URL, `{"email":"mina@openshock.dev"}`)
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session forwarded request error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session forwarded request status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	authCookie := authCookieFromResponse(resp)
+	if authCookie == nil {
+		t.Fatalf("forwarded login response missing %s cookie", authTokenCookieName)
+	}
+	if !authCookie.Secure {
+		t.Fatalf("forwarded login cookie = %#v, want secure cookie", authCookie)
 	}
 }
 
@@ -109,12 +351,12 @@ func TestFreshBootstrapOwnerClaimRouteFailsClosedAfterWorkStarts(t *testing.T) {
 	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"alice@example.com","deviceLabel":"Alice Browser"}`)))
+	loginResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"request_login_challenge","email":"alice@example.com"}`)))
 	if err != nil {
-		t.Fatalf("POST /v1/auth/session fresh bootstrap claim error = %v", err)
+		t.Fatalf("POST /v1/auth/recovery fresh bootstrap claim error = %v", err)
 	}
 	if loginResp.StatusCode != http.StatusConflict {
-		t.Fatalf("POST /v1/auth/session fresh bootstrap claim status = %d, want %d", loginResp.StatusCode, http.StatusConflict)
+		t.Fatalf("POST /v1/auth/recovery fresh bootstrap claim status = %d, want %d", loginResp.StatusCode, http.StatusConflict)
 	}
 
 	var payload struct {
@@ -144,7 +386,7 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 	}
 	decodeJSON(t, inviteResp, &invitePayload)
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer phone error = %v", err)
 	}
@@ -157,7 +399,11 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 	}
 	decodeJSON(t, loginResp, &loginPayload)
 
-	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev"}`)))
+	verifyChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action": "request_verify_email_challenge",
+		"email":  "reviewer@openshock.dev",
+	})
+	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev","challengeId":"`+verifyChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery verify_email error = %v", err)
 	}
@@ -165,7 +411,11 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 		t.Fatalf("POST /v1/auth/recovery verify_email status = %d, want %d", verifyResp.StatusCode, http.StatusOK)
 	}
 
-	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`"}`)))
+	authorizeChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action":   "request_authorize_device_challenge",
+		"deviceId": loginPayload.Session.DeviceID,
+	})
+	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`","challengeId":"`+authorizeChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery authorize_device error = %v", err)
 	}
@@ -173,7 +423,7 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 		t.Fatalf("POST /v1/auth/recovery authorize_device status = %d, want %d", authorizeResp.StatusCode, http.StatusOK)
 	}
 
-	ownerLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
 	}
@@ -194,7 +444,7 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 		t.Fatalf("PATCH /v1/workspace/members/{id} activate status = %d, want %d", activateResp.StatusCode, http.StatusOK)
 	}
 
-	laptopLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Laptop"}`)))
+	laptopLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Laptop"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer laptop error = %v", err)
 	}
@@ -210,7 +460,7 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 		t.Fatalf("blocked direct login payload = %#v, want %q", blockedPayload, store.ErrAuthTrustedDeviceRequired.Error())
 	}
 
-	ownerLoginResp, err = http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err = postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner relogin error = %v", err)
 	}
@@ -218,7 +468,12 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 		t.Fatalf("POST /v1/auth/session owner relogin status = %d, want %d", ownerLoginResp.StatusCode, http.StatusOK)
 	}
 
-	approveLaptopResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","memberId":"`+invitePayload.Member.ID+`","deviceLabel":"Reviewer Laptop"}`)))
+	approveLaptopChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action":      "request_authorize_device_challenge",
+		"memberId":    invitePayload.Member.ID,
+		"deviceLabel": "Reviewer Laptop",
+	})
+	approveLaptopResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","memberId":"`+invitePayload.Member.ID+`","deviceLabel":"Reviewer Laptop","challengeId":"`+approveLaptopChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery approve laptop error = %v", err)
 	}
@@ -226,7 +481,7 @@ func TestAuthSessionRouteRequiresApprovedDeviceForManagedActiveMember(t *testing
 		t.Fatalf("POST /v1/auth/recovery approve laptop status = %d, want %d", approveLaptopResp.StatusCode, http.StatusOK)
 	}
 
-	laptopLoginResp, err = http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Laptop"}`)))
+	laptopLoginResp, err = postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Laptop"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer laptop approved error = %v", err)
 	}
@@ -292,7 +547,7 @@ func TestWorkspaceMembersRoutesEnforceOwnerRoleContract(t *testing.T) {
 		t.Fatalf("PATCH /v1/workspace/members/member-larkspur status = %d, want %d", lastOwnerResp.StatusCode, http.StatusConflict)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session member login error = %v", err)
 	}
@@ -342,7 +597,7 @@ func TestWorkspaceMemberReadRoutesRequireActiveSessionAndAllowSelfOrOwner(t *tes
 		t.Fatalf("GET /v1/workspace/members signed out status = %d, want %d", rosterResp.StatusCode, http.StatusUnauthorized)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session member login error = %v", err)
 	}
@@ -434,7 +689,7 @@ func TestWorkspaceMemberRoutesReflectRoleAndStatusMutationsInSessionContract(t *
 		t.Fatalf("role payload member = %#v, want invited member", rolePayload.Member)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer login error = %v", err)
 	}
@@ -459,7 +714,7 @@ func TestWorkspaceMemberRoutesReflectRoleAndStatusMutationsInSessionContract(t *
 		t.Fatalf("reviewer member after login = %#v, want invited member until recovery gates clear", authMember)
 	}
 
-	restoreOwnerResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	restoreOwnerResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner restore error = %v", err)
 	}
@@ -490,12 +745,12 @@ func TestWorkspaceMemberRoutesReflectRoleAndStatusMutationsInSessionContract(t *
 		t.Fatalf("suspend payload member = %#v, want suspended", suspendPayload.Member)
 	}
 
-	blockedLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev"}`)))
+	blockedLoginResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"request_login_challenge","email":"reviewer@openshock.dev"}`)))
 	if err != nil {
-		t.Fatalf("POST /v1/auth/session suspended reviewer error = %v", err)
+		t.Fatalf("POST /v1/auth/recovery suspended reviewer error = %v", err)
 	}
 	if blockedLoginResp.StatusCode != http.StatusForbidden {
-		t.Fatalf("POST /v1/auth/session suspended reviewer status = %d, want %d", blockedLoginResp.StatusCode, http.StatusForbidden)
+		t.Fatalf("POST /v1/auth/recovery suspended reviewer status = %d, want %d", blockedLoginResp.StatusCode, http.StatusForbidden)
 	}
 }
 
@@ -512,7 +767,7 @@ func TestAuthRecoveryRoutesProductizeVerifyDeviceResetAndIdentityLifecycle(t *te
 		t.Fatalf("POST /v1/workspace/members status = %d, want %d", inviteResp.StatusCode, http.StatusCreated)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session error = %v", err)
 	}
@@ -529,7 +784,11 @@ func TestAuthRecoveryRoutesProductizeVerifyDeviceResetAndIdentityLifecycle(t *te
 		t.Fatalf("login payload session = %#v, want pending verify/device", loginPayload.Session)
 	}
 
-	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev"}`)))
+	verifyChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action": "request_verify_email_challenge",
+		"email":  "reviewer@openshock.dev",
+	})
+	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev","challengeId":"`+verifyChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery verify_email error = %v", err)
 	}
@@ -550,7 +809,11 @@ func TestAuthRecoveryRoutesProductizeVerifyDeviceResetAndIdentityLifecycle(t *te
 		t.Fatalf("verify payload member status = %q, want invited until device authorized", verifyPayload.Member.Status)
 	}
 
-	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`"}`)))
+	authorizeChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action":   "request_authorize_device_challenge",
+		"deviceId": loginPayload.Session.DeviceID,
+	})
+	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`","challengeId":"`+authorizeChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery authorize_device error = %v", err)
 	}
@@ -606,7 +869,7 @@ func TestAuthRecoveryRoutesProductizeVerifyDeviceResetAndIdentityLifecycle(t *te
 		t.Fatalf("blocked bind payload = %#v, want %q", blockedBindPayload, store.ErrWorkspaceMemberApprovalRequired.Error())
 	}
 
-	ownerLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner relogin error = %v", err)
 	}
@@ -636,7 +899,7 @@ func TestAuthRecoveryRoutesProductizeVerifyDeviceResetAndIdentityLifecycle(t *te
 		t.Fatalf("activate payload member = %#v, want active", activatePayload.Member)
 	}
 
-	loginResp, err = http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err = postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer relogin error = %v", err)
 	}
@@ -752,7 +1015,7 @@ func TestAuthRecoveryRoutesFailClosedForSignedOutAndUnknownDevice(t *testing.T) 
 		t.Fatalf("POST /v1/workspace/members status = %d, want %d", inviteResp.StatusCode, http.StatusCreated)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session error = %v", err)
 	}
@@ -760,12 +1023,12 @@ func TestAuthRecoveryRoutesFailClosedForSignedOutAndUnknownDevice(t *testing.T) 
 		t.Fatalf("POST /v1/auth/session status = %d, want %d", loginResp.StatusCode, http.StatusOK)
 	}
 
-	unknownDeviceResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","email":"reviewer@openshock.dev","deviceId":"device-missing"}`)))
+	unknownDeviceResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"request_authorize_device_challenge","email":"reviewer@openshock.dev","deviceId":"device-missing"}`)))
 	if err != nil {
-		t.Fatalf("POST /v1/auth/recovery authorize_device unknown error = %v", err)
+		t.Fatalf("POST /v1/auth/recovery request_authorize_device_challenge unknown error = %v", err)
 	}
 	if unknownDeviceResp.StatusCode != http.StatusNotFound {
-		t.Fatalf("POST /v1/auth/recovery authorize_device unknown status = %d, want %d", unknownDeviceResp.StatusCode, http.StatusNotFound)
+		t.Fatalf("POST /v1/auth/recovery request_authorize_device_challenge unknown status = %d, want %d", unknownDeviceResp.StatusCode, http.StatusNotFound)
 	}
 
 	deleteReq, err := http.NewRequest(http.MethodDelete, server.URL+"/v1/auth/session", nil)
@@ -780,12 +1043,12 @@ func TestAuthRecoveryRoutesFailClosedForSignedOutAndUnknownDevice(t *testing.T) 
 		t.Fatalf("DELETE /v1/auth/session status = %d, want %d", deleteResp.StatusCode, http.StatusOK)
 	}
 
-	signedOutResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev"}`)))
+	signedOutResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"request_verify_email_challenge","email":"reviewer@openshock.dev"}`)))
 	if err != nil {
-		t.Fatalf("POST /v1/auth/recovery verify_email signed out error = %v", err)
+		t.Fatalf("POST /v1/auth/recovery request_verify_email_challenge signed out error = %v", err)
 	}
 	if signedOutResp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("POST /v1/auth/recovery verify_email signed out status = %d, want %d", signedOutResp.StatusCode, http.StatusUnauthorized)
+		t.Fatalf("POST /v1/auth/recovery request_verify_email_challenge signed out status = %d, want %d", signedOutResp.StatusCode, http.StatusUnauthorized)
 	}
 
 	missingChallengeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"complete_password_reset","email":"reviewer@openshock.dev","deviceLabel":"Reviewer Laptop"}`)))
@@ -815,7 +1078,7 @@ func TestAuthRecoveryRoutesAllowSignedOutPasswordResetForActiveMember(t *testing
 	}
 	decodeJSON(t, inviteResp, &invitePayload)
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer phone error = %v", err)
 	}
@@ -828,7 +1091,11 @@ func TestAuthRecoveryRoutesAllowSignedOutPasswordResetForActiveMember(t *testing
 	}
 	decodeJSON(t, loginResp, &loginPayload)
 
-	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev"}`)))
+	verifyChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action": "request_verify_email_challenge",
+		"email":  "reviewer@openshock.dev",
+	})
+	verifyResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"verify_email","email":"reviewer@openshock.dev","challengeId":"`+verifyChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery verify_email error = %v", err)
 	}
@@ -836,7 +1103,11 @@ func TestAuthRecoveryRoutesAllowSignedOutPasswordResetForActiveMember(t *testing
 		t.Fatalf("POST /v1/auth/recovery verify_email status = %d, want %d", verifyResp.StatusCode, http.StatusOK)
 	}
 
-	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`"}`)))
+	authorizeChallenge := requestContractRecoveryChallenge(t, http.DefaultClient, server.URL, map[string]string{
+		"action":   "request_authorize_device_challenge",
+		"deviceId": loginPayload.Session.DeviceID,
+	})
+	authorizeResp, err := http.Post(server.URL+"/v1/auth/recovery", "application/json", bytes.NewReader([]byte(`{"action":"authorize_device","deviceId":"`+loginPayload.Session.DeviceID+`","challengeId":"`+authorizeChallenge.ID+`"}`)))
 	if err != nil {
 		t.Fatalf("POST /v1/auth/recovery authorize_device error = %v", err)
 	}
@@ -844,7 +1115,7 @@ func TestAuthRecoveryRoutesAllowSignedOutPasswordResetForActiveMember(t *testing
 		t.Fatalf("POST /v1/auth/recovery authorize_device status = %d, want %d", authorizeResp.StatusCode, http.StatusOK)
 	}
 
-	ownerLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
 	}
@@ -980,7 +1251,7 @@ func TestStateRouteRedactsAuthContractForActiveMemberView(t *testing.T) {
 	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session member login error = %v", err)
 	}
@@ -1046,7 +1317,7 @@ func TestAuthSessionLoginResponseRedactsUnreadyMemberState(t *testing.T) {
 		t.Fatalf("DELETE /v1/auth/session owner status = %d, want %d", deleteResp.StatusCode, http.StatusOK)
 	}
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer login error = %v", err)
 	}
@@ -1095,7 +1366,7 @@ func TestAuthRecoveryRoutesFailClosedForCrossAccountMutation(t *testing.T) {
 		t.Fatalf("POST /v1/workspace/members victim status = %d, want %d", victimInviteResp.StatusCode, http.StatusCreated)
 	}
 
-	victimLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"victim@openshock.dev","deviceLabel":"Victim Phone"}`)))
+	victimLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"victim@openshock.dev","deviceLabel":"Victim Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session victim login error = %v", err)
 	}
@@ -1120,7 +1391,7 @@ func TestAuthRecoveryRoutesFailClosedForCrossAccountMutation(t *testing.T) {
 		t.Fatalf("DELETE /v1/auth/session after victim login status = %d, want %d", deleteResp.StatusCode, http.StatusOK)
 	}
 
-	reviewerLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	reviewerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer login error = %v", err)
 	}
@@ -1129,8 +1400,8 @@ func TestAuthRecoveryRoutesFailClosedForCrossAccountMutation(t *testing.T) {
 	}
 
 	for _, body := range []string{
-		`{"action":"verify_email","email":"victim@openshock.dev"}`,
-		`{"action":"authorize_device","email":"victim@openshock.dev","deviceId":"` + victimLoginPayload.Session.DeviceID + `"}`,
+		`{"action":"request_verify_email_challenge","email":"victim@openshock.dev"}`,
+		`{"action":"request_authorize_device_challenge","email":"victim@openshock.dev","deviceId":"` + victimLoginPayload.Session.DeviceID + `"}`,
 		`{"action":"request_password_reset","email":"victim@openshock.dev"}`,
 		`{"action":"bind_external_identity","email":"victim@openshock.dev","provider":"github","handle":"@victim"}`,
 	} {
@@ -1149,7 +1420,7 @@ func TestRequestScopedAuthSessionSeparatesConcurrentClients(t *testing.T) {
 	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	memberLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)))
+	memberLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session member login error = %v", err)
 	}
@@ -1166,7 +1437,7 @@ func TestRequestScopedAuthSessionSeparatesConcurrentClients(t *testing.T) {
 		t.Fatalf("member login payload = %#v, want mina token", memberLoginPayload)
 	}
 
-	ownerLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
 	}
@@ -1274,7 +1545,7 @@ func TestRequestScopedAuthGuardsOwnerOnlyNotificationPolicyRoute(t *testing.T) {
 	}
 
 	memberClient := plainContractHTTPClient()
-	memberLoginResp, err := memberClient.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Browser"}`)))
+	memberLoginResp, err := postContractAuthSessionJSON(t, memberClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session reviewer login error = %v", err)
 	}
@@ -1291,7 +1562,7 @@ func TestRequestScopedAuthGuardsOwnerOnlyNotificationPolicyRoute(t *testing.T) {
 	}
 
 	ownerClient := plainContractHTTPClient()
-	ownerLoginResp, err := ownerClient.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err := postContractAuthSessionJSON(t, ownerClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
 	}
@@ -1320,7 +1591,7 @@ func TestRequestScopedStateStreamSeparatesConcurrentClients(t *testing.T) {
 	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	memberLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)))
+	memberLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session member login error = %v", err)
 	}
@@ -1336,7 +1607,7 @@ func TestRequestScopedStateStreamSeparatesConcurrentClients(t *testing.T) {
 		t.Fatalf("member login payload missing token: %#v", memberLoginPayload)
 	}
 
-	ownerLoginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	ownerLoginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
 	}
@@ -1393,12 +1664,141 @@ func TestRequestScopedStateStreamSeparatesConcurrentClients(t *testing.T) {
 	}
 }
 
+func TestRequestScopedBrowserCookiesSeparateConcurrentClients(t *testing.T) {
+	root := t.TempDir()
+	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	memberClient := contractBrowserClient(t)
+	ownerClient := contractBrowserClient(t)
+
+	memberLoginResp, err := postContractAuthSessionJSON(t, memberClient, server.URL, `{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session member browser login error = %v", err)
+	}
+	if memberLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session member browser login status = %d, want %d", memberLoginResp.StatusCode, http.StatusOK)
+	}
+	if authCookie := authCookieFromResponse(memberLoginResp); authCookie == nil || strings.TrimSpace(authCookie.Value) == "" {
+		t.Fatalf("member browser login missing auth cookie: %#v", authCookie)
+	}
+
+	ownerLoginResp, err := postContractAuthSessionJSON(t, ownerClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session owner browser login error = %v", err)
+	}
+	if ownerLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session owner browser login status = %d, want %d", ownerLoginResp.StatusCode, http.StatusOK)
+	}
+	if authCookie := authCookieFromResponse(ownerLoginResp); authCookie == nil || strings.TrimSpace(authCookie.Value) == "" {
+		t.Fatalf("owner browser login missing auth cookie: %#v", authCookie)
+	}
+
+	memberSessionResp, err := memberClient.Get(server.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session member browser error = %v", err)
+	}
+	if memberSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session member browser status = %d, want %d", memberSessionResp.StatusCode, http.StatusOK)
+	}
+	var memberSession store.AuthSession
+	decodeJSON(t, memberSessionResp, &memberSession)
+	if memberSession.Email != "mina@openshock.dev" || memberSession.Role != "member" {
+		t.Fatalf("member browser session = %#v, want mina member", memberSession)
+	}
+
+	ownerSessionResp, err := ownerClient.Get(server.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session owner browser error = %v", err)
+	}
+	if ownerSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session owner browser status = %d, want %d", ownerSessionResp.StatusCode, http.StatusOK)
+	}
+	var ownerSession store.AuthSession
+	decodeJSON(t, ownerSessionResp, &ownerSession)
+	if ownerSession.Email != "larkspur@openshock.dev" || ownerSession.Role != "owner" {
+		t.Fatalf("owner browser session = %#v, want owner session", ownerSession)
+	}
+
+	memberPreferencesReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/member-mina/preferences", bytes.NewReader([]byte(`{"startRoute":"/rooms","githubHandle":"@mina-browser"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH member browser preferences request error = %v", err)
+	}
+	memberPreferencesReq.Header.Set("Content-Type", "application/json")
+	memberPreferencesResp, err := memberClient.Do(memberPreferencesReq)
+	if err != nil {
+		t.Fatalf("PATCH member browser preferences error = %v", err)
+	}
+	if memberPreferencesResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH member browser preferences status = %d, want %d", memberPreferencesResp.StatusCode, http.StatusOK)
+	}
+	var memberPreferencesPayload struct {
+		Member store.WorkspaceMember `json:"member"`
+		State  store.State           `json:"state"`
+	}
+	decodeJSON(t, memberPreferencesResp, &memberPreferencesPayload)
+	if memberPreferencesPayload.Member.Preferences.StartRoute != "/rooms" || memberPreferencesPayload.Member.GitHubIdentity.Handle != "@mina-browser" {
+		t.Fatalf("member browser preference payload = %#v, want /rooms + @mina-browser", memberPreferencesPayload.Member)
+	}
+	if memberPreferencesPayload.State.Auth.Session.Email != "mina@openshock.dev" || memberPreferencesPayload.State.Auth.Session.Preferences.StartRoute != "/rooms" {
+		t.Fatalf("member browser preference session = %#v, want scoped mina /rooms session", memberPreferencesPayload.State.Auth.Session)
+	}
+
+	ownerPreferencesReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/member-larkspur/preferences", bytes.NewReader([]byte(`{"startRoute":"/mailbox","githubHandle":"@owner-browser"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH owner browser preferences request error = %v", err)
+	}
+	ownerPreferencesReq.Header.Set("Content-Type", "application/json")
+	ownerPreferencesResp, err := ownerClient.Do(ownerPreferencesReq)
+	if err != nil {
+		t.Fatalf("PATCH owner browser preferences error = %v", err)
+	}
+	if ownerPreferencesResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH owner browser preferences status = %d, want %d", ownerPreferencesResp.StatusCode, http.StatusOK)
+	}
+	var ownerPreferencesPayload struct {
+		Member store.WorkspaceMember `json:"member"`
+		State  store.State           `json:"state"`
+	}
+	decodeJSON(t, ownerPreferencesResp, &ownerPreferencesPayload)
+	if ownerPreferencesPayload.Member.Preferences.StartRoute != "/mailbox" || ownerPreferencesPayload.Member.GitHubIdentity.Handle != "@owner-browser" {
+		t.Fatalf("owner browser preference payload = %#v, want /mailbox + @owner-browser", ownerPreferencesPayload.Member)
+	}
+	if ownerPreferencesPayload.State.Auth.Session.Email != "larkspur@openshock.dev" || ownerPreferencesPayload.State.Auth.Session.Preferences.StartRoute != "/mailbox" {
+		t.Fatalf("owner browser preference session = %#v, want scoped owner /mailbox session", ownerPreferencesPayload.State.Auth.Session)
+	}
+
+	memberSessionResp, err = memberClient.Get(server.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session member browser after prefs error = %v", err)
+	}
+	if memberSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session member browser after prefs status = %d, want %d", memberSessionResp.StatusCode, http.StatusOK)
+	}
+	decodeJSON(t, memberSessionResp, &memberSession)
+	if memberSession.Email != "mina@openshock.dev" || memberSession.Preferences.StartRoute != "/rooms" || memberSession.GitHubIdentity.Handle != "@mina-browser" {
+		t.Fatalf("member browser session after prefs = %#v, want retained mina browser preferences", memberSession)
+	}
+
+	ownerSessionResp, err = ownerClient.Get(server.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session owner browser after prefs error = %v", err)
+	}
+	if ownerSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session owner browser after prefs status = %d, want %d", ownerSessionResp.StatusCode, http.StatusOK)
+	}
+	decodeJSON(t, ownerSessionResp, &ownerSession)
+	if ownerSession.Email != "larkspur@openshock.dev" || ownerSession.Preferences.StartRoute != "/mailbox" || ownerSession.GitHubIdentity.Handle != "@owner-browser" {
+		t.Fatalf("owner browser session after prefs = %#v, want retained owner browser preferences", ownerSession)
+	}
+}
+
 func TestInvalidTokenPrivateReadsFailClosedAcrossMailboxPullRequestRoomAndRun(t *testing.T) {
 	root := t.TempDir()
 	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session owner login error = %v", err)
 	}
@@ -1547,6 +1947,42 @@ func containsPermission(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func authCookieFromResponse(resp *http.Response) *http.Cookie {
+	if resp == nil {
+		return nil
+	}
+	for _, cookie := range resp.Cookies() {
+		if cookie != nil && cookie.Name == authTokenCookieName {
+			return cookie
+		}
+	}
+	for _, header := range resp.Header.Values("Set-Cookie") {
+		if !strings.HasPrefix(header, authTokenCookieName+"=") {
+			continue
+		}
+		parsed := (&http.Response{Header: http.Header{"Set-Cookie": []string{header}}}).Cookies()
+		for _, cookie := range parsed {
+			if cookie != nil && cookie.Name == authTokenCookieName {
+				return cookie
+			}
+		}
+	}
+	return nil
+}
+
+func contractBrowserClient(t *testing.T) *http.Client {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New() error = %v", err)
+	}
+	return &http.Client{
+		Jar:       jar,
+		Transport: http.DefaultTransport,
+	}
 }
 
 func findWorkspaceMember(items []store.WorkspaceMember, memberID string) *store.WorkspaceMember {

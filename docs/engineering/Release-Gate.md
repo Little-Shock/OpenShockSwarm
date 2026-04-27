@@ -134,7 +134,13 @@ pnpm verify:release:rc
 
 也就是说，只要 `/v1/github/connection` 返回 `ready=false`、actual live ownership / rollout parity 漂了、integration loop 漂了、首启链路漂了、继续入口漂了，或者 durable config recovery 漂了，RC gate 就必须 fail-closed。
 
-命令结束时，脚本还会直接打印一段 release summary，带出当前 `branch / head / server / daemon` 和 5 份 browser report / RC report 路径，避免 reviewer 还要回滚整段日志自己找证据。
+命令结束时，脚本还会直接打印一段 release summary，带出当前 `branch / head / server / daemon` 和 5 份 browser report / RC report 路径；如果之后还要重新定位同一批证据，统一用：
+
+```bash
+pnpm release:evidence:latest
+pnpm release:evidence:latest rc
+pnpm release:evidence:latest full
+```
 
 从这轮开始，`pnpm verify:release:rc` 还会自动：
 
@@ -151,7 +157,7 @@ pnpm verify:release:rc
 注意：
 
 - 以上命令会生成报告，但仓库中的 `docs/testing/Test-Report-*` 是归档集合，不保证等于最新一次运行产物。
-- 需要确认“最新证据”时，以命令结束时打印的路径和 [Testing Index](../testing/README.md) 的定位命令为准。
+- 需要确认“最新证据”时，以命令结束时打印的路径和 `pnpm release:evidence:latest` 为准。
 
 ---
 

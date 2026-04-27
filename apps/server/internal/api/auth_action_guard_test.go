@@ -20,8 +20,17 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 	s, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
 	defer server.Close()
 
-	if _, _, err := s.LogoutAuthSession(); err != nil {
-		t.Fatalf("LogoutAuthSession() error = %v", err)
+	logoutReq, err := http.NewRequest(http.MethodDelete, server.URL+"/v1/auth/session", nil)
+	if err != nil {
+		t.Fatalf("NewRequest(DELETE /v1/auth/session) error = %v", err)
+	}
+	logoutResp, err := http.DefaultClient.Do(logoutReq)
+	if err != nil {
+		t.Fatalf("DELETE /v1/auth/session error = %v", err)
+	}
+	logoutResp.Body.Close()
+	if logoutResp.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE /v1/auth/session status = %d, want %d", logoutResp.StatusCode, http.StatusOK)
 	}
 
 	cases := []struct {
@@ -112,12 +121,7 @@ func TestMemberRoleGuardsAllowReviewAndExecutionButDenyAdminAndMergeMutations(t 
 	defer cleanup()
 	defer server.Close()
 
-	if _, _, err := s.LoginWithEmail(store.AuthLoginInput{
-		Email:       "mina@openshock.dev",
-		DeviceLabel: "Mina Browser",
-	}); err != nil {
-		t.Fatalf("LoginWithEmail(member) error = %v", err)
-	}
+	mustLoginAuthGuardSession(t, s, server.URL, "mina@openshock.dev", "Mina Browser")
 
 	allowed := []struct {
 		name   string
@@ -507,6 +511,7 @@ func TestMutationRoutesRequireVerifiedEmailAndAuthorizedDevice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoginWithEmail(invited member) error = %v", err)
 	}
+	mustEstablishContractBrowserSession(t, server.URL, invited.Email, "Reviewer Phone")
 	if session.EmailVerificationStatus != "pending" || session.DeviceAuthStatus != "pending" {
 		t.Fatalf("session = %#v, want pending verify/device", session)
 	}
@@ -543,7 +548,11 @@ func TestMutationRoutesRequireVerifiedEmailAndAuthorizedDevice(t *testing.T) {
 		t.Fatalf("store state mutated on pending email denial")
 	}
 
-	_, verifiedSession, _, err := s.VerifyMemberEmail(store.AuthRecoveryInput{Email: invited.Email})
+	_, verifyChallenge, err := s.RequestVerifyMemberEmailChallenge(store.AuthRecoveryInput{Email: invited.Email})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge() error = %v", err)
+	}
+	_, verifiedSession, _, err := s.VerifyMemberEmail(store.AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID})
 	if err != nil {
 		t.Fatalf("VerifyMemberEmail() error = %v", err)
 	}
@@ -583,9 +592,17 @@ func TestMutationRoutesRequireVerifiedEmailAndAuthorizedDevice(t *testing.T) {
 		t.Fatalf("store state mutated on pending device denial")
 	}
 
+	_, authorizeChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(store.AuthRecoveryInput{
+		Email:    invited.Email,
+		DeviceID: session.DeviceID,
+	})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
+	}
 	_, authorizedSession, _, device, err := s.AuthorizeAuthDevice(store.AuthRecoveryInput{
 		Email:    invited.Email,
 		DeviceID: session.DeviceID,
+		ChallengeID: authorizeChallenge.ID,
 	})
 	if err != nil {
 		t.Fatalf("AuthorizeAuthDevice() error = %v", err)
@@ -635,12 +652,7 @@ func TestMutationRoutesRequireVerifiedEmailAndAuthorizedDevice(t *testing.T) {
 	if _, _, err := s.UpdateWorkspaceMember(invited.ID, store.WorkspaceMemberUpdateInput{Status: "active"}); err != nil {
 		t.Fatalf("UpdateWorkspaceMember(activate invited) error = %v", err)
 	}
-	if _, _, err := s.LoginWithEmail(store.AuthLoginInput{
-		Email:       invited.Email,
-		DeviceLabel: "Reviewer Phone",
-	}); err != nil {
-		t.Fatalf("LoginWithEmail(invited after activation) error = %v", err)
-	}
+	mustLoginAuthGuardSession(t, s, server.URL, invited.Email, "Reviewer Phone")
 
 	resp = doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/issues", `{"title":"Ready member issue","summary":"recovery gates cleared","owner":"Reviewer","priority":"medium"}`)
 	defer resp.Body.Close()
@@ -669,12 +681,7 @@ func TestMemberRoleCanAdvanceMailboxLifecycle(t *testing.T) {
 	defer cleanup()
 	defer server.Close()
 
-	if _, _, err := s.LoginWithEmail(store.AuthLoginInput{
-		Email:       "mina@openshock.dev",
-		DeviceLabel: "Mina Browser",
-	}); err != nil {
-		t.Fatalf("LoginWithEmail(member) error = %v", err)
-	}
+	mustLoginAuthGuardSession(t, s, server.URL, "mina@openshock.dev", "Mina Browser")
 
 	nextState, handoff, err := s.CreateHandoff(store.MailboxCreateInput{
 		RoomID:      "room-runtime",
@@ -716,12 +723,7 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 	defer cleanup()
 	defer server.Close()
 
-	if _, _, err := s.LoginWithEmail(store.AuthLoginInput{
-		Email:       "longwen@openshock.dev",
-		DeviceLabel: "Longwen Browser",
-	}); err != nil {
-		t.Fatalf("LoginWithEmail(viewer) error = %v", err)
-	}
+	mustLoginAuthGuardSession(t, s, server.URL, "longwen@openshock.dev", "Longwen Browser")
 
 	cases := []struct {
 		name       string
@@ -805,6 +807,7 @@ func TestViewerRoleCannotMutateProtectedSurfaces(t *testing.T) {
 
 func newAuthGuardTestServer(t *testing.T, root string) (*store.Store, *fakeGitHubClient, *httptest.Server, func()) {
 	t.Helper()
+	ensureContractAuthTransport()
 
 	statePath := filepath.Join(root, "data", "state.json")
 	s, err := store.New(statePath, root)
@@ -898,12 +901,24 @@ func newAuthGuardTestServer(t *testing.T, root string) (*store.Store, *fakeGitHu
 		WorkspaceRoot: root,
 		GitHub:        github,
 	}).Handler())
+	clearContractAuthCookie(server.URL)
 
 	cleanup := func() {
 		daemon.Close()
 	}
 
 	return s, github, server, cleanup
+}
+
+func mustLoginAuthGuardSession(t *testing.T, s *store.Store, serverURL, email, deviceLabel string) store.AuthSession {
+	t.Helper()
+	if _, _, err := s.LoginWithEmail(store.AuthLoginInput{
+		Email:       email,
+		DeviceLabel: deviceLabel,
+	}); err != nil {
+		t.Fatalf("LoginWithEmail(%s) error = %v", email, err)
+	}
+	return mustEstablishContractBrowserSession(t, serverURL, email, deviceLabel)
 }
 
 func doJSONRequest(t *testing.T, client *http.Client, method, url, body string) *http.Response {

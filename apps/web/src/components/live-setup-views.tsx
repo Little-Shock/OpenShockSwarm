@@ -695,6 +695,32 @@ export function OnboardingStudioPanel() {
 
   const shouldCollapseTemplateManager = progress.templateConfirmed || workspace.onboarding.status === "done";
   const currentStudioStep = onboardingStudioStepLabel(workspace.onboarding.currentStep || progress.currentStep);
+
+  function renderStudioActionButtons(includeTestIds: boolean) {
+    return (
+      <>
+        <button
+          data-testid={includeTestIds ? "setup-onboarding-refresh-progress" : undefined}
+          type="button"
+          disabled={Boolean(pendingTemplateId)}
+          onClick={() => void persistTemplate(currentTemplate.id)}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {pendingTemplateId === currentTemplate.id ? "更新中..." : "刷新进度"}
+        </button>
+        <button
+          data-testid={includeTestIds ? "setup-onboarding-finish" : undefined}
+          type="button"
+          disabled={!progress.canFinish || Boolean(pendingTemplateId)}
+          onClick={() => void persistTemplate(currentTemplate.id, { finished: true })}
+          className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          完成首次启动
+        </button>
+      </>
+    );
+  }
+
   const studioBody = (
     <div className="mt-5 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
       <div className="space-y-3">
@@ -743,12 +769,20 @@ export function OnboardingStudioPanel() {
 
       <div className="space-y-3">
         <Panel tone="white" className="!p-3.5">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">当前启动包</p>
-          <div className="mt-3 grid gap-2">
-            <WorkspaceMetric label="模板" value={valueOrPlaceholder(materialization?.label || currentTemplate.label, currentTemplate.label)} testID="setup-onboarding-template-package" />
-            <WorkspaceMetric label="完成后进入" value={valueOrPlaceholder(workspace.onboarding.resumeUrl, "/setup")} />
-            <WorkspaceMetric label="通知策略" value={valueOrPlaceholder(materialization?.notificationPolicy, currentTemplate.notificationPolicy)} />
-          </div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em]">
+            {shouldCollapseTemplateManager ? "模板内容预览" : "当前启动包"}
+          </p>
+          {shouldCollapseTemplateManager ? (
+            <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+              上面的摘要卡负责继续和完成；这里展开后只看模板会写入什么。
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2">
+              <WorkspaceMetric label="模板" value={valueOrPlaceholder(materialization?.label || currentTemplate.label, currentTemplate.label)} testID="setup-onboarding-template-package" />
+              <WorkspaceMetric label="完成后进入" value={valueOrPlaceholder(workspace.onboarding.resumeUrl, "/setup")} />
+              <WorkspaceMetric label="通知策略" value={valueOrPlaceholder(materialization?.notificationPolicy, currentTemplate.notificationPolicy)} />
+            </div>
+          )}
           <div className="mt-3 space-y-2">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">已落地频道</p>
             <p data-testid="setup-onboarding-materialized-channels" className="text-sm leading-6">
@@ -828,15 +862,15 @@ export function OnboardingStudioPanel() {
                 步骤会随模板确认、仓库、GitHub 和运行环境更新。
               </p>
             </div>
-            <button
-              data-testid="setup-onboarding-refresh-progress"
-              type="button"
-              disabled={Boolean(pendingTemplateId)}
-              onClick={() => void persistTemplate(currentTemplate.id)}
-              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {pendingTemplateId === currentTemplate.id ? "更新中..." : "刷新进度"}
-            </button>
+            {shouldCollapseTemplateManager ? (
+              <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                动作在上面
+              </span>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                {renderStudioActionButtons(true)}
+              </div>
+            )}
           </div>
           <div className="mt-4 space-y-2">
             {ONBOARDING_STUDIO_STEPS.map((step) => {
@@ -861,15 +895,11 @@ export function OnboardingStudioPanel() {
             <p data-testid="setup-onboarding-current-step" className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">
               {currentStudioStep}
             </p>
-            <button
-              data-testid="setup-onboarding-finish"
-              type="button"
-              disabled={!progress.canFinish || Boolean(pendingTemplateId)}
-              onClick={() => void persistTemplate(currentTemplate.id, { finished: true })}
-              className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              完成首次启动
-            </button>
+            {shouldCollapseTemplateManager ? (
+              <p className="text-sm leading-6 text-[color:rgba(24,20,14,0.72)]">
+                继续和完成按钮保留在上面的当前启动包卡，这里只看进度。
+              </p>
+            ) : null}
           </div>
         </Panel>
 
@@ -925,24 +955,7 @@ export function OnboardingStudioPanel() {
               <WorkspaceMetric label="通知策略" value={valueOrPlaceholder(materialization?.notificationPolicy, currentTemplate.notificationPolicy)} />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                data-testid="setup-onboarding-refresh-progress"
-                type="button"
-                disabled={Boolean(pendingTemplateId)}
-                onClick={() => void persistTemplate(currentTemplate.id)}
-                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {pendingTemplateId === currentTemplate.id ? "更新中..." : "刷新进度"}
-              </button>
-              <button
-                data-testid="setup-onboarding-finish"
-                type="button"
-                disabled={!progress.canFinish || Boolean(pendingTemplateId)}
-                onClick={() => void persistTemplate(currentTemplate.id, { finished: true })}
-                className="rounded-2xl border-2 border-[var(--shock-ink)] bg-[var(--shock-yellow)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                完成首次启动
-              </button>
+              {renderStudioActionButtons(true)}
             </div>
           </Panel>
           <details data-testid="setup-onboarding-manage-details" className="mt-5 rounded-[22px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4">

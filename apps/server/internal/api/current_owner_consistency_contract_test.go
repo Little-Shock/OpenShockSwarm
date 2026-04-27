@@ -65,6 +65,7 @@ func TestCurrentOwnerFallbackKeepsRunDetailMemoryPreviewAndGovernanceAligned(t *
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	detailResp, err := http.Get(server.URL + "/v1/runs/run_runtime_01/detail")
 	if err != nil {

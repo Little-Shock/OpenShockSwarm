@@ -721,6 +721,7 @@ func TestMemoryCenterProviderPreviewTracksCurrentOwnerAcrossHandoffReload(t *tes
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	reloadedResp, err := http.Get(reloadedServer.URL + "/v1/memory-center")
 	if err != nil {

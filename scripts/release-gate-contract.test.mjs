@@ -120,6 +120,7 @@ test("release candidate command is first-class and strict by default", () => {
   assert.equal(pkg.scripts["verify:release:full"], "bash ./scripts/release-gate.sh all");
   assert.equal(pkg.scripts["verify:release:rc"], "bash ./scripts/release-gate.sh rc");
   assert.equal(pkg.scripts["verify:release:browser"], "bash ./scripts/release-gate.sh browser");
+  assert.equal(pkg.scripts["release:evidence:latest"], "node ./scripts/release-evidence-latest.mjs");
   assert.equal(pkg.scripts["ops:smoke:strict"], "OPENSHOCK_REQUIRE_GITHUB_READY=1 OPENSHOCK_REQUIRE_BRANCH_HEAD_ALIGNED=1 bash ./scripts/ops-smoke.sh");
 });
 
@@ -142,6 +143,7 @@ test("release gate script supports strict release-candidate mode", () => {
   assert.match(script, /report date: %s\\n/);
   assert.match(script, /browser report: %s\\n/);
   assert.match(script, /release report: %s\\n/);
+  assert.match(script, /evidence locator: %s\\n/);
   assert.match(script, /actual live parity required: %s\\n/);
   assert.match(script, /internal worker secret configured: %s\\n/);
   assert.match(script, /runtime heartbeat secret configured: %s\\n/);
@@ -170,6 +172,7 @@ test("release gate script supports strict release-candidate mode", () => {
   assert.match(script, /OPENSHOCK_REQUIRE_GITHUB_READY=1 OPENSHOCK_REQUIRE_BRANCH_HEAD_ALIGNED=1 OPENSHOCK_REQUIRE_ACTUAL_LIVE_PARITY=1 run_stack_gate 2>&1 \| tee "\$ROOT_DIR\/\$RC_STACK_LOG"/);
   assert.match(script, /browser\)[\s\S]*run_browser_gate[\s\S]*print_release_summary "browser"/);
   assert.match(script, /run_rc_gate\(\) \{[\s\S]*print_release_summary "release-candidate"/);
+  assert.match(script, /node --test[\s\S]*scripts\/release-gate-contract\.test\.mjs[\s\S]*scripts\/release-evidence-latest\.test\.mjs/);
 });
 
 test("release gate rejects unknown modes before doing work", () => {
@@ -200,6 +203,7 @@ test("release candidate mode executes repo, integration, browser, and strict sta
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /report date: 2026-04-24/);
     assert.match(result.stdout, /release report: docs\/testing\/Test-Report-2026-04-24-release-candidate-gate\.md/);
+    assert.match(result.stdout, /evidence locator: pnpm release:evidence:latest rc/);
     assert.match(result.stdout, /internal worker secret configured: yes/);
     assert.match(result.stdout, /runtime heartbeat secret configured: yes/);
 
@@ -207,7 +211,7 @@ test("release candidate mode executes repo, integration, browser, and strict sta
     assert.match(log, /pnpm\|--dir .* verify\|E2E=/);
     assert.match(log, /go\.sh\|run \.\/cmd\/openshock-daemon --workspace-root .* -once/);
     assert.match(log, /rg\|-n verify:release\|ops:smoke\|ops:experience-metrics\|OPENSHOCK_SERVER_URL\|OPENSHOCK_REQUIRE_GITHUB_READY/);
-    assert.match(log, /node\|--test .*scripts\/release-gate-contract\.test\.mjs/);
+    assert.match(log, /node\|--test .*scripts\/release-gate-contract\.test\.mjs .*scripts\/release-evidence-latest\.test\.mjs/);
     assert.match(log, /pnpm\|--dir .* verify:server:integration\|E2E=/);
     assert.match(log, /pnpm\|--dir .* test:headed-setup -- --report docs\/testing\/Test-Report-2026-04-24-setup-e2e\.md\|E2E=1/);
     assert.match(log, /pnpm\|--dir .* test:headed-onboarding-studio -- --report docs\/testing\/Test-Report-2026-04-24-release-gate-onboarding-studio\.md\|E2E=1/);
@@ -243,6 +247,7 @@ test("release full mode writes a dated report bundle", () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /release report: docs\/testing\/Test-Report-2026-04-24-release-full-gate\.md/);
+    assert.match(result.stdout, /evidence locator: pnpm release:evidence:latest full/);
 
     const log = readFileSync(harness.logPath, "utf8");
     assert.match(log, /pnpm\|--dir .* verify\|E2E=/);
@@ -305,8 +310,10 @@ test("release candidate mode fails closed when runtime heartbeat secret is missi
 test("release docs point reviewers to the strict release-candidate path", () => {
   const releaseGateDoc = text("docs/engineering/Release-Gate.md");
   const testingDoc = text("docs/testing/README.md");
+  const runbook = text("docs/engineering/Runbook.md");
 
   assert.match(releaseGateDoc, /pnpm verify:release:rc/);
+  assert.match(releaseGateDoc, /pnpm release:evidence:latest/);
   assert.match(releaseGateDoc, /strict GitHub-ready/i);
   assert.match(releaseGateDoc, /actual-live-parity/i);
   assert.match(releaseGateDoc, /OPENSHOCK_RUNTIME_HEARTBEAT_SECRET/);
@@ -317,7 +324,10 @@ test("release docs point reviewers to the strict release-candidate path", () => 
   assert.match(testingDoc, /server\/daemon integration/i);
   assert.match(testingDoc, /内含 strict GitHub-ready \+ actual-live-parity smoke/);
   assert.match(testingDoc, /Latest RC Evidence Bundle/i);
+  assert.match(testingDoc, /pnpm release:evidence:latest/);
+  assert.doesNotMatch(testingDoc, /ls -1t docs\/testing\/Test-Report-/);
   assert.match(testingDoc, /setup spine e2e/i);
   assert.match(testingDoc, /rooms continue entry/i);
   assert.match(testingDoc, /scripts\/release-browser-suite\.sh/);
+  assert.match(runbook, /pnpm release:evidence:latest/);
 });

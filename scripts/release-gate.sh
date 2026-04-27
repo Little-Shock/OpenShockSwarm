@@ -83,10 +83,12 @@ print_release_summary() {
 
   if [[ "$mode" == "full" ]]; then
     printf 'release report: %s\n' "$REPORT_FULL_GATE"
+    printf 'evidence locator: %s\n' 'pnpm release:evidence:latest full'
   fi
 
   if [[ "$mode" == "release-candidate" ]]; then
     printf 'release report: %s\n' "$REPORT_RC_GATE"
+    printf 'evidence locator: %s\n' 'pnpm release:evidence:latest rc'
     printf 'github ready required: %s\n' "${OPENSHOCK_REQUIRE_GITHUB_READY:-1}"
     printf 'actual live parity required: %s\n' "${OPENSHOCK_REQUIRE_ACTUAL_LIVE_PARITY:-1}"
     printf 'internal worker secret configured: %s\n' "$(if [[ -n "${OPENSHOCK_INTERNAL_WORKER_SECRET:-}" ]]; then printf 'yes'; else printf 'no'; fi)"
@@ -202,7 +204,9 @@ run_repo_gate() {
     "$ROOT_DIR/docs/engineering/Runbook.md"
 
   echo "==> release gate contract"
-  node --test "$ROOT_DIR/scripts/release-gate-contract.test.mjs"
+  node --test \
+    "$ROOT_DIR/scripts/release-gate-contract.test.mjs" \
+    "$ROOT_DIR/scripts/release-evidence-latest.test.mjs"
 }
 
 run_stack_gate() {

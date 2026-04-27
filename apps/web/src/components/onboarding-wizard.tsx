@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { StitchChannelsView } from "@/components/stitch-chat-room-views";
+import { buildWorkspaceContinueTarget } from "@/lib/continue-target";
 import { usePhaseZeroState } from "@/lib/live-phase0";
 import { useLiveRuntimeTruth } from "@/lib/live-runtime";
 import type { AgentStatus, RuntimeRegistryRecord, RuntimeProviderStatus } from "@/lib/phase-zero-types";
@@ -323,6 +324,7 @@ function OnboardingWizard() {
   const router = useRouter();
   const {
     state,
+    approvalCenter,
     refresh,
     loginAuthSession,
     verifyMemberEmail,
@@ -345,6 +347,13 @@ function OnboardingWizard() {
   const starterAgent = findStarterAgent(state.agents);
   const currentMember =
     state.auth.members.find((member) => member.id === state.auth.session.memberId) ?? state.auth.members[0] ?? null;
+  const workspaceContinue = buildWorkspaceContinueTarget(state, {
+    approvalSignals: approvalCenter.signals,
+    preferLaunchWhenIdle: true,
+  });
+  const journey = workspaceContinue.journey;
+  const continueTarget = workspaceContinue.target;
+  const finishDestination = continueTarget.source === "journey" ? journey.launchHref : continueTarget.href;
   const completedSteps = useMemo(
     () => new Set((state.workspace.onboarding.completedSteps ?? []).map((item) => item.trim()).filter(Boolean)),
     [state.workspace.onboarding.completedSteps]
@@ -509,9 +518,9 @@ function OnboardingWizard() {
 
   useEffect(() => {
     if (state.workspace.onboarding.status === "done") {
-      router.replace("/chat/all");
+      router.replace(finishDestination);
     }
-  }, [router, state.workspace.onboarding.status]);
+  }, [finishDestination, router, state.workspace.onboarding.status]);
 
   async function persistOnboardingProgress({
     nextStep,
@@ -539,7 +548,7 @@ function OnboardingWizard() {
         templateId: selectedTemplate,
         currentStep: nextStep,
         completedSteps: done ? uniqueStrings([...mergedCompletedSteps, "bootstrap-finished"]) : mergedCompletedSteps,
-        resumeUrl: done ? "/chat/all" : "/setup",
+        resumeUrl: done ? finishDestination : "/setup",
       },
     });
   }
@@ -750,7 +759,7 @@ function OnboardingWizard() {
       if (currentMember) {
         await updateWorkspaceMemberPreferences(currentMember.id, {
           preferredAgentId: starterAgent?.id ?? currentMember.preferences.preferredAgentId ?? "",
-          startRoute: "/chat/all",
+          startRoute: currentMember.preferences.startRoute?.trim() || journey.launchHref,
           githubHandle: currentMember.githubIdentity?.handle ?? "",
         });
       }
@@ -759,7 +768,7 @@ function OnboardingWizard() {
         addCompleted: ["account-ready", "template-selected", "github-choice", "repo-bound", "runtime-paired", "agent-configured"],
         done: true,
       });
-      router.push("/chat/all");
+      router.push(finishDestination);
     }, "设置完成，正在进入工作区。");
   }
 

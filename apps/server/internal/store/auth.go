@@ -31,10 +31,14 @@ const (
 	authDeviceStatusPending    = "pending"
 	authDeviceStatusAuthorized = "authorized"
 
-	authChallengeKindPasswordReset = "password_reset"
-	authChallengeStatusPending     = "pending"
-	authChallengeStatusConsumed    = "consumed"
-	authChallengeStatusExpired     = "expired"
+	authChallengeKindLogin               = "login"
+	authChallengeKindBootstrapOwnerClaim = "bootstrap_owner_claim"
+	authChallengeKindVerifyEmail         = "verify_email"
+	authChallengeKindAuthorizeDevice     = "authorize_device"
+	authChallengeKindPasswordReset       = "password_reset"
+	authChallengeStatusPending           = "pending"
+	authChallengeStatusConsumed          = "consumed"
+	authChallengeStatusExpired           = "expired"
 
 	workspaceMemberStatusActive    = "active"
 	workspaceMemberStatusInvited   = "invited"
@@ -124,7 +128,10 @@ func defaultAuthSnapshot(now string) AuthSnapshot {
 	}
 }
 
-const authPasswordResetChallengeTTL = 15 * time.Minute
+const (
+	authLoginChallengeTTL         = 15 * time.Minute
+	authPasswordResetChallengeTTL = 15 * time.Minute
+)
 
 func defaultWorkspaceRoles() []WorkspaceRole {
 	return []WorkspaceRole{
@@ -429,13 +436,14 @@ func (s *Store) expireAuthChallengesLocked(now time.Time) {
 	}
 }
 
-func (s *Store) issueAuthChallengeLocked(kind, memberID, email string, now time.Time, ttl time.Duration) AuthChallenge {
+func (s *Store) issueAuthChallengeLocked(kind, memberID, email, deviceID string, now time.Time, ttl time.Duration) AuthChallenge {
 	s.ensureAuthChallengesLocked()
 	s.expireAuthChallengesLocked(now)
 
+	deviceID = strings.TrimSpace(deviceID)
 	for index := range s.state.Auth.Challenges {
 		challenge := s.state.Auth.Challenges[index]
-		if challenge.Kind != kind || challenge.MemberID != memberID || challenge.Status != authChallengeStatusPending {
+		if challenge.Kind != kind || challenge.MemberID != memberID || strings.TrimSpace(challenge.DeviceID) != deviceID || challenge.Status != authChallengeStatusPending {
 			continue
 		}
 		challenge.Status = authChallengeStatusExpired
@@ -447,6 +455,7 @@ func (s *Store) issueAuthChallengeLocked(kind, memberID, email string, now time.
 		Kind:      kind,
 		MemberID:  memberID,
 		Email:     normalizeEmail(email),
+		DeviceID:  deviceID,
 		Status:    authChallengeStatusPending,
 		IssuedAt:  now.UTC().Format(time.RFC3339),
 		ExpiresAt: now.UTC().Add(ttl).Format(time.RFC3339),
@@ -455,7 +464,7 @@ func (s *Store) issueAuthChallengeLocked(kind, memberID, email string, now time.
 	return challenge
 }
 
-func (s *Store) consumeAuthChallengeLocked(challengeID, kind, memberID, email string, now time.Time) (AuthChallenge, error) {
+func (s *Store) consumeAuthChallengeLocked(challengeID, kind, memberID, email, deviceID string, now time.Time) (AuthChallenge, error) {
 	s.ensureAuthChallengesLocked()
 	s.expireAuthChallengesLocked(now)
 
@@ -470,7 +479,7 @@ func (s *Store) consumeAuthChallengeLocked(challengeID, kind, memberID, email st
 	}
 
 	challenge := s.state.Auth.Challenges[index]
-	if challenge.Kind != kind || challenge.MemberID != memberID || normalizeEmail(challenge.Email) != normalizeEmail(email) {
+	if challenge.Kind != kind || challenge.MemberID != memberID || normalizeEmail(challenge.Email) != normalizeEmail(email) || strings.TrimSpace(challenge.DeviceID) != strings.TrimSpace(deviceID) {
 		return AuthChallenge{}, ErrAuthChallengeNotFound
 	}
 	if challenge.Status == authChallengeStatusConsumed {
@@ -484,6 +493,75 @@ func (s *Store) consumeAuthChallengeLocked(challengeID, kind, memberID, email st
 	challenge.ConsumedAt = now.UTC().Format(time.RFC3339)
 	s.state.Auth.Challenges[index] = challenge
 	return challenge, nil
+}
+
+func (s *Store) hydrateRecoveryInputFromChallengeLocked(input AuthRecoveryInput, allowedKinds ...string) (AuthRecoveryInput, AuthChallenge, error) {
+	s.ensureAuthChallengesLocked()
+
+	challengeID := strings.TrimSpace(input.ChallengeID)
+	if challengeID == "" {
+		return AuthRecoveryInput{}, AuthChallenge{}, ErrAuthChallengeRequired
+	}
+
+	index := s.findAuthChallengeByIDLocked(challengeID)
+	if index == -1 {
+		return AuthRecoveryInput{}, AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+
+	challenge := s.state.Auth.Challenges[index]
+	kindAllowed := false
+	for _, allowedKind := range allowedKinds {
+		if challenge.Kind == allowedKind {
+			kindAllowed = true
+			break
+		}
+	}
+	if !kindAllowed {
+		return AuthRecoveryInput{}, AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+
+	if memberID := strings.TrimSpace(input.MemberID); memberID != "" && memberID != challenge.MemberID {
+		return AuthRecoveryInput{}, AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+	if email := normalizeEmail(input.Email); email != "" && email != normalizeEmail(challenge.Email) {
+		return AuthRecoveryInput{}, AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+	if deviceID := strings.TrimSpace(input.DeviceID); deviceID != "" && deviceID != strings.TrimSpace(challenge.DeviceID) {
+		return AuthRecoveryInput{}, AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+
+	input.MemberID = defaultString(strings.TrimSpace(input.MemberID), challenge.MemberID)
+	input.Email = defaultString(normalizeEmail(input.Email), normalizeEmail(challenge.Email))
+	input.DeviceID = defaultString(strings.TrimSpace(input.DeviceID), strings.TrimSpace(challenge.DeviceID))
+	return input, challenge, nil
+}
+
+func (s *Store) resolveRecoveryAuthDeviceLocked(member WorkspaceMember, input AuthRecoveryInput) (int, AuthDevice, error) {
+	deviceID := strings.TrimSpace(input.DeviceID)
+	if deviceID == "" && strings.TrimSpace(input.DeviceLabel) == "" {
+		if device, ok := s.currentAuthDeviceLocked(); ok && device.MemberID == member.ID {
+			deviceID = device.ID
+		}
+	}
+	if deviceID == "" && strings.TrimSpace(input.DeviceLabel) != "" {
+		if index := s.findAuthDeviceByMemberAndLabelLocked(member.ID, input.DeviceLabel); index != -1 {
+			deviceID = s.state.Auth.Devices[index].ID
+		}
+	}
+	if deviceID == "" {
+		return -1, AuthDevice{}, ErrAuthDeviceRequired
+	}
+
+	deviceIndex := s.findAuthDeviceByIDLocked(deviceID)
+	if deviceIndex == -1 {
+		return -1, AuthDevice{}, ErrAuthDeviceNotFound
+	}
+
+	device := s.state.Auth.Devices[deviceIndex]
+	if device.MemberID != member.ID {
+		return -1, AuthDevice{}, ErrAuthDeviceNotFound
+	}
+	return deviceIndex, device, nil
 }
 
 func (s *Store) upsertAuthDeviceLocked(memberID, deviceID, label, now string, authorize bool) AuthDevice {
@@ -706,11 +784,7 @@ func (s *Store) loginWithEmailLocked(input AuthLoginInput, now string) (Workspac
 		if s.freshBootstrap() && s.hasFreshBootstrapOwnerPlaceholderLocked() && s.freshBootstrapOwnerClaimUsedLocked() {
 			return WorkspaceMember{}, AuthSession{}, ErrFreshBootstrapOwnerClaimUnavailable
 		}
-		claimedIndex, claimed := s.claimFreshBootstrapOwnerLocked(input, now)
-		if !claimed {
-			return WorkspaceMember{}, AuthSession{}, ErrWorkspaceMemberNotFound
-		}
-		index = claimedIndex
+		return WorkspaceMember{}, AuthSession{}, ErrWorkspaceMemberNotFound
 	}
 	member := s.state.Auth.Members[index]
 	if member.Status == workspaceMemberStatusSuspended {
@@ -841,6 +915,90 @@ func (s *Store) LoginWithEmail(input AuthLoginInput) (State, AuthSession, error)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, session, err := s.loginWithEmailLocked(input, now)
+	if err != nil {
+		if errors.Is(err, ErrAuthTrustedDeviceRequired) {
+			if persistErr := s.persistLocked(); persistErr != nil {
+				return State{}, AuthSession{}, persistErr
+			}
+		}
+		return State{}, AuthSession{}, err
+	}
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, AuthSession{}, err
+	}
+	return cloneState(s.state), session, nil
+}
+
+func (s *Store) RequestLoginChallenge(input AuthLoginInput) (State, AuthChallenge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	email := normalizeEmail(input.Email)
+	if email == "" {
+		return State{}, AuthChallenge{}, ErrAuthEmailRequired
+	}
+
+	now := time.Now().UTC()
+	if index := s.findWorkspaceMemberByEmailLocked(email); index != -1 {
+		member := s.state.Auth.Members[index]
+		if member.Status == workspaceMemberStatusSuspended {
+			return State{}, AuthChallenge{}, ErrWorkspaceMemberSuspended
+		}
+		challenge := s.issueAuthChallengeLocked(authChallengeKindLogin, member.ID, member.Email, "", now, authLoginChallengeTTL)
+		if err := s.persistLocked(); err != nil {
+			return State{}, AuthChallenge{}, err
+		}
+		return cloneState(s.state), challenge, nil
+	}
+
+	if s.freshBootstrap() && s.hasFreshBootstrapOwnerPlaceholderLocked() {
+		if s.freshBootstrapOwnerClaimUsedLocked() {
+			return State{}, AuthChallenge{}, ErrFreshBootstrapOwnerClaimUnavailable
+		}
+		member := s.state.Auth.Members[0]
+		challenge := s.issueAuthChallengeLocked(authChallengeKindBootstrapOwnerClaim, member.ID, email, "", now, authLoginChallengeTTL)
+		if err := s.persistLocked(); err != nil {
+			return State{}, AuthChallenge{}, err
+		}
+		return cloneState(s.state), challenge, nil
+	}
+
+	return State{}, AuthChallenge{}, ErrWorkspaceMemberNotFound
+}
+
+func (s *Store) CompleteLoginWithChallenge(input AuthLoginInput, challengeID string) (State, AuthSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	nowString := now.Format(time.RFC3339)
+	challenge, err := s.consumeLoginChallengeLocked(challengeID, normalizeEmail(input.Email), now)
+	if err != nil {
+		return State{}, AuthSession{}, err
+	}
+
+	switch challenge.Kind {
+	case authChallengeKindBootstrapOwnerClaim:
+		if _, claimed := s.claimFreshBootstrapOwnerLocked(AuthLoginInput{
+			Email:      challenge.Email,
+			Name:       input.Name,
+			AuthMethod: input.AuthMethod,
+		}, nowString); !claimed {
+			return State{}, AuthSession{}, ErrFreshBootstrapOwnerClaimUnavailable
+		}
+	case authChallengeKindLogin:
+	default:
+		return State{}, AuthSession{}, ErrAuthChallengeNotFound
+	}
+
+	_, session, err := s.loginWithEmailLocked(AuthLoginInput{
+		Email:       challenge.Email,
+		Name:        input.Name,
+		DeviceID:    input.DeviceID,
+		DeviceLabel: input.DeviceLabel,
+		AuthMethod:  input.AuthMethod,
+	}, nowString)
 	if err != nil {
 		if errors.Is(err, ErrAuthTrustedDeviceRequired) {
 			if persistErr := s.persistLocked(); persistErr != nil {
@@ -1071,19 +1229,76 @@ func (s *Store) UpdateWorkspaceMemberAs(session AuthSession, memberID string, in
 	return nextState, member, nil
 }
 
-func (s *Store) VerifyMemberEmail(input AuthRecoveryInput) (State, AuthSession, WorkspaceMember, error) {
+func (s *Store) RequestVerifyMemberEmailChallenge(input AuthRecoveryInput) (State, AuthChallenge, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(input)
 	if err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+
+	now := time.Now().UTC()
+	member := s.state.Auth.Members[memberIndex]
+	challenge := s.issueAuthChallengeLocked(authChallengeKindVerifyEmail, member.ID, member.Email, "", now, authLoginChallengeTTL)
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+	return cloneState(s.state), challenge, nil
+}
+
+func (s *Store) RequestVerifyMemberEmailChallengeAs(session AuthSession, input AuthRecoveryInput) (State, AuthChallenge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	previousSession := s.beginScopedAuthSessionLocked(session)
+	restore := func() {
+		s.endScopedAuthSessionLocked(previousSession)
+	}
+
+	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(input)
+	if err != nil {
+		restore()
+		return State{}, AuthChallenge{}, err
+	}
+
+	now := time.Now().UTC()
+	member := s.state.Auth.Members[memberIndex]
+	challenge := s.issueAuthChallengeLocked(authChallengeKindVerifyEmail, member.ID, member.Email, "", now, authLoginChallengeTTL)
+	requestSession := s.state.Auth.Session
+
+	restore()
+	if err := s.persistLocked(); err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+	nextState := cloneState(s.state)
+	nextState.Auth.Session = requestSession
+	return nextState, challenge, nil
+}
+
+func (s *Store) VerifyMemberEmail(input AuthRecoveryInput) (State, AuthSession, WorkspaceMember, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hydratedInput, _, err := s.hydrateRecoveryInputFromChallengeLocked(input, authChallengeKindVerifyEmail)
+	if err != nil {
 		return State{}, AuthSession{}, WorkspaceMember{}, err
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(hydratedInput)
+	if err != nil {
+		return State{}, AuthSession{}, WorkspaceMember{}, err
+	}
+
+	now := time.Now().UTC()
 	member := s.state.Auth.Members[memberIndex]
+	if _, err := s.consumeAuthChallengeLocked(hydratedInput.ChallengeID, authChallengeKindVerifyEmail, member.ID, member.Email, "", now); err != nil {
+		return State{}, AuthSession{}, WorkspaceMember{}, err
+	}
+	nowString := now.Format(time.RFC3339)
 	member.EmailVerificationStatus = authEmailVerificationVerified
-	member.EmailVerifiedAt = now
+	member.EmailVerifiedAt = nowString
 	if device, ok := s.currentAuthDeviceLocked(); ok && device.MemberID == member.ID && memberReadyForActivation(member, device.Status) {
 		member.Status = workspaceMemberStatusActive
 	}
@@ -1106,16 +1321,27 @@ func (s *Store) VerifyMemberEmailAs(session AuthSession, input AuthRecoveryInput
 		s.endScopedAuthSessionLocked(previousSession)
 	}
 
-	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(input)
+	hydratedInput, _, err := s.hydrateRecoveryInputFromChallengeLocked(input, authChallengeKindVerifyEmail)
 	if err != nil {
 		restore()
 		return State{}, AuthSession{}, WorkspaceMember{}, err
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(hydratedInput)
+	if err != nil {
+		restore()
+		return State{}, AuthSession{}, WorkspaceMember{}, err
+	}
+
+	now := time.Now().UTC()
 	member := s.state.Auth.Members[memberIndex]
+	if _, err := s.consumeAuthChallengeLocked(hydratedInput.ChallengeID, authChallengeKindVerifyEmail, member.ID, member.Email, "", now); err != nil {
+		restore()
+		return State{}, AuthSession{}, WorkspaceMember{}, err
+	}
+	nowString := now.Format(time.RFC3339)
 	member.EmailVerificationStatus = authEmailVerificationVerified
-	member.EmailVerifiedAt = now
+	member.EmailVerifiedAt = nowString
 	if device, ok := s.currentAuthDeviceLocked(); ok && device.MemberID == member.ID && memberReadyForActivation(member, device.Status) {
 		member.Status = workspaceMemberStatusActive
 	}
@@ -1133,44 +1359,95 @@ func (s *Store) VerifyMemberEmailAs(session AuthSession, input AuthRecoveryInput
 	return nextState, requestSession, member, nil
 }
 
-func (s *Store) AuthorizeAuthDevice(input AuthRecoveryInput) (State, AuthSession, WorkspaceMember, AuthDevice, error) {
+func (s *Store) RequestAuthorizeAuthDeviceChallenge(input AuthRecoveryInput) (State, AuthChallenge, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(input)
 	if err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+
+	member := s.state.Auth.Members[memberIndex]
+	_, device, err := s.resolveRecoveryAuthDeviceLocked(member, input)
+	if err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+
+	now := time.Now().UTC()
+	challenge := s.issueAuthChallengeLocked(authChallengeKindAuthorizeDevice, member.ID, member.Email, device.ID, now, authLoginChallengeTTL)
+
+	if err := s.persistLocked(); err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+	return cloneState(s.state), challenge, nil
+}
+
+func (s *Store) RequestAuthorizeAuthDeviceChallengeAs(session AuthSession, input AuthRecoveryInput) (State, AuthChallenge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	previousSession := s.beginScopedAuthSessionLocked(session)
+	restore := func() {
+		s.endScopedAuthSessionLocked(previousSession)
+	}
+
+	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(input)
+	if err != nil {
+		restore()
+		return State{}, AuthChallenge{}, err
+	}
+
+	member := s.state.Auth.Members[memberIndex]
+	_, device, err := s.resolveRecoveryAuthDeviceLocked(member, input)
+	if err != nil {
+		restore()
+		return State{}, AuthChallenge{}, err
+	}
+
+	now := time.Now().UTC()
+	challenge := s.issueAuthChallengeLocked(authChallengeKindAuthorizeDevice, member.ID, member.Email, device.ID, now, authLoginChallengeTTL)
+	requestSession := s.state.Auth.Session
+
+	restore()
+	if err := s.persistLocked(); err != nil {
+		return State{}, AuthChallenge{}, err
+	}
+	nextState := cloneState(s.state)
+	nextState.Auth.Session = requestSession
+	return nextState, challenge, nil
+}
+
+func (s *Store) AuthorizeAuthDevice(input AuthRecoveryInput) (State, AuthSession, WorkspaceMember, AuthDevice, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hydratedInput, _, err := s.hydrateRecoveryInputFromChallengeLocked(input, authChallengeKindAuthorizeDevice)
+	if err != nil {
 		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
 	}
 
-	deviceID := strings.TrimSpace(input.DeviceID)
-	if deviceID == "" && strings.TrimSpace(input.DeviceLabel) == "" {
-		deviceID = strings.TrimSpace(s.state.Auth.Session.DeviceID)
+	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(hydratedInput)
+	if err != nil {
+		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
 	}
-	if deviceID == "" && strings.TrimSpace(input.DeviceLabel) != "" {
-		if index := s.findAuthDeviceByMemberAndLabelLocked(s.state.Auth.Members[memberIndex].ID, input.DeviceLabel); index != -1 {
-			deviceID = s.state.Auth.Devices[index].ID
-		}
-	}
-	if deviceID == "" {
-		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, ErrAuthDeviceRequired
-	}
-
-	deviceIndex := s.findAuthDeviceByIDLocked(deviceID)
-	if deviceIndex == -1 {
-		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, ErrAuthDeviceNotFound
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	device := s.state.Auth.Devices[deviceIndex]
-	if device.MemberID != s.state.Auth.Members[memberIndex].ID {
-		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, ErrAuthDeviceNotFound
-	}
-	device.Status = authDeviceStatusAuthorized
-	device.AuthorizedAt = now
-	device.LastSeenAt = now
-	s.state.Auth.Devices[deviceIndex] = device
 
 	member := s.state.Auth.Members[memberIndex]
+	deviceIndex, device, err := s.resolveRecoveryAuthDeviceLocked(member, hydratedInput)
+	if err != nil {
+		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
+	}
+
+	now := time.Now().UTC()
+	if _, err := s.consumeAuthChallengeLocked(hydratedInput.ChallengeID, authChallengeKindAuthorizeDevice, member.ID, member.Email, device.ID, now); err != nil {
+		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
+	}
+	nowString := now.Format(time.RFC3339)
+	device.Status = authDeviceStatusAuthorized
+	device.AuthorizedAt = nowString
+	device.LastSeenAt = nowString
+	s.state.Auth.Devices[deviceIndex] = device
+
 	member.TrustedDeviceIDs = appendUniqueString(member.TrustedDeviceIDs, device.ID)
 	if memberReadyForActivation(member, device.Status) {
 		member.Status = workspaceMemberStatusActive
@@ -1194,44 +1471,36 @@ func (s *Store) AuthorizeAuthDeviceAs(session AuthSession, input AuthRecoveryInp
 		s.endScopedAuthSessionLocked(previousSession)
 	}
 
-	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(input)
+	hydratedInput, _, err := s.hydrateRecoveryInputFromChallengeLocked(input, authChallengeKindAuthorizeDevice)
 	if err != nil {
 		restore()
 		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
 	}
 
-	deviceID := strings.TrimSpace(input.DeviceID)
-	if deviceID == "" && strings.TrimSpace(input.DeviceLabel) == "" {
-		deviceID = strings.TrimSpace(s.state.Auth.Session.DeviceID)
-	}
-	if deviceID == "" && strings.TrimSpace(input.DeviceLabel) != "" {
-		if index := s.findAuthDeviceByMemberAndLabelLocked(s.state.Auth.Members[memberIndex].ID, input.DeviceLabel); index != -1 {
-			deviceID = s.state.Auth.Devices[index].ID
-		}
-	}
-	if deviceID == "" {
+	memberIndex, err := s.findWorkspaceMemberForScopedRecoveryLocked(hydratedInput)
+	if err != nil {
 		restore()
-		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, ErrAuthDeviceRequired
+		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
 	}
-
-	deviceIndex := s.findAuthDeviceByIDLocked(deviceID)
-	if deviceIndex == -1 {
-		restore()
-		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, ErrAuthDeviceNotFound
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	device := s.state.Auth.Devices[deviceIndex]
-	if device.MemberID != s.state.Auth.Members[memberIndex].ID {
-		restore()
-		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, ErrAuthDeviceNotFound
-	}
-	device.Status = authDeviceStatusAuthorized
-	device.AuthorizedAt = now
-	device.LastSeenAt = now
-	s.state.Auth.Devices[deviceIndex] = device
 
 	member := s.state.Auth.Members[memberIndex]
+	deviceIndex, device, err := s.resolveRecoveryAuthDeviceLocked(member, hydratedInput)
+	if err != nil {
+		restore()
+		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
+	}
+
+	now := time.Now().UTC()
+	if _, err := s.consumeAuthChallengeLocked(hydratedInput.ChallengeID, authChallengeKindAuthorizeDevice, member.ID, member.Email, device.ID, now); err != nil {
+		restore()
+		return State{}, AuthSession{}, WorkspaceMember{}, AuthDevice{}, err
+	}
+	nowString := now.Format(time.RFC3339)
+	device.Status = authDeviceStatusAuthorized
+	device.AuthorizedAt = nowString
+	device.LastSeenAt = nowString
+	s.state.Auth.Devices[deviceIndex] = device
+
 	member.TrustedDeviceIDs = appendUniqueString(member.TrustedDeviceIDs, device.ID)
 	if memberReadyForActivation(member, device.Status) {
 		member.Status = workspaceMemberStatusActive
@@ -1269,7 +1538,7 @@ func (s *Store) RequestPasswordReset(input AuthRecoveryInput) (State, WorkspaceM
 	member.RecoveryStatus = deriveMemberRecoveryStatus(member.Status, member.EmailVerificationStatus, member.PasswordResetStatus)
 	s.state.Auth.Members[memberIndex] = member
 	s.refreshAuthSessionLocked()
-	challenge := s.issueAuthChallengeLocked(authChallengeKindPasswordReset, member.ID, member.Email, now, authPasswordResetChallengeTTL)
+	challenge := s.issueAuthChallengeLocked(authChallengeKindPasswordReset, member.ID, member.Email, "", now, authPasswordResetChallengeTTL)
 
 	if err := s.persistLocked(); err != nil {
 		return State{}, WorkspaceMember{}, AuthChallenge{}, err
@@ -1304,7 +1573,7 @@ func (s *Store) RequestPasswordResetAs(session AuthSession, input AuthRecoveryIn
 	s.state.Auth.Members[memberIndex] = member
 	s.refreshAuthSessionLocked()
 	requestSession := s.state.Auth.Session
-	challenge := s.issueAuthChallengeLocked(authChallengeKindPasswordReset, member.ID, member.Email, now, authPasswordResetChallengeTTL)
+	challenge := s.issueAuthChallengeLocked(authChallengeKindPasswordReset, member.ID, member.Email, "", now, authPasswordResetChallengeTTL)
 
 	restore()
 	if err := s.persistLocked(); err != nil {
@@ -1333,7 +1602,7 @@ func (s *Store) CompletePasswordReset(input AuthRecoveryInput) (State, AuthSessi
 	if member.Status != workspaceMemberStatusActive {
 		return State{}, AuthSession{}, WorkspaceMember{}, ErrWorkspaceMemberApprovalRequired
 	}
-	if _, err := s.consumeAuthChallengeLocked(input.ChallengeID, authChallengeKindPasswordReset, member.ID, member.Email, now); err != nil {
+	if _, err := s.consumeAuthChallengeLocked(input.ChallengeID, authChallengeKindPasswordReset, member.ID, member.Email, "", now); err != nil {
 		return State{}, AuthSession{}, WorkspaceMember{}, err
 	}
 	member.PasswordResetStatus = authPasswordResetCompleted
@@ -1511,6 +1780,40 @@ func (s *Store) refreshAuthSessionLocked() {
 	if strings.TrimSpace(s.state.Auth.Session.DeviceAuthStatus) != "" {
 		s.state.Workspace.DeviceAuth = workspaceDeviceAuthLabel(s.state.Auth.Session.DeviceAuthStatus)
 	}
+}
+
+func (s *Store) consumeLoginChallengeLocked(challengeID, email string, now time.Time) (AuthChallenge, error) {
+	s.ensureAuthChallengesLocked()
+	s.expireAuthChallengesLocked(now)
+
+	challengeID = strings.TrimSpace(challengeID)
+	if challengeID == "" {
+		return AuthChallenge{}, ErrAuthChallengeRequired
+	}
+
+	index := s.findAuthChallengeByIDLocked(challengeID)
+	if index == -1 {
+		return AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+
+	challenge := s.state.Auth.Challenges[index]
+	if challenge.Kind != authChallengeKindLogin && challenge.Kind != authChallengeKindBootstrapOwnerClaim {
+		return AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+	if email != "" && normalizeEmail(challenge.Email) != email {
+		return AuthChallenge{}, ErrAuthChallengeNotFound
+	}
+	if challenge.Status == authChallengeStatusConsumed {
+		return AuthChallenge{}, ErrAuthChallengeConsumed
+	}
+	if challenge.Status == authChallengeStatusExpired {
+		return AuthChallenge{}, ErrAuthChallengeExpired
+	}
+
+	challenge.Status = authChallengeStatusConsumed
+	challenge.ConsumedAt = now.UTC().Format(time.RFC3339)
+	s.state.Auth.Challenges[index] = challenge
+	return challenge, nil
 }
 
 func (s *Store) findWorkspaceMemberForRecoveryLocked(input AuthRecoveryInput) (int, error) {

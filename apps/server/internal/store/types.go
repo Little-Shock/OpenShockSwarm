@@ -987,6 +987,7 @@ type AuthChallenge struct {
 	Kind       string `json:"kind"`
 	MemberID   string `json:"memberId,omitempty"`
 	Email      string `json:"email,omitempty"`
+	DeviceID   string `json:"deviceId,omitempty"`
 	Status     string `json:"status"`
 	IssuedAt   string `json:"issuedAt,omitempty"`
 	ExpiresAt  string `json:"expiresAt,omitempty"`

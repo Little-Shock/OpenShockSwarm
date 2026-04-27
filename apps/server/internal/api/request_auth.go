@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Larkspur-Wang/OpenShock/apps/server/internal/store"
 )
@@ -16,6 +17,11 @@ const (
 	authSessionStatusSignedOut = "signed_out"
 )
 
+var (
+	requestAuthTokenTTL = 30 * 24 * time.Hour
+	requestAuthTimeNow  = func() time.Time { return time.Now().UTC() }
+)
+
 type authRequestBinding struct {
 	MemberID    string
 	Email       string
@@ -23,6 +29,7 @@ type authRequestBinding struct {
 	DeviceLabel string
 	AuthMethod  string
 	SignedInAt  string
+	ExpiresAt   time.Time
 }
 
 func newAuthRequestToken() string {
@@ -69,13 +76,13 @@ func (s *Server) currentRequestAuthSession(r *http.Request) store.AuthSession {
 }
 
 func (s *Server) currentStrictRequestAuthSession(r *http.Request) store.AuthSession {
-	if token, ok := requestAuthHeaderToken(r); ok {
+	if token, ok := requestAuthToken(r); ok {
 		if session, found := s.resolveRequestAuthSessionByToken(token); found {
 			return session
 		}
 		return signedOutRequestAuthSession()
 	}
-	return s.store.Snapshot().Auth.Session
+	return signedOutRequestAuthSession()
 }
 
 func (s *Server) currentRequestAuthActor(r *http.Request) string {
@@ -110,8 +117,27 @@ func (s *Server) requireRequestSessionPermission(w http.ResponseWriter, r *http.
 	return true
 }
 
-func (s *Server) issueRequestAuthToken(session store.AuthSession) string {
+func requestAuthCookieSecure(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	forwardedProto := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0])
+	if strings.EqualFold(forwardedProto, "https") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(r.Header.Get("Forwarded")), "proto=https")
+}
+
+func requestAuthBindingExpired(binding authRequestBinding) bool {
+	return !binding.ExpiresAt.IsZero() && !requestAuthTimeNow().Before(binding.ExpiresAt)
+}
+
+func (s *Server) issueRequestAuthToken(session store.AuthSession) (string, time.Time) {
 	token := newAuthRequestToken()
+	expiresAt := requestAuthTimeNow().Add(requestAuthTokenTTL)
 
 	s.authTokenMu.Lock()
 	defer s.authTokenMu.Unlock()
@@ -122,8 +148,9 @@ func (s *Server) issueRequestAuthToken(session store.AuthSession) string {
 		DeviceLabel: strings.TrimSpace(session.DeviceLabel),
 		AuthMethod:  strings.TrimSpace(session.AuthMethod),
 		SignedInAt:  strings.TrimSpace(session.SignedInAt),
+		ExpiresAt:   expiresAt,
 	}
-	return token
+	return token, expiresAt
 }
 
 func (s *Server) revokeRequestAuthToken(token string) {
@@ -136,24 +163,33 @@ func (s *Server) revokeRequestAuthToken(token string) {
 	delete(s.authTokens, token)
 }
 
-func (s *Server) writeRequestAuthToken(w http.ResponseWriter, _ *http.Request, session store.AuthSession) string {
-	token := s.issueRequestAuthToken(session)
+func (s *Server) writeRequestAuthToken(w http.ResponseWriter, r *http.Request, session store.AuthSession) string {
+	token, expiresAt := s.issueRequestAuthToken(session)
+	maxAge := int(requestAuthTokenTTL / time.Second)
+	if maxAge < 0 {
+		maxAge = 0
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     authTokenCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   requestAuthCookieSecure(r),
+		Expires:  expiresAt,
+		MaxAge:   maxAge,
 		SameSite: http.SameSiteLaxMode,
 	})
 	return token
 }
 
-func clearRequestAuthToken(w http.ResponseWriter) {
+func clearRequestAuthToken(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     authTokenCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   requestAuthCookieSecure(r),
+		Expires:  time.Unix(0, 0).UTC(),
 		MaxAge:   -1,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -193,13 +229,13 @@ func (s *Server) resolveRequestAuthSession(r *http.Request) store.AuthSession {
 }
 
 func (s *Server) resolveRequestAuthSessionFromSnapshot(snapshot store.State, r *http.Request) store.AuthSession {
-	if token, ok := requestAuthHeaderToken(r); ok {
+	if token, ok := requestAuthToken(r); ok {
 		if session, found := s.resolveRequestAuthSessionByTokenFromSnapshot(snapshot, token); found {
 			return session
 		}
 		return signedOutRequestAuthSession()
 	}
-	return snapshot.Auth.Session
+	return signedOutRequestAuthSession()
 }
 
 func (s *Server) resolveRequestAuthSessionByToken(token string) (store.AuthSession, bool) {
@@ -207,10 +243,18 @@ func (s *Server) resolveRequestAuthSessionByToken(token string) (store.AuthSessi
 }
 
 func (s *Server) resolveRequestAuthSessionByTokenFromSnapshot(snapshot store.State, token string) (store.AuthSession, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return store.AuthSession{}, false
+	}
 	s.authTokenMu.RLock()
-	binding, ok := s.authTokens[strings.TrimSpace(token)]
+	binding, ok := s.authTokens[token]
 	s.authTokenMu.RUnlock()
 	if !ok {
+		return store.AuthSession{}, false
+	}
+	if requestAuthBindingExpired(binding) {
+		s.revokeRequestAuthToken(token)
 		return store.AuthSession{}, false
 	}
 	return requestAuthSessionFromBinding(snapshot, binding), true

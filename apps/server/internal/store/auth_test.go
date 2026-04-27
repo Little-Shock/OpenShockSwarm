@@ -3,6 +3,7 @@ package store
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAuthSessionContractTracksEmailLoginAndLogout(t *testing.T) {
@@ -137,6 +138,182 @@ func TestAuthSessionPersistsAcrossStoreReload(t *testing.T) {
 	}
 }
 
+func TestLoginChallengeContractRequiresChallengeAndConsumesReplay(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, challenge, err := s.RequestLoginChallenge(AuthLoginInput{Email: "mina@openshock.dev"})
+	if err != nil {
+		t.Fatalf("RequestLoginChallenge() error = %v", err)
+	}
+	if challenge.Kind != authChallengeKindLogin || challenge.Email != "mina@openshock.dev" || challenge.Status != authChallengeStatusPending {
+		t.Fatalf("login challenge = %#v, want pending login challenge for mina", challenge)
+	}
+
+	if _, _, err := s.CompleteLoginWithChallenge(AuthLoginInput{
+		Email:       "mina@openshock.dev",
+		DeviceLabel: "Mina Browser",
+	}, ""); !errorsIs(err, ErrAuthChallengeRequired) {
+		t.Fatalf("CompleteLoginWithChallenge(missing challenge) error = %v, want %v", err, ErrAuthChallengeRequired)
+	}
+
+	nextState, session, err := s.CompleteLoginWithChallenge(AuthLoginInput{
+		Email:       "mina@openshock.dev",
+		DeviceLabel: "Mina Browser",
+	}, challenge.ID)
+	if err != nil {
+		t.Fatalf("CompleteLoginWithChallenge() error = %v", err)
+	}
+	if session.Email != "mina@openshock.dev" || session.Role != workspaceRoleMember {
+		t.Fatalf("challenge login session = %#v, want mina member", session)
+	}
+	if consumed := findAuthChallengeByID(nextState.Auth.Challenges, challenge.ID); consumed == nil || consumed.Status != authChallengeStatusConsumed {
+		t.Fatalf("consumed login challenge = %#v, want consumed", consumed)
+	}
+
+	if _, _, err := s.CompleteLoginWithChallenge(AuthLoginInput{
+		Email:       "mina@openshock.dev",
+		DeviceLabel: "Mina Browser",
+	}, challenge.ID); !errorsIs(err, ErrAuthChallengeConsumed) {
+		t.Fatalf("CompleteLoginWithChallenge(reused challenge) error = %v, want %v", err, ErrAuthChallengeConsumed)
+	}
+}
+
+func TestLoginChallengeContractRejectsCrossAccountReplay(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, challenge, err := s.RequestLoginChallenge(AuthLoginInput{Email: "mina@openshock.dev"})
+	if err != nil {
+		t.Fatalf("RequestLoginChallenge() error = %v", err)
+	}
+
+	if _, _, err := s.CompleteLoginWithChallenge(AuthLoginInput{
+		Email:       "larkspur@openshock.dev",
+		DeviceLabel: "Owner Browser",
+	}, challenge.ID); !errorsIs(err, ErrAuthChallengeNotFound) {
+		t.Fatalf("CompleteLoginWithChallenge(cross-account replay) error = %v, want %v", err, ErrAuthChallengeNotFound)
+	}
+}
+
+func TestRecoveryChallengeContractRejectsReplayCrossAccountAndExpiry(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, _, err := s.LoginWithEmail(AuthLoginInput{
+		Email:       "larkspur@openshock.dev",
+		DeviceLabel: "Owner Browser",
+	}); err != nil {
+		t.Fatalf("LoginWithEmail(owner) error = %v", err)
+	}
+
+	_, invited, err := s.InviteWorkspaceMember(WorkspaceMemberUpsertInput{
+		Email: "reviewer@openshock.dev",
+		Name:  "Reviewer",
+		Role:  workspaceRoleMember,
+	})
+	if err != nil {
+		t.Fatalf("InviteWorkspaceMember() error = %v", err)
+	}
+
+	_, reviewerSession, err := s.LoginWithEmail(AuthLoginInput{
+		Email:       invited.Email,
+		DeviceLabel: "Reviewer Phone",
+	})
+	if err != nil {
+		t.Fatalf("LoginWithEmail(reviewer) error = %v", err)
+	}
+
+	verifyChallengeState, verifyChallenge, err := s.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: invited.Email})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge() error = %v", err)
+	}
+	verifyChallengeRecord := findAuthChallengeByID(verifyChallengeState.Auth.Challenges, verifyChallenge.ID)
+	if verifyChallengeRecord == nil {
+		t.Fatalf("verify challenge missing from state")
+	}
+	s.mu.Lock()
+	verifyChallengeRecord.ExpiresAt = time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
+	for index := range s.state.Auth.Challenges {
+		if s.state.Auth.Challenges[index].ID == verifyChallenge.ID {
+			s.state.Auth.Challenges[index] = *verifyChallengeRecord
+			break
+		}
+	}
+	s.mu.Unlock()
+
+	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID}); !errorsIs(err, ErrAuthChallengeExpired) {
+		t.Fatalf("VerifyMemberEmail(expired challenge) error = %v, want %v", err, ErrAuthChallengeExpired)
+	}
+
+	_, verifyChallenge, err = s.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: invited.Email})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge(retry) error = %v", err)
+	}
+	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID}); err != nil {
+		t.Fatalf("VerifyMemberEmail() error = %v", err)
+	}
+	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID}); !errorsIs(err, ErrAuthChallengeConsumed) {
+		t.Fatalf("VerifyMemberEmail(reused challenge) error = %v, want %v", err, ErrAuthChallengeConsumed)
+	}
+
+	if _, _, err := s.LoginWithEmail(AuthLoginInput{
+		Email:       "larkspur@openshock.dev",
+		DeviceLabel: "Owner Browser",
+	}); err != nil {
+		t.Fatalf("LoginWithEmail(owner reauth) error = %v", err)
+	}
+	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: "mina@openshock.dev", ChallengeID: verifyChallenge.ID}); !errorsIs(err, ErrAuthChallengeNotFound) {
+		t.Fatalf("VerifyMemberEmail(cross-account replay) error = %v, want %v", err, ErrAuthChallengeNotFound)
+	}
+
+	if _, _, err := s.LoginWithEmail(AuthLoginInput{
+		Email:       invited.Email,
+		DeviceLabel: "Reviewer Phone",
+	}); err != nil {
+		t.Fatalf("LoginWithEmail(reviewer restore) error = %v", err)
+	}
+	_, authorizeChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{DeviceID: reviewerSession.DeviceID})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
+	}
+	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: reviewerSession.DeviceID, ChallengeID: authorizeChallenge.ID}); err != nil {
+		t.Fatalf("AuthorizeAuthDevice() error = %v", err)
+	}
+	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: reviewerSession.DeviceID, ChallengeID: authorizeChallenge.ID}); !errorsIs(err, ErrAuthChallengeConsumed) {
+		t.Fatalf("AuthorizeAuthDevice(reused challenge) error = %v, want %v", err, ErrAuthChallengeConsumed)
+	}
+
+	if _, _, err := s.LoginWithEmail(AuthLoginInput{
+		Email:       "larkspur@openshock.dev",
+		DeviceLabel: "Owner Browser",
+	}); err != nil {
+		t.Fatalf("LoginWithEmail(owner second reauth) error = %v", err)
+	}
+	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{
+		Email:       "mina@openshock.dev",
+		DeviceID:    reviewerSession.DeviceID,
+		ChallengeID: authorizeChallenge.ID,
+	}); !errorsIs(err, ErrAuthChallengeNotFound) {
+		t.Fatalf("AuthorizeAuthDevice(cross-account replay) error = %v, want %v", err, ErrAuthChallengeNotFound)
+	}
+}
+
 func TestWorkspaceMemberContractEnforcesOwnerRoleAndRetainsLastOwner(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
@@ -223,7 +400,11 @@ func TestAuthRecoveryContractTracksVerifyDeviceResetAndIdentityBinding(t *testin
 		t.Fatalf("member after login = %#v, want invited until recovery gates clear", member)
 	}
 
-	verifyState, verifiedSession, verifiedMember, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email})
+	_, verifyChallenge, err := s.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: invited.Email})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge() error = %v", err)
+	}
+	verifyState, verifiedSession, verifiedMember, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID})
 	if err != nil {
 		t.Fatalf("VerifyMemberEmail() error = %v", err)
 	}
@@ -238,7 +419,11 @@ func TestAuthRecoveryContractTracksVerifyDeviceResetAndIdentityBinding(t *testin
 		t.Fatalf("member status after verify = %q, want %q until device authorized", member.Status, workspaceMemberStatusInvited)
 	}
 
-	deviceState, deviceSession, deviceMember, device, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: verifiedSession.DeviceID})
+	_, authorizeChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{DeviceID: verifiedSession.DeviceID})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
+	}
+	deviceState, deviceSession, deviceMember, device, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: verifiedSession.DeviceID, ChallengeID: authorizeChallenge.ID})
 	if err != nil {
 		t.Fatalf("AuthorizeAuthDevice() error = %v", err)
 	}
@@ -397,16 +582,24 @@ func TestAuthRecoveryContractFailsClosedForSignedOutAndUnknownDevice(t *testing.
 		t.Fatalf("LoginWithEmail() error = %v", err)
 	}
 
-	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{Email: invited.Email, DeviceID: "device-missing"}); !errorsIs(err, ErrAuthDeviceNotFound) {
-		t.Fatalf("AuthorizeAuthDevice(missing device) error = %v, want %v", err, ErrAuthDeviceNotFound)
+	_, authorizeChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{Email: invited.Email, DeviceID: "device-missing"})
+	if !errorsIs(err, ErrAuthDeviceNotFound) {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge(missing device) error = %v, want %v", err, ErrAuthDeviceNotFound)
+	}
+	if authorizeChallenge.ID != "" {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge(missing device) challenge = %#v, want empty", authorizeChallenge)
+	}
+
+	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{Email: invited.Email, DeviceID: "device-missing", ChallengeID: "challenge-missing"}); !errorsIs(err, ErrAuthChallengeNotFound) {
+		t.Fatalf("AuthorizeAuthDevice(missing challenge) error = %v, want %v", err, ErrAuthChallengeNotFound)
 	}
 
 	if _, _, err := s.LogoutAuthSession(); err != nil {
 		t.Fatalf("LogoutAuthSession() error = %v", err)
 	}
 
-	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email}); !errorsIs(err, ErrAuthSessionRequired) {
-		t.Fatalf("VerifyMemberEmail(signed out) error = %v, want %v", err, ErrAuthSessionRequired)
+	if _, _, err := s.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: invited.Email}); !errorsIs(err, ErrAuthSessionRequired) {
+		t.Fatalf("RequestVerifyMemberEmailChallenge(signed out) error = %v, want %v", err, ErrAuthSessionRequired)
 	}
 
 	if _, _, _, err := s.CompletePasswordReset(AuthRecoveryInput{Email: invited.Email, DeviceLabel: "Reviewer Laptop"}); !errorsIs(err, ErrAuthChallengeRequired) {
@@ -446,10 +639,18 @@ func TestSignedOutActiveMemberCannotRequestPasswordReset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoginWithEmail(reviewer phone) error = %v", err)
 	}
-	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email}); err != nil {
+	_, verifyChallenge, err := s.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: invited.Email})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge() error = %v", err)
+	}
+	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID}); err != nil {
 		t.Fatalf("VerifyMemberEmail() error = %v", err)
 	}
-	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: session.DeviceID}); err != nil {
+	_, authorizeChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{DeviceID: session.DeviceID})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
+	}
+	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: session.DeviceID, ChallengeID: authorizeChallenge.ID}); err != nil {
 		t.Fatalf("AuthorizeAuthDevice() error = %v", err)
 	}
 
@@ -504,10 +705,18 @@ func TestActiveManagedMemberRequiresApprovedDeviceForDirectLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoginWithEmail(reviewer phone) error = %v", err)
 	}
-	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email}); err != nil {
+	_, verifyChallenge, err := s.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: invited.Email})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge() error = %v", err)
+	}
+	if _, _, _, err := s.VerifyMemberEmail(AuthRecoveryInput{Email: invited.Email, ChallengeID: verifyChallenge.ID}); err != nil {
 		t.Fatalf("VerifyMemberEmail() error = %v", err)
 	}
-	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: session.DeviceID}); err != nil {
+	_, authorizeChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{DeviceID: session.DeviceID})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
+	}
+	if _, _, _, _, err := s.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: session.DeviceID, ChallengeID: authorizeChallenge.ID}); err != nil {
 		t.Fatalf("AuthorizeAuthDevice() error = %v", err)
 	}
 
@@ -540,9 +749,17 @@ func TestActiveManagedMemberRequiresApprovedDeviceForDirectLogin(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("LoginWithEmail(owner approve laptop) error = %v", err)
 	}
+	_, approveLaptopChallenge, err := s.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{
+		MemberID:    invited.ID,
+		DeviceLabel: "Reviewer Laptop",
+	})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge(owner laptop approval) error = %v", err)
+	}
 	if _, _, _, approvedDevice, err := s.AuthorizeAuthDevice(AuthRecoveryInput{
 		MemberID:    invited.ID,
 		DeviceLabel: "Reviewer Laptop",
+		ChallengeID: approveLaptopChallenge.ID,
 	}); err != nil {
 		t.Fatalf("AuthorizeAuthDevice(owner laptop approval) error = %v", err)
 	} else if approvedDevice.Status != authDeviceStatusAuthorized {

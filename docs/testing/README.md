@@ -16,6 +16,7 @@
 
 - 发布前默认先看这 5 条，不要先翻历史报告。
 - RC 现在要求 `OPENSHOCK_INTERNAL_WORKER_SECRET` 和 `OPENSHOCK_RUNTIME_HEARTBEAT_SECRET` 都已配置。
+- 想重新定位最新证据时，统一用 `pnpm release:evidence:latest`，不要再手动猜日期。
 - 更完整的发布 contract 看 [../engineering/Release-Gate.md](../engineering/Release-Gate.md)。
 - 这两条命令会生成报告，但仓库中的 `docs/testing/Test-Report-*` 属于归档，可能不是你这次运行生成的最新结果。
 
@@ -23,14 +24,21 @@
 
 ### Latest RC Evidence Bundle
 
-不要手动在这里维护“最新日期 / commit”。直接用生成物定位：
+不要手动在这里维护“最新日期 / commit”。直接用固定命令定位：
 
 ```bash
-ls -1t docs/testing/Test-Report-*-release-candidate-gate.md | head -n 1
-ls -1t docs/testing/Test-Report-*-release-full-gate.md | head -n 1
+pnpm release:evidence:latest
+pnpm release:evidence:latest rc
+pnpm release:evidence:latest full
 ```
 
-对应原始日志目录固定是：
+这条命令会直接打印：
+
+- latest RC report 路径
+- latest full report 路径
+- 对应 artifacts 目录
+
+原始日志目录固定是：
 
 - RC: `docs/testing/artifacts/<date>/release-candidate/`
 - Full: `docs/testing/artifacts/<date>/release-full/`

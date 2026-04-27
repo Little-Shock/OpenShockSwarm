@@ -743,10 +743,15 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
 
   async function loginAuthSession(input: { email: string; name?: string; deviceId?: string; deviceLabel?: string; authMethod?: string }) {
     const rememberedDevice = input.deviceId ? null : rememberedAuthDeviceForEmail(input.email);
+    const loginChallenge = await runAuthRecovery({
+      action: "request_login_challenge",
+      email: input.email,
+    });
     const payload = await readJSON<StateMutationResponse>("/v1/auth/session", {
       method: "POST",
       body: JSON.stringify({
         ...input,
+        challengeId: loginChallenge.challenge?.id,
         deviceId: input.deviceId ?? rememberedDevice?.deviceId,
         deviceLabel: input.deviceLabel ?? rememberedDevice?.deviceLabel,
       }),
@@ -783,19 +788,32 @@ function useProvidePhaseZeroState(): PhaseZeroContextValue {
   }
 
   async function verifyMemberEmail(input: { email?: string; memberId?: string } = {}) {
+    const challenge = await runAuthRecovery({
+      action: "request_verify_email_challenge",
+      email: input.email,
+      memberId: input.memberId,
+    });
     return runAuthRecovery({
       action: "verify_email",
       email: input.email,
       memberId: input.memberId,
+      challengeId: challenge.challenge?.id,
     });
   }
 
   async function authorizeAuthDevice(input: { deviceId?: string; deviceLabel?: string; memberId?: string } = {}) {
+    const challenge = await runAuthRecovery({
+      action: "request_authorize_device_challenge",
+      deviceId: input.deviceId,
+      deviceLabel: input.deviceLabel,
+      memberId: input.memberId,
+    });
     return runAuthRecovery({
       action: "authorize_device",
       deviceId: input.deviceId,
       deviceLabel: input.deviceLabel,
       memberId: input.memberId,
+      challengeId: challenge.challenge?.id,
     });
   }
 

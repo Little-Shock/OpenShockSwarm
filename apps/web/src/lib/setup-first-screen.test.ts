@@ -59,14 +59,19 @@ test("setup first screen keeps repo, GitHub, runtime, and live bridge behind cle
 
 test("setup overview tells users to finish four explicit setup checkpoints before diagnostics", () => {
   const viewsSource = source(setupViewsPath);
+  const refreshActionMentions = viewsSource.match(/setup-onboarding-refresh-progress/g) ?? [];
+  const finishActionMentions = viewsSource.match(/setup-onboarding-finish/g) ?? [];
 
   assert.match(viewsSource, /const setupPrimaryAction = buildSetupPrimaryAction/);
   assert.match(viewsSource, /const shouldCollapseTemplateManager = progress\.templateConfirmed \|\| workspace\.onboarding\.status === "done"/);
+  assert.match(viewsSource, /function renderStudioActionButtons\(includeTestIds: boolean\)/);
   assert.match(viewsSource, /data-testid="setup-first-start-steps-details"/);
   assert.match(viewsSource, /data-testid="setup-first-start-steps-toggle"/);
   assert.match(viewsSource, /data-testid="setup-onboarding-manage-details"/);
   assert.match(viewsSource, /展开模板、分工和协作细节/);
   assert.match(viewsSource, /默认继续当前工作/);
+  assert.match(viewsSource, /上面的摘要卡负责继续和完成；这里展开后只看模板会写入什么。/);
+  assert.match(viewsSource, /继续和完成按钮保留在上面的当前启动包卡，这里只看进度。/);
   assert.match(viewsSource, /需要时再展开三步说明，先按上面的下一步继续。/);
   assert.match(viewsSource, /href=\{setupPrimaryAction\.href\}/);
   assert.match(viewsSource, /首屏只看四项/);
@@ -76,4 +81,6 @@ test("setup overview tells users to finish four explicit setup checkpoints befor
   assert.match(viewsSource, /现在先补/);
   assert.match(viewsSource, /完成后进入/);
   assert.match(viewsSource, /调度、配额、租约和运行环境明细都收在下面的高级信息/);
+  assert.equal(refreshActionMentions.length, 1);
+  assert.equal(finishActionMentions.length, 1);
 });

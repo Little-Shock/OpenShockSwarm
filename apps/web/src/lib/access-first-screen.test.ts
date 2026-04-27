@@ -79,6 +79,18 @@ test("access first-start panel keeps step details behind a disclosure while pres
   assert.match(section, /需要时再展开三步说明，先按上面的下一步继续。/);
 });
 
+test("access advanced area keeps account operations secondary and removes explicit permission-check framing", () => {
+  const source = accessSource();
+
+  assert.match(source, /更多账号操作/);
+  assert.match(source, /高级入口/);
+  assert.match(source, /需要时再看可进入的页面/);
+  assert.match(source, /平时只要能登录并继续工作就够了。只有排查权限或跳到特定页面时，再展开下面这些入口。/);
+  assert.doesNotMatch(source, /切换成员和更多设置/);
+  assert.doesNotMatch(source, /当前身份能做什么/);
+  assert.doesNotMatch(source, /权限检查/);
+});
+
 test("access recovery keeps reset and identity binding behind a secondary disclosure", () => {
   const section = sectionBetween(
     accessSource(),

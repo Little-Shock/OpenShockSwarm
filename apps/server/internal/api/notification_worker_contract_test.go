@@ -319,7 +319,7 @@ func TestNotificationFanoutWorkerRoutesIdentityTemplatesIntoUnifiedDeliveryChain
 	inviteRun := postNotificationFanout(t, server.URL)
 	assertFanoutReceiptForTemplate(t, root, inviteRun.Worker, emailID, "auth_invite")
 
-	loginResp, err := http.Post(server.URL+"/v1/auth/session", "application/json", bytes.NewReader([]byte(`{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)))
+	loginResp, err := postContractAuthSessionJSON(t, http.DefaultClient, server.URL, `{"email":"reviewer@openshock.dev","deviceLabel":"Reviewer Phone"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session error = %v", err)
 	}

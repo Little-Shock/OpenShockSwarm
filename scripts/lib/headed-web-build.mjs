@@ -95,11 +95,22 @@ function uniqueStrings(values) {
   return [...new Set(values.filter((entry) => typeof entry === "string" && entry.length > 0))];
 }
 
-function scopedIncludeEntries(include) {
+function scopedIncludeEntries(include, distDirName) {
+  const distDirTypes = typeof distDirName === "string" && distDirName.length > 0
+    ? [`${distDirName}/types/**/*.ts`, `${distDirName}/dev/types/**/*.ts`]
+    : [];
   return uniqueStrings([
-    ...include.filter((entry) => typeof entry !== "string" || !/^\.next-e2e-[^*]/.test(entry)),
+    ...include.filter(
+      (entry) =>
+        typeof entry !== "string" ||
+        (!/^\.next-e2e-[^*]/.test(entry) &&
+          !/^\.next-verify(?:-[^/*]+)?(?:\/|$)/.test(entry))
+    ),
     ".next-e2e-*/types/**/*.ts",
     ".next-e2e-*/dev/types/**/*.ts",
+    ".next-verify-*/types/**/*.ts",
+    ".next-verify-*/dev/types/**/*.ts",
+    ...distDirTypes,
   ]);
 }
 
@@ -109,7 +120,7 @@ async function createScopedTsconfig(projectRoot, distDirName) {
   const scopedTsconfigName = `.next-e2e-tsconfig-${distDirName.replace(/[^a-z0-9-]+/gi, "-")}.json`;
   const scopedTsconfigPath = path.join(webRoot, scopedTsconfigName);
   const parsed = JSON.parse(await readFile(baseTsconfigPath, "utf8"));
-  const include = scopedIncludeEntries(Array.isArray(parsed.include) ? parsed.include : []);
+  const include = scopedIncludeEntries(Array.isArray(parsed.include) ? parsed.include : [], distDirName);
 
   await writeFile(
     scopedTsconfigPath,
@@ -130,6 +141,7 @@ export async function buildHeadedWebApp({
   const log = [];
   const maxAttempts = 5;
   const distDirName = webEnv.OPENSHOCK_NEXT_DIST_DIR?.trim() || "";
+  const webRoot = path.join(projectRoot, "apps", "web");
   let lastScopedTsconfig = null;
 
   try {
@@ -145,14 +157,14 @@ export async function buildHeadedWebApp({
 
       await rm(webDistDir, { recursive: true, force: true });
 
-      const result = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
-        cwd: projectRoot,
+      const result = spawnSync("pnpm", ["build"], {
+        cwd: webRoot,
         env: buildEnv,
         encoding: "utf8",
       });
 
       log.push(
-        `[${timestamp()}] attempt ${attempt}/${maxAttempts}: pnpm --dir apps/web build`,
+        `[${timestamp()}] attempt ${attempt}/${maxAttempts}: (cd apps/web && pnpm build)`,
         scopedTsconfig ? `[${timestamp()}] using scoped tsconfig ${scopedTsconfig.scopedTsconfigName}` : "",
         result.stdout ?? "",
         result.stderr ?? "",

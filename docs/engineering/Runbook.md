@@ -40,6 +40,8 @@
   - `pnpm verify:release:rc`
     - 现在额外内含一条 `server ↔ daemon` integration loop，不再只靠 repo/browser/smoke 三段
     - 现在还要求 `OPENSHOCK_INTERNAL_WORKER_SECRET` 和 `OPENSHOCK_RUNTIME_HEARTBEAT_SECRET` 都已配置
+  - `pnpm release:evidence:latest`
+    - 统一定位最新 RC / full gate 报告和对应 artifacts 目录，不再手动猜日期
 - 跨平台最稳的方式是直接跑 Go 入口
 - server 默认状态文件是：
   - `<OPENSHOCK_WORKSPACE_ROOT>/data/phase0/state.json`
@@ -512,6 +514,9 @@ curl -X POST http://127.0.0.1:8080/v1/issues \
   - 只跑 release gate 使用的五条浏览器主链，适合快速复核 Setup、首启、主继续路径和 durable config recovery 是否漂移
   - 结束时会打印 5 份浏览器报告路径，方便直接贴到 reviewer 证据区
   - 这 5 条主链的 canonical source 在 `scripts/release-browser-suite.sh`
+- `pnpm release:evidence:latest`
+  - 统一输出 latest RC / full gate 报告路径和对应 artifacts 目录
+  - 适合 round-end 或 reviewer 重新定位刚跑完的证据
 
 ### 当前观测面
 

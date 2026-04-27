@@ -237,6 +237,7 @@ func TestStateEndpointSanitizesCustomerVisibleResidue(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/state")
 	if err != nil {

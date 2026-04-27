@@ -15,6 +15,8 @@ export async function normalizeNextE2ETsconfig(projectRoot = path.resolve(__dirn
   const nextE2EWildcards = new Set([
     ".next-e2e-*/types/**/*.ts",
     ".next-e2e-*/dev/types/**/*.ts",
+    ".next-verify-*/types/**/*.ts",
+    ".next-verify-*/dev/types/**/*.ts",
   ]);
   const normalizedInclude = include.filter((entry) => {
     if (typeof entry !== "string") {
@@ -23,7 +25,10 @@ export async function normalizeNextE2ETsconfig(projectRoot = path.resolve(__dirn
     if (nextE2EWildcards.has(entry)) {
       return true;
     }
-    return !/^\.next-e2e-[^*]/.test(entry) && !/^\.next-verify(?:\/|$)/.test(entry);
+    return (
+      !/^\.next-e2e-[^*]/.test(entry) &&
+      !/^\.next-verify(?:-[^/*]+)?(?:\/|$)/.test(entry)
+    );
   });
 
   const normalized = normalizedInclude.length !== include.length;
@@ -42,11 +47,16 @@ export async function cleanNextE2EArtifacts(projectRoot = path.resolve(__dirname
     .filter(
       (entry) =>
         entry.isDirectory() &&
-        (entry.name.startsWith(".next-e2e") || entry.name === ".next-verify")
+        (entry.name.startsWith(".next-e2e") ||
+          entry.name === ".next-verify" ||
+          entry.name.startsWith(".next-verify-"))
     )
     .map((entry) => path.join(webRoot, entry.name));
 
-  await Promise.all(staleDirs.map((target) => rm(target, { recursive: true, force: true })));
+  for (const target of staleDirs) {
+    // Next can still leave trace/build files behind briefly after an interrupted verify run.
+    await rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 
   const normalized = await normalizeNextE2ETsconfig(projectRoot);
 

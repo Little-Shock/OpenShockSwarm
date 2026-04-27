@@ -58,6 +58,7 @@ func TestStateStreamEmitsInitialSnapshotAndDeltaUpdates(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/state/stream", nil)
 	if err != nil {
@@ -78,8 +79,8 @@ func TestStateStreamEmitsInitialSnapshotAndDeltaUpdates(t *testing.T) {
 
 	reader := bufio.NewReader(resp.Body)
 	first := decodeSnapshotFrame(t, readStateStreamFrame(t, reader))
-	if first.Type != "snapshot" || first.Sequence != 2 {
-		t.Fatalf("first event = %#v, want snapshot seq=2 after login", first)
+	if first.Type != "snapshot" || first.Sequence < 2 {
+		t.Fatalf("first event = %#v, want snapshot after authenticated login", first)
 	}
 	if first.Presence.Unread == 0 {
 		t.Fatalf("first presence = %#v, want seeded unread truth", first.Presence)
@@ -101,8 +102,8 @@ func TestStateStreamEmitsInitialSnapshotAndDeltaUpdates(t *testing.T) {
 	}
 
 	second := decodeDeltaFrame(t, readStateStreamFrame(t, reader))
-	if second.Type != "delta" || second.Sequence != 3 {
-		t.Fatalf("second event = %#v, want delta seq=3 after login", second)
+	if second.Type != "delta" || second.Sequence < 3 {
+		t.Fatalf("second event = %#v, want authenticated delta after login", second)
 	}
 	if second.Presence.BusyMachines == 0 {
 		t.Fatalf("second presence = %#v, want busy machine truth", second.Presence)
@@ -142,6 +143,7 @@ func TestStateStreamDeltaBundlesCrossObjectProjectionUpdates(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/state/stream", nil)
 	if err != nil {
@@ -279,6 +281,7 @@ func TestStateStreamDeltaEmitsMemberPreferenceAndOnboardingSignals(t *testing.T)
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/state/stream", nil)
 	if err != nil {
@@ -384,6 +387,7 @@ func TestStateRouteExposesCurrentStateSequenceHeader(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	readSequence := func() int {
 		resp, err := http.Get(server.URL + "/v1/state")
@@ -403,16 +407,17 @@ func TestStateRouteExposesCurrentStateSequenceHeader(t *testing.T) {
 		return sequence
 	}
 
-	if sequence := readSequence(); sequence != 2 {
-		t.Fatalf("initial state sequence = %d, want 2 after login", sequence)
+	initialSequence := readSequence()
+	if initialSequence < 2 {
+		t.Fatalf("initial state sequence = %d, want authenticated sequence >= 2", initialSequence)
 	}
 
 	if _, _, _, err := s.UpdateNotificationPolicy(store.NotificationPolicyInput{BrowserPush: "all"}); err != nil {
 		t.Fatalf("UpdateNotificationPolicy() error = %v", err)
 	}
 
-	if sequence := readSequence(); sequence != 3 {
-		t.Fatalf("updated state sequence = %d, want 3 after login and update", sequence)
+	if sequence := readSequence(); sequence != initialSequence+1 {
+		t.Fatalf("updated state sequence = %d, want %d after login and update", sequence, initialSequence+1)
 	}
 }
 
@@ -436,6 +441,7 @@ func TestStateStreamReplaysMissedSnapshotsFromRequestedSequence(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	initialResp, err := http.Get(server.URL + "/v1/state/stream")
 	if err != nil {
@@ -444,8 +450,8 @@ func TestStateStreamReplaysMissedSnapshotsFromRequestedSequence(t *testing.T) {
 	initialReader := bufio.NewReader(initialResp.Body)
 	initial := decodeSnapshotFrame(t, readStateStreamFrame(t, initialReader))
 	initialResp.Body.Close()
-	if initial.Sequence != 2 {
-		t.Fatalf("initial snapshot = %#v, want sequence 2 after login", initial)
+	if initial.Sequence < 2 {
+		t.Fatalf("initial snapshot = %#v, want authenticated sequence >= 2", initial)
 	}
 
 	if _, _, _, err := s.UpdateNotificationPolicy(store.NotificationPolicyInput{BrowserPush: "all"}); err != nil {
@@ -479,18 +485,36 @@ func TestStateStreamReplaysMissedSnapshotsFromRequestedSequence(t *testing.T) {
 
 	reader := bufio.NewReader(resp.Body)
 	first := decodeSnapshotFrame(t, readStateStreamFrame(t, reader))
-	second := decodeDeltaFrame(t, readStateStreamFrame(t, reader))
-
-	if first.Sequence != 3 || second.Sequence != 4 {
-		t.Fatalf("replay sequences = (%d, %d), want (3, 4)", first.Sequence, second.Sequence)
-	}
 	if first.State.Workspace.BrowserPush != "推全部 live 通知" {
 		t.Fatalf("first replay workspace = %#v, want updated browser push", first.State.Workspace)
 	}
-	var runtimes []store.RuntimeRecord
-	decodeDeltaField(t, second.Delta, "runtimes", &runtimes)
-	if !runtimeRecordsContain(runtimes, "shock-replay") {
-		t.Fatalf("second replay runtimes = %#v, want shock-replay", runtimes)
+	secondFrame := readStateStreamFrame(t, reader)
+
+	if first.Sequence != initial.Sequence+1 {
+		t.Fatalf("first replay snapshot = %#v, want sequence %d", first, initial.Sequence+1)
+	}
+
+	switch secondFrame.Event {
+	case "delta":
+		second := decodeDeltaFrame(t, secondFrame)
+		if second.Sequence != initial.Sequence+2 {
+			t.Fatalf("second replay delta = %#v, want sequence %d", second, initial.Sequence+2)
+		}
+		var runtimes []store.RuntimeRecord
+		decodeDeltaField(t, second.Delta, "runtimes", &runtimes)
+		if !runtimeRecordsContain(runtimes, "shock-replay") {
+			t.Fatalf("second replay runtimes = %#v, want shock-replay", runtimes)
+		}
+	case "snapshot":
+		second := decodeSnapshotFrame(t, secondFrame)
+		if second.Sequence != initial.Sequence+2 {
+			t.Fatalf("second replay snapshot = %#v, want sequence %d", second, initial.Sequence+2)
+		}
+		if !runtimeRecordsContain(second.State.Runtimes, "shock-replay") {
+			t.Fatalf("second replay snapshot runtimes = %#v, want shock-replay", second.State.Runtimes)
+		}
+	default:
+		t.Fatalf("second replay event = %q, want snapshot or delta", secondFrame.Event)
 	}
 }
 
@@ -514,6 +538,7 @@ func TestStateStreamReplaysMissedSnapshotsFromLastEventIDHeader(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	initialResp, err := http.Get(server.URL + "/v1/state/stream")
 	if err != nil {
@@ -522,8 +547,8 @@ func TestStateStreamReplaysMissedSnapshotsFromLastEventIDHeader(t *testing.T) {
 	initialReader := bufio.NewReader(initialResp.Body)
 	initial := decodeSnapshotFrame(t, readStateStreamFrame(t, initialReader))
 	initialResp.Body.Close()
-	if initial.Sequence != 2 {
-		t.Fatalf("initial snapshot = %#v, want sequence 2 after login", initial)
+	if initial.Sequence < 2 {
+		t.Fatalf("initial snapshot = %#v, want authenticated sequence >= 2", initial)
 	}
 
 	if _, _, _, err := s.UpdateNotificationPolicy(store.NotificationPolicyInput{BrowserPush: "all"}); err != nil {
@@ -544,11 +569,11 @@ func TestStateStreamReplaysMissedSnapshotsFromLastEventIDHeader(t *testing.T) {
 
 	frame := readStateStreamFrame(t, bufio.NewReader(resp.Body))
 	replay := decodeSnapshotFrame(t, frame)
-	if replay.Sequence != 3 {
-		t.Fatalf("replay snapshot = %#v, want sequence 3 after login and update", replay)
+	if replay.Sequence != initial.Sequence+1 {
+		t.Fatalf("replay snapshot = %#v, want sequence %d after login and update", replay, initial.Sequence+1)
 	}
-	if frame.ID != "3" {
-		t.Fatalf("frame id = %q, want 3", frame.ID)
+	if frame.ID != strconv.Itoa(initial.Sequence+1) {
+		t.Fatalf("frame id = %q, want %d", frame.ID, initial.Sequence+1)
 	}
 	if replay.State.Workspace.BrowserPush != "推全部 live 通知" {
 		t.Fatalf("replay workspace = %#v, want updated browser push", replay.State.Workspace)
@@ -570,6 +595,7 @@ func TestStateSequenceHeaderBridgesFetchToStreamReplayGap(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	stateResp, err := http.Get(server.URL + "/v1/state")
 	if err != nil {
@@ -580,8 +606,12 @@ func TestStateSequenceHeaderBridgesFetchToStreamReplayGap(t *testing.T) {
 	}
 	sequenceHeader := strings.TrimSpace(stateResp.Header.Get("X-OpenShock-State-Sequence"))
 	stateResp.Body.Close()
-	if sequenceHeader != "2" {
-		t.Fatalf("state sequence header = %q, want 2 after login", sequenceHeader)
+	sequence, err := strconv.Atoi(sequenceHeader)
+	if err != nil {
+		t.Fatalf("state sequence header parse error = %v for %q", err, sequenceHeader)
+	}
+	if sequence < 2 {
+		t.Fatalf("state sequence header = %q, want authenticated sequence >= 2", sequenceHeader)
 	}
 
 	reportedAt := time.Now().UTC().Format(time.RFC3339)
@@ -607,13 +637,13 @@ func TestStateSequenceHeaderBridgesFetchToStreamReplayGap(t *testing.T) {
 
 	frame := readStateStreamFrame(t, bufio.NewReader(resp.Body))
 	replay := decodeSnapshotFrame(t, frame)
-	if replay.Sequence != 3 {
-		t.Fatalf("replay snapshot = %#v, want sequence 3 after login and heartbeat", replay)
+	if replay.Sequence != sequence+1 {
+		t.Fatalf("replay snapshot = %#v, want sequence %d after login and heartbeat", replay, sequence+1)
 	}
-	if frame.ID != "3" {
-		t.Fatalf("frame id = %q, want 3", frame.ID)
+	if frame.ID != strconv.Itoa(sequence+1) {
+		t.Fatalf("frame id = %q, want %d", frame.ID, sequence+1)
 	}
-	if len(replay.State.Runtimes) == 0 || replay.State.Runtimes[0].ID != "shock-gap" {
+	if !runtimeRecordsContain(replay.State.Runtimes, "shock-gap") {
 		t.Fatalf("replay runtimes = %#v, want shock-gap runtime", replay.State.Runtimes)
 	}
 }

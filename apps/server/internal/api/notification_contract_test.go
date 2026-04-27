@@ -267,6 +267,7 @@ func TestApprovalCenterLifecycleTracksInboxDecisions(t *testing.T) {
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	center := mustFetchApprovalCenter(t, server.URL)
 	if center.OpenCount != 3 || center.ApprovalCount != 1 || center.BlockedCount != 1 || center.ReviewCount != 1 || center.UnreadCount != 3 {
@@ -337,6 +338,7 @@ func TestApprovalCenterRecentDedupesMergedDeliveryDelegationStatus(t *testing.T)
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	mustApplyInboxDecision(t, server.URL, "inbox-approval-runtime", "approved")
 	mustApplyInboxDecision(t, server.URL, "inbox-blocked-memory", "resolved")

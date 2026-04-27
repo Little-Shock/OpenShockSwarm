@@ -56,7 +56,7 @@ func (rt directWorktreeDaemonRoundTripper) RoundTrip(req *http.Request) (*http.R
 	}, nil
 }
 
-func newDirectContractHandler(t *testing.T, root string) (*store.Store, http.Handler) {
+func newDirectContractHandler(t *testing.T, root string) (*store.Store, http.Handler, string) {
 	t.Helper()
 
 	statePath := filepath.Join(root, "data", "state.json")
@@ -67,14 +67,15 @@ func newDirectContractHandler(t *testing.T, root string) (*store.Store, http.Han
 	mustLoginReadyOwner(t, s)
 
 	client := &http.Client{Transport: directWorktreeDaemonRoundTripper{t: t}}
-	handler := New(s, client, Config{
+	server := New(s, client, Config{
 		DaemonURL:     "http://127.0.0.1:8090",
 		WorkspaceRoot: root,
-	}).Handler()
-	return s, handler
+	})
+	token, _ := server.issueRequestAuthToken(s.Snapshot().Auth.Session)
+	return s, server.Handler(), token
 }
 
-func serveJSONToHandler(t *testing.T, handler http.Handler, method, path string, body any) *http.Response {
+func serveJSONToHandler(t *testing.T, handler http.Handler, authToken, method, path string, body any) *http.Response {
 	t.Helper()
 
 	var reader io.Reader
@@ -89,6 +90,9 @@ func serveJSONToHandler(t *testing.T, handler http.Handler, method, path string,
 	req := httptest.NewRequest(method, path, reader)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if strings.TrimSpace(authToken) != "" {
+		req.Header.Set(authTokenHeaderName, authToken)
 	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -115,9 +119,9 @@ func findRequestedHandoffForRoom(
 
 func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 	root := t.TempDir()
-	_, handler := newDirectContractHandler(t, root)
+	_, handler, authToken := newDirectContractHandler(t, root)
 
-	topologyResp := serveJSONToHandler(t, handler, http.MethodPatch, "/v1/workspace", map[string]any{
+	topologyResp := serveJSONToHandler(t, handler, authToken, http.MethodPatch, "/v1/workspace", map[string]any{
 		"governance": map[string]any{
 			"teamTopology": []map[string]string{
 				{"id": "architect", "label": "Architect", "role": "网站信息架构与边界", "defaultAgent": "Codex Dockmaster", "lane": "scope / IA"},
@@ -147,7 +151,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("state agents = %#v, want Build Pilot in live state", topologyPayload.State.Agents)
 	}
 
-	issueResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/issues", map[string]string{
+	issueResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/issues", map[string]string{
 		"title":    "Build website landing page",
 		"summary":  "Ship a marketing website with a clear hero, pricing, FAQ, and a user-ready demo path.",
 		"owner":    "Codex Dockmaster",
@@ -180,7 +184,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("created session = %#v, want attached worktree path", createdSession)
 	}
 
-	plannerQueueResp := serveJSONToHandler(t, handler, http.MethodGet, "/v1/planner/queue", nil)
+	plannerQueueResp := serveJSONToHandler(t, handler, authToken, http.MethodGet, "/v1/planner/queue", nil)
 	defer plannerQueueResp.Body.Close()
 	if plannerQueueResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /v1/planner/queue status = %d, want %d", plannerQueueResp.StatusCode, http.StatusOK)
@@ -198,7 +202,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("planner queue = %#v, want session %q", plannerQueue, issuePayload.SessionID)
 	}
 
-	assignmentResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/planner/sessions/"+issuePayload.SessionID+"/assignment", map[string]string{
+	assignmentResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/planner/sessions/"+issuePayload.SessionID+"/assignment", map[string]string{
 		"agentId": "agent-codex-dockmaster",
 	})
 	defer assignmentResp.Body.Close()
@@ -214,7 +218,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("planner assignment payload = %#v, want Codex Dockmaster owner", assignmentPayload.Item)
 	}
 
-	architectHandoffResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox", map[string]string{
+	architectHandoffResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox", map[string]string{
 		"roomId":      issuePayload.RoomID,
 		"fromAgentId": "agent-codex-dockmaster",
 		"toAgentId":   "agent-build-pilot",
@@ -235,7 +239,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("architect handoff = %#v, want Codex Dockmaster -> Build Pilot", architectHandoffPayload.Handoff)
 	}
 
-	developerAckResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+architectHandoffPayload.Handoff.ID, map[string]string{
+	developerAckResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+architectHandoffPayload.Handoff.ID, map[string]string{
 		"action":        "acknowledged",
 		"actingAgentId": "agent-build-pilot",
 	})
@@ -244,7 +248,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("POST developer acknowledged status = %d, want %d", developerAckResp.StatusCode, http.StatusOK)
 	}
 
-	developerCompleteResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+architectHandoffPayload.Handoff.ID, map[string]any{
+	developerCompleteResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+architectHandoffPayload.Handoff.ID, map[string]any{
 		"action":                "completed",
 		"actingAgentId":         "agent-build-pilot",
 		"note":                  "首屏、定价、FAQ 和 CTA 已落好，交给评审做 exact-head 复核。",
@@ -268,7 +272,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("mailbox = %#v, want requested reviewer handoff", developerCompletePayload.State.Mailbox)
 	}
 
-	reviewerBlockedWithoutNoteResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]string{
+	reviewerBlockedWithoutNoteResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]string{
 		"action":        "blocked",
 		"actingAgentId": "agent-claude-review-runner",
 	})
@@ -282,7 +286,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("blocked without note payload = %#v, want note requirement", blockedWithoutNotePayload)
 	}
 
-	reviewerBlockedResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]string{
+	reviewerBlockedResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]string{
 		"action":        "blocked",
 		"actingAgentId": "agent-claude-review-runner",
 		"note":          "Hero 文案和 FAQ 顺序还要再收平。",
@@ -304,7 +308,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("governance rollup = %#v, want blocked room rollup", reviewerBlockedPayload.State.Workspace.Governance.EscalationSLA.Rollup)
 	}
 
-	reviewerAckResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]string{
+	reviewerAckResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]string{
 		"action":        "acknowledged",
 		"actingAgentId": "agent-claude-review-runner",
 	})
@@ -313,7 +317,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("POST reviewer acknowledged status = %d, want %d", reviewerAckResp.StatusCode, http.StatusOK)
 	}
 
-	reviewerCompleteResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]any{
+	reviewerCompleteResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+reviewerHandoff.ID, map[string]any{
 		"action":                "completed",
 		"actingAgentId":         "agent-claude-review-runner",
 		"note":                  "视觉层级、CTA 文案和导航一致性已复核，可以交 QA 做最终验证。",
@@ -337,7 +341,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("mailbox = %#v, want requested QA handoff", reviewerCompletePayload.State.Mailbox)
 	}
 
-	qaAckResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+qaHandoff.ID, map[string]string{
+	qaAckResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+qaHandoff.ID, map[string]string{
 		"action":        "acknowledged",
 		"actingAgentId": "agent-memory-clerk",
 	})
@@ -346,7 +350,7 @@ func TestWebsiteFourAgentDeliveryContractReplayWithoutListener(t *testing.T) {
 		t.Fatalf("POST QA acknowledged status = %d, want %d", qaAckResp.StatusCode, http.StatusOK)
 	}
 
-	qaCompleteResp := serveJSONToHandler(t, handler, http.MethodPost, "/v1/mailbox/"+qaHandoff.ID, map[string]string{
+	qaCompleteResp := serveJSONToHandler(t, handler, authToken, http.MethodPost, "/v1/mailbox/"+qaHandoff.ID, map[string]string{
 		"action":        "completed",
 		"actingAgentId": "agent-memory-clerk",
 		"note":          "桌面和移动主链验证已通过，网站可以给用户演示。",

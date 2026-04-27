@@ -106,7 +106,7 @@ func TestNewFreshBootstrapStartsWithGuidedWorkspace(t *testing.T) {
 	}
 }
 
-func TestFreshBootstrapFirstLoginClaimsPlaceholderOwner(t *testing.T) {
+func TestFreshBootstrapFirstLoginClaimsPlaceholderOwnerViaChallenge(t *testing.T) {
 	t.Setenv("OPENSHOCK_BOOTSTRAP_MODE", "fresh")
 
 	root := t.TempDir()
@@ -117,13 +117,23 @@ func TestFreshBootstrapFirstLoginClaimsPlaceholderOwner(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	nextState, session, err := store.LoginWithEmail(AuthLoginInput{
+	_, challenge, err := store.RequestLoginChallenge(AuthLoginInput{
+		Email: "alice@example.com",
+	})
+	if err != nil {
+		t.Fatalf("RequestLoginChallenge() error = %v", err)
+	}
+	if challenge.Kind != authChallengeKindBootstrapOwnerClaim || challenge.Email != "alice@example.com" {
+		t.Fatalf("login challenge = %#v, want bootstrap_owner_claim for alice@example.com", challenge)
+	}
+
+	nextState, session, err := store.CompleteLoginWithChallenge(AuthLoginInput{
 		Email:       "alice@example.com",
 		Name:        "Alice",
 		DeviceLabel: "Alice Browser",
-	})
+	}, challenge.ID)
 	if err != nil {
-		t.Fatalf("LoginWithEmail() error = %v", err)
+		t.Fatalf("CompleteLoginWithChallenge() error = %v", err)
 	}
 
 	if session.Status != authSessionStatusActive || session.Email != "alice@example.com" || session.MemberID != "member-owner" {
@@ -146,7 +156,11 @@ func TestFreshBootstrapFirstLoginClaimsPlaceholderOwner(t *testing.T) {
 		t.Fatalf("fresh login devices = %#v, want one pending claimed device", nextState.Auth.Devices)
 	}
 
-	verifyState, verifiedSession, verifiedMember, err := store.VerifyMemberEmail(AuthRecoveryInput{Email: "alice@example.com"})
+	_, verifyChallenge, err := store.RequestVerifyMemberEmailChallenge(AuthRecoveryInput{Email: "alice@example.com"})
+	if err != nil {
+		t.Fatalf("RequestVerifyMemberEmailChallenge() error = %v", err)
+	}
+	verifyState, verifiedSession, verifiedMember, err := store.VerifyMemberEmail(AuthRecoveryInput{Email: "alice@example.com", ChallengeID: verifyChallenge.ID})
 	if err != nil {
 		t.Fatalf("VerifyMemberEmail() error = %v", err)
 	}
@@ -157,7 +171,11 @@ func TestFreshBootstrapFirstLoginClaimsPlaceholderOwner(t *testing.T) {
 		t.Fatalf("verified state member = %#v, want invited until device approval", verifyState.Auth.Members[0])
 	}
 
-	activatedState, activatedSession, activatedMember, device, err := store.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: session.DeviceID})
+	_, authorizeChallenge, err := store.RequestAuthorizeAuthDeviceChallenge(AuthRecoveryInput{DeviceID: session.DeviceID})
+	if err != nil {
+		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
+	}
+	activatedState, activatedSession, activatedMember, device, err := store.AuthorizeAuthDevice(AuthRecoveryInput{DeviceID: session.DeviceID, ChallengeID: authorizeChallenge.ID})
 	if err != nil {
 		t.Fatalf("AuthorizeAuthDevice() error = %v", err)
 	}
@@ -172,7 +190,7 @@ func TestFreshBootstrapFirstLoginClaimsPlaceholderOwner(t *testing.T) {
 	}
 }
 
-func TestFreshBootstrapOwnerClaimFailsClosedAfterWorkStarts(t *testing.T) {
+func TestFreshBootstrapOwnerClaimChallengeFailsClosedAfterWorkStarts(t *testing.T) {
 	t.Setenv("OPENSHOCK_BOOTSTRAP_MODE", "fresh")
 
 	root := t.TempDir()
@@ -192,12 +210,10 @@ func TestFreshBootstrapOwnerClaimFailsClosedAfterWorkStarts(t *testing.T) {
 	})
 	store.mu.Unlock()
 
-	if _, _, err := store.LoginWithEmail(AuthLoginInput{
-		Email:       "alice@example.com",
-		Name:        "Alice",
-		DeviceLabel: "Alice Browser",
+	if _, _, err := store.RequestLoginChallenge(AuthLoginInput{
+		Email: "alice@example.com",
 	}); !errorsIs(err, ErrFreshBootstrapOwnerClaimUnavailable) {
-		t.Fatalf("LoginWithEmail(after work started) error = %v, want %v", err, ErrFreshBootstrapOwnerClaimUnavailable)
+		t.Fatalf("RequestLoginChallenge(after work started) error = %v, want %v", err, ErrFreshBootstrapOwnerClaimUnavailable)
 	}
 
 	snapshot := store.Snapshot()

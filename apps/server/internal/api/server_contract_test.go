@@ -816,6 +816,7 @@ func TestRuntimePairingColdStartPrefersCurrentDaemonTruth(t *testing.T) {
 				WorkspaceRoot: root,
 			}).Handler())
 			defer server.Close()
+			mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 			pairingResp, err := http.Get(server.URL + "/v1/runtime/pairing")
 			if err != nil {
@@ -896,6 +897,7 @@ func TestRuntimeHeartbeatsKeepPairingAndExecAligned(t *testing.T) {
 		RuntimeHeartbeatSecret: contractRuntimeHeartbeatSecret,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	heartbeatBody, err := json.Marshal(RuntimeSnapshotResponse{
 		RuntimeID:  "shock-main",
@@ -1092,6 +1094,7 @@ func TestRuntimeReadSurfacesRequireRuntimeManagePermission(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("LoginWithEmail(member) error = %v", err)
 	}
+	mustEstablishContractBrowserSession(t, server.URL, "mina@openshock.dev", "Mina Browser")
 
 	for _, path := range []string{
 		"/v1/runtime",
@@ -1174,6 +1177,7 @@ func TestCollectionReadSurfacesRespectSanitizedSessionReadiness(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("LoginWithEmail(invited reviewer) error = %v", err)
 	}
+	mustEstablishContractBrowserSession(t, server.URL, "reviewer@openshock.dev", "Reviewer Phone")
 
 	unreadyIssuesResp, err := http.Get(server.URL + "/v1/issues")
 	if err != nil {
@@ -1262,6 +1266,7 @@ func TestStateRouteRefreshesStalePairedRuntimeFromDaemon(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	stateResp, err := http.Get(server.URL + "/v1/state")
 	if err != nil {
@@ -1338,6 +1343,8 @@ func TestCreatePullRequestRouteCreatesGitHubBackedPullRequest(t *testing.T) {
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/pull-request", "application/json", bytes.NewReader([]byte(`{}`)))
 	if err != nil {
@@ -1468,6 +1475,7 @@ func TestCreatePullRequestRouteUsesGitHubAppEffectiveAuthWhenGHCLIIsMissing(t *t
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/pull-request", "application/json", bytes.NewReader([]byte(`{}`)))
 	if err != nil {
@@ -1529,6 +1537,7 @@ func TestCreatePullRequestRouteEscalatesBlockedOnGitHubCreateFailure(t *testing.
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Post(server.URL+"/v1/rooms/"+created.RoomID+"/pull-request", "application/json", bytes.NewReader([]byte(`{}`)))
 	if err != nil {
@@ -1649,6 +1658,7 @@ func TestPullRequestRouteSyncsAndMergesRemoteState(t *testing.T) {
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	getResp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
 	if err != nil {
@@ -1791,6 +1801,7 @@ func TestPullRequestDetailRouteReturnsConversationAndBacklinks(t *testing.T) {
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID + "/detail")
 	if err != nil {
@@ -4618,6 +4629,9 @@ func TestRunDetailRouteBuildsRecoveryAuditFromInterruptedSessionAndFollowupTruth
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/runs/run_runtime_01/detail")
 	if err != nil {
@@ -4689,6 +4703,7 @@ func TestRunDetailRouteBuildsRecoveryAuditFromFormalHandoffFollowupTruth(t *test
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/runs/run_runtime_01/detail")
 	if err != nil {
@@ -4731,6 +4746,7 @@ func TestRunDetailRouteRecoveryAuditReadIsSideEffectFree(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	for index := 0; index < 2; index++ {
 		resp, err := http.Get(server.URL + "/v1/runs/run_runtime_01/detail")
@@ -4807,6 +4823,8 @@ func TestPullRequestRouteEscalatesBlockedOnGitHubSyncFailure(t *testing.T) {
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
 	if err != nil {
@@ -4943,6 +4961,7 @@ func TestPullRequestRouteEscalatesBlockedOnGitHubAppReviewDecisionSyncFailure(t 
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
 	if err != nil {
@@ -5033,6 +5052,7 @@ func TestPullRequestRouteSyncFailureIsIdempotentAcrossRepeatedReads(t *testing.T
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	firstResp, err := http.Get(server.URL + "/v1/pull-requests/" + pullRequestID)
 	if err != nil {
@@ -5140,6 +5160,7 @@ func TestPullRequestRouteEscalatesBlockedOnGitHubMergeFailure(t *testing.T) {
 		GitHub:        github,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"status": "merged"})
 	if err != nil {
@@ -5236,15 +5257,7 @@ func mustEstablishContractBrowserSession(t *testing.T, serverURL, email, deviceL
 	ensureContractAuthTransport()
 	clearContractAuthCookie(serverURL)
 
-	body, err := json.Marshal(map[string]string{
-		"email":       email,
-		"deviceLabel": deviceLabel,
-	})
-	if err != nil {
-		t.Fatalf("Marshal(contract browser login) error = %v", err)
-	}
-
-	resp, err := http.Post(serverURL+"/v1/auth/session", "application/json", bytes.NewReader(body))
+	resp, err := postContractAuthSessionJSON(t, http.DefaultClient, serverURL, `{"email":"`+email+`","deviceLabel":"`+deviceLabel+`"}`)
 	if err != nil {
 		t.Fatalf("POST /v1/auth/session contract browser login error = %v", err)
 	}
@@ -5263,6 +5276,118 @@ func mustEstablishContractBrowserSession(t *testing.T, serverURL, email, deviceL
 	return payload.Session
 }
 
+func requestContractLoginChallenge(t *testing.T, client *http.Client, serverURL, email string) store.AuthChallenge {
+	t.Helper()
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	body, err := json.Marshal(map[string]string{
+		"action": "request_login_challenge",
+		"email":  email,
+	})
+	if err != nil {
+		t.Fatalf("Marshal(request_login_challenge) error = %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/v1/auth/recovery", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest(request_login_challenge) error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery request_login_challenge error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/recovery request_login_challenge status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Challenge store.AuthChallenge `json:"challenge"`
+	}
+	decodeJSON(t, resp, &payload)
+	if payload.Challenge.ID == "" {
+		t.Fatalf("request_login_challenge payload = %#v, want challenge id", payload)
+	}
+	return payload.Challenge
+}
+
+func requestContractRecoveryChallenge(t *testing.T, client *http.Client, serverURL string, body map[string]string) store.AuthChallenge {
+	t.Helper()
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("Marshal(%s) error = %v", body["action"], err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/v1/auth/recovery", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("NewRequest(%s) error = %v", body["action"], err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/recovery %s error = %v", body["action"], err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/recovery %s status = %d, want %d", body["action"], resp.StatusCode, http.StatusOK)
+	}
+
+	var payload struct {
+		Challenge store.AuthChallenge `json:"challenge"`
+	}
+	decodeJSON(t, resp, &payload)
+	if payload.Challenge.ID == "" {
+		t.Fatalf("%s payload = %#v, want challenge id", body["action"], payload)
+	}
+	return payload.Challenge
+}
+
+func newContractAuthSessionRequest(t *testing.T, client *http.Client, serverURL, raw string) *http.Request {
+	t.Helper()
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("Unmarshal(auth session payload) error = %v", err)
+	}
+	if _, ok := payload["challengeId"]; !ok {
+		if email, ok := payload["email"].(string); ok && strings.TrimSpace(email) != "" {
+			payload["challengeId"] = requestContractLoginChallenge(t, client, serverURL, email).ID
+		}
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Marshal(auth session payload) error = %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/v1/auth/session", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest(auth session) error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func postContractAuthSessionJSON(t *testing.T, client *http.Client, serverURL, raw string) (*http.Response, error) {
+	t.Helper()
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return client.Do(newContractAuthSessionRequest(t, client, serverURL, raw))
+}
+
 func mustLoginReadyOwner(t *testing.T, s *store.Store) {
 	t.Helper()
 	_, session, err := s.LoginWithEmail(store.AuthLoginInput{
@@ -5273,16 +5398,28 @@ func mustLoginReadyOwner(t *testing.T, s *store.Store) {
 		t.Fatalf("LoginWithEmail(owner) error = %v", err)
 	}
 	if session.EmailVerificationStatus != "verified" {
-		if _, nextSession, _, err := s.VerifyMemberEmail(store.AuthRecoveryInput{Email: session.Email}); err != nil {
+		_, challenge, err := s.RequestVerifyMemberEmailChallenge(store.AuthRecoveryInput{Email: session.Email})
+		if err != nil {
+			t.Fatalf("RequestVerifyMemberEmailChallenge(owner) error = %v", err)
+		}
+		if _, nextSession, _, err := s.VerifyMemberEmail(store.AuthRecoveryInput{Email: session.Email, ChallengeID: challenge.ID}); err != nil {
 			t.Fatalf("VerifyMemberEmail(owner) error = %v", err)
 		} else {
 			session = nextSession
 		}
 	}
 	if session.DeviceAuthStatus != "authorized" {
+		_, challenge, err := s.RequestAuthorizeAuthDeviceChallenge(store.AuthRecoveryInput{
+			DeviceID:    session.DeviceID,
+			DeviceLabel: session.DeviceLabel,
+		})
+		if err != nil {
+			t.Fatalf("RequestAuthorizeAuthDeviceChallenge(owner) error = %v", err)
+		}
 		if _, nextSession, _, _, err := s.AuthorizeAuthDevice(store.AuthRecoveryInput{
 			DeviceID:    session.DeviceID,
 			DeviceLabel: session.DeviceLabel,
+			ChallengeID: challenge.ID,
 		}); err != nil {
 			t.Fatalf("AuthorizeAuthDevice(owner) error = %v", err)
 		} else {

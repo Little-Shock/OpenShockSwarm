@@ -58,6 +58,13 @@ test("onboarding keeps finish and future steps gated until repo and runtime are 
   assert.match(finishSection, /if \(!runtimeReady\)/);
   assert.match(finishSection, /setCurrentStep\("repo"\)/);
   assert.match(finishSection, /setCurrentStep\("runtime"\)/);
+  assert.match(source, /const finishDestination = continueTarget\.source === "journey" \? journey\.launchHref : continueTarget\.href;/);
+  assert.match(source, /router\.replace\(finishDestination\);/);
+  assert.match(source, /resumeUrl: done \? finishDestination : "\/setup"/);
+  assert.match(finishSection, /startRoute: currentMember\.preferences\.startRoute\?\.trim\(\) \|\| journey\.launchHref,/);
+  assert.match(finishSection, /router\.push\(finishDestination\);/);
+  assert.doesNotMatch(finishSection, /startRoute: "\/chat\/all"/);
+  assert.doesNotMatch(finishSection, /router\.push\("\/chat\/all"\)/);
   assert.match(source, /const onboardingDone = state\.workspace\.onboarding\.status === "done";/);
   assert.match(source, /function canOpenStep\(stepID: WizardStepID\)/);
   assert.match(source, /onClick=\{\(\) => openStep\(step\.id\)\}/);

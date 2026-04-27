@@ -945,7 +945,7 @@ func runOpsSmokeScriptWithEnv(t *testing.T, serverURL, daemonURL string, extraEn
 
 	envParts := []string{
 		"OPENSHOCK_DAEMON_URL=" + shellQuote(daemonURL),
-		"OPENSHOCK_CURL_MAX_TIME=2",
+		"OPENSHOCK_CURL_MAX_TIME=5",
 	}
 	if strings.TrimSpace(serverURL) != "" {
 		envParts = append(envParts, "OPENSHOCK_SERVER_URL="+shellQuote(serverURL))

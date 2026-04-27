@@ -35,6 +35,7 @@ func TestRepoBindingScansLocalGitOriginAndPersists(t *testing.T) {
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Post(server.URL+"/v1/repo/binding", "application/json", bytes.NewReader([]byte("{}")))
 	if err != nil {
@@ -80,6 +81,7 @@ func TestRepoBindingScansLocalGitOriginAndPersists(t *testing.T) {
 		},
 	}).Handler())
 	defer restarted.Close()
+	mustEstablishContractBrowserSession(t, restarted.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	getResp, err := http.Get(restarted.URL + "/v1/repo/binding")
 	if err != nil {
@@ -160,6 +162,7 @@ func TestRepoBindingPromotesToGitHubAppWhenConnectionIsReady(t *testing.T) {
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Post(server.URL+"/v1/repo/binding", "application/json", bytes.NewReader([]byte("{}")))
 	if err != nil {
@@ -218,6 +221,7 @@ func TestRepoBindingRejectsRequestThatConflictsWithDetectedCheckout(t *testing.T
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body := bytes.NewReader([]byte(`{"repo":"example/other","repoUrl":"https://github.com/example/other.git","branch":"dev","provider":"github"}`))
 	resp, err := http.Post(server.URL+"/v1/repo/binding", "application/json", body)
@@ -283,6 +287,7 @@ func TestCurrentRepoBindingCarriesPreferredAuthPathAndMissingFields(t *testing.T
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/repo/binding")
 	if err != nil {
@@ -378,6 +383,8 @@ func TestRepoBindingReturnsExplicitContractWhenGitHubAppIsNotInstalled(t *testin
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body := bytes.NewReader([]byte(`{"authMode":"github-app"}`))
 	resp, err := http.Post(server.URL+"/v1/repo/binding", "application/json", body)
@@ -449,6 +456,7 @@ func TestRepoBindingPrefersGitHubAppContractAndBlocksWhenInstallationIsPending(t
 		},
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Post(server.URL+"/v1/repo/binding", "application/json", bytes.NewReader([]byte("{}")))
 	if err != nil {

@@ -90,6 +90,7 @@ func TestRunCredentialBindingAndExecRecordSecretScopeGuardAndAudit(t *testing.T)
 	s, _, server, cleanup := newAuthGuardTestServer(t, root)
 	defer cleanup()
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	if s.Snapshot().Auth.Session.Email != "larkspur@openshock.dev" {
 		t.Fatalf("unexpected seeded auth session: %#v", s.Snapshot().Auth.Session)

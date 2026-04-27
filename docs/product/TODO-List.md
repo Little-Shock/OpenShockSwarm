@@ -1,6 +1,6 @@
 # OpenShock TODO
 
-**更新日期:** 2026-04-26  
+**更新日期:** 2026-04-28  
 **关联文档:** [PRD](./PRD.md) · [Checklist](./Checklist.md) · [Testing Index](../testing/README.md)
 
 ## 这份文档现在只做什么
@@ -11,10 +11,10 @@
 
 如果你只看今天这轮，优先记住这 4 个产品缺口：
 
-- 认证仍需要从“邮箱即可进入”继续收紧到真正 challenge-based 的进入方式
-- request-scoped auth 已落下第一批 token-bound 入口，但 detail/read surface 和剩余 mutation 还没全站收平
+- request-scoped auth 已收成 token-enforced request scope；下一拍只补双用户并发证据和少量 `state.Auth.Session` 兼容尾项
 - 首启入口虽然已经减法，但产品前门和文档前门还要继续统一成同一条首次成功路径
 - 发布证据已经有正式入口，但 reviewer 的判断路径还要继续减少跳转和重复阅读
+- durable memory / provider / recovery 还缺多 session 重放、降级恢复和交接证据
 
 如果实时状态面板、测试报告和这里冲突：
 
@@ -31,19 +31,24 @@
 - `verify:release:rc`、`verify:release:full`、`ops:smoke` 已收成正式发布入口
 - auth/session 已从默认 owner 放行改成默认 signed-out
 - 关键 mutation 已统一走 session + permission guard，401/403 不再泄露完整 state
+- request-scoped auth 已 fail-closed：无 token 的 detail/read/mutation 默认 signed-out，browser/integration/release gate 已切到显式 token 或 cookie
 - internal notification worker 已切到 shared secret 鉴权
 
 ## 当前优先级
 
 ### P0 Auth challenge hardening
 
+状态：已完成。保留本段只为了给 reviewer 一个单点真值；下一轮从当前优先级移除。
+
 目标：把“知道邮箱就能登录 / claim owner / reset recovery”收成真正的 challenge-based auth。
 
 当前真值：
 
-- `request_password_reset` 现仅允许 active scoped session 发起
-- signed-out 只允许在持有有效 challenge 时执行 `complete_password_reset`
-- email-only login 与 fresh bootstrap owner claim 仍未移除，所以本项继续保留 P0
+- `POST /v1/auth/session` 现只接受 challenge-based login，不再接受裸邮箱登录
+- fresh bootstrap owner claim 已收成 `request_login_challenge -> /v1/auth/session`，不能再直接 claim placeholder owner
+- `verify_email` 与 `authorize_device` 已收成 `request_*_challenge -> consume challenge` 两段式一次性 contract
+- `request_password_reset` 会签发一次性 reset challenge；signed-out 只允许在持有有效 challenge 时执行 `complete_password_reset`
+- store / api / integration / release gate 都已补到 replay、cross-account、expired 或 signed-out fail-closed 证据
 
 Done when:
 
@@ -59,10 +64,10 @@ Evidence:
 
 本轮验收结果应满足：
 
-- `POST /v1/auth/session` 不再接受 email-only login，并有对应 contract 覆盖
-- fresh bootstrap 下首个未知邮箱不能直接 claim owner，并有 store contract 覆盖
-- `verify_email / authorize_device / request_password_reset / complete_password_reset` 全部改成一次性 challenge 消费，并覆盖 replay / expired / cross-account
-- auth contract、store contract、browser recovery 报告都能给出可追溯证据
+- 已满足：`POST /v1/auth/session` 不再接受 email-only login，并有对应 contract 覆盖
+- 已满足：fresh bootstrap 下首个未知邮箱不能直接 claim owner，并有 store contract 覆盖
+- 已满足：`verify_email / authorize_device / request_password_reset / complete_password_reset` 全部改成一次性 challenge contract，并覆盖 replay / expired / cross-account
+- 已满足：auth contract、store contract、integration / release gate 都能给出可追溯证据
 
 ### P0 Request-scoped auth session
 
@@ -73,7 +78,7 @@ Evidence:
 - `auth/session`、`workspace members`、`member preferences`、`auth recovery` 已支持 token-bound request actor
 - `credential / control-plane / agent profile / topic / memory / direct message` 已开始统一吃 request actor，而不是继续只吃最后一次登录者
 - `state stream`、`mailbox`、`pull-request`、`room detail`、`run detail` 这批高风险读链已经接上 request-aware snapshot / visibility gate
-- 仍保留“无 token 时回退全局 `Auth.Session`”的兼容路径，所以当前是 token-aware，还不是 token-enforced request scope
+- “无 token 时回退全局 `Auth.Session`”的兼容路径已经移除；当前默认 fail closed，并由 browser / integration / release gate 走显式 token 或 cookie
 
 建议拆分顺序：
 
@@ -101,10 +106,10 @@ Evidence:
 本轮验收结果应满足：
 
 - `Snapshot().Auth.Session` 不再作为 auth/workspace/member preference/recovery 这批关键 mutation 的直接 actor 来源
-- 已有一组双用户并发 contract 证明 A/B token 不会互相覆盖 `/v1/auth/session` 和 member preference actor
+- 已满足：header token 与双浏览器 cookie 两组并发 contract 都证明 A/B 会话不会互相覆盖 `/v1/auth/session`、state stream 和 member preference actor
 - device approval、password reset、workspace member mutation 都已有 request-scoped actor 证据
 - `state stream`、`mailbox`、`pull-request`、`room detail`、`run detail` 已补齐 request-aware 读链 redaction
-- 下一轮去掉无 token 全局 session fallback，并补 browser/integration 双会话证据
+- 下一轮只补遗留 `state.Auth.Session` 兼容说明与更高层 browser/integration walkthrough，不再回头补全局 session fallback
 
 ### P0 Setup / Onboarding 收口
 
@@ -132,6 +137,8 @@ Evidence:
 
 ### P0 Release evidence 单源化
 
+状态：已完成。reviewer 现在可以用同一份 gate 产物和同一个 evidence locator 重新定位最新 RC / full 证据。
+
 目标：发布 reviewer 不再翻三份文档和终端日志拼结论。
 
 Done when:
@@ -143,15 +150,17 @@ Done when:
 Evidence:
 
 - `scripts/release-gate.sh`
+- `scripts/release-evidence-latest.mjs`
 - `scripts/release-gate-contract.test.mjs`
+- `scripts/release-evidence-latest.test.mjs`
 - `docs/testing/README.md`
 - 对应 `docs/testing/Test-Report-*release*`
 
 本轮验收结果应满足：
 
-- `pnpm verify:release:rc` 每次运行都生成 RC summary report 与原始日志
-- `pnpm verify:release:full` 每次运行都生成 full summary report 与原始日志
-- Testing Index、Release Gate、Runbook 都只给“如何定位最新证据”的方法，不手写“最新日期 / commit”
+- 已满足：`pnpm verify:release:rc` 每次运行都生成 RC summary report 与原始日志
+- 已满足：`pnpm verify:release:full` 每次运行都生成 full summary report 与原始日志
+- 已满足：Testing Index、Release Gate、Runbook 都只给“如何定位最新证据”的方法，不手写“最新日期 / commit”
 
 ### P1 Headed suite 清单化
 
@@ -234,11 +243,14 @@ Evidence:
 - `/v1/notifications/fanout` 改成内部 worker secret 鉴权
 - `verify:release:rc` 现在强制 `OPENSHOCK_INTERNAL_WORKER_SECRET`
 - `request_password_reset` 现仅允许 active session 发起；signed-out 只允许持 challenge 完成恢复
+- `request_login_challenge -> /v1/auth/session` 现在是唯一登录入口，fresh bootstrap owner claim 也已收成同一条 challenge 主链
+- `verify_email`、`authorize_device` 现在都要求先请求一次性 challenge，再消费 challenge 完成恢复动作
 - release-critical headed suite 已单源化到 `scripts/release-browser-suite.sh`
 - `verify:release:rc` 现在也强制 `OPENSHOCK_RUNTIME_HEARTBEAT_SECRET`
 - `verify:release:full` 新增 summary report 和 durable logs
 - 首页 continue target 已覆盖 inbox / DM / channel / room / journey
 - `setup/access` 入口壳已减成更轻的单列首屏
+- `setup` 模板管理区已去掉重复的“刷新进度 / 完成首次启动”动作，展开层只保留模板细节与进度说明
 
 ## 每张执行票最少要写清什么
 

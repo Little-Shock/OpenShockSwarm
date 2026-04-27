@@ -84,6 +84,7 @@ func TestRoomMessageStreamPersistsConversation(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{
 		"prompt":   "给我一个两行结论",
@@ -857,6 +858,8 @@ func TestRoomAutoHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Blocked Auto Handoff Continuation", "Codex Dockmaster")
 
@@ -915,6 +918,7 @@ func TestRoomAutoHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	secondBody, err := json.Marshal(map[string]any{
 		"prompt": "现在我补一句，继续把上一轮卡住的复核做完。",
@@ -1015,6 +1019,7 @@ func TestGovernedHandoffBlockedFollowupPersistsDurableContinuationAcrossRestart(
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
 		"roomId":      created.RoomID,
@@ -1160,6 +1165,7 @@ func TestGovernedHandoffAcknowledgeDoesNotDuplicateInFlightImmediateContinue(t *
 
 	server := httptest.NewServer(api.Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	createResp := doMailboxRouteRequest(t, server.URL+"/v1/mailbox", map[string]string{
 		"roomId":      created.RoomID,
@@ -1459,6 +1465,7 @@ func TestStateRouteAutonomouslyRecoversBlockedRoomAutoFollowupAfterReload(t *tes
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "State Tick Auto Recovery", "Codex Dockmaster")
 
@@ -1507,6 +1514,7 @@ func TestStateRouteAutonomouslyRecoversBlockedRoomAutoFollowupAfterReload(t *tes
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	var recovered store.State
 	deadline := time.Now().Add(2 * time.Second)
@@ -1642,6 +1650,7 @@ func TestStateRouteRecoveryTickDoesNotDuplicateInFlightRoomAutoRetry(t *testing.
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "State Tick Inflight Dedup", "Codex Dockmaster")
 
@@ -1672,12 +1681,19 @@ func TestStateRouteRecoveryTickDoesNotDuplicateInFlightRoomAutoRetry(t *testing.
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	firstTick, err := http.Get(reloadedServer.URL + "/v1/state")
 	if err != nil {
 		t.Fatalf("first GET /v1/state error = %v", err)
 	}
 	firstTick.Body.Close()
+
+	recoveryTick, err := http.Get(reloadedServer.URL + "/v1/state")
+	if err != nil {
+		t.Fatalf("recovery GET /v1/state error = %v", err)
+	}
+	recoveryTick.Body.Close()
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1714,6 +1730,15 @@ func TestStateRouteRecoveryTickDoesNotDuplicateInFlightRoomAutoRetry(t *testing.
 	mu.Unlock()
 
 	close(releaseRecovery)
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		session := findSessionByID(reloadedStore.Snapshot(), created.SessionID)
+		if session == nil || session.PendingTurn == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func TestBackgroundRecoveryLoopAutonomouslyRecoversBlockedRoomAutoFollowupAfterReload(t *testing.T) {
@@ -1772,6 +1797,7 @@ func TestBackgroundRecoveryLoopAutonomouslyRecoversBlockedRoomAutoFollowupAfterR
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Loop Auto Recovery", "Codex Dockmaster")
 
@@ -1918,6 +1944,7 @@ func TestBackgroundRecoveryLoopDoesNotRecoverBlockedRoomAutoFollowupWhileRunPaus
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Paused Loop Auto Recovery", "Codex Dockmaster")
 
@@ -2087,6 +2114,7 @@ func TestBackgroundRecoveryLoopDoesNotDuplicateInFlightRoomAutoRetry(t *testing.
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Loop Inflight Dedup", "Codex Dockmaster")
 
@@ -2209,6 +2237,7 @@ func TestBackgroundRecoveryLoopAutonomouslyResumesInterruptedPendingTurnAfterRel
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Background Pending Turn Recovery", "Codex Dockmaster")
 
@@ -2381,6 +2410,7 @@ func TestBackgroundRecoveryLoopDoesNotResumeInterruptedPendingTurnWhileRunPaused
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Paused Pending Turn Recovery", "Codex Dockmaster")
 
@@ -2548,6 +2578,7 @@ func TestBackgroundRecoveryLoopPersistsSessionRecoveryReplay(t *testing.T) {
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Background Recovery Replay", "Codex Dockmaster")
 
@@ -2605,6 +2636,7 @@ func TestBackgroundRecoveryLoopPersistsSessionRecoveryReplay(t *testing.T) {
 	})
 	reloadedServer := httptest.NewServer(reloadedAPI.Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 	loopCtx, loopCancel := context.WithCancel(context.Background())
 	defer loopCancel()
 	reloadedAPI.StartRoomAutoRecoveryLoop(loopCtx, 5*time.Millisecond)
@@ -2721,6 +2753,7 @@ func TestBackgroundRecoveryLoopDoesNotDuplicateInFlightInterruptedPendingTurnRec
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Background Pending Turn Dedup", "Codex Dockmaster")
 
@@ -2893,6 +2926,7 @@ func TestBackgroundRecoveryLoopPrefersInterruptedPendingTurnOverRoomAutoFollowup
 		DaemonURL:     daemon.URL,
 		WorkspaceRoot: root,
 	}).Handler())
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	created, _ := createLeaseTestIssue(t, s, root, daemon.URL, "Pending Turn Beats Room Auto", "Codex Dockmaster")
 
@@ -3056,6 +3090,7 @@ func TestRoomMessageStreamPersistsBlockedConversationOnError(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{
 		"prompt":   "请告诉我现在卡在哪里",
@@ -3167,6 +3202,7 @@ func TestRoomMessagePersistsBlockedConversationOnError(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{
 		"prompt":   "请告诉我为什么失败",
@@ -3706,6 +3742,7 @@ func TestRoomMessageRouteMemoryPreviewFollowsCurrentOwnerAcrossHandoffRestart(t 
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	secondBody, err := json.Marshal(map[string]any{
 		"prompt": "继续把影片资料、验收点和记忆写回一起收口。",
@@ -3977,6 +4014,7 @@ func TestRoomMessageRouteClarificationWaitSurvivesStoreReload(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{
 		"prompt": "只做当前 lane 的 rollout。",
@@ -4440,6 +4478,7 @@ func TestRoomAutoHandoffClarificationFollowupSurvivesRestart(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	secondBody, err := json.Marshal(map[string]any{
 		"prompt": "rollout 只限当前 landing 页和详情页。",
@@ -4653,6 +4692,7 @@ func TestRoomAutoHandoffClarificationMemoryCenterPreviewPersistsAcrossRestart(t 
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	checkPreview(t, reloadedServer.URL)
 
@@ -4899,6 +4939,7 @@ func TestRoomMessageStreamSequentialAutoHandoffsPersistCurrentOwnerAcrossRestart
 		WorkspaceRoot: root,
 	}).Handler())
 	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	reloadedRoom := findRoomByID(reloadedStore.Snapshot(), created.RoomID)
 	if reloadedRoom == nil || reloadedRoom.Topic.Owner != "Memory Clerk" {
@@ -5748,6 +5789,7 @@ func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"daemonUrl": daemon.URL})
 	if err != nil {
@@ -5782,6 +5824,7 @@ func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer restarted.Close()
+	mustEstablishContractBrowserSession(t, restarted.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	runtimeResp, err := http.Get(restarted.URL + "/v1/runtime")
 	if err != nil {
@@ -5818,6 +5861,7 @@ func TestRuntimePairingPersistsWorkspaceBinding(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer restartedAfterDelete.Close()
+	mustEstablishContractBrowserSession(t, restartedAfterDelete.URL, "larkspur@openshock.dev", "Owner Browser")
 	offlineResp, err := http.Get(restartedAfterDelete.URL + "/v1/runtime")
 	if err != nil {
 		t.Fatalf("GET runtime after delete error = %v", err)
@@ -5920,6 +5964,7 @@ func TestRuntimeRegistryTracksHeartbeatsAndPairingSelection(t *testing.T) {
 		RuntimeHeartbeatSecret: contractRuntimeHeartbeatSecret,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	for _, payload := range []RuntimeSnapshotResponse{mainPayload, sidecarPayload} {
 		body, err := json.Marshal(payload)
@@ -6053,6 +6098,7 @@ func TestRuntimePairingRejectsExplicitRuntimeWithoutDaemonURL(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"runtimeId": "shock-sidecar"})
 	if err != nil {
@@ -6132,6 +6178,7 @@ func TestRuntimePairingRejectsExplicitRuntimeIdentityMismatch(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{
 		"runtimeId": "shock-sidecar",
@@ -6272,6 +6319,7 @@ func TestRuntimeSelectionExposesMultiRuntimeSurfaceAndDispatchesByRun(t *testing
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	selectBody, err := json.Marshal(map[string]any{"machine": "shock-main"})
 	if err != nil {
@@ -6395,6 +6443,7 @@ func TestRuntimeSelectionRejectsOfflineRuntime(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"machine": "shock-sidecar"})
 	if err != nil {
@@ -6481,6 +6530,7 @@ func TestCreateIssueRejectsWhenAllRuntimesOffline(t *testing.T) {
 		WorkspaceRoot: root,
 	}).Handler())
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{
 		"title":    "all offline runtime probe",

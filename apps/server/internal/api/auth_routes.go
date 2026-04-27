@@ -28,6 +28,7 @@ type AuthSessionRequest struct {
 	DeviceID    string `json:"deviceId"`
 	DeviceLabel string `json:"deviceLabel"`
 	AuthMethod  string `json:"authMethod"`
+	ChallengeID string `json:"challengeId"`
 }
 
 type WorkspaceMemberRequest struct {
@@ -50,6 +51,7 @@ type WorkspaceMemberPreferencesRequest struct {
 type AuthRecoveryRequest struct {
 	Action      string `json:"action"`
 	Email       string `json:"email"`
+	Name        string `json:"name"`
 	MemberID    string `json:"memberId"`
 	DeviceID    string `json:"deviceId"`
 	DeviceLabel string `json:"deviceLabel"`
@@ -68,13 +70,13 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
-		nextState, session, err := s.store.LoginWithEmail(store.AuthLoginInput{
+		nextState, session, err := s.store.CompleteLoginWithChallenge(store.AuthLoginInput{
 			Email:       req.Email,
 			Name:        req.Name,
 			DeviceID:    req.DeviceID,
 			DeviceLabel: req.DeviceLabel,
 			AuthMethod:  req.AuthMethod,
-		})
+		}, req.ChallengeID)
 		if err != nil {
 			writeAuthError(w, err)
 			return
@@ -85,7 +87,7 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 		if headerToken, ok := requestAuthHeaderToken(r); ok {
 			s.revokeRequestAuthToken(headerToken)
 			if cookieToken, cookieOK := requestAuthCookieToken(r); cookieOK && cookieToken == headerToken {
-				clearRequestAuthToken(w)
+				clearRequestAuthToken(w, r)
 			}
 			session := signedOutRequestAuthSession()
 			nextState := s.store.Snapshot()
@@ -100,7 +102,7 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 			writeAuthError(w, err)
 			return
 		}
-		clearRequestAuthToken(w)
+		clearRequestAuthToken(w, r)
 		writeJSON(w, http.StatusOK, map[string]any{"session": session, "state": s.sanitizedStateSnapshotForSession(nextState, session)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -240,6 +242,23 @@ func (s *Server) handleAuthRecovery(w http.ResponseWriter, r *http.Request) {
 	requestSession := s.currentStrictRequestAuthSession(r)
 
 	switch req.Action {
+	case "request_login_challenge":
+		nextState, challenge, err := s.store.RequestLoginChallenge(store.AuthLoginInput{
+			Email: req.Email,
+			Name:  req.Name,
+		})
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"challenge": challenge, "state": s.sanitizedStateSnapshotForRequest(nextState, r)})
+	case "request_verify_email_challenge":
+		nextState, challenge, err := s.store.RequestVerifyMemberEmailChallengeAs(requestSession, input)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"challenge": challenge, "state": s.sanitizedStateSnapshotForSession(nextState, requestSession)})
 	case "verify_email":
 		nextState, session, member, err := s.store.VerifyMemberEmailAs(requestSession, input)
 		if err != nil {
@@ -247,6 +266,13 @@ func (s *Server) handleAuthRecovery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"session": session, "member": member, "state": s.sanitizedStateSnapshotForSession(nextState, session)})
+	case "request_authorize_device_challenge":
+		nextState, challenge, err := s.store.RequestAuthorizeAuthDeviceChallengeAs(requestSession, input)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"challenge": challenge, "state": s.sanitizedStateSnapshotForSession(nextState, requestSession)})
 	case "authorize_device":
 		nextState, session, member, device, err := s.store.AuthorizeAuthDeviceAs(requestSession, input)
 		if err != nil {
