@@ -17,6 +17,7 @@ func TestPlannerQueueRouteReturnsAssignmentAndAutoMergeTruth(t *testing.T) {
 	root := t.TempDir()
 	_, server, created, pullRequestID := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	resp, err := http.Get(server.URL + "/v1/planner/queue")
 	if err != nil {
@@ -53,6 +54,7 @@ func TestPlannerQueueRouteBlocksAutoMergeWhenPullRequestSafetyTruthIsDirty(t *te
 	root := t.TempDir()
 	s, server, _, pullRequestID := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	if _, err := s.SyncPullRequestFromRemote(pullRequestID, store.PullRequestRemoteSnapshot{
 		Number:           261,
@@ -101,6 +103,7 @@ func TestPlannerSessionAssignmentRouteReassignsCurrentQueue(t *testing.T) {
 	root := t.TempDir()
 	_, server, created, _ := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"agentId": "agent-claude-review-runner"})
 	if err != nil {
@@ -140,6 +143,7 @@ func TestPlannerQueueRoutePrefersCurrentOwnerOverStaleRecentRunAgent(t *testing.
 	root := t.TempDir()
 	s, server, created, _ := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	if _, _, err := s.CreateHandoff(store.MailboxCreateInput{
 		RoomID:      created.RoomID,
@@ -193,6 +197,7 @@ func TestPlannerSessionAssignmentRouteRejectsUnknownAgent(t *testing.T) {
 	root := t.TempDir()
 	_, server, created, _ := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"agentId": "agent-missing"})
 	if err != nil {
@@ -214,6 +219,7 @@ func TestPlannerAutoMergeRouteRequestMarksApprovalRequired(t *testing.T) {
 	root := t.TempDir()
 	_, server, created, pullRequestID := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"action": "request"})
 	if err != nil {
@@ -268,6 +274,7 @@ func TestPlannerAutoMergeRouteAppliesMergeWhenOwnerHasPermission(t *testing.T) {
 	}
 	_, server, created, pullRequestID := newPlannerTestServer(t, root, github)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	body, err := json.Marshal(map[string]any{"action": "apply"})
 	if err != nil {
@@ -310,6 +317,7 @@ func TestPlannerAutoMergeRouteRejectsApplyBeforeApproval(t *testing.T) {
 	root := t.TempDir()
 	s, server, _, pullRequestID := newPlannerTestServer(t, root, nil)
 	defer server.Close()
+	mustEstablishContractBrowserSession(t, server.URL, "larkspur@openshock.dev", "Owner Browser")
 
 	if _, err := s.SyncPullRequestFromRemote(pullRequestID, store.PullRequestRemoteSnapshot{
 		Number:           261,
@@ -352,6 +360,47 @@ func TestPlannerAutoMergeRouteRejectsApplyBeforeApproval(t *testing.T) {
 
 	if payload.Guard.Status != "blocked" || !strings.Contains(payload.Error, "GitHub Review 尚未批准") {
 		t.Fatalf("blocked auto-merge payload = %#v, want blocked with review waiting reason", payload)
+	}
+}
+
+func TestPlannerRoutesRequireActiveSession(t *testing.T) {
+	root := t.TempDir()
+	_, server, created, pullRequestID := newPlannerTestServer(t, root, nil)
+	defer server.Close()
+
+	queueResp, err := http.Get(server.URL + "/v1/planner/queue")
+	if err != nil {
+		t.Fatalf("GET /v1/planner/queue signed-out error = %v", err)
+	}
+	defer queueResp.Body.Close()
+	if queueResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET /v1/planner/queue signed-out status = %d, want %d", queueResp.StatusCode, http.StatusUnauthorized)
+	}
+
+	assignBody, err := json.Marshal(map[string]any{"agentId": "agent-claude-review-runner"})
+	if err != nil {
+		t.Fatalf("Marshal(assignment) error = %v", err)
+	}
+	assignResp, err := http.Post(server.URL+"/v1/planner/sessions/"+created.SessionID+"/assignment", "application/json", bytes.NewReader(assignBody))
+	if err != nil {
+		t.Fatalf("POST planner assignment signed-out error = %v", err)
+	}
+	defer assignResp.Body.Close()
+	if assignResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST planner assignment signed-out status = %d, want %d", assignResp.StatusCode, http.StatusUnauthorized)
+	}
+
+	autoMergeBody, err := json.Marshal(map[string]any{"action": "request"})
+	if err != nil {
+		t.Fatalf("Marshal(auto-merge request) error = %v", err)
+	}
+	autoMergeResp, err := http.Post(server.URL+"/v1/planner/pull-requests/"+pullRequestID+"/auto-merge", "application/json", bytes.NewReader(autoMergeBody))
+	if err != nil {
+		t.Fatalf("POST auto-merge request signed-out error = %v", err)
+	}
+	defer autoMergeResp.Body.Close()
+	if autoMergeResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST auto-merge request signed-out status = %d, want %d", autoMergeResp.StatusCode, http.StatusUnauthorized)
 	}
 }
 

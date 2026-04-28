@@ -670,26 +670,17 @@ function LiveSettingsContextRail() {
   const { state, loading: stateLoading, error: stateError } = usePhaseZeroState();
   const member = findSettingsMember(state.auth.session.memberId, state.auth.members);
   const workspace = state.workspace;
-  const nextAction = nextSettingsAction(state, member);
   return (
     <DetailRail
       label="设置状态"
       items={[
         {
-          label: "下一步",
+          label: "GitHub",
           value: stateLoading
             ? "同步中"
             : stateError
               ? "读取失败"
-              : `${nextAction.cta} / ${nextAction.title}`,
-        },
-        {
-          label: "身份",
-          value: stateLoading
-            ? "同步中"
-            : stateError
-              ? "读取失败"
-              : `${agentLabel(member?.preferences.preferredAgentId, state.agents)} / ${valueOrPlaceholder(member?.githubIdentity?.handle, "未绑 GitHub")}`,
+              : `${workspace.githubInstallation.connectionReady ? "已连接" : "待连接"} / ${valueOrPlaceholder(member?.githubIdentity?.handle, "未绑 GitHub")}`,
         },
         {
           label: "机器",
@@ -698,6 +689,14 @@ function LiveSettingsContextRail() {
             : stateError
               ? "读取失败"
               : `${workspacePairingStatusLabel(workspace.pairingStatus)} / ${valueOrPlaceholder(workspace.pairedRuntime, "未选机器")}`,
+        },
+        {
+          label: "记忆",
+          value: stateLoading
+            ? "同步中"
+            : stateError
+              ? "读取失败"
+              : memoryBenefitSummary(workspace.memoryMode),
         },
         {
           label: "计划",

@@ -85,7 +85,7 @@ func (s *Server) handleDirectMessageRoutes(w http.ResponseWriter, r *http.Reques
 		writeMessageSurfaceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"state": nextState})
+	writeJSON(w, http.StatusOK, map[string]any{"state": s.sanitizedStateSnapshotForRequest(nextState, r)})
 }
 
 func (s *Server) handleMessageSurfaceCollections(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +112,7 @@ func (s *Server) handleMessageSurfaceCollections(w http.ResponseWriter, r *http.
 		writeMessageSurfaceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"entry": entry, "state": nextState})
+	writeJSON(w, http.StatusOK, map[string]any{"entry": entry, "state": s.sanitizedStateSnapshotForRequest(nextState, r)})
 }
 
 func writeMessageSurfaceError(w http.ResponseWriter, err error) {

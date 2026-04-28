@@ -71,7 +71,10 @@ func newDirectContractHandler(t *testing.T, root string) (*store.Store, http.Han
 		DaemonURL:     "http://127.0.0.1:8090",
 		WorkspaceRoot: root,
 	})
-	token, _ := server.issueRequestAuthToken(s.Snapshot().Auth.Session)
+	token, _, issueErr := server.issueRequestAuthToken(s.Snapshot().Auth.Session)
+	if issueErr != nil {
+		t.Fatalf("issueRequestAuthToken() error = %v", issueErr)
+	}
 	return s, server.Handler(), token
 }
 

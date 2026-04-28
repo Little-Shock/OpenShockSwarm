@@ -135,7 +135,7 @@ func requestAuthBindingExpired(binding authRequestBinding) bool {
 	return !binding.ExpiresAt.IsZero() && !requestAuthTimeNow().Before(binding.ExpiresAt)
 }
 
-func (s *Server) issueRequestAuthToken(session store.AuthSession) (string, time.Time) {
+func (s *Server) issueRequestAuthToken(session store.AuthSession) (string, time.Time, error) {
 	token := newAuthRequestToken()
 	expiresAt := requestAuthTimeNow().Add(requestAuthTokenTTL)
 
@@ -150,21 +150,36 @@ func (s *Server) issueRequestAuthToken(session store.AuthSession) (string, time.
 		SignedInAt:  strings.TrimSpace(session.SignedInAt),
 		ExpiresAt:   expiresAt,
 	}
-	return token, expiresAt
+	if err := s.persistRequestAuthTokensLocked(); err != nil {
+		delete(s.authTokens, token)
+		return "", time.Time{}, err
+	}
+	return token, expiresAt, nil
 }
 
-func (s *Server) revokeRequestAuthToken(token string) {
+func (s *Server) revokeRequestAuthToken(token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return
+		return nil
 	}
 	s.authTokenMu.Lock()
 	defer s.authTokenMu.Unlock()
+	previous, existed := s.authTokens[token]
 	delete(s.authTokens, token)
+	if err := s.persistRequestAuthTokensLocked(); err != nil {
+		if existed {
+			s.authTokens[token] = previous
+		}
+		return err
+	}
+	return nil
 }
 
-func (s *Server) writeRequestAuthToken(w http.ResponseWriter, r *http.Request, session store.AuthSession) string {
-	token, expiresAt := s.issueRequestAuthToken(session)
+func (s *Server) writeRequestAuthToken(w http.ResponseWriter, r *http.Request, session store.AuthSession) (string, error) {
+	token, expiresAt, err := s.issueRequestAuthToken(session)
+	if err != nil {
+		return "", err
+	}
 	maxAge := int(requestAuthTokenTTL / time.Second)
 	if maxAge < 0 {
 		maxAge = 0
@@ -179,7 +194,7 @@ func (s *Server) writeRequestAuthToken(w http.ResponseWriter, r *http.Request, s
 		MaxAge:   maxAge,
 		SameSite: http.SameSiteLaxMode,
 	})
-	return token
+	return token, nil
 }
 
 func clearRequestAuthToken(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +269,7 @@ func (s *Server) resolveRequestAuthSessionByTokenFromSnapshot(snapshot store.Sta
 		return store.AuthSession{}, false
 	}
 	if requestAuthBindingExpired(binding) {
-		s.revokeRequestAuthToken(token)
+		_ = s.revokeRequestAuthToken(token)
 		return store.AuthSession{}, false
 	}
 	return requestAuthSessionFromBinding(snapshot, binding), true

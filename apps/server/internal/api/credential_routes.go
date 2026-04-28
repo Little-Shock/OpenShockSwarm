@@ -53,7 +53,7 @@ func (s *Server) handleCredentials(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"credential": profile,
-			"state":      nextState,
+			"state":      s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -99,7 +99,7 @@ func (s *Server) handleCredentialRoutes(w http.ResponseWriter, r *http.Request) 
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"credential": profile,
-			"state":      nextState,
+			"state":      s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})

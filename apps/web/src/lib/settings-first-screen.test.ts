@@ -127,3 +127,16 @@ test("settings config recovery flow opens workspace and member disclosures befor
   assert.match(script, /openSettingsDisclosure\(page, "workspace"/);
   assert.match(script, /openSettingsDisclosure\(page, "member"/);
 });
+
+test("settings context rail keeps status facts instead of repeating the primary next step", () => {
+  const rail = sectionBetween(
+    settingsSource(),
+    "function LiveSettingsContextRail() {",
+    "function WorkspacePlanObservabilityPanel()"
+  );
+
+  assert.doesNotMatch(rail, /label: "下一步"/);
+  assert.match(rail, /label: "GitHub"/);
+  assert.match(rail, /label: "记忆"/);
+  assert.match(rail, /memoryBenefitSummary\(workspace\.memoryMode\)/);
+});

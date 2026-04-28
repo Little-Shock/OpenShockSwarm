@@ -32,6 +32,9 @@ func (s *Server) handlePlannerQueue(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
+	if !s.requireRequestSessionPermission(w, r, "run.execute") {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.store.PlannerQueue())
 }
 
@@ -51,6 +54,9 @@ func (s *Server) handlePlannerSessionRoutes(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	if !s.requireRequestSessionPermission(w, r, "run.execute") {
+		return
+	}
 
 	var req PlannerAssignmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -65,7 +71,7 @@ func (s *Server) handlePlannerSessionRoutes(w http.ResponseWriter, r *http.Reque
 		writePlannerError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"item": item, "state": nextState})
+	writeJSON(w, http.StatusOK, map[string]any{"item": item, "state": s.sanitizedStateSnapshotForRequest(nextState, r)})
 }
 
 func (s *Server) handlePlannerPullRequestRoutes(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +89,9 @@ func (s *Server) handlePlannerPullRequestRoutes(w http.ResponseWriter, r *http.R
 
 	switch r.Method {
 	case http.MethodGet:
+		if !s.requireRequestSessionPermission(w, r, "pull_request.read") {
+			return
+		}
 		guard, ok := s.store.AutoMergeGuardForPullRequest(pullRequestID)
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "planner pull request not found"})
@@ -97,9 +106,9 @@ func (s *Server) handlePlannerPullRequestRoutes(w http.ResponseWriter, r *http.R
 		}
 		switch strings.TrimSpace(req.Action) {
 		case "request":
-			s.handlePlannerAutoMergeRequest(w, pullRequestID)
+			s.handlePlannerAutoMergeRequest(w, r, pullRequestID)
 		case "apply":
-			s.handlePlannerAutoMergeApply(w, pullRequestID)
+			s.handlePlannerAutoMergeApply(w, r, pullRequestID)
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported auto-merge action"})
 		}
@@ -108,7 +117,10 @@ func (s *Server) handlePlannerPullRequestRoutes(w http.ResponseWriter, r *http.R
 	}
 }
 
-func (s *Server) handlePlannerAutoMergeRequest(w http.ResponseWriter, pullRequestID string) {
+func (s *Server) handlePlannerAutoMergeRequest(w http.ResponseWriter, r *http.Request, pullRequestID string) {
+	if !s.requireRequestSessionPermission(w, r, "pull_request.review") {
+		return
+	}
 	guard, ok := s.store.AutoMergeGuardForPullRequest(pullRequestID)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "planner pull request not found"})
@@ -118,7 +130,7 @@ func (s *Server) handlePlannerAutoMergeRequest(w http.ResponseWriter, pullReques
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error": guard.Reason,
 			"guard": guard,
-			"state": s.store.Snapshot(),
+			"state": s.sanitizedStateSnapshotForRequest(s.store.Snapshot(), r),
 		})
 		return
 	}
@@ -133,10 +145,13 @@ func (s *Server) handlePlannerAutoMergeRequest(w http.ResponseWriter, pullReques
 	if nextGuard.Status == "approval_required" {
 		status = http.StatusAccepted
 	}
-	writeJSON(w, status, map[string]any{"state": nextState, "guard": nextGuard})
+	writeJSON(w, status, map[string]any{"state": s.sanitizedStateSnapshotForRequest(nextState, r), "guard": nextGuard})
 }
 
-func (s *Server) handlePlannerAutoMergeApply(w http.ResponseWriter, pullRequestID string) {
+func (s *Server) handlePlannerAutoMergeApply(w http.ResponseWriter, r *http.Request, pullRequestID string) {
+	if !s.requireRequestSessionPermission(w, r, "pull_request.merge") {
+		return
+	}
 	guard, ok := s.store.AutoMergeGuardForPullRequest(pullRequestID)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "planner pull request not found"})
@@ -150,7 +165,7 @@ func (s *Server) handlePlannerAutoMergeApply(w http.ResponseWriter, pullRequestI
 		writeJSON(w, status, map[string]any{
 			"error": guard.Reason,
 			"guard": guard,
-			"state": s.store.Snapshot(),
+			"state": s.sanitizedStateSnapshotForRequest(s.store.Snapshot(), r),
 		})
 		return
 	}
@@ -182,7 +197,7 @@ func (s *Server) handlePlannerAutoMergeApply(w http.ResponseWriter, pullRequestI
 		return
 	}
 	nextGuard, _ := s.store.AutoMergeGuardForPullRequest(pullRequestID)
-	writeJSON(w, http.StatusOK, map[string]any{"state": nextState, "guard": nextGuard})
+	writeJSON(w, http.StatusOK, map[string]any{"state": s.sanitizedStateSnapshotForRequest(nextState, r), "guard": nextGuard})
 }
 
 func writePlannerError(w http.ResponseWriter, err error) {

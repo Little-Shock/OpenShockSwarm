@@ -11,7 +11,7 @@
 
 如果你只看今天这轮，优先记住这 4 个产品缺口：
 
-- request-scoped auth 已收成 token-enforced request scope；下一拍只补双用户并发证据和少量 `state.Auth.Session` 兼容尾项
+- request-scoped auth 已收成 token-enforced request scope；planner queue / assignment / auto-merge 也已切到 request-scoped guard；双用户并发 walkthrough 已补齐，下一拍只补少量 `state.Auth.Session` 兼容尾项
 - 首启入口虽然已经减法，但产品前门和文档前门还要继续统一成同一条首次成功路径
 - `Board / Rooms / Settings` 的 supporting flow 还要继续减法，避免重复 next-step 摘要回流
 - durable memory / provider / recovery 还缺多 session 重放、降级恢复和交接证据
@@ -77,8 +77,9 @@ Evidence:
 
 - `auth/session`、`workspace members`、`member preferences`、`auth recovery` 已支持 token-bound request actor
 - `credential / control-plane / agent profile / topic / memory / direct message` 已开始统一吃 request actor，而不是继续只吃最后一次登录者
-- `state stream`、`mailbox`、`pull-request`、`room detail`、`run detail` 这批高风险读链已经接上 request-aware snapshot / visibility gate
+- `state stream`、`mailbox`、`pull-request`、`planner queue / assignment / auto-merge`、`room detail`、`run detail` 这批高风险读链已经接上 request-aware snapshot / visibility gate
 - “无 token 时回退全局 `Auth.Session`”的兼容路径已经移除；当前默认 fail closed，并由 browser / integration / release gate 走显式 token 或 cookie
+- `memory / topic / credential / agent profile / direct message / message surface` 这批 permission-gated supporting flow mutation response 已开始统一回 request-scoped state，不再把最后一次登录者塞回响应体
 
 建议拆分顺序：
 
@@ -109,7 +110,7 @@ Evidence:
 - 已满足：header token 与双浏览器 cookie 两组并发 contract 都证明 A/B 会话不会互相覆盖 `/v1/auth/session`、state stream 和 member preference actor
 - device approval、password reset、workspace member mutation 都已有 request-scoped actor 证据
 - `state stream`、`mailbox`、`pull-request`、`room detail`、`run detail` 已补齐 request-aware 读链 redaction
-- 下一轮只补遗留 `state.Auth.Session` 兼容说明与更高层 browser/integration walkthrough，不再回头补全局 session fallback
+- permission-gated supporting flow mutation response 已开始按 caller 返回 request-scoped state；browser + integration walkthrough 已补齐，下一轮只补少量非主链兼容点，不再回头补全局 session fallback
 
 ### P0 Setup / Onboarding 收口
 
@@ -232,7 +233,7 @@ Evidence:
 
 本轮验收结果应满足：
 
-- 交付一组可重放的多 session / 多 agent recovery 验证矩阵
+- 已满足：已交付一组可重放的多 session / 多 agent recovery 验证矩阵，证明不同房间与 agent 的 preview owner、room note、provider health 在 handoff + reload 后不会串线
 - external provider degraded fallback 有明确触发条件与恢复路径
 - memory compaction、retention、后台整理都有可执行验证项
 
@@ -252,6 +253,10 @@ Evidence:
 - `setup/access` 入口壳已减成更轻的单列首屏
 - `setup` 模板管理区已去掉重复的“刷新进度 / 完成首次启动”动作，展开层只保留模板细节与进度说明
 - memory provider recover 现在已补“recover -> reload -> healthy truth 持续存在”的 API contract，search sidecar index 与 external relay config 都会被显式复核
+- planner queue / assignment / auto-merge 现在要求 request-scoped auth；signed-out 默认 401，不再泄露执行态和 PR state
+- memory mode 与 provider health 现在会逐个标记 degraded provider；recover 后若 index / relay 再次损坏，也会在 check / reload 时自动跌回真实 degraded truth
+- `topic / memory / credential / agent profile / direct message / message surface` 这批 permission-gated supporting flow mutation response 现在会按当前请求返回 scoped `state.Auth.Session`，并有并发 contract 覆盖 member / owner 不串会话
+- memory center 现在已补多 session / 多 agent recovery matrix contract：不同讨论间和不同 agent 的 preview owner、room note、provider health 经 handoff + reload 后独立保持
 
 ## 每张执行票最少要写清什么
 

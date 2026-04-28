@@ -27,8 +27,8 @@ test("inbox first screen keeps inbox as a supporting flow", () => {
   const content = source();
 
   assert.match(content, /: "只处理提醒，处理完回讨论间。"/);
-  assert.match(content, /mailboxSurfaceActive \? "先处理交接" : "先清提醒，再回讨论间"/);
-  assert.match(content, /: "这里集中看提醒，决定后回讨论间继续。"/);
-  assert.match(content, /先清提醒，再回讨论间继续。通知规则在设置里。/);
+  assert.match(content, /mailboxSurfaceActive \? "先处理交接" : "先看当前提醒"/);
+  assert.match(content, /: "只处理当前提醒。"/);
+  assert.match(content, /处理完就回讨论间。通知规则在设置里。/);
   assert.doesNotMatch(content, /待拍板提醒/);
 });

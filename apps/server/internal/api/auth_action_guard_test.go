@@ -48,9 +48,12 @@ func TestMutationRoutesRequireActiveAuthSession(t *testing.T) {
 		{name: "room reply stream", method: http.MethodPost, path: "/v1/rooms/room-runtime/messages/stream", body: `{"prompt":"继续推进"}`, permission: "room.reply"},
 		{name: "run exec", method: http.MethodPost, path: "/v1/exec", body: `{"prompt":"继续推进"}`, permission: "run.execute"},
 		{name: "run control", method: http.MethodPost, path: "/v1/runs/run_runtime_01/control", body: `{"action":"stop","note":"先暂停"}`, permission: "run.execute"},
+		{name: "planner assignment", method: http.MethodPost, path: "/v1/planner/sessions/session-runtime/assignment", body: `{"agentId":"agent-claude-review-runner"}`, permission: "run.execute"},
 		{name: "run sandbox patch", method: http.MethodPatch, path: "/v1/runs/run_runtime_01/sandbox", body: `{"profile":"restricted","allowedHosts":["github.com"],"allowedCommands":["git status"],"allowedTools":["read_file"]}`, permission: "run.execute"},
 		{name: "run sandbox check", method: http.MethodPost, path: "/v1/runs/run_runtime_01/sandbox", body: `{"kind":"command","target":"git push --force"}`, permission: "run.execute"},
 		{name: "room pull request", method: http.MethodPost, path: "/v1/rooms/room-runtime/pull-request", body: `{}`, permission: "pull_request.review"},
+		{name: "planner auto merge request", method: http.MethodPost, path: "/v1/planner/pull-requests/pr-runtime-18/auto-merge", body: `{"action":"request"}`, permission: "pull_request.review"},
+		{name: "planner auto merge apply", method: http.MethodPost, path: "/v1/planner/pull-requests/pr-runtime-18/auto-merge", body: `{"action":"apply"}`, permission: "pull_request.merge"},
 		{name: "pull request merge", method: http.MethodPost, path: "/v1/pull-requests/pr-runtime-18", body: `{"status":"merged"}`, permission: "pull_request.merge"},
 		{name: "inbox review", method: http.MethodPost, path: "/v1/inbox/inbox-review-copy", body: `{"decision":"changes_requested"}`, permission: "inbox.review"},
 		{name: "inbox decide", method: http.MethodPost, path: "/v1/inbox/inbox-approval-runtime", body: `{"decision":"approved"}`, permission: "inbox.decide"},
@@ -600,8 +603,8 @@ func TestMutationRoutesRequireVerifiedEmailAndAuthorizedDevice(t *testing.T) {
 		t.Fatalf("RequestAuthorizeAuthDeviceChallenge() error = %v", err)
 	}
 	_, authorizedSession, _, device, err := s.AuthorizeAuthDevice(store.AuthRecoveryInput{
-		Email:    invited.Email,
-		DeviceID: session.DeviceID,
+		Email:       invited.Email,
+		DeviceID:    session.DeviceID,
 		ChallengeID: authorizeChallenge.ID,
 	})
 	if err != nil {

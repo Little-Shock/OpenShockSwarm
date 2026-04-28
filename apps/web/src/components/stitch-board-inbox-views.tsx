@@ -1096,12 +1096,12 @@ export function StitchInboxView() {
                       {mailboxSurfaceActive ? "交接" : "待处理"}
                     </p>
                     <p className="mt-2 font-display text-[22px] font-bold">
-                      {mailboxSurfaceActive ? "先处理交接" : "先清提醒，再回讨论间"}
+                      {mailboxSurfaceActive ? "先处理交接" : "先看当前提醒"}
                     </p>
                     <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[color:rgba(24,20,14,0.62)]">
                       {mailboxSurfaceActive
                         ? "待跟进交接。"
-                        : "这里集中看提醒，决定后回讨论间继续。"}
+                        : "只处理当前提醒。"}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1154,7 +1154,7 @@ export function StitchInboxView() {
                       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.56)]">移动端提醒</p>
                       
                       <h2 className="mt-2 font-display text-[22px] font-bold leading-6">先清提醒。</h2>
-                      <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">先清提醒，再回讨论间继续。通知规则在设置里。</p>
+                      <p className="mt-2 text-[13px] leading-6 text-[color:rgba(24,20,14,0.72)]">处理完就回讨论间。通知规则在设置里。</p>
                     </div>
                     <Link
                       href="/settings"

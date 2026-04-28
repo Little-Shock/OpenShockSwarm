@@ -66,7 +66,7 @@ func (s *Server) handleTopicRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"topic": room.Topic,
 			"room":  room,
-			"state": nextState,
+			"state": s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})

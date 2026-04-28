@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,8 +84,8 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 			t.Fatalf("verify challenge payload malformed: %#v", verifyChallenge["challenge"])
 		}
 		postJSON(t, serverURL+"/v1/auth/recovery", map[string]any{
-			"action": "verify_email",
-			"email":  "larkspur@openshock.dev",
+			"action":      "verify_email",
+			"email":       "larkspur@openshock.dev",
 			"challengeId": stringField(t, verifyChallengePayload, "id"),
 		}, http.StatusOK, authToken)
 	}
@@ -262,6 +263,197 @@ func TestPhaseZeroLoopThroughDaemon(t *testing.T) {
 	}
 }
 
+func TestConcurrentBrowserAuthWalkthroughStaysRequestScoped(t *testing.T) {
+	projectRoot := projectRoot(t)
+	repoRoot := createTempGitRepo(t)
+	serverPort := freePort(t)
+	serverURL := "http://127.0.0.1:" + serverPort
+
+	serverEnv := []string{
+		"OPENSHOCK_SERVER_ADDR=127.0.0.1:" + serverPort,
+		"OPENSHOCK_WORKSPACE_ROOT=" + repoRoot,
+		"OPENSHOCK_STATE_FILE=" + filepath.Join(repoRoot, "data", "request-scoped-auth", "state.json"),
+	}
+	server := startProcess(t,
+		filepath.Join(projectRoot, "apps", "server"),
+		serverEnv,
+		"go", "run", "./cmd/openshock-server",
+	)
+	waitForHealth(t, serverURL+"/healthz", server)
+
+	ownerClient := newBrowserClient(t)
+	ownerSession := loginReadyBrowserSession(t, ownerClient, serverURL, "larkspur@openshock.dev", "Owner Browser")
+	if stringField(t, ownerSession, "email") != "larkspur@openshock.dev" || stringField(t, ownerSession, "role") != "owner" {
+		t.Fatalf("owner browser session = %#v, want owner session", ownerSession)
+	}
+
+	memberList := getJSONWithClient(t, ownerClient, serverURL+"/v1/workspace/members", "")
+	memberEntries, ok := memberList["members"].([]any)
+	if !ok {
+		t.Fatalf("workspace members payload malformed: %#v", memberList["members"])
+	}
+	var memberPayload map[string]any
+	for _, item := range memberEntries {
+		candidate, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("workspace members item malformed: %#v", item)
+		}
+		if stringField(t, candidate, "email") == "mina@openshock.dev" {
+			memberPayload = candidate
+			break
+		}
+	}
+	if memberPayload == nil {
+		memberInvite := doJSONWithClient(t, ownerClient, http.MethodPost, serverURL+"/v1/workspace/members", map[string]any{
+			"email": "mina@openshock.dev",
+			"name":  "Mina",
+			"role":  "member",
+		}, http.StatusCreated, "")
+		invited, ok := memberInvite["member"].(map[string]any)
+		if !ok {
+			t.Fatalf("member invite payload malformed: %#v", memberInvite["member"])
+		}
+		memberPayload = invited
+	}
+	memberID := stringField(t, memberPayload, "id")
+
+	memberClient := newBrowserClient(t)
+	memberSession := loginReadyBrowserSession(t, memberClient, serverURL, "mina@openshock.dev", "Mina Browser")
+	if stringField(t, memberSession, "email") != "mina@openshock.dev" || stringField(t, memberSession, "role") != "member" {
+		t.Fatalf("member browser session = %#v, want mina member session", memberSession)
+	}
+
+	ownerPreferences := doJSONWithClient(t, ownerClient, http.MethodPatch, serverURL+"/v1/workspace/members/member-larkspur/preferences", map[string]any{
+		"startRoute":   "/mailbox",
+		"githubHandle": "@owner-browser",
+	}, http.StatusOK, "")
+	ownerState, ok := ownerPreferences["state"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner preference state payload malformed: %#v", ownerPreferences["state"])
+	}
+	ownerAuth, ok := ownerState["auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner preference auth payload malformed: %#v", ownerState["auth"])
+	}
+	ownerStateSession, ok := ownerAuth["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner preference session payload malformed: %#v", ownerAuth["session"])
+	}
+	if stringField(t, ownerStateSession, "email") != "larkspur@openshock.dev" {
+		t.Fatalf("owner preference session email = %q, want larkspur@openshock.dev", stringField(t, ownerStateSession, "email"))
+	}
+	ownerPreferencesMap, ok := ownerStateSession["preferences"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner preference session preferences malformed: %#v", ownerStateSession["preferences"])
+	}
+	if stringField(t, ownerPreferencesMap, "startRoute") != "/mailbox" {
+		t.Fatalf("owner preference startRoute = %q, want /mailbox", stringField(t, ownerPreferencesMap, "startRoute"))
+	}
+
+	memberPreferences := doJSONWithClient(t, memberClient, http.MethodPatch, serverURL+"/v1/workspace/members/"+memberID+"/preferences", map[string]any{
+		"startRoute":   "/rooms",
+		"githubHandle": "@mina-browser",
+	}, http.StatusOK, "")
+	memberState, ok := memberPreferences["state"].(map[string]any)
+	if !ok {
+		t.Fatalf("member preference state payload malformed: %#v", memberPreferences["state"])
+	}
+	memberAuth, ok := memberState["auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("member preference auth payload malformed: %#v", memberState["auth"])
+	}
+	memberStateSession, ok := memberAuth["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("member preference session payload malformed: %#v", memberAuth["session"])
+	}
+	if stringField(t, memberStateSession, "email") != "mina@openshock.dev" {
+		t.Fatalf("member preference session email = %q, want mina@openshock.dev", stringField(t, memberStateSession, "email"))
+	}
+	memberPreferencesMap, ok := memberStateSession["preferences"].(map[string]any)
+	if !ok {
+		t.Fatalf("member preference session preferences malformed: %#v", memberStateSession["preferences"])
+	}
+	if stringField(t, memberPreferencesMap, "startRoute") != "/rooms" {
+		t.Fatalf("member preference startRoute = %q, want /rooms", stringField(t, memberPreferencesMap, "startRoute"))
+	}
+
+	roomID := "room-runtime"
+
+	logoutPayload := doJSONWithClient(t, memberClient, http.MethodDelete, serverURL+"/v1/auth/session", nil, http.StatusOK, "")
+	logoutSession, ok := logoutPayload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("logout session payload malformed: %#v", logoutPayload["session"])
+	}
+	if stringField(t, logoutSession, "status") != "signed_out" {
+		t.Fatalf("logout session status = %q, want signed_out", stringField(t, logoutSession, "status"))
+	}
+
+	memberSignedOutState := getJSONWithClient(t, memberClient, serverURL+"/v1/state", "")
+	memberSignedOutAuth, ok := memberSignedOutState["auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("member signed-out auth payload malformed: %#v", memberSignedOutState["auth"])
+	}
+	memberSignedOutSession, ok := memberSignedOutAuth["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("member signed-out session payload malformed: %#v", memberSignedOutAuth["session"])
+	}
+	if stringField(t, memberSignedOutSession, "status") != "signed_out" {
+		t.Fatalf("member signed-out state session = %#v, want signed_out session", memberSignedOutSession)
+	}
+
+	ownerCurrentSession := getJSONWithClient(t, ownerClient, serverURL+"/v1/auth/session", "")
+	if stringField(t, ownerCurrentSession, "email") != "larkspur@openshock.dev" {
+		t.Fatalf("owner current session email = %q, want larkspur@openshock.dev", stringField(t, ownerCurrentSession, "email"))
+	}
+	ownerCurrentPreferences, ok := ownerCurrentSession["preferences"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner current session preferences malformed: %#v", ownerCurrentSession["preferences"])
+	}
+	if stringField(t, ownerCurrentPreferences, "startRoute") != "/mailbox" {
+		t.Fatalf("owner current startRoute = %q, want /mailbox", stringField(t, ownerCurrentPreferences, "startRoute"))
+	}
+	ownerIdentity, ok := ownerCurrentSession["githubIdentity"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner current github identity malformed: %#v", ownerCurrentSession["githubIdentity"])
+	}
+	if stringField(t, ownerIdentity, "handle") != "@owner-browser" {
+		t.Fatalf("owner current github handle = %q, want @owner-browser", stringField(t, ownerIdentity, "handle"))
+	}
+
+	ownerCurrentState := getJSONWithClient(t, ownerClient, serverURL+"/v1/state", "")
+	ownerCurrentAuth, ok := ownerCurrentState["auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner current auth payload malformed: %#v", ownerCurrentState["auth"])
+	}
+	ownerStateSession, ok = ownerCurrentAuth["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("owner current state session payload malformed: %#v", ownerCurrentAuth["session"])
+	}
+	if stringField(t, ownerStateSession, "email") != "larkspur@openshock.dev" {
+		t.Fatalf("owner current state session email = %q, want larkspur@openshock.dev", stringField(t, ownerStateSession, "email"))
+	}
+
+	memberRoomResp, err := memberClient.Get(serverURL + "/v1/rooms/" + roomID)
+	if err != nil {
+		t.Fatalf("GET /v1/rooms/%s member signed-out error = %v", roomID, err)
+	}
+	defer memberRoomResp.Body.Close()
+	if memberRoomResp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(memberRoomResp.Body)
+		t.Fatalf("GET /v1/rooms/%s member signed-out status = %d, want %d, body=%s", roomID, memberRoomResp.StatusCode, http.StatusNotFound, string(body))
+	}
+
+	ownerRoomResp, err := ownerClient.Get(serverURL + "/v1/rooms/" + roomID)
+	if err != nil {
+		t.Fatalf("GET /v1/rooms/%s owner active error = %v", roomID, err)
+	}
+	defer ownerRoomResp.Body.Close()
+	if ownerRoomResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(ownerRoomResp.Body)
+		t.Fatalf("GET /v1/rooms/%s owner active status = %d, want %d, body=%s", roomID, ownerRoomResp.StatusCode, http.StatusOK, string(body))
+	}
+}
+
 func writeFakeClaudeCLI(t *testing.T) string {
 	t.Helper()
 
@@ -420,6 +612,19 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(stdout.String())
 }
 
+func newBrowserClient(t *testing.T) *http.Client {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New() error = %v", err)
+	}
+	return &http.Client{
+		Jar:       jar,
+		Transport: http.DefaultTransport,
+	}
+}
+
 func freePort(t *testing.T) string {
 	t.Helper()
 
@@ -488,6 +693,16 @@ func waitForHealth(t *testing.T, url string, cmd *exec.Cmd) {
 func getJSON(t *testing.T, url, authToken string) map[string]any {
 	t.Helper()
 
+	return getJSONWithClient(t, nil, url, authToken)
+}
+
+func getJSONWithClient(t *testing.T, client *http.Client, url, authToken string) map[string]any {
+	t.Helper()
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		t.Fatalf("new GET %s: %v", url, err)
@@ -495,7 +710,7 @@ func getJSON(t *testing.T, url, authToken string) map[string]any {
 	if strings.TrimSpace(authToken) != "" {
 		req.Header.Set(integrationAuthTokenHeader, authToken)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
@@ -516,34 +731,108 @@ func getJSON(t *testing.T, url, authToken string) map[string]any {
 func postJSON(t *testing.T, url string, body map[string]any, wantStatus int, authToken string) map[string]any {
 	t.Helper()
 
-	data, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("marshal %s: %v", url, err)
+	return doJSONWithClient(t, nil, http.MethodPost, url, body, wantStatus, authToken)
+}
+
+func doJSONWithClient(t *testing.T, client *http.Client, method, url string, body map[string]any, wantStatus int, authToken string) map[string]any {
+	t.Helper()
+
+	if client == nil {
+		client = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("new request %s: %v", url, err)
+
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", url, err)
+		}
+		reader = bytes.NewReader(data)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req, err := http.NewRequestWithContext(context.Background(), method, url, reader)
+	if err != nil {
+		t.Fatalf("new request %s %s: %v", method, url, err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if strings.TrimSpace(authToken) != "" {
 		req.Header.Set(integrationAuthTokenHeader, authToken)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("POST %s: %v", url, err)
+		t.Fatalf("%s %s: %v", method, url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != wantStatus {
 		payload, _ := io.ReadAll(resp.Body)
-		t.Fatalf("POST %s status = %d, want %d, body=%s", url, resp.StatusCode, wantStatus, string(payload))
+		t.Fatalf("%s %s status = %d, want %d, body=%s", method, url, resp.StatusCode, wantStatus, string(payload))
 	}
 
 	var payload map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode POST %s: %v", url, err)
+		t.Fatalf("decode %s %s: %v", method, url, err)
 	}
 	return payload
+}
+
+func loginReadyBrowserSession(t *testing.T, client *http.Client, serverURL, email, deviceLabel string) map[string]any {
+	t.Helper()
+
+	loginChallenge := doJSONWithClient(t, client, http.MethodPost, serverURL+"/v1/auth/recovery", map[string]any{
+		"action": "request_login_challenge",
+		"email":  email,
+	}, http.StatusOK, "")
+	loginChallengePayload, ok := loginChallenge["challenge"].(map[string]any)
+	if !ok {
+		t.Fatalf("login challenge payload malformed: %#v", loginChallenge["challenge"])
+	}
+
+	login := doJSONWithClient(t, client, http.MethodPost, serverURL+"/v1/auth/session", map[string]any{
+		"email":       email,
+		"deviceLabel": deviceLabel,
+		"challengeId": stringField(t, loginChallengePayload, "id"),
+	}, http.StatusOK, "")
+	session, ok := login["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("login session payload malformed: %#v", login["session"])
+	}
+
+	if stringField(t, session, "emailVerificationStatus") != "verified" {
+		verifyChallenge := doJSONWithClient(t, client, http.MethodPost, serverURL+"/v1/auth/recovery", map[string]any{
+			"action": "request_verify_email_challenge",
+			"email":  email,
+		}, http.StatusOK, "")
+		verifyChallengePayload, ok := verifyChallenge["challenge"].(map[string]any)
+		if !ok {
+			t.Fatalf("verify challenge payload malformed: %#v", verifyChallenge["challenge"])
+		}
+		doJSONWithClient(t, client, http.MethodPost, serverURL+"/v1/auth/recovery", map[string]any{
+			"action":      "verify_email",
+			"email":       email,
+			"challengeId": stringField(t, verifyChallengePayload, "id"),
+		}, http.StatusOK, "")
+		session = getJSONWithClient(t, client, serverURL+"/v1/auth/session", "")
+	}
+
+	if stringField(t, session, "deviceAuthStatus") != "authorized" {
+		authorizeChallenge := doJSONWithClient(t, client, http.MethodPost, serverURL+"/v1/auth/recovery", map[string]any{
+			"action":   "request_authorize_device_challenge",
+			"deviceId": stringField(t, session, "deviceId"),
+		}, http.StatusOK, "")
+		authorizeChallengePayload, ok := authorizeChallenge["challenge"].(map[string]any)
+		if !ok {
+			t.Fatalf("authorize challenge payload malformed: %#v", authorizeChallenge["challenge"])
+		}
+		doJSONWithClient(t, client, http.MethodPost, serverURL+"/v1/auth/recovery", map[string]any{
+			"action":      "authorize_device",
+			"deviceId":    stringField(t, session, "deviceId"),
+			"challengeId": stringField(t, authorizeChallengePayload, "id"),
+		}, http.StatusOK, "")
+	}
+
+	return getJSONWithClient(t, client, serverURL+"/v1/auth/session", "")
 }
 
 func postStream(t *testing.T, url string, body map[string]any, wantStatus int, authToken string) streamResponse {

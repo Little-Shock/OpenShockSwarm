@@ -81,11 +81,18 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 			writeAuthError(w, err)
 			return
 		}
-		token := s.writeRequestAuthToken(w, r, session)
+		token, err := s.writeRequestAuthToken(w, r, session)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to persist request auth session"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"session": session, "state": s.sanitizedStateSnapshotForSession(nextState, session), "token": token})
 	case http.MethodDelete:
 		if headerToken, ok := requestAuthHeaderToken(r); ok {
-			s.revokeRequestAuthToken(headerToken)
+			if err := s.revokeRequestAuthToken(headerToken); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to revoke request auth session"})
+				return
+			}
 			if cookieToken, cookieOK := requestAuthCookieToken(r); cookieOK && cookieToken == headerToken {
 				clearRequestAuthToken(w, r)
 			}
@@ -95,7 +102,10 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if cookieToken, ok := requestAuthCookieToken(r); ok {
-			s.revokeRequestAuthToken(cookieToken)
+			if err := s.revokeRequestAuthToken(cookieToken); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to revoke request auth session"})
+				return
+			}
 		}
 		nextState, session, err := s.store.LogoutAuthSession()
 		if err != nil {
@@ -293,7 +303,11 @@ func (s *Server) handleAuthRecovery(w http.ResponseWriter, r *http.Request) {
 			writeAuthError(w, err)
 			return
 		}
-		token := s.writeRequestAuthToken(w, r, session)
+		token, err := s.writeRequestAuthToken(w, r, session)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to persist request auth session"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"session": session, "member": member, "state": s.sanitizedStateSnapshotForSession(nextState, session), "token": token})
 	case "bind_external_identity":
 		nextState, session, member, err := s.store.BindExternalIdentityAs(requestSession, input)

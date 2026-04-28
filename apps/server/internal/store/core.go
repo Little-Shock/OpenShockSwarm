@@ -57,6 +57,12 @@ func New(path, workspaceRoot string) (*Store, error) {
 	return s, s.persistLocked()
 }
 
+func (s *Store) StatePath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.path
+}
+
 func (s *Store) Snapshot() State {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -1013,7 +1013,7 @@ func memoryModeLabel(policy MemoryInjectionPolicy, providers []MemoryProviderBin
 			continue
 		}
 		label := provider.Kind
-		if provider.Kind == memoryProviderKindExternalPersistent && provider.Status == memoryProviderStatusDegraded {
+		if provider.Status == memoryProviderStatusDegraded {
 			label += "(degraded)"
 		}
 		activeProviders = append(activeProviders, label)

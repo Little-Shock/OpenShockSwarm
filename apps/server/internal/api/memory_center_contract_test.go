@@ -523,7 +523,7 @@ func TestMemoryCenterProviderRoutesExposeDurableProviderBindings(t *testing.T) {
 	if externalProvider == nil || !externalProvider.Enabled || externalProvider.Status != "degraded" || externalProvider.LastError == "" || externalProvider.NextAction == "" {
 		t.Fatalf("external provider = %#v, want enabled degraded with error", externalProvider)
 	}
-	if !strings.Contains(updatePayload.State.Workspace.MemoryMode, "workspace-file + search-sidecar + external-persistent(degraded)") {
+	if !strings.Contains(updatePayload.State.Workspace.MemoryMode, "workspace-file + search-sidecar(degraded) + external-persistent(degraded)") {
 		t.Fatalf("workspace memory mode = %q, want provider summary", updatePayload.State.Workspace.MemoryMode)
 	}
 
@@ -895,6 +895,274 @@ func TestMemoryCenterProviderRecoveryPersistsHealthyBindingsAcrossReload(t *test
 	if !strings.Contains(reloadedPreview.PromptSummary, "Search sidecar index ready") ||
 		!strings.Contains(reloadedPreview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
 		t.Fatalf("reloaded prompt summary missing healthy provider truth:\n%s", reloadedPreview.PromptSummary)
+	}
+}
+
+func TestMemoryCenterRecoveryMatrixKeepsSessionPreviewTruthIndependentAcrossReload(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+	s, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+
+	updateResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/providers",
+		`{"providers":[
+			{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."},
+			{"id":"search-sidecar","kind":"search-sidecar","label":"Search Sidecar","enabled":true,"readScopes":["workspace","issue-room","decision-ledger","promoted-ledger"],"writeScopes":[],"recallPolicy":"search-on-demand","retentionPolicy":"短期 query cache。","sharingPolicy":"workspace-query-only","summary":"Use local recall index before full scan."},
+			{"id":"external-persistent","kind":"external-persistent","label":"External Persistent Memory","enabled":true,"readScopes":["workspace","agent","user"],"writeScopes":["agent","user"],"recallPolicy":"promote-approved-only","retentionPolicy":"长期保留审核通过的 durable memory。","sharingPolicy":"explicit-share-only","summary":"Forward approved memories to an external durable sink."}
+		]}`,
+	)
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers status = %d, want %d", updateResp.StatusCode, http.StatusOK)
+	}
+
+	recoverSearchResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/search-sidecar/recover", "")
+	defer recoverSearchResp.Body.Close()
+	if recoverSearchResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers/search-sidecar/recover status = %d, want %d", recoverSearchResp.StatusCode, http.StatusOK)
+	}
+
+	recoverExternalResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/external-persistent/recover", "")
+	defer recoverExternalResp.Body.Close()
+	if recoverExternalResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers/external-persistent/recover status = %d, want %d", recoverExternalResp.StatusCode, http.StatusOK)
+	}
+
+	if _, _, err := s.CreateHandoff(store.MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-codex-dockmaster",
+		ToAgentID:   "agent-claude-review-runner",
+		Title:       "先接住交互收口",
+		Summary:     "请先把交互语气和漏项收一下。",
+		Kind:        "room-auto",
+	}); err != nil {
+		t.Fatalf("CreateHandoff(codex->claude room-auto) error = %v", err)
+	}
+	if _, _, err := s.CreateHandoff(store.MailboxCreateInput{
+		RoomID:      "room-runtime",
+		FromAgentID: "agent-claude-review-runner",
+		ToAgentID:   "agent-memory-clerk",
+		Title:       "继续收记忆和验收点",
+		Summary:     "请把影片资料、验收点和记忆写回一起收口。",
+		Kind:        "room-auto",
+	}); err != nil {
+		t.Fatalf("CreateHandoff(claude->memory room-auto) error = %v", err)
+	}
+
+	runtimeRoomNote := filepath.ToSlash(filepath.Join("notes", "rooms", "room-runtime.md"))
+	inboxRoomNote := filepath.ToSlash(filepath.Join("notes", "rooms", "room-inbox.md"))
+	assertPreviewMatrix := func(center store.MemoryCenter) {
+		t.Helper()
+
+		runtimePreview := findPreviewBySession(center.Previews, "session-runtime")
+		if runtimePreview == nil {
+			t.Fatalf("session-runtime preview missing: %#v", center.Previews)
+		}
+		if !previewHasPath(runtimePreview.Items, runtimeRoomNote) {
+			t.Fatalf("runtime preview items = %#v, want room-runtime note", runtimePreview.Items)
+		}
+		if previewHasPath(runtimePreview.Items, inboxRoomNote) {
+			t.Fatalf("runtime preview items = %#v, should not bleed room-inbox note", runtimePreview.Items)
+		}
+		if !strings.Contains(runtimePreview.PromptSummary, "Memory Clerk") ||
+			!strings.Contains(runtimePreview.PromptSummary, "把 next-run injection、promotion 和 version audit 记在同一条记录里，方便回看。") {
+			t.Fatalf("runtime preview summary = %q, want Memory Clerk handoff truth", runtimePreview.PromptSummary)
+		}
+		if strings.Contains(runtimePreview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+			t.Fatalf("runtime preview summary = %q, should not fall back to Claude Review Runner prompt", runtimePreview.PromptSummary)
+		}
+		if got := findProviderByKind(runtimePreview.Providers, "search-sidecar"); got == nil || got.Status != "healthy" {
+			t.Fatalf("runtime preview search provider = %#v, want healthy provider", got)
+		}
+		if got := findProviderByKind(runtimePreview.Providers, "external-persistent"); got == nil || got.Status != "healthy" {
+			t.Fatalf("runtime preview external provider = %#v, want healthy provider", got)
+		}
+
+		inboxPreview := findPreviewBySession(center.Previews, "session-inbox")
+		if inboxPreview == nil {
+			t.Fatalf("session-inbox preview missing: %#v", center.Previews)
+		}
+		if !previewHasPath(inboxPreview.Items, inboxRoomNote) {
+			t.Fatalf("inbox preview items = %#v, want room-inbox note", inboxPreview.Items)
+		}
+		if previewHasPath(inboxPreview.Items, runtimeRoomNote) {
+			t.Fatalf("inbox preview items = %#v, should not bleed room-runtime note", inboxPreview.Items)
+		}
+		if !strings.Contains(inboxPreview.PromptSummary, "Claude Review Runner") ||
+			!strings.Contains(inboxPreview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
+			t.Fatalf("inbox preview summary = %q, want Claude Review Runner truth", inboxPreview.PromptSummary)
+		}
+		if strings.Contains(inboxPreview.PromptSummary, "把 next-run injection、promotion 和 version audit 记在同一条记录里，方便回看。") {
+			t.Fatalf("inbox preview summary = %q, should not inherit Memory Clerk prompt", inboxPreview.PromptSummary)
+		}
+		if got := findProviderByKind(inboxPreview.Providers, "search-sidecar"); got == nil || got.Status != "healthy" {
+			t.Fatalf("inbox preview search provider = %#v, want healthy provider", got)
+		}
+		if got := findProviderByKind(inboxPreview.Providers, "external-persistent"); got == nil || got.Status != "healthy" {
+			t.Fatalf("inbox preview external provider = %#v, want healthy provider", got)
+		}
+	}
+
+	centerResp, err := http.Get(server.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center error = %v", err)
+	}
+	defer centerResp.Body.Close()
+	if centerResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center status = %d, want %d", centerResp.StatusCode, http.StatusOK)
+	}
+
+	var center store.MemoryCenter
+	decodeJSON(t, centerResp, &center)
+	assertPreviewMatrix(center)
+
+	server.Close()
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedServer := httptest.NewServer(New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
+
+	reloadedResp, err := http.Get(reloadedServer.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center after reload error = %v", err)
+	}
+	defer reloadedResp.Body.Close()
+	if reloadedResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center after reload status = %d, want %d", reloadedResp.StatusCode, http.StatusOK)
+	}
+
+	var reloadedCenter store.MemoryCenter
+	decodeJSON(t, reloadedResp, &reloadedCenter)
+	assertPreviewMatrix(reloadedCenter)
+}
+
+func TestMemoryCenterProviderHealthFallsBackToDegradedTruthWhenRecoveredArtifactsCorrupt(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+
+	updateResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/providers",
+		`{"providers":[
+			{"id":"workspace-file","kind":"workspace-file","label":"Workspace File Memory","enabled":true,"readScopes":["workspace","issue-room","room-notes","decision-ledger","agent","promoted-ledger"],"writeScopes":["workspace","issue-room","room-notes","decision-ledger","agent"],"recallPolicy":"governed-first","retentionPolicy":"保留版本、人工纠偏和提升 ledger。","sharingPolicy":"workspace-governed","summary":"Primary file-backed memory."},
+			{"id":"search-sidecar","kind":"search-sidecar","label":"Search Sidecar","enabled":true,"readScopes":["workspace","issue-room","decision-ledger","promoted-ledger"],"writeScopes":[],"recallPolicy":"search-on-demand","retentionPolicy":"短期 query cache。","sharingPolicy":"workspace-query-only","summary":"Use local recall index before full scan."},
+			{"id":"external-persistent","kind":"external-persistent","label":"External Persistent Memory","enabled":true,"readScopes":["workspace","agent","user"],"writeScopes":["agent","user"],"recallPolicy":"promote-approved-only","retentionPolicy":"长期保留审核通过的 durable memory。","sharingPolicy":"explicit-share-only","summary":"Forward approved memories to an external durable sink."}
+		]}`,
+	)
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers status = %d, want %d", updateResp.StatusCode, http.StatusOK)
+	}
+
+	recoverSearchResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/search-sidecar/recover", "")
+	defer recoverSearchResp.Body.Close()
+	if recoverSearchResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers/search-sidecar/recover status = %d, want %d", recoverSearchResp.StatusCode, http.StatusOK)
+	}
+
+	recoverExternalResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/external-persistent/recover", "")
+	defer recoverExternalResp.Body.Close()
+	if recoverExternalResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers/external-persistent/recover status = %d, want %d", recoverExternalResp.StatusCode, http.StatusOK)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, ".openshock", "memory", "search-sidecar", "index.json"), []byte("{not-json"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(corrupt search sidecar index) error = %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, ".openshock", "memory", "external-persistent", "relay.ndjson")); err != nil {
+		t.Fatalf("os.Remove(external persistent relay) error = %v", err)
+	}
+
+	checkResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/check", `{}`)
+	defer checkResp.Body.Close()
+	if checkResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers/check status = %d, want %d", checkResp.StatusCode, http.StatusOK)
+	}
+
+	var checkPayload struct {
+		Providers []store.MemoryProviderBinding `json:"providers"`
+		Center    store.MemoryCenter            `json:"center"`
+		State     store.State                   `json:"state"`
+	}
+	decodeJSON(t, checkResp, &checkPayload)
+	searchProvider := findProviderByKind(checkPayload.Providers, "search-sidecar")
+	if searchProvider == nil || searchProvider.Status != "degraded" || searchProvider.LastRecoverySummary == "" || searchProvider.LastCheckSource != "manual-check" || searchProvider.FailureCount != 1 {
+		t.Fatalf("search provider after corruption = %#v, want degraded provider with preserved recovery summary and failure count", searchProvider)
+	}
+	externalProvider := findProviderByKind(checkPayload.Providers, "external-persistent")
+	if externalProvider == nil || externalProvider.Status != "degraded" || externalProvider.LastRecoverySummary == "" || externalProvider.LastCheckSource != "manual-check" || externalProvider.FailureCount != 1 {
+		t.Fatalf("external provider after corruption = %#v, want degraded provider with preserved recovery summary and failure count", externalProvider)
+	}
+	if !strings.Contains(checkPayload.State.Workspace.MemoryMode, "search-sidecar(degraded)") ||
+		!strings.Contains(checkPayload.State.Workspace.MemoryMode, "external-persistent(degraded)") {
+		t.Fatalf("workspace memory mode after corruption = %q, want both degraded providers surfaced", checkPayload.State.Workspace.MemoryMode)
+	}
+
+	preview := findPreviewBySession(checkPayload.Center.Previews, "session-memory")
+	if preview == nil {
+		t.Fatalf("session-memory preview missing after corruption: %#v", checkPayload.Center.Previews)
+	}
+	if got := findProviderByKind(preview.Providers, "search-sidecar"); got == nil || got.Status != "degraded" {
+		t.Fatalf("preview search provider after corruption = %#v, want degraded provider", got)
+	}
+	if got := findProviderByKind(preview.Providers, "external-persistent"); got == nil || got.Status != "degraded" {
+		t.Fatalf("preview external provider after corruption = %#v, want degraded provider", got)
+	}
+	if !strings.Contains(preview.PromptSummary, "Local recall index is unreadable.") ||
+		!strings.Contains(preview.PromptSummary, "External durable relay queue is missing.") {
+		t.Fatalf("preview prompt summary after corruption missing degraded truth:\n%s", preview.PromptSummary)
+	}
+
+	server.Close()
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedServer := httptest.NewServer(New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:     "http://127.0.0.1:65531",
+		WorkspaceRoot: root,
+	}).Handler())
+	defer reloadedServer.Close()
+	mustEstablishContractBrowserSession(t, reloadedServer.URL, "larkspur@openshock.dev", "Owner Browser")
+
+	reloadedCenterResp, err := http.Get(reloadedServer.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center after corruption reload error = %v", err)
+	}
+	defer reloadedCenterResp.Body.Close()
+	if reloadedCenterResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center after corruption reload status = %d, want %d", reloadedCenterResp.StatusCode, http.StatusOK)
+	}
+
+	var reloadedCenter store.MemoryCenter
+	decodeJSON(t, reloadedCenterResp, &reloadedCenter)
+	reloadedPreview := findPreviewBySession(reloadedCenter.Previews, "session-memory")
+	if reloadedPreview == nil {
+		t.Fatalf("reloaded session-memory preview missing after corruption: %#v", reloadedCenter.Previews)
+	}
+	if got := findProviderByKind(reloadedPreview.Providers, "search-sidecar"); got == nil || got.Status != "degraded" {
+		t.Fatalf("reloaded preview search provider after corruption = %#v, want degraded provider", got)
+	}
+	if got := findProviderByKind(reloadedPreview.Providers, "external-persistent"); got == nil || got.Status != "degraded" {
+		t.Fatalf("reloaded preview external provider after corruption = %#v, want degraded provider", got)
+	}
+	if !strings.Contains(reloadedPreview.PromptSummary, "Local recall index is unreadable.") ||
+		!strings.Contains(reloadedPreview.PromptSummary, "External durable relay queue is missing.") {
+		t.Fatalf("reloaded prompt summary after corruption missing degraded truth:\n%s", reloadedPreview.PromptSummary)
 	}
 }
 

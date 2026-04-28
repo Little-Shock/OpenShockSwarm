@@ -89,7 +89,7 @@ func (s *Server) handleAgentRoutes(w http.ResponseWriter, r *http.Request) {
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"agent":  agent,
-			"state":  nextState,
+			"state":  s.sanitizedStateSnapshotForRequest(nextState, r),
 			"center": s.store.MemoryCenter(),
 		})
 	default:

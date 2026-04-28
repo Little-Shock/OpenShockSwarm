@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1790,6 +1791,150 @@ func TestRequestScopedBrowserCookiesSeparateConcurrentClients(t *testing.T) {
 	decodeJSON(t, ownerSessionResp, &ownerSession)
 	if ownerSession.Email != "larkspur@openshock.dev" || ownerSession.Preferences.StartRoute != "/mailbox" || ownerSession.GitHubIdentity.Handle != "@owner-browser" {
 		t.Fatalf("owner browser session after prefs = %#v, want retained owner browser preferences", ownerSession)
+	}
+}
+
+func TestRequestScopedBrowserSessionsPersistAcrossServerReloadPerClient(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+	_, server := newSignedOutContractTestServer(t, root, "http://127.0.0.1:65531")
+
+	memberClient := contractBrowserClient(t)
+	ownerClient := contractBrowserClient(t)
+
+	memberLoginResp, err := postContractAuthSessionJSON(t, memberClient, server.URL, `{"email":"mina@openshock.dev","deviceLabel":"Mina Browser"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session member browser login error = %v", err)
+	}
+	if memberLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session member browser login status = %d, want %d", memberLoginResp.StatusCode, http.StatusOK)
+	}
+
+	ownerLoginResp, err := postContractAuthSessionJSON(t, ownerClient, server.URL, `{"email":"larkspur@openshock.dev","deviceLabel":"Owner Browser"}`)
+	if err != nil {
+		t.Fatalf("POST /v1/auth/session owner browser login error = %v", err)
+	}
+	if ownerLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/auth/session owner browser login status = %d, want %d", ownerLoginResp.StatusCode, http.StatusOK)
+	}
+
+	memberPreferencesReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/member-mina/preferences", bytes.NewReader([]byte(`{"startRoute":"/rooms","githubHandle":"@mina-reload"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH member reload preferences request error = %v", err)
+	}
+	memberPreferencesReq.Header.Set("Content-Type", "application/json")
+	memberPreferencesResp, err := memberClient.Do(memberPreferencesReq)
+	if err != nil {
+		t.Fatalf("PATCH member reload preferences error = %v", err)
+	}
+	if memberPreferencesResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH member reload preferences status = %d, want %d", memberPreferencesResp.StatusCode, http.StatusOK)
+	}
+	memberPreferencesResp.Body.Close()
+
+	ownerPreferencesReq, err := http.NewRequest(http.MethodPatch, server.URL+"/v1/workspace/members/member-larkspur/preferences", bytes.NewReader([]byte(`{"startRoute":"/mailbox","githubHandle":"@owner-reload"}`)))
+	if err != nil {
+		t.Fatalf("new PATCH owner reload preferences request error = %v", err)
+	}
+	ownerPreferencesReq.Header.Set("Content-Type", "application/json")
+	ownerPreferencesResp, err := ownerClient.Do(ownerPreferencesReq)
+	if err != nil {
+		t.Fatalf("PATCH owner reload preferences error = %v", err)
+	}
+	if ownerPreferencesResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH owner reload preferences status = %d, want %d", ownerPreferencesResp.StatusCode, http.StatusOK)
+	}
+	ownerPreferencesResp.Body.Close()
+
+	server.Close()
+
+	reloadedStore, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(reload) error = %v", err)
+	}
+	reloadedServer := httptest.NewServer(New(reloadedStore, http.DefaultClient, Config{
+		DaemonURL:              "http://127.0.0.1:65531",
+		WorkspaceRoot:          root,
+		InternalWorkerSecret:   contractInternalWorkerSecret,
+		RuntimeHeartbeatSecret: contractRuntimeHeartbeatSecret,
+	}).Handler())
+
+	memberSessionResp, err := memberClient.Get(reloadedServer.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session member reload error = %v", err)
+	}
+	if memberSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session member reload status = %d, want %d", memberSessionResp.StatusCode, http.StatusOK)
+	}
+	var memberSession store.AuthSession
+	decodeJSON(t, memberSessionResp, &memberSession)
+	if memberSession.Email != "mina@openshock.dev" || memberSession.Preferences.StartRoute != "/rooms" || memberSession.GitHubIdentity.Handle != "@mina-reload" {
+		t.Fatalf("member reload session = %#v, want retained member browser session", memberSession)
+	}
+
+	ownerSessionResp, err := ownerClient.Get(reloadedServer.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session owner reload error = %v", err)
+	}
+	if ownerSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session owner reload status = %d, want %d", ownerSessionResp.StatusCode, http.StatusOK)
+	}
+	var ownerSession store.AuthSession
+	decodeJSON(t, ownerSessionResp, &ownerSession)
+	if ownerSession.Email != "larkspur@openshock.dev" || ownerSession.Preferences.StartRoute != "/mailbox" || ownerSession.GitHubIdentity.Handle != "@owner-reload" {
+		t.Fatalf("owner reload session = %#v, want retained owner browser session", ownerSession)
+	}
+
+	logoutReq, err := http.NewRequest(http.MethodDelete, reloadedServer.URL+"/v1/auth/session", nil)
+	if err != nil {
+		t.Fatalf("new DELETE /v1/auth/session owner reload request error = %v", err)
+	}
+	logoutResp, err := ownerClient.Do(logoutReq)
+	if err != nil {
+		t.Fatalf("DELETE /v1/auth/session owner reload error = %v", err)
+	}
+	if logoutResp.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE /v1/auth/session owner reload status = %d, want %d", logoutResp.StatusCode, http.StatusOK)
+	}
+	logoutResp.Body.Close()
+
+	reloadedServer.Close()
+
+	reloadedStoreAgain, err := store.New(statePath, root)
+	if err != nil {
+		t.Fatalf("store.New(second reload) error = %v", err)
+	}
+	reloadedServerAgain := httptest.NewServer(New(reloadedStoreAgain, http.DefaultClient, Config{
+		DaemonURL:              "http://127.0.0.1:65531",
+		WorkspaceRoot:          root,
+		InternalWorkerSecret:   contractInternalWorkerSecret,
+		RuntimeHeartbeatSecret: contractRuntimeHeartbeatSecret,
+	}).Handler())
+	defer reloadedServerAgain.Close()
+
+	memberSessionResp, err = memberClient.Get(reloadedServerAgain.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session member second reload error = %v", err)
+	}
+	if memberSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session member second reload status = %d, want %d", memberSessionResp.StatusCode, http.StatusOK)
+	}
+	decodeJSON(t, memberSessionResp, &memberSession)
+	if memberSession.Email != "mina@openshock.dev" || memberSession.Preferences.StartRoute != "/rooms" || memberSession.GitHubIdentity.Handle != "@mina-reload" {
+		t.Fatalf("member second reload session = %#v, want retained member browser session", memberSession)
+	}
+
+	ownerSessionResp, err = ownerClient.Get(reloadedServerAgain.URL + "/v1/auth/session")
+	if err != nil {
+		t.Fatalf("GET /v1/auth/session owner second reload error = %v", err)
+	}
+	if ownerSessionResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/auth/session owner second reload status = %d, want %d", ownerSessionResp.StatusCode, http.StatusOK)
+	}
+	var signedOutOwnerSession store.AuthSession
+	decodeJSON(t, ownerSessionResp, &signedOutOwnerSession)
+	if signedOutOwnerSession.Status != "signed_out" || signedOutOwnerSession.Email != "" {
+		t.Fatalf("owner second reload session = %#v, want signed_out after persisted revoke", signedOutOwnerSession)
 	}
 }
 

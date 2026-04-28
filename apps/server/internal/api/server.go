@@ -44,6 +44,7 @@ type Server struct {
 	githubWebhookSecret    string
 	authTokenMu            sync.RWMutex
 	authTokens             map[string]authRequestBinding
+	authTokenStatePath     string
 	roomAutoLoopOnce       sync.Once
 	roomAutoRecoveryMu     sync.Mutex
 	roomAutoInFlight       map[string]struct{}
@@ -199,7 +200,7 @@ func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 	if githubService == nil {
 		githubService = githubsvc.NewService(nil)
 	}
-	return &Server{
+	server := &Server{
 		store:                  s,
 		httpClient:             httpClient,
 		defaultDaemonURL:       strings.TrimRight(cfg.DaemonURL, "/"),
@@ -212,7 +213,10 @@ func New(s *store.Store, httpClient *http.Client, cfg Config) *Server {
 		github:                 githubService,
 		githubWebhookSecret:    strings.TrimSpace(cfg.GitHubWebhookSecret),
 		authTokens:             map[string]authRequestBinding{},
+		authTokenStatePath:     requestAuthStatePath(s.StatePath()),
 	}
+	server.loadPersistedRequestAuthTokens()
+	return server
 }
 
 func (s *Server) Handler() http.Handler {
@@ -320,7 +324,7 @@ func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 			writeWorkspaceConfigError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"workspace": workspace, "state": nextState})
+		writeJSON(w, http.StatusOK, map[string]any{"workspace": workspace, "state": s.sanitizedStateSnapshotForRequest(nextState, r)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -1045,7 +1049,7 @@ func (s *Server) handleRunCredentialRoutes(w http.ResponseWriter, r *http.Reques
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"run":   run,
-			"state": nextState,
+			"state": s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})

@@ -100,7 +100,7 @@ func (s *Server) handleMemoryRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"detail": detail,
 			"center": center,
-			"state":  nextState,
+			"state":  s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	case "forget":
 		var req MemoryForgetRequest
@@ -122,7 +122,7 @@ func (s *Server) handleMemoryRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"detail": detail,
 			"center": center,
-			"state":  nextState,
+			"state":  s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory artifact route not found"})
@@ -203,7 +203,7 @@ func (s *Server) handleMemoryCenterCleanup(w http.ResponseWriter, r *http.Reques
 		payload := map[string]any{
 			"executed": executed,
 			"center":   center,
-			"state":    nextState,
+			"state":    s.sanitizedStateSnapshotForRequest(nextState, r),
 		}
 		if cleanup != nil {
 			payload["cleanup"] = cleanup
@@ -221,7 +221,7 @@ func (s *Server) handleMemoryCenterCleanup(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{
 		"cleanup": cleanup,
 		"center":  center,
-		"state":   nextState,
+		"state":   s.sanitizedStateSnapshotForRequest(nextState, r),
 	})
 }
 
@@ -252,7 +252,7 @@ func (s *Server) handleMemoryCenterProviders(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, map[string]any{
 			"providers": providers,
 			"center":    center,
-			"state":     nextState,
+			"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -298,7 +298,7 @@ func (s *Server) handleMemoryCenterProviderRoutes(w http.ResponseWriter, r *http
 		writeJSON(w, http.StatusOK, map[string]any{
 			"providers": providers,
 			"center":    center,
-			"state":     nextState,
+			"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	case len(parts) == 2 && strings.TrimSpace(parts[0]) != "" && parts[1] == "recover":
 		if !requireMethod(w, r, http.MethodPost) {
@@ -317,7 +317,7 @@ func (s *Server) handleMemoryCenterProviderRoutes(w http.ResponseWriter, r *http
 		writeJSON(w, http.StatusOK, map[string]any{
 			"provider": provider,
 			"center":   center,
-			"state":    nextState,
+			"state":    s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory provider route not found"})
@@ -359,7 +359,7 @@ func (s *Server) handleMemoryCenterPolicy(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusOK, map[string]any{
 			"policy": policy,
 			"center": center,
-			"state":  nextState,
+			"state":  s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -400,7 +400,7 @@ func (s *Server) handleMemoryCenterPromotions(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"promotion": promotion,
 			"center":    center,
-			"state":     nextState,
+			"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -445,7 +445,7 @@ func (s *Server) handleMemoryCenterPromotionRoutes(w http.ResponseWriter, r *htt
 	writeJSON(w, http.StatusOK, map[string]any{
 		"promotion": promotion,
 		"center":    center,
-		"state":     nextState,
+		"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
 	})
 }
 
