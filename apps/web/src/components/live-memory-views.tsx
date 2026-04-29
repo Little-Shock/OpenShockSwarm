@@ -7,6 +7,8 @@ import { usePhaseZeroState } from "@/lib/live-phase0";
 import {
   type MemoryArtifactDetail,
   type MemoryCleanupRun,
+  type MemoryCompactionCandidate,
+  type MemoryCompactionStatus,
   type MemoryProviderActivityRun,
   type MemoryInjectionPolicy,
   type MemoryInjectionPreview,
@@ -234,6 +236,28 @@ function promotionTone(status: MemoryPromotionStatus) {
   }
 }
 
+function compactionStatusLabel(status: MemoryCompactionStatus) {
+  switch (status) {
+    case "approved":
+      return "已通过";
+    case "dismissed":
+      return "已忽略";
+    default:
+      return "待处理";
+  }
+}
+
+function compactionTone(status: MemoryCompactionStatus) {
+  switch (status) {
+    case "approved":
+      return "lime";
+    case "dismissed":
+      return "white";
+    default:
+      return "yellow";
+  }
+}
+
 function cleanupTone(status?: MemoryCleanupRun["status"]) {
   return status === "cleaned" ? "yellow" : "white";
 }
@@ -260,7 +284,7 @@ function providerStatusTone(status: MemoryProviderBinding["status"]) {
   }
 }
 
-function providerStatusLabel(status: MemoryProviderBinding["status"]) {
+function providerStatusText(status: MemoryProviderBinding["status"]) {
   switch (status) {
     case "healthy":
       return "正常";
@@ -269,6 +293,21 @@ function providerStatusLabel(status: MemoryProviderBinding["status"]) {
     default:
       return status;
   }
+}
+
+function providerIsUnconfiguredExternal(provider: MemoryProviderBinding) {
+  return (
+    provider.kind === "external-persistent" &&
+    provider.status === "degraded" &&
+    /not configured|未配置/i.test([provider.lastSummary, provider.lastError, provider.nextAction].filter(Boolean).join(" "))
+  );
+}
+
+function providerStatusLabel(provider: MemoryProviderBinding) {
+  if (providerIsUnconfiguredExternal(provider)) {
+    return "未配置";
+  }
+  return providerStatusText(provider.status);
 }
 
 function providerActivityActionLabel(action: MemoryProviderActivityRun["action"]) {
@@ -477,6 +516,7 @@ export function LiveMemoryView() {
     recoverProvider,
     createPromotion,
     reviewPromotion,
+    reviewCompactionCandidate,
     runCleanup,
     submitFeedback,
     forgetMemory,
@@ -697,6 +737,14 @@ export function LiveMemoryView() {
     });
   }
 
+  async function handleReviewCompaction(candidate: MemoryCompactionCandidate, status: Extract<MemoryCompactionStatus, "approved" | "dismissed">) {
+    await runAction(`review-compaction-${candidate.id}-${status}`, async () => {
+      await reviewCompactionCandidate(candidate.id, { status });
+      await refresh();
+      setMutationSuccess(`${candidate.sourcePath} 已${compactionStatusLabel(status)}。`);
+    });
+  }
+
   async function handleRunCleanup() {
     await runAction("run-cleanup", async () => {
       const payload = await runCleanup();
@@ -752,7 +800,7 @@ export function LiveMemoryView() {
         throw new Error("检查已完成，但没有返回对应来源。");
       }
       await refresh();
-      setMutationSuccess(`${provider.label} 检查完成，当前状态：${providerStatusLabel(provider.status)}。`);
+      setMutationSuccess(`${provider.label} 检查完成，当前状态：${providerStatusLabel(provider)}。`);
     });
   }
 
@@ -760,7 +808,7 @@ export function LiveMemoryView() {
     await runAction(`recover-provider-${providerId}`, async () => {
       const payload = await recoverProvider(providerId);
       await refresh();
-      setMutationSuccess(`${payload.provider.label} 恢复完成，当前状态：${providerStatusLabel(payload.provider.status)}。`);
+      setMutationSuccess(`${payload.provider.label} 恢复完成，当前状态：${providerStatusLabel(payload.provider)}。`);
     });
   }
 
@@ -973,7 +1021,7 @@ export function LiveMemoryView() {
                             providerStatusTone(provider.status) === "white" && "bg-white"
                           )}
                         >
-                          {providerStatusLabel(provider.status)}
+                          {providerStatusLabel(provider)}
                         </span>
                       </div>
                       <p className="mt-3 text-sm leading-6">{provider.summary}</p>
@@ -1268,6 +1316,117 @@ export function LiveMemoryView() {
           </Panel>
 
           <details
+            data-testid="memory-compaction-details"
+            className="rounded-[24px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+          >
+            <summary
+              data-testid="memory-compaction-details-summary"
+              className="list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:rgba(24,20,14,0.62)]">整理队列</p>
+                  <h2 className="mt-1.5 font-display text-[24px] font-bold leading-7">需要时再合并长期资料</h2>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {center.compactionQueue.length} 条
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[color:rgba(24,20,14,0.76)]">
+                默认文件栈保持在上方；这里只处理需要人工确认的合并候选。
+              </p>
+            </summary>
+
+            <div className="mt-5 rounded-[20px] border-2 border-[var(--shock-ink)] bg-[var(--shock-paper)] px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]">候选项</p>
+                  <h3 className="mt-2 font-display text-2xl font-bold">待确认的资料整理</h3>
+                </div>
+                <span className="rounded-full border-2 border-[var(--shock-ink)] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  {center.compactionQueue.filter((candidate) => candidate.status === "candidate").length} 待处理
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {center.compactionQueue.length === 0 ? (
+                  <EmptyState title="暂无整理候选" message="后续自动清理发现可合并资料时，会先放在这里确认。" testID="memory-compaction-empty" />
+                ) : (
+                  center.compactionQueue.map((candidate) => {
+                    const slug = toTestID(candidate.id);
+                    const reviewBusy =
+                      busyAction === `review-compaction-${candidate.id}-approved` ||
+                      busyAction === `review-compaction-${candidate.id}-dismissed`;
+                    return (
+                      <div
+                        key={candidate.id}
+                        data-testid={`memory-compaction-item-${slug}`}
+                        className="rounded-[18px] border-2 border-[var(--shock-ink)] bg-white px-4 py-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p
+                              data-testid={`memory-compaction-source-${slug}`}
+                              className="font-mono text-[10px] uppercase tracking-[0.18em] text-[color:rgba(24,20,14,0.62)]"
+                            >
+                              {candidate.sourcePath || candidate.sourceArtifactId}
+                            </p>
+                            <h4
+                              data-testid={`memory-compaction-reason-${slug}`}
+                              className="mt-2 font-display text-2xl font-bold leading-7"
+                            >
+                              {candidate.reason}
+                            </h4>
+                          </div>
+                          <span
+                            data-testid={`memory-compaction-status-${slug}`}
+                            className={cn(
+                              "rounded-full border-2 border-[var(--shock-ink)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em]",
+                              compactionTone(candidate.status) === "yellow" && "bg-[var(--shock-yellow)]",
+                              compactionTone(candidate.status) === "lime" && "bg-[var(--shock-lime)]",
+                              compactionTone(candidate.status) === "white" && "bg-white"
+                            )}
+                          >
+                            {compactionStatusLabel(candidate.status)}
+                          </span>
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6">{valueOrFallback(candidate.sourceSummary, "暂无来源摘要。")}</p>
+                        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:rgba(24,20,14,0.62)]">
+                          更新：{valueOrFallback(candidate.updatedBy, "系统")} / {formatTimestamp(candidate.updatedAt)}
+                        </p>
+
+                        {candidate.status === "candidate" ? (
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <button
+                              type="button"
+                              data-testid={`memory-compaction-${slug}-approve`}
+                              disabled={!canMutate || reviewBusy}
+                              onClick={() => void handleReviewCompaction(candidate, "approved")}
+                              className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-[var(--shock-lime)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+                            >
+                              {busyAction === `review-compaction-${candidate.id}-approved` ? "处理中..." : "通过"}
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`memory-compaction-${slug}-dismiss`}
+                              disabled={!canMutate || reviewBusy}
+                              onClick={() => void handleReviewCompaction(candidate, "dismissed")}
+                              className="rounded-[10px] border-2 border-[var(--shock-ink)] bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-60"
+                            >
+                              {busyAction === `review-compaction-${candidate.id}-dismissed` ? "处理中..." : "忽略"}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </details>
+
+          <details
             data-testid="memory-provider-details"
             className={cn(
               "group rounded-[24px] border-2 border-[var(--shock-ink)] px-4 py-4",
@@ -1318,7 +1477,7 @@ export function LiveMemoryView() {
                             providerStatusTone(provider.status) === "white" && "bg-[var(--shock-paper)]"
                           )}
                         >
-                          {providerStatusLabel(provider.status)}
+                          {providerStatusLabel(provider)}
                         </span>
                         <button
                           type="button"
@@ -1533,7 +1692,7 @@ export function LiveMemoryView() {
                             >
                               <div className="flex flex-wrap items-center justify-between gap-3">
                                 <p className="font-mono text-[10px] uppercase tracking-[0.18em]">
-                                  {providerActivityActionLabel(event.action)} / {providerStatusLabel(event.status)}
+                                  {providerActivityActionLabel(event.action)} / {providerStatusText(event.status)}
                                 </p>
                                 <p className="font-mono text-[10px] uppercase tracking-[0.16em]">
                                   {formatTimestamp(event.triggeredAt)} / {valueOrFallback(event.triggeredBy, "系统")}

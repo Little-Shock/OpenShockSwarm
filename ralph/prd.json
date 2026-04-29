@@ -148,8 +148,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Passed on 2026-04-28: run control and run sandbox mutation responses now return sanitized request-scoped state, and RequestScoped contract coverage proves member browser requests keep mina@openshock.dev even after an owner browser login. Signed-out run control and sandbox mutations return auth failures without a state payload. Verification passed with env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/api -run RequestScoped -count=1, env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/api -run 'RequestScoped|RunControl|SandboxPolicy' -count=1, PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH pnpm typecheck:web, jq empty ralph/prd.json, and git diff --check. Broader ./internal/api -count=1 hit an existing 10m timeout in TestAutoCompleteDeliveryDelegationKeepsBlockedRuntimeRoomHotButMarksRouteDoneInGovernanceSnapshot while waiting on mailbox auto-followup daemon exec; no US-008 failure was observed before the timeout."
     },
     {
       "id": "US-009",
@@ -165,8 +165,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Passed on 2026-04-28: added scripts/headed-auth-recovery-refresh.mjs and package command test:headed-auth-recovery-refresh. The headed browser smoke starts isolated server/web services, logs in an owner, invites a reviewer, logs the reviewer in, consumes verify_email and authorize_device challenges through browser fetch with credentials, then confirms /v1/auth/session still reflects the recovered reviewer with verified email and authorized device. JSON evidence is output/testing/us-009-auth-recovery-refresh/report.json with failedResponses=[], consoleProblems=[], and finalSession recorded. Verification passed with node --check scripts/headed-auth-recovery-refresh.mjs, OPENSHOCK_CHROMIUM_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' OPENSHOCK_E2E_ARTIFACTS_DIR=output/testing/us-009-auth-recovery-refresh/run-attempt pnpm test:headed-auth-recovery-refresh -- --report output/testing/us-009-auth-recovery-refresh/report.json, pnpm test:web-contracts (119 tests), pnpm typecheck:web, jq empty ralph/prd.json, and git diff --check."
     },
     {
       "id": "US-010",
@@ -180,8 +180,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Passed on 2026-04-28: added memory cleanup dry-run/preview support through store PreviewMemoryCleanup and POST /v1/memory-center/cleanup?mode=dry-run or mode=preview. The response includes dryRun/executed flags, dueCount, nextRunAt, due item identifiers, source summaries, reasons, preview stats, center, and request-scoped state without mutating durable memory-center promotions or cleanup ledger. Store and API tests prove dry-run leaves memory-center.json, promotions, and cleanup ledger unchanged across reload. Verification passed with env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/store -run MemoryCleanup -count=1, env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/api -run MemoryCenterCleanup -count=1, PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH pnpm typecheck:web, jq empty ralph/prd.json, and git diff --check."
     },
     {
       "id": "US-011",
@@ -196,8 +196,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Passed on 2026-04-28: memory-center durable state now includes compactionQueue entries with id, sourceArtifactId, sourcePath/sourceSummary, reason, status, createdAt, updatedAt, and updatedBy. Added store helpers MemoryCompactionQueue, EnqueueMemoryCompactionCandidate, ApproveMemoryCompactionCandidate, and DismissMemoryCompactionCandidate. Added store coverage proving queued, approved, and dismissed compaction candidates persist across memory-center.json reloads. No UI changes were made. Verification passed with env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/store -run MemoryCompaction -count=1, env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/store -run 'MemoryCleanup|MemoryCompaction' -count=1, PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH pnpm typecheck:web, jq empty ralph/prd.json, and git diff --check."
     },
     {
       "id": "US-012",
@@ -213,8 +213,8 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Passed on 2026-04-29: /memory now renders memory-center compactionQueue in a collapsed supporting section after the default file stack. Each candidate shows source artifact, reason, status, approve action, and dismiss action; approved/dismissed review calls refresh visible candidate status. Added web contract coverage for compaction anchors and a headed browser harness at scripts/headed-memory-compaction-queue.mjs, exposed through pnpm test:headed-memory-compaction-queue. Evidence: output/testing/us-012-memory-compaction/report.md and screenshots under output/testing/us-012-memory-compaction/run-attempt/run/screenshots/. Verification passed with env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/store -run MemoryCompaction -count=1, env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/api -run MemoryCenterCompaction -count=1, env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/api -run 'MemoryCenterCompaction|MemoryCenterCleanup' -count=1, node --check scripts/headed-memory-compaction-queue.mjs, node --import tsx --test apps/web/src/lib/memory-compaction-ui.test.ts, pnpm test:web-contracts (122 tests), OPENSHOCK_CHROMIUM_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' OPENSHOCK_E2E_ARTIFACTS_DIR=output/testing/us-012-memory-compaction/run-attempt pnpm test:headed-memory-compaction-queue -- --report output/testing/us-012-memory-compaction/report.md, pnpm typecheck:web, jq empty ralph/prd.json, and git diff --check."
     },
     {
       "id": "US-013",
@@ -229,8 +229,8 @@
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Passed on 2026-04-29: added a deterministic file-backed fake external memory provider adapter at .openshock/memory/external-persistent/fake-adapter.json for tests/local harnesses only. The fake adapter can report degraded or healthy and recovery transitions degraded fake state to healthy, while real external-persistent without a real config remains degraded/not configured even after local relay scaffold recovery. Memory provider check/recover coverage now exercises fake degraded fallback and recovery, and the Memory UI status label renders unconfigured real external persistent state as 未配置 instead of claiming a production integration. Headed browser evidence passed at output/testing/us-013-fake-external-provider/report.md with screenshots under output/testing/us-013-fake-external-provider/run-attempt/run/screenshots/. Verification passed with env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/store -run 'MemoryProvider|MemoryCenterPreviewPrefersCurrentOwner' -count=1, env GOCACHE=/private/tmp/openshock-go-build-cache ../../scripts/go.sh test ./internal/api -run 'MemoryCenterProvider|MemoryCenterRecoveryMatrix' -count=1, PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH node --check scripts/headed-memory-provider-orchestration.mjs, PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH node --import tsx --test apps/web/src/lib/memory-provider-ui.test.ts apps/web/src/lib/memory-compaction-ui.test.ts, PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH pnpm test:web-contracts (123 tests), PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH OPENSHOCK_CHROMIUM_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' OPENSHOCK_E2E_ARTIFACTS_DIR=output/testing/us-013-fake-external-provider/run-attempt pnpm test:headed-memory-provider-orchestration -- --report output/testing/us-013-fake-external-provider/report.md, and PATH=/Users/lark/.nvm/versions/node/v20.20.2/bin:$PATH pnpm typecheck:web."
     },
     {
       "id": "US-014",

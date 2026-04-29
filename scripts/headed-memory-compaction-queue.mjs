@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const evidenceRoot =
   process.env.OPENSHOCK_E2E_ARTIFACTS_DIR?.trim() ||
-  (await mkdtemp(path.join(os.tmpdir(), "openshock-tkt96-memory-provider-")));
+  (await mkdtemp(path.join(os.tmpdir(), "openshock-us-012-memory-compaction-")));
 const artifactsDir = path.resolve(evidenceRoot);
 const parsedArgs = parseArgs(process.argv.slice(2));
 const reportPath = parsedArgs.reportPath ? path.resolve(projectRoot, parsedArgs.reportPath) : path.join(artifactsDir, "report.md");
@@ -25,6 +25,7 @@ const screenshots = [];
 const processes = [];
 
 await mkdir(artifactsDir, { recursive: true });
+await mkdir(path.dirname(reportPath), { recursive: true });
 
 function parseArgs(args) {
   const result = { reportPath: "" };
@@ -37,8 +38,18 @@ function parseArgs(args) {
   return result;
 }
 
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
 function timestamp() {
   return new Date().toISOString();
+}
+
+function toTestID(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
 async function freePort() {
@@ -188,25 +199,6 @@ async function startServices(runDir) {
   return { webURL };
 }
 
-async function waitForVisible(page, testID) {
-  await page.waitForFunction(
-    (currentTestID) => Boolean(document.querySelector(`[data-testid="${currentTestID}"]`)),
-    testID,
-    { timeout: 30_000 }
-  );
-}
-
-async function waitForContains(page, testID, expected) {
-  await page.waitForFunction(
-    ({ currentTestID, currentExpected }) => {
-      const element = document.querySelector(`[data-testid="${currentTestID}"]`);
-      return element?.textContent?.includes(currentExpected) ?? false;
-    },
-    { currentTestID: testID, currentExpected: expected },
-    { timeout: 30_000 }
-  );
-}
-
 async function authenticateSeedOwner(page, webURL) {
   await page.goto(`${webURL}/access`, { waitUntil: "domcontentloaded" });
   await page.evaluate(async () => {
@@ -241,9 +233,81 @@ async function authenticateSeedOwner(page, webURL) {
   });
 }
 
+async function seedCompactionCandidates(page) {
+  return page.evaluate(async () => {
+    const readJSON = async (url, init = {}) => {
+      const response = await fetch(url, {
+        cache: "no-store",
+        credentials: "same-origin",
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(`${url} -> ${response.status}: ${JSON.stringify(payload)}`);
+      }
+      return payload;
+    };
+
+    const memory = await readJSON("/api/control/v1/memory");
+    const decisionArtifact = memory.find((item) => item.path === "decisions/ops-27.md");
+    const workspaceArtifact = memory.find((item) => item.path === "MEMORY.md");
+    if (!decisionArtifact) {
+      throw new Error("seed decision artifact should exist");
+    }
+    if (!workspaceArtifact) {
+      throw new Error("seed workspace artifact should exist");
+    }
+
+    const first = await readJSON("/api/control/v1/memory-center/compaction", {
+      method: "POST",
+      body: JSON.stringify({
+        sourceArtifactId: decisionArtifact.id,
+        reason: "把重复的优先级判断合并成一条长期规则",
+      }),
+    });
+    const second = await readJSON("/api/control/v1/memory-center/compaction", {
+      method: "POST",
+      body: JSON.stringify({
+        sourceArtifactId: workspaceArtifact.id,
+        reason: "确认这条工作区资料暂时不需要压缩",
+      }),
+    });
+
+    return {
+      approve: first.candidate,
+      dismiss: second.candidate,
+    };
+  });
+}
+
+async function waitForText(page, testID, expected) {
+  await page.waitForFunction(
+    ({ currentTestID, currentExpected }) => {
+      const element = document.querySelector(`[data-testid="${currentTestID}"]`);
+      return element?.textContent?.trim() === currentExpected;
+    },
+    { currentTestID: testID, currentExpected: expected },
+    { timeout: 30_000 }
+  );
+}
+
+async function waitForContains(page, testID, expected) {
+  await page.waitForFunction(
+    ({ currentTestID, currentExpected }) => {
+      const element = document.querySelector(`[data-testid="${currentTestID}"]`);
+      return element?.textContent?.includes(currentExpected) ?? false;
+    },
+    { currentTestID: testID, currentExpected: expected },
+    { timeout: 30_000 }
+  );
+}
+
 const runDir = path.join(artifactsDir, "run");
 const screenshotsDir = path.join(runDir, "screenshots");
-await rm(runDir, { recursive: true, force: true });
 await mkdir(screenshotsDir, { recursive: true });
 
 let browser;
@@ -251,69 +315,55 @@ let browser;
 try {
   const { webURL } = await startServices(runDir);
   browser = await launchChromiumSession(chromium);
-
-  const page = await browser.newPage({ viewport: { width: 1660, height: 1220 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   await authenticateSeedOwner(page, webURL);
+  const candidates = await seedCompactionCandidates(page);
+  const approveSlug = toTestID(candidates.approve.id);
+  const dismissSlug = toTestID(candidates.dismiss.id);
+
   await page.goto(`${webURL}/memory`, { waitUntil: "load" });
 
-  await page.getByTestId("memory-provider-details-summary").click();
-  await waitForVisible(page, "memory-provider-card-workspace-file");
-  await waitForVisible(page, "memory-provider-toggle-search-sidecar");
-  await waitForVisible(page, "memory-provider-toggle-external-persistent");
-  await waitForContains(page, "memory-provider-count", "1 可用 / 0 异常");
-  await capture(page, screenshotsDir, "initial-provider-bindings");
+  await waitForContains(page, "memory-artifact-count", "条");
+  await page.waitForSelector('[data-testid="memory-default-stack"]', { timeout: 30_000 });
+  await page.waitForSelector('[data-testid="memory-compaction-details"]', { timeout: 30_000 });
+  const defaultStackBeforeCompaction = await page.evaluate(() => {
+    const defaultStack = document.querySelector('[data-testid="memory-default-stack"]');
+    const compaction = document.querySelector('[data-testid="memory-compaction-details"]');
+    if (!defaultStack || !compaction) {
+      return false;
+    }
+    return Boolean(defaultStack.compareDocumentPosition(compaction) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  assert(defaultStackBeforeCompaction, "compaction queue should render after default memory stack");
+  await capture(page, screenshotsDir, "memory-default-stack-before-compaction");
 
-  await page.getByTestId("memory-provider-toggle-search-sidecar").click();
-  await page.getByTestId("memory-provider-toggle-external-persistent").click();
-  await page.getByTestId("memory-providers-save").click();
+  await page.getByTestId("memory-compaction-details-summary").click();
+  await waitForContains(page, `memory-compaction-reason-${approveSlug}`, "优先级判断");
+  await waitForContains(page, `memory-compaction-source-${approveSlug}`, "decisions/ops-27.md");
+  await waitForText(page, `memory-compaction-status-${approveSlug}`, "待处理");
+  await page.getByTestId(`memory-compaction-${approveSlug}-approve`).waitFor({ state: "visible" });
+  await page.getByTestId(`memory-compaction-${dismissSlug}-dismiss`).waitFor({ state: "visible" });
+  await capture(page, screenshotsDir, "compaction-queue-open");
 
-  await waitForContains(page, "memory-mutation-success", "来源设置已保存");
-  await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
-  await waitForContains(page, "memory-provider-status-external-persistent", "未配置");
-  await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");
-  await capture(page, screenshotsDir, "provider-bindings-saved");
+  await page.getByTestId(`memory-compaction-${approveSlug}-approve`).click();
+  await waitForText(page, `memory-compaction-status-${approveSlug}`, "已通过");
+  await page.getByTestId(`memory-compaction-${dismissSlug}-dismiss`).click();
+  await waitForText(page, `memory-compaction-status-${dismissSlug}`, "已忽略");
+  await capture(page, screenshotsDir, "compaction-queue-reviewed");
 
-  await page.getByTestId("memory-preview-session").selectOption("session-memory");
-  await waitForVisible(page, "memory-preview-provider-workspace-file");
-  await waitForVisible(page, "memory-preview-provider-search-sidecar");
-  await waitForVisible(page, "memory-preview-provider-external-persistent");
-  await waitForContains(page, "memory-preview-summary", "Memory providers active for this run:");
-  await waitForContains(page, "memory-preview-summary", "External persistent memory is not configured.");
-  await capture(page, screenshotsDir, "preview-provider-orchestration");
-
-  await page.reload({ waitUntil: "load" });
-  await page.getByTestId("memory-provider-details-summary").click();
-  await waitForContains(page, "memory-provider-status-search-sidecar", "异常");
-  await waitForContains(page, "memory-provider-status-external-persistent", "未配置");
-  await waitForContains(page, "memory-provider-count", "3 可用 / 2 异常");
-  await capture(page, screenshotsDir, "provider-bindings-reload-persisted");
-
-  const commandPrefix = process.env.OPENSHOCK_WINDOWS_CHROME === "1" ? "OPENSHOCK_WINDOWS_CHROME=1 " : "";
   const report = [
-    "# Test Report 2026-04-11 Windows Chrome Memory Provider Orchestration",
+    "# US-012 Memory Compaction Queue UI Report",
     "",
-    `- Command: \`${commandPrefix}pnpm test:headed-memory-provider-orchestration -- --report ${path.relative(projectRoot, reportPath)}\``,
+    `- Command: \`pnpm test:headed-memory-compaction-queue -- --report ${path.relative(projectRoot, reportPath)}\``,
     `- Artifacts Dir: \`${artifactsDir}\``,
-    "- Scope: `TKT-96 / CHK-10 / CHK-22 / TC-085`",
-    "- Result: `PASS`",
     "",
     "## Results",
     "",
-    "### Provider Binding Truth",
+    "- `/memory` keeps the default file stack before the collapsed compaction queue section -> PASS",
+    "- Compaction candidates show source artifact, reason, status, approve action, and dismiss action -> PASS",
+    "- Browser approve/dismiss actions update the visible candidate statuses to 已通过 / 已忽略 -> PASS",
     "",
-    "- `/memory` 现在会直接暴露 `workspace-file / search-sidecar / external-persistent` 三类 provider binding，并允许在同页保存 durable binding truth -> PASS",
-    "- Search Sidecar 启用后进入 `degraded`；真实 External Persistent 未配置时显示 `未配置`，不会把本地/测试路径说成生产集成 -> PASS",
-    "",
-    "### Next-Run Preview",
-    "",
-    "- `session-memory` preview 现在不只显示 mounted files / tools，还会显式列出 active providers、scope、retention 和 degraded provider note -> PASS",
-    "- prompt summary 会同步写入 provider orchestration truth，并保留 external persistent not-configured note -> PASS",
-    "",
-    "### Persistence",
-    "",
-    "- 页面 reload 后 provider enabled/status 状态保持不变，证明 binding 已写回 durable memory-center state -> PASS",
-    "",
-    "### Screenshots",
+    "## Screenshots",
     "",
     ...screenshots.map((item) => `- ${item.name}: ${item.path}`),
     "",

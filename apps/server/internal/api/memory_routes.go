@@ -22,6 +22,8 @@ func registerMemoryRoutes(s *Server, mux *http.ServeMux) {
 	mux.HandleFunc("/v1/memory-center/policy", s.handleMemoryCenterPolicy)
 	mux.HandleFunc("/v1/memory-center/providers", s.handleMemoryCenterProviders)
 	mux.HandleFunc("/v1/memory-center/providers/", s.handleMemoryCenterProviderRoutes)
+	mux.HandleFunc("/v1/memory-center/compaction", s.handleMemoryCenterCompaction)
+	mux.HandleFunc("/v1/memory-center/compaction/", s.handleMemoryCenterCompactionRoutes)
 	mux.HandleFunc("/v1/memory-center/promotions", s.handleMemoryCenterPromotions)
 	mux.HandleFunc("/v1/memory-center/promotions/", s.handleMemoryCenterPromotionRoutes)
 }
@@ -159,6 +161,15 @@ type MemoryPromotionReviewRequest struct {
 	ReviewNote string `json:"reviewNote"`
 }
 
+type MemoryCompactionRequest struct {
+	SourceArtifactID string `json:"sourceArtifactId"`
+	Reason           string `json:"reason"`
+}
+
+type MemoryCompactionReviewRequest struct {
+	Status string `json:"status"`
+}
+
 type MemoryFeedbackRequest struct {
 	SourceVersion int    `json:"sourceVersion"`
 	Summary       string `json:"summary"`
@@ -189,8 +200,27 @@ func (s *Server) handleMemoryCenterCleanup(w http.ResponseWriter, r *http.Reques
 	}
 
 	mode := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("mode")))
-	if mode != "" && mode != "due" {
+	if mode != "" && mode != "due" && mode != "dry-run" && mode != "preview" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cleanup mode"})
+		return
+	}
+	if mode == "dry-run" || mode == "preview" {
+		nextState, preview, center, err := s.store.PreviewMemoryCleanup()
+		if err != nil {
+			writeMemoryError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"dryRun":    true,
+			"executed":  false,
+			"dueCount":  preview.DueCount,
+			"nextRunAt": preview.NextRunAt,
+			"items":     preview.Items,
+			"preview":   preview,
+			"center":    center,
+			"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
+		})
 		return
 	}
 	if mode == "due" {
@@ -407,6 +437,96 @@ func (s *Server) handleMemoryCenterPromotions(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func (s *Server) handleMemoryCenterCompaction(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		if !s.requireRequestSessionPermission(w, r, "memory.read") {
+			return
+		}
+		writeJSON(w, http.StatusOK, sanitizeLivePayload(s.store.MemoryCompactionQueue()))
+	case http.MethodPost:
+		if !s.requireRequestSessionPermission(w, r, "memory.write") {
+			return
+		}
+
+		var req MemoryCompactionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+
+		nextState, candidate, center, err := s.store.EnqueueMemoryCompactionCandidate(store.MemoryCompactionCandidateInput{
+			SourceArtifactID: req.SourceArtifactID,
+			Reason:           req.Reason,
+			UpdatedBy:        s.currentRequestAuthActor(r),
+		})
+		if err != nil {
+			writeMemoryError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"candidate": candidate,
+			"center":    center,
+			"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) handleMemoryCenterCompactionRoutes(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.URL.Path, "/v1/memory-center/compaction/") {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+
+	trimmed := strings.TrimPrefix(r.URL.Path, "/v1/memory-center/compaction/")
+	parts := strings.Split(strings.Trim(trimmed, "/"), "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || parts[1] != "review" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory compaction candidate not found"})
+		return
+	}
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if !s.requireRequestSessionPermission(w, r, "memory.write") {
+		return
+	}
+
+	var req MemoryCompactionReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	var (
+		nextState store.State
+		candidate store.MemoryCompactionCandidate
+		center    store.MemoryCenter
+		err       error
+	)
+	switch strings.TrimSpace(strings.ToLower(req.Status)) {
+	case "approved":
+		nextState, candidate, center, err = s.store.ApproveMemoryCompactionCandidate(parts[0], s.currentRequestAuthActor(r))
+	case "dismissed":
+		nextState, candidate, center, err = s.store.DismissMemoryCompactionCandidate(parts[0], s.currentRequestAuthActor(r))
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "memory compaction review status is invalid"})
+		return
+	}
+	if err != nil {
+		writeMemoryError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"candidate": candidate,
+		"center":    center,
+		"state":     s.sanitizedStateSnapshotForRequest(nextState, r),
+	})
+}
+
 func (s *Server) handleMemoryCenterPromotionRoutes(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.URL.Path, "/v1/memory-center/promotions/") {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
@@ -470,6 +590,7 @@ func writeMemoryError(w http.ResponseWriter, err error) {
 		errors.Is(err, store.ErrMemoryProviderKindInvalid),
 		errors.Is(err, store.ErrMemoryProviderScopeInvalid),
 		errors.Is(err, store.ErrMemoryProviderWorkspaceRequired),
+		errors.Is(err, store.ErrMemoryCompactionReasonRequired),
 		errors.Is(err, store.ErrMemoryFeedbackNoteRequired),
 		errors.Is(err, store.ErrMemoryForgetReasonRequired),
 		errors.Is(err, store.ErrMemoryArtifactImmutable),
@@ -479,7 +600,8 @@ func writeMemoryError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrMemoryArtifactNotFound),
 		errors.Is(err, store.ErrMemoryPromotionNotFound),
-		errors.Is(err, store.ErrMemoryProviderNotFound):
+		errors.Is(err, store.ErrMemoryProviderNotFound),
+		errors.Is(err, store.ErrMemoryCompactionCandidateNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

@@ -878,7 +878,7 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"action":  strings.TrimSpace(req.Action),
-			"state":   nextState,
+			"state":   s.sanitizedStateSnapshotForRequest(nextState, r),
 			"run":     updatedRun,
 			"session": updatedSession,
 		})
@@ -917,7 +917,7 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"state": nextState, "run": run, "sandbox": run.Sandbox})
+			writeJSON(w, http.StatusOK, map[string]any{"state": s.sanitizedStateSnapshotForRequest(nextState, r), "run": run, "sandbox": run.Sandbox})
 			return
 		case http.MethodPost:
 			if !runExecuteGuard(s, w, r) {
@@ -963,7 +963,7 @@ func (s *Server) handleRunRoutes(w http.ResponseWriter, r *http.Request) {
 			case "denied":
 				status = http.StatusConflict
 			}
-			writeJSON(w, status, map[string]any{"state": nextState, "run": run, "decision": decision})
+			writeJSON(w, status, map[string]any{"state": s.sanitizedStateSnapshotForRequest(nextState, r), "run": run, "decision": decision})
 			return
 		default:
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})

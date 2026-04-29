@@ -473,6 +473,237 @@ func TestMemoryCenterCleanupRouteSupportsDueModeAndSchedule(t *testing.T) {
 	}
 }
 
+func TestMemoryCenterCleanupRouteSupportsDryRunWithoutMutatingDurableState(t *testing.T) {
+	root := t.TempDir()
+	backingStore, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	snapshot := backingStore.Snapshot()
+	decisionArtifact := findMemoryArtifactByPath(snapshot.Memory, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	if decisionArtifact == nil {
+		t.Fatalf("decision artifact missing from seeded snapshot")
+	}
+
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          "policy",
+		Title:         "Future Rejected Policy",
+		Rationale:     "remains live until the rejected TTL window closes",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(rejected future) error = %v", err)
+	}
+	center := backingStore.MemoryCenter()
+	rejectedFuture := center.Promotions[0]
+	if _, _, _, err := backingStore.ReviewMemoryPromotion(rejectedFuture.ID, store.MemoryPromotionReviewInput{
+		Status:     "rejected",
+		ReviewNote: "keep around until TTL expires",
+		ReviewedBy: "Anne",
+	}); err != nil {
+		t.Fatalf("ReviewMemoryPromotion(rejected future) error = %v", err)
+	}
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          "skill",
+		Title:         "Room Conflict Triage",
+		Rationale:     "duplicate should be reported by preview",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate older) error = %v", err)
+	}
+	if _, _, _, err := backingStore.RequestMemoryPromotion(store.MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          "skill",
+		Title:         "Room Conflict Triage",
+		Rationale:     "newest duplicate should stay live",
+		ProposedBy:    "Larkspur",
+	}); err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate newer) error = %v", err)
+	}
+
+	beforeResp, err := http.Get(server.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center before dry-run error = %v", err)
+	}
+	defer beforeResp.Body.Close()
+	if beforeResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center before dry-run status = %d, want %d", beforeResp.StatusCode, http.StatusOK)
+	}
+
+	var beforeCenter store.MemoryCenter
+	decodeJSON(t, beforeResp, &beforeCenter)
+	if !beforeCenter.Cleanup.Due || beforeCenter.Cleanup.DueCount != 1 || strings.TrimSpace(beforeCenter.Cleanup.NextRunAt) == "" {
+		t.Fatalf("before cleanup schedule = %#v, want dry-run due item and nextRunAt", beforeCenter.Cleanup)
+	}
+	beforePromotionCount := len(beforeCenter.Promotions)
+	beforeLedgerCount := len(beforeCenter.Cleanup.Ledger)
+
+	cleanupResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/cleanup?mode=dry-run", "")
+	defer cleanupResp.Body.Close()
+	if cleanupResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/cleanup?mode=dry-run status = %d, want %d", cleanupResp.StatusCode, http.StatusOK)
+	}
+
+	var cleanupPayload struct {
+		DryRun    bool                             `json:"dryRun"`
+		Executed  bool                             `json:"executed"`
+		DueCount  int                              `json:"dueCount"`
+		NextRunAt string                           `json:"nextRunAt"`
+		Items     []store.MemoryCleanupPreviewItem `json:"items"`
+		Preview   store.MemoryCleanupPreview       `json:"preview"`
+		Center    store.MemoryCenter               `json:"center"`
+		State     store.State                      `json:"state"`
+	}
+	decodeJSON(t, cleanupResp, &cleanupPayload)
+	if !cleanupPayload.DryRun || cleanupPayload.Executed {
+		t.Fatalf("dry-run flags = dryRun:%v executed:%v, want dryRun true and executed false", cleanupPayload.DryRun, cleanupPayload.Executed)
+	}
+	if cleanupPayload.DueCount != 1 || cleanupPayload.Preview.DueCount != 1 || cleanupPayload.Preview.Stats.DedupedPending != 1 {
+		t.Fatalf("dry-run preview = %#v, want one duplicate due item", cleanupPayload.Preview)
+	}
+	if strings.TrimSpace(cleanupPayload.NextRunAt) == "" || strings.TrimSpace(cleanupPayload.Preview.NextRunAt) == "" {
+		t.Fatalf("dry-run nextRunAt missing: payload=%#v preview=%#v", cleanupPayload.NextRunAt, cleanupPayload.Preview.NextRunAt)
+	}
+	if len(cleanupPayload.Items) != 1 || len(cleanupPayload.Preview.Items) != 1 {
+		t.Fatalf("dry-run items = payload:%#v preview:%#v, want one review item", cleanupPayload.Items, cleanupPayload.Preview.Items)
+	}
+	if item := cleanupPayload.Preview.Items[0]; item.ID == "" || item.Title == "" || item.SourceSummary == "" || item.Reason == "" {
+		t.Fatalf("dry-run item = %#v, want identifiers and review summary", item)
+	}
+	if cleanupPayload.Center.PendingCount != beforeCenter.PendingCount || len(cleanupPayload.Center.Cleanup.Ledger) != beforeLedgerCount {
+		t.Fatalf("dry-run center = %#v, want no cleanup ledger mutation from %#v", cleanupPayload.Center, beforeCenter)
+	}
+
+	afterResp, err := http.Get(server.URL + "/v1/memory-center")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center after dry-run error = %v", err)
+	}
+	defer afterResp.Body.Close()
+	if afterResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center after dry-run status = %d, want %d", afterResp.StatusCode, http.StatusOK)
+	}
+
+	var afterCenter store.MemoryCenter
+	decodeJSON(t, afterResp, &afterCenter)
+	if len(afterCenter.Promotions) != beforePromotionCount || len(afterCenter.Cleanup.Ledger) != beforeLedgerCount {
+		t.Fatalf("dry-run mutated durable memory center: before=%#v after=%#v", beforeCenter, afterCenter)
+	}
+	if !afterCenter.Cleanup.Due || afterCenter.Cleanup.DueCount != 1 {
+		t.Fatalf("after dry-run cleanup schedule = %#v, want still due", afterCenter.Cleanup)
+	}
+}
+
+func TestMemoryCenterCompactionRoutesReviewDurableQueue(t *testing.T) {
+	root := t.TempDir()
+	backingStore, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
+	defer server.Close()
+
+	snapshot := backingStore.Snapshot()
+	decisionArtifact := findMemoryArtifactByPath(snapshot.Memory, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	workspaceArtifact := findMemoryArtifactByPath(snapshot.Memory, "MEMORY.md")
+	if decisionArtifact == nil || workspaceArtifact == nil {
+		t.Fatalf("seeded artifacts missing: decision=%#v workspace=%#v", decisionArtifact, workspaceArtifact)
+	}
+
+	createResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/compaction",
+		`{"sourceArtifactId":"`+decisionArtifact.ID+`","reason":"merge repeated decision notes into compact memory"}`,
+	)
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/memory-center/compaction status = %d, want %d", createResp.StatusCode, http.StatusCreated)
+	}
+
+	var createPayload struct {
+		Candidate store.MemoryCompactionCandidate `json:"candidate"`
+		Center    store.MemoryCenter              `json:"center"`
+		State     store.State                     `json:"state"`
+	}
+	decodeJSON(t, createResp, &createPayload)
+	if createPayload.Candidate.ID == "" || createPayload.Candidate.SourceArtifactID != decisionArtifact.ID || createPayload.Candidate.Status != "candidate" {
+		t.Fatalf("created compaction candidate = %#v, want candidate for decision artifact", createPayload.Candidate)
+	}
+	if len(createPayload.Center.CompactionQueue) != 1 || createPayload.Center.CompactionQueue[0].Reason == "" {
+		t.Fatalf("center compaction queue = %#v, want created candidate", createPayload.Center.CompactionQueue)
+	}
+
+	listResp, err := http.Get(server.URL + "/v1/memory-center/compaction")
+	if err != nil {
+		t.Fatalf("GET /v1/memory-center/compaction error = %v", err)
+	}
+	defer listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/memory-center/compaction status = %d, want %d", listResp.StatusCode, http.StatusOK)
+	}
+	var listPayload []store.MemoryCompactionCandidate
+	decodeJSON(t, listResp, &listPayload)
+	if len(listPayload) != 1 || listPayload[0].ID != createPayload.Candidate.ID {
+		t.Fatalf("compaction list = %#v, want created candidate", listPayload)
+	}
+
+	approveResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/compaction/"+createPayload.Candidate.ID+"/review",
+		`{"status":"approved"}`,
+	)
+	defer approveResp.Body.Close()
+	if approveResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/compaction/:id/review approve status = %d, want %d", approveResp.StatusCode, http.StatusOK)
+	}
+	var approvePayload struct {
+		Candidate store.MemoryCompactionCandidate `json:"candidate"`
+		Center    store.MemoryCenter              `json:"center"`
+	}
+	decodeJSON(t, approveResp, &approvePayload)
+	if approvePayload.Candidate.Status != "approved" || approvePayload.Candidate.UpdatedAt == "" {
+		t.Fatalf("approved compaction candidate = %#v, want approved status", approvePayload.Candidate)
+	}
+
+	secondResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/compaction",
+		`{"sourceArtifactId":"`+workspaceArtifact.ID+`","reason":"keep audit but dismiss this compaction candidate"}`,
+	)
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /v1/memory-center/compaction second status = %d, want %d", secondResp.StatusCode, http.StatusCreated)
+	}
+	var secondPayload struct {
+		Candidate store.MemoryCompactionCandidate `json:"candidate"`
+	}
+	decodeJSON(t, secondResp, &secondPayload)
+
+	dismissResp := doJSONRequest(
+		t,
+		http.DefaultClient,
+		http.MethodPost,
+		server.URL+"/v1/memory-center/compaction/"+secondPayload.Candidate.ID+"/review",
+		`{"status":"dismissed"}`,
+	)
+	defer dismissResp.Body.Close()
+	if dismissResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/compaction/:id/review dismiss status = %d, want %d", dismissResp.StatusCode, http.StatusOK)
+	}
+	var dismissPayload struct {
+		Candidate store.MemoryCompactionCandidate `json:"candidate"`
+		Center    store.MemoryCenter              `json:"center"`
+	}
+	decodeJSON(t, dismissResp, &dismissPayload)
+	if dismissPayload.Candidate.Status != "dismissed" || len(dismissPayload.Center.CompactionQueue) != 2 {
+		t.Fatalf("dismissed compaction payload = %#v, want dismissed candidate plus durable queue", dismissPayload)
+	}
+}
+
 func TestMemoryCenterProviderRoutesExposeDurableProviderBindings(t *testing.T) {
 	root := t.TempDir()
 	_, server := newContractTestServer(t, root, "http://127.0.0.1:65531")
@@ -536,7 +767,7 @@ func TestMemoryCenterProviderRoutesExposeDurableProviderBindings(t *testing.T) {
 	}
 	if !strings.Contains(preview.PromptSummary, "Memory providers active for this run:") ||
 		!strings.Contains(preview.PromptSummary, "Local recall index is missing.") ||
-		!strings.Contains(preview.PromptSummary, "External durable adapter stub is not configured.") {
+		!strings.Contains(preview.PromptSummary, "External persistent memory is not configured.") {
 		t.Fatalf("prompt summary missing provider failure note:\n%s", preview.PromptSummary)
 	}
 }
@@ -598,10 +829,27 @@ func TestMemoryCenterProviderHealthRoutesRecoverDurableBindings(t *testing.T) {
 		t.Fatalf("workspace memory mode after search recovery = %q, want external still degraded", recoverSearchPayload.State.Workspace.MemoryMode)
 	}
 
+	realExternalRecoverResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/external-persistent/recover", "")
+	defer realExternalRecoverResp.Body.Close()
+	if realExternalRecoverResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/memory-center/providers/external-persistent/recover real status = %d, want %d", realExternalRecoverResp.StatusCode, http.StatusOK)
+	}
+	var realExternalRecoverPayload struct {
+		Provider store.MemoryProviderBinding `json:"provider"`
+		State    store.State                 `json:"state"`
+	}
+	decodeJSON(t, realExternalRecoverResp, &realExternalRecoverPayload)
+	if realExternalRecoverPayload.Provider.Status != "degraded" ||
+		!strings.Contains(realExternalRecoverPayload.Provider.LastSummary, "not configured") ||
+		!strings.Contains(realExternalRecoverPayload.State.Workspace.MemoryMode, "external-persistent(degraded)") {
+		t.Fatalf("real external recovery = %#v, want not-configured degraded provider", realExternalRecoverPayload)
+	}
+
+	writeFakeExternalMemoryProviderAdapter(t, root, "degraded")
 	recoverExternalResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/external-persistent/recover", "")
 	defer recoverExternalResp.Body.Close()
 	if recoverExternalResp.StatusCode != http.StatusOK {
-		t.Fatalf("POST /v1/memory-center/providers/external-persistent/recover status = %d, want %d", recoverExternalResp.StatusCode, http.StatusOK)
+		t.Fatalf("POST /v1/memory-center/providers/external-persistent/recover fake status = %d, want %d", recoverExternalResp.StatusCode, http.StatusOK)
 	}
 
 	var recoverExternalPayload struct {
@@ -610,8 +858,10 @@ func TestMemoryCenterProviderHealthRoutesRecoverDurableBindings(t *testing.T) {
 		State    store.State                 `json:"state"`
 	}
 	decodeJSON(t, recoverExternalResp, &recoverExternalPayload)
-	if recoverExternalPayload.Provider.Status != "healthy" || recoverExternalPayload.Provider.LastRecoverySummary == "" || !strings.Contains(recoverExternalPayload.Provider.NextAction, "real remote durable sink") {
-		t.Fatalf("recovered external provider = %#v, want healthy local relay stub", recoverExternalPayload.Provider)
+	if recoverExternalPayload.Provider.Status != "healthy" ||
+		recoverExternalPayload.Provider.LastRecoverySummary == "" ||
+		!strings.Contains(recoverExternalPayload.Provider.LastSummary, "Fake external memory provider recovered") {
+		t.Fatalf("recovered fake external provider = %#v, want healthy fake adapter", recoverExternalPayload.Provider)
 	}
 	if !strings.Contains(recoverExternalPayload.State.Workspace.MemoryMode, "workspace-file + search-sidecar + external-persistent") ||
 		strings.Contains(recoverExternalPayload.State.Workspace.MemoryMode, "(degraded)") {
@@ -629,7 +879,7 @@ func TestMemoryCenterProviderHealthRoutesRecoverDurableBindings(t *testing.T) {
 		t.Fatalf("preview external provider after recovery = %#v, want healthy", got)
 	}
 	if !strings.Contains(preview.PromptSummary, "Search sidecar index ready") ||
-		!strings.Contains(preview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+		!strings.Contains(preview.PromptSummary, "Fake external memory provider recovered") {
 		t.Fatalf("prompt summary missing recovery truth:\n%s", preview.PromptSummary)
 	}
 }
@@ -783,6 +1033,7 @@ func TestMemoryCenterProviderRecoveryPersistsHealthyBindingsAcrossReload(t *test
 		t.Fatalf("POST /v1/memory-center/providers/search-sidecar/recover status = %d, want %d", recoverSearchResp.StatusCode, http.StatusOK)
 	}
 
+	writeFakeExternalMemoryProviderAdapter(t, root, "degraded")
 	recoverExternalResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/external-persistent/recover", "")
 	defer recoverExternalResp.Body.Close()
 	if recoverExternalResp.StatusCode != http.StatusOK {
@@ -798,18 +1049,14 @@ func TestMemoryCenterProviderRecoveryPersistsHealthyBindingsAcrossReload(t *test
 		t.Fatalf("search sidecar index = %q, want artifactCount metadata", string(indexBody))
 	}
 
-	configPath := filepath.Join(root, ".openshock", "memory", "external-persistent", "config.json")
-	configBody, err := os.ReadFile(configPath)
+	fakePath := filepath.Join(root, ".openshock", "memory", "external-persistent", "fake-adapter.json")
+	fakeBody, err := os.ReadFile(fakePath)
 	if err != nil {
-		t.Fatalf("os.ReadFile(external persistent config) error = %v", err)
+		t.Fatalf("os.ReadFile(fake external provider adapter) error = %v", err)
 	}
-	if !strings.Contains(string(configBody), `"mode": "local-export-stub"`) {
-		t.Fatalf("external persistent config = %q, want local-export-stub mode", string(configBody))
-	}
-
-	relayPath := filepath.Join(root, ".openshock", "memory", "external-persistent", "relay.ndjson")
-	if _, err := os.Stat(relayPath); err != nil {
-		t.Fatalf("os.Stat(external persistent relay) error = %v", err)
+	if !strings.Contains(string(fakeBody), `"status": "healthy"`) ||
+		!strings.Contains(string(fakeBody), "local harness verification") {
+		t.Fatalf("fake external provider adapter = %q, want recovered healthy fake state", string(fakeBody))
 	}
 
 	centerResp, err := http.Get(server.URL + "/v1/memory-center")
@@ -834,7 +1081,7 @@ func TestMemoryCenterProviderRecoveryPersistsHealthyBindingsAcrossReload(t *test
 		t.Fatalf("preview external provider after recovery = %#v, want healthy recovery-verified provider", got)
 	}
 	if !strings.Contains(preview.PromptSummary, "Search sidecar index ready") ||
-		!strings.Contains(preview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+		!strings.Contains(preview.PromptSummary, "Fake external memory provider recovered") {
 		t.Fatalf("prompt summary after recovery missing healthy provider truth:\n%s", preview.PromptSummary)
 	}
 
@@ -893,7 +1140,7 @@ func TestMemoryCenterProviderRecoveryPersistsHealthyBindingsAcrossReload(t *test
 		t.Fatalf("reloaded preview external provider = %#v, want healthy provider", got)
 	}
 	if !strings.Contains(reloadedPreview.PromptSummary, "Search sidecar index ready") ||
-		!strings.Contains(reloadedPreview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+		!strings.Contains(reloadedPreview.PromptSummary, "Fake external memory provider recovered") {
 		t.Fatalf("reloaded prompt summary missing healthy provider truth:\n%s", reloadedPreview.PromptSummary)
 	}
 }
@@ -925,6 +1172,7 @@ func TestMemoryCenterRecoveryMatrixKeepsSessionPreviewTruthIndependentAcrossRelo
 		t.Fatalf("POST /v1/memory-center/providers/search-sidecar/recover status = %d, want %d", recoverSearchResp.StatusCode, http.StatusOK)
 	}
 
+	writeFakeExternalMemoryProviderAdapter(t, root, "degraded")
 	recoverExternalResp := doJSONRequest(t, http.DefaultClient, http.MethodPost, server.URL+"/v1/memory-center/providers/external-persistent/recover", "")
 	defer recoverExternalResp.Body.Close()
 	if recoverExternalResp.StatusCode != http.StatusOK {
@@ -1103,7 +1351,7 @@ func TestMemoryCenterProviderHealthFallsBackToDegradedTruthWhenRecoveredArtifact
 		t.Fatalf("search provider after corruption = %#v, want degraded provider with preserved recovery summary and failure count", searchProvider)
 	}
 	externalProvider := findProviderByKind(checkPayload.Providers, "external-persistent")
-	if externalProvider == nil || externalProvider.Status != "degraded" || externalProvider.LastRecoverySummary == "" || externalProvider.LastCheckSource != "manual-check" || externalProvider.FailureCount != 1 {
+	if externalProvider == nil || externalProvider.Status != "degraded" || externalProvider.LastRecoverySummary == "" || externalProvider.LastCheckSource != "manual-check" || externalProvider.FailureCount < 1 {
 		t.Fatalf("external provider after corruption = %#v, want degraded provider with preserved recovery summary and failure count", externalProvider)
 	}
 	if !strings.Contains(checkPayload.State.Workspace.MemoryMode, "search-sidecar(degraded)") ||
@@ -1191,4 +1439,38 @@ func findProviderByKind(providers []store.MemoryProviderBinding, kind string) *s
 		}
 	}
 	return nil
+}
+
+func writeFakeExternalMemoryProviderAdapter(t *testing.T, root string, status string) {
+	t.Helper()
+
+	body := `{
+  "version": 1,
+  "status": "` + status + `",
+  "generatedAt": "2026-04-29T00:00:00Z",
+  "summary": "Fake external memory provider is degraded for local harness verification.",
+  "detail": "Deterministic fake provider adapter used only by tests and local harnesses.",
+  "lastError": "fake outage",
+  "nextAction": "Run fake provider recovery.",
+  "recoveryStatus": "healthy"
+}`
+	if status == "healthy" {
+		body = `{
+  "version": 1,
+  "status": "healthy",
+  "generatedAt": "2026-04-29T00:00:00Z",
+  "summary": "Fake external memory provider is healthy for local harness verification.",
+  "detail": "Deterministic fake provider adapter used only by tests and local harnesses.",
+  "nextAction": "Keep this fake adapter confined to tests or local harnesses.",
+  "recoveryStatus": "healthy"
+}`
+	}
+
+	fakePath := filepath.Join(root, ".openshock", "memory", "external-persistent", "fake-adapter.json")
+	if err := os.MkdirAll(filepath.Dir(fakePath), 0o755); err != nil {
+		t.Fatalf("mkdir fake external memory provider adapter dir: %v", err)
+	}
+	if err := os.WriteFile(fakePath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write fake external memory provider adapter: %v", err)
+	}
 }

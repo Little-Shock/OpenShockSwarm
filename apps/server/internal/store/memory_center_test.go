@@ -163,6 +163,7 @@ func TestMemoryCenterPreviewPrefersCurrentOwnerOverStaleRecentRunAgent(t *testin
 	if _, _, _, err := s.RecoverMemoryProvider(memoryProviderKindSearchSidecar, "Larkspur"); err != nil {
 		t.Fatalf("RecoverMemoryProvider(search-sidecar) error = %v", err)
 	}
+	writeFakeExternalMemoryProviderAdapter(t, root, memoryProviderStatusDegraded)
 	if _, _, _, err := s.RecoverMemoryProvider(memoryProviderKindExternalPersistent, "Larkspur"); err != nil {
 		t.Fatalf("RecoverMemoryProvider(external-persistent) error = %v", err)
 	}
@@ -224,7 +225,7 @@ func TestMemoryCenterPreviewPrefersCurrentOwnerOverStaleRecentRunAgent(t *testin
 	if !strings.Contains(preview.PromptSummary, "Search sidecar index ready") {
 		t.Fatalf("preview summary = %q, want recovered search-sidecar note", preview.PromptSummary)
 	}
-	if !strings.Contains(preview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+	if !strings.Contains(preview.PromptSummary, "Fake external memory provider recovered") {
 		t.Fatalf("preview summary = %q, want recovered external provider note", preview.PromptSummary)
 	}
 	if strings.Contains(preview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
@@ -256,7 +257,7 @@ func TestMemoryCenterPreviewPrefersCurrentOwnerOverStaleRecentRunAgent(t *testin
 	if !strings.Contains(reloadedPreview.PromptSummary, "Search sidecar index ready") {
 		t.Fatalf("reloaded preview summary = %q, want persisted recovered search-sidecar note", reloadedPreview.PromptSummary)
 	}
-	if !strings.Contains(reloadedPreview.PromptSummary, "External durable adapter stub is configured in local relay mode.") {
+	if !strings.Contains(reloadedPreview.PromptSummary, "Fake external memory provider recovered") {
 		t.Fatalf("reloaded preview summary = %q, want persisted recovered external provider note", reloadedPreview.PromptSummary)
 	}
 	if strings.Contains(reloadedPreview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
@@ -602,6 +603,235 @@ func TestMemoryCleanupDueRunExecutesOnlyWhenQueueNeedsPruning(t *testing.T) {
 	}
 }
 
+func TestMemoryCleanupPreviewReportsDueItemsWithoutMutatingDurableState(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	snapshot := s.Snapshot()
+	decisionArtifact := findMemoryArtifactByPath(snapshot, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	if decisionArtifact == nil {
+		t.Fatalf("decision artifact missing from seeded snapshot")
+	}
+
+	_, rejectedFuture, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindPolicy,
+		Title:         "Future Rejected Policy",
+		Rationale:     "stays live until the rejected TTL window closes",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(rejected future) error = %v", err)
+	}
+	if _, _, _, err := s.ReviewMemoryPromotion(rejectedFuture.ID, MemoryPromotionReviewInput{
+		Status:     memoryPromotionStatusRejected,
+		ReviewNote: "keep around until TTL expires",
+		ReviewedBy: "Anne",
+	}); err != nil {
+		t.Fatalf("ReviewMemoryPromotion(rejected future) error = %v", err)
+	}
+
+	_, duplicateOlder, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindSkill,
+		Title:         "Room Conflict Triage",
+		Rationale:     "older duplicate should be reported by preview",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate older) error = %v", err)
+	}
+	_, duplicateNewer, _, err := s.RequestMemoryPromotion(MemoryPromotionRequestInput{
+		MemoryID:      decisionArtifact.ID,
+		SourceVersion: decisionArtifact.Version,
+		Kind:          memoryPromotionKindSkill,
+		Title:         "Room Conflict Triage",
+		Rationale:     "newest duplicate should stay live",
+		ProposedBy:    "Larkspur",
+	})
+	if err != nil {
+		t.Fatalf("RequestMemoryPromotion(duplicate newer) error = %v", err)
+	}
+
+	futureReviewedAt := time.Now().UTC().Add(-(memoryCleanupRejectedTTL - 2*time.Hour)).Format(time.RFC3339)
+	olderDuplicateAt := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339)
+	newerDuplicateAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
+
+	s.mu.Lock()
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		s.mu.Unlock()
+		t.Fatalf("loadMemoryCenterStateLocked() error = %v", err)
+	}
+	for index := range state.Promotions {
+		switch state.Promotions[index].ID {
+		case rejectedFuture.ID:
+			state.Promotions[index].ProposedAt = futureReviewedAt
+			state.Promotions[index].ReviewedAt = futureReviewedAt
+		case duplicateOlder.ID:
+			state.Promotions[index].ProposedAt = olderDuplicateAt
+		case duplicateNewer.ID:
+			state.Promotions[index].ProposedAt = newerDuplicateAt
+		}
+	}
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		s.mu.Unlock()
+		t.Fatalf("saveMemoryCenterStateLocked() error = %v", err)
+	}
+	s.mu.Unlock()
+
+	beforeCenter := s.MemoryCenter()
+	if !beforeCenter.Cleanup.Due || beforeCenter.Cleanup.DueCount != 1 || strings.TrimSpace(beforeCenter.Cleanup.NextRunAt) == "" {
+		t.Fatalf("before cleanup schedule = %#v, want one due item and nextRunAt", beforeCenter.Cleanup)
+	}
+	beforeBody, err := os.ReadFile(filepath.Join(root, "data", "memory-center.json"))
+	if err != nil {
+		t.Fatalf("read memory center before preview: %v", err)
+	}
+
+	_, preview, center, err := s.PreviewMemoryCleanup()
+	if err != nil {
+		t.Fatalf("PreviewMemoryCleanup() error = %v", err)
+	}
+	if !preview.DryRun || !preview.Due || preview.DueCount != 1 || preview.Stats.DedupedPending != 1 || preview.Stats.TotalRemoved != 1 {
+		t.Fatalf("preview = %#v, want dry-run with one duplicate due item", preview)
+	}
+	if strings.TrimSpace(preview.NextRunAt) == "" || len(preview.Items) != 1 {
+		t.Fatalf("preview schedule/items = %#v, want nextRunAt and one item", preview)
+	}
+	if item := preview.Items[0]; item.ID != duplicateOlder.ID || item.Title == "" || item.SourceSummary == "" || item.Reason != "duplicate-pending-request" {
+		t.Fatalf("preview item = %#v, want older duplicate with review fields", item)
+	}
+	if center.PendingCount != beforeCenter.PendingCount || len(center.Cleanup.Ledger) != len(beforeCenter.Cleanup.Ledger) {
+		t.Fatalf("preview center = %#v, want no durable cleanup mutation from %#v", center, beforeCenter)
+	}
+
+	afterBody, err := os.ReadFile(filepath.Join(root, "data", "memory-center.json"))
+	if err != nil {
+		t.Fatalf("read memory center after preview: %v", err)
+	}
+	if string(afterBody) != string(beforeBody) {
+		t.Fatalf("memory-center.json changed during preview")
+	}
+	afterCenter := s.MemoryCenter()
+	if findPromotionByID(afterCenter.Promotions, duplicateOlder.ID) == nil || findPromotionByID(afterCenter.Promotions, duplicateNewer.ID) == nil {
+		t.Fatalf("preview removed duplicate promotions: %#v", afterCenter.Promotions)
+	}
+	if len(afterCenter.Cleanup.Ledger) != len(beforeCenter.Cleanup.Ledger) {
+		t.Fatalf("cleanup ledger changed after preview: before=%#v after=%#v", beforeCenter.Cleanup.Ledger, afterCenter.Cleanup.Ledger)
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload) error = %v", err)
+	}
+	reloadedCenter := reloaded.MemoryCenter()
+	if findPromotionByID(reloadedCenter.Promotions, duplicateOlder.ID) == nil || len(reloadedCenter.Cleanup.Ledger) != len(beforeCenter.Cleanup.Ledger) {
+		t.Fatalf("reloaded center changed after preview: %#v", reloadedCenter)
+	}
+}
+
+func TestMemoryCompactionQueuePersistsAcrossReloadAndReview(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "data", "state.json")
+
+	s, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	snapshot := s.Snapshot()
+	decisionArtifact := findMemoryArtifactByPath(snapshot, filepath.ToSlash(filepath.Join("decisions", "ops-27.md")))
+	workspaceArtifact := findMemoryArtifactByPath(snapshot, "MEMORY.md")
+	if decisionArtifact == nil || workspaceArtifact == nil {
+		t.Fatalf("seeded artifacts missing: decision=%#v workspace=%#v", decisionArtifact, workspaceArtifact)
+	}
+
+	_, first, center, err := s.EnqueueMemoryCompactionCandidate(MemoryCompactionCandidateInput{
+		SourceArtifactID: decisionArtifact.ID,
+		Reason:           "merge repeated room priority notes into a compact policy memory",
+		UpdatedBy:        "Memory Clerk",
+	})
+	if err != nil {
+		t.Fatalf("EnqueueMemoryCompactionCandidate(first) error = %v", err)
+	}
+	if first.ID == "" || first.SourceArtifactID != decisionArtifact.ID || first.Reason == "" || first.Status != memoryCompactionStatusCandidate || first.UpdatedAt == "" {
+		t.Fatalf("first compaction candidate = %#v, want persisted queue shape", first)
+	}
+	if len(center.CompactionQueue) != 1 || center.CompactionQueue[0].ID != first.ID {
+		t.Fatalf("center compaction queue = %#v, want first candidate", center.CompactionQueue)
+	}
+	if queue := s.MemoryCompactionQueue(); len(queue) != 1 || queue[0].SourceArtifactID != decisionArtifact.ID {
+		t.Fatalf("MemoryCompactionQueue() = %#v, want first candidate listed", queue)
+	}
+
+	body, err := os.ReadFile(filepath.Join(root, "data", "memory-center.json"))
+	if err != nil {
+		t.Fatalf("read memory-center.json: %v", err)
+	}
+	if !strings.Contains(string(body), `"compactionQueue"`) || !strings.Contains(string(body), decisionArtifact.ID) {
+		t.Fatalf("memory-center.json missing durable compaction queue:\n%s", string(body))
+	}
+
+	reloaded, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload) error = %v", err)
+	}
+	reloadedQueue := reloaded.MemoryCompactionQueue()
+	if len(reloadedQueue) != 1 || reloadedQueue[0].ID != first.ID || reloadedQueue[0].UpdatedBy != "Memory Clerk" {
+		t.Fatalf("reloaded compaction queue = %#v, want first candidate persisted", reloadedQueue)
+	}
+
+	_, approved, approvedCenter, err := reloaded.ApproveMemoryCompactionCandidate(first.ID, "Larkspur")
+	if err != nil {
+		t.Fatalf("ApproveMemoryCompactionCandidate() error = %v", err)
+	}
+	if approved.Status != memoryCompactionStatusApproved || approved.UpdatedBy != "Larkspur" || approved.UpdatedAt == "" {
+		t.Fatalf("approved candidate = %#v, want approved review state", approved)
+	}
+	if got := findCompactionCandidateByID(approvedCenter.CompactionQueue, first.ID); got == nil || got.Status != memoryCompactionStatusApproved {
+		t.Fatalf("approved center queue = %#v, want approved first candidate", approvedCenter.CompactionQueue)
+	}
+
+	_, second, _, err := reloaded.EnqueueMemoryCompactionCandidate(MemoryCompactionCandidateInput{
+		SourceArtifactID: workspaceArtifact.ID,
+		Reason:           "dismissed candidate keeps reviewer audit without changing memory files",
+		UpdatedBy:        "Memory Clerk",
+	})
+	if err != nil {
+		t.Fatalf("EnqueueMemoryCompactionCandidate(second) error = %v", err)
+	}
+	_, dismissed, dismissedCenter, err := reloaded.DismissMemoryCompactionCandidate(second.ID, "Anne")
+	if err != nil {
+		t.Fatalf("DismissMemoryCompactionCandidate() error = %v", err)
+	}
+	if dismissed.Status != memoryCompactionStatusDismissed || dismissed.UpdatedBy != "Anne" || dismissed.UpdatedAt == "" {
+		t.Fatalf("dismissed candidate = %#v, want dismissed review state", dismissed)
+	}
+	if len(dismissedCenter.CompactionQueue) != 2 {
+		t.Fatalf("dismissed center queue = %#v, want approved + dismissed candidates", dismissedCenter.CompactionQueue)
+	}
+
+	reloadedAgain, err := New(statePath, root)
+	if err != nil {
+		t.Fatalf("New(reload again) error = %v", err)
+	}
+	finalQueue := reloadedAgain.MemoryCompactionQueue()
+	if got := findCompactionCandidateByID(finalQueue, first.ID); got == nil || got.Status != memoryCompactionStatusApproved {
+		t.Fatalf("final queue missing approved candidate: %#v", finalQueue)
+	}
+	if got := findCompactionCandidateByID(finalQueue, second.ID); got == nil || got.Status != memoryCompactionStatusDismissed {
+		t.Fatalf("final queue missing dismissed candidate: %#v", finalQueue)
+	}
+}
+
 func TestMemoryProviderBindingsPersistAndAnnotatePromptSummary(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "data", "state.json")
@@ -644,7 +874,7 @@ func TestMemoryProviderBindingsPersistAndAnnotatePromptSummary(t *testing.T) {
 		!strings.Contains(preview.PromptSummary, "Search Sidecar") ||
 		!strings.Contains(preview.PromptSummary, "External Persistent Memory") ||
 		!strings.Contains(preview.PromptSummary, "Local recall index is missing.") ||
-		!strings.Contains(preview.PromptSummary, "External durable adapter stub is not configured.") {
+		!strings.Contains(preview.PromptSummary, "External persistent memory is not configured.") {
 		t.Fatalf("prompt summary missing provider orchestration details:\n%s", preview.PromptSummary)
 	}
 
@@ -716,7 +946,7 @@ func TestMemoryProviderPreviewFollowsCurrentOwnerAcrossHandoffReload(t *testing.
 	if !strings.Contains(preview.PromptSummary, "Search Sidecar") || !strings.Contains(preview.PromptSummary, "External Persistent Memory") {
 		t.Fatalf("preview summary missing provider labels:\n%s", preview.PromptSummary)
 	}
-	if !strings.Contains(preview.PromptSummary, "Local recall index is missing.") || !strings.Contains(preview.PromptSummary, "External durable adapter stub is not configured.") {
+	if !strings.Contains(preview.PromptSummary, "Local recall index is missing.") || !strings.Contains(preview.PromptSummary, "External persistent memory is not configured.") {
 		t.Fatalf("preview summary missing provider degraded notes:\n%s", preview.PromptSummary)
 	}
 	if strings.Contains(preview.PromptSummary, "优先给 exact-head reviewer verdict 和 scope-local blocker。") {
@@ -822,12 +1052,32 @@ func TestMemoryProviderHealthCheckAndRecoveryLifecycle(t *testing.T) {
 		t.Fatalf("recovered search provider = %#v, want healthy recovery-verified provider", recoveredSearch)
 	}
 
-	_, recoveredExternal, _, err := s.RecoverMemoryProvider(memoryProviderKindExternalPersistent, "Larkspur")
+	_, realExternalRecovery, _, err := s.RecoverMemoryProvider(memoryProviderKindExternalPersistent, "Larkspur")
 	if err != nil {
 		t.Fatalf("RecoverMemoryProvider(external-persistent) error = %v", err)
 	}
-	if recoveredExternal.Status != memoryProviderStatusHealthy || recoveredExternal.LastRecoverySummary == "" || !strings.Contains(recoveredExternal.NextAction, "real remote durable sink") {
-		t.Fatalf("recovered external provider = %#v, want healthy local relay stub with next action", recoveredExternal)
+	if realExternalRecovery.Status != memoryProviderStatusDegraded ||
+		!strings.Contains(realExternalRecovery.LastSummary, "not configured") ||
+		!strings.Contains(realExternalRecovery.NextAction, "real external durable memory config") {
+		t.Fatalf("real external recovery = %#v, want degraded not-configured truth", realExternalRecovery)
+	}
+
+	writeFakeExternalMemoryProviderAdapter(t, root, memoryProviderStatusDegraded)
+	_, fakeCheckedProviders, _, err := s.CheckMemoryProviders(memoryProviderKindExternalPersistent, "Larkspur")
+	if err != nil {
+		t.Fatalf("CheckMemoryProviders(external-persistent fake) error = %v", err)
+	}
+	fakeChecked := findMemoryProviderByKind(fakeCheckedProviders, memoryProviderKindExternalPersistent)
+	if fakeChecked == nil || fakeChecked.Status != memoryProviderStatusDegraded || !strings.Contains(fakeChecked.LastError, "fake outage") {
+		t.Fatalf("fake checked external provider = %#v, want degraded fake outage", fakeChecked)
+	}
+
+	_, recoveredExternal, _, err := s.RecoverMemoryProvider(memoryProviderKindExternalPersistent, "Larkspur")
+	if err != nil {
+		t.Fatalf("RecoverMemoryProvider(external-persistent fake) error = %v", err)
+	}
+	if recoveredExternal.Status != memoryProviderStatusHealthy || recoveredExternal.LastRecoverySummary == "" || !strings.Contains(recoveredExternal.LastSummary, "Fake external memory provider recovered") {
+		t.Fatalf("recovered fake external provider = %#v, want healthy fake adapter recovery", recoveredExternal)
 	}
 
 	workspaceMemoryPath := filepath.Join(root, "MEMORY.md")
@@ -865,7 +1115,7 @@ func TestMemoryProviderHealthCheckAndRecoveryLifecycle(t *testing.T) {
 	if got := findMemoryProviderByKind(preview.Providers, memoryProviderKindExternalPersistent); got == nil || got.Status != memoryProviderStatusHealthy {
 		t.Fatalf("preview external provider after recovery = %#v, want healthy", got)
 	}
-	if !strings.Contains(preview.PromptSummary, "External durable adapter stub is configured in local relay mode.") ||
+	if !strings.Contains(preview.PromptSummary, "Fake external memory provider recovered") ||
 		!strings.Contains(preview.PromptSummary, "Search sidecar index ready") {
 		t.Fatalf("prompt summary missing recovered provider health notes:\n%s", preview.PromptSummary)
 	}
@@ -879,7 +1129,7 @@ func TestMemoryProviderHealthCheckAndRecoveryLifecycle(t *testing.T) {
 		t.Fatalf("reloaded search provider = %#v, want persisted healthy provider with activity", got)
 	}
 	if got := findMemoryProviderByKind(reloadedCenter.Providers, memoryProviderKindExternalPersistent); got == nil || got.Status != memoryProviderStatusHealthy || got.LastRecoverySummary == "" {
-		t.Fatalf("reloaded external provider = %#v, want persisted healthy relay stub", got)
+		t.Fatalf("reloaded external provider = %#v, want persisted healthy fake adapter", got)
 	}
 	if got := findMemoryProviderByKind(reloadedCenter.Providers, memoryProviderKindWorkspaceFile); got == nil || got.Status != memoryProviderStatusHealthy || got.LastRecoverySummary == "" {
 		t.Fatalf("reloaded workspace provider = %#v, want persisted recovered scaffold", got)
@@ -954,6 +1204,15 @@ func findPromotionByID(promotions []MemoryPromotion, promotionID string) *Memory
 	return nil
 }
 
+func findCompactionCandidateByID(candidates []MemoryCompactionCandidate, candidateID string) *MemoryCompactionCandidate {
+	for index := range candidates {
+		if candidates[index].ID == candidateID {
+			return &candidates[index]
+		}
+	}
+	return nil
+}
+
 func findMemoryProviderByKind(providers []MemoryProviderBinding, kind string) *MemoryProviderBinding {
 	for index := range providers {
 		if providers[index].Kind == kind {
@@ -961,4 +1220,27 @@ func findMemoryProviderByKind(providers []MemoryProviderBinding, kind string) *M
 		}
 	}
 	return nil
+}
+
+func writeFakeExternalMemoryProviderAdapter(t *testing.T, root string, status string) {
+	t.Helper()
+
+	fake := memoryFakeExternalProviderAdapterFile{
+		Version:        1,
+		Status:         status,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
+		Summary:        "Fake external memory provider is degraded for local harness verification.",
+		Detail:         "Deterministic fake provider adapter used only by tests and local harnesses.",
+		LastError:      "fake outage",
+		NextAction:     "Run fake provider recovery.",
+		RecoveryStatus: memoryProviderStatusHealthy,
+	}
+	if status == memoryProviderStatusHealthy {
+		fake.Summary = "Fake external memory provider is healthy for local harness verification."
+		fake.LastError = ""
+		fake.NextAction = "Keep this fake adapter confined to tests or local harnesses."
+	}
+	if err := writeMemoryProviderJSONFile(memoryFakeExternalPersistentAdapterPath(root), fake); err != nil {
+		t.Fatalf("write fake external memory provider adapter: %v", err)
+	}
 }

@@ -1,0 +1,95 @@
+{
+  "story": "US-009",
+  "name": "Auth recovery token refresh browser smoke",
+  "status": "passed",
+  "startedAt": "2026-04-28T15:07:37.270Z",
+  "endedAt": "2026-04-28T15:07:40.269Z",
+  "command": "pnpm test:headed-auth-recovery-refresh",
+  "artifactsDir": "/Users/lark/Lark_Project/9_OpenShock/output/testing/us-009-auth-recovery-refresh/run-attempt",
+  "reportPath": "/Users/lark/Lark_Project/9_OpenShock/output/testing/us-009-auth-recovery-refresh/report.json",
+  "webURL": "http://127.0.0.1:63804",
+  "serverURL": "http://127.0.0.1:63803",
+  "checkpoints": [
+    {
+      "at": "2026-04-28T15:07:40.033Z",
+      "step": "loaded /access in a real browser"
+    },
+    {
+      "at": "2026-04-28T15:07:40.087Z",
+      "step": "owner logged in through browser credentials cookie",
+      "email": "larkspur@openshock.dev"
+    },
+    {
+      "at": "2026-04-28T15:07:40.122Z",
+      "step": "owner invited reviewer",
+      "memberId": "member-recovery-refresh-reviewer-openshock-dev"
+    },
+    {
+      "at": "2026-04-28T15:07:40.166Z",
+      "step": "reviewer logged in with pending recovery gates",
+      "status": "active",
+      "email": "recovery-refresh-reviewer@openshock.dev",
+      "role": "member",
+      "memberStatus": "invited",
+      "deviceIdPresent": true,
+      "deviceLabel": "Reviewer Phone",
+      "deviceAuthStatus": "pending",
+      "emailVerificationStatus": "pending",
+      "recoveryStatus": "verification_required",
+      "permissionCount": 7
+    },
+    {
+      "at": "2026-04-28T15:07:40.202Z",
+      "step": "verify_email consumed and /v1/auth/session reflects reviewer",
+      "status": "active",
+      "email": "recovery-refresh-reviewer@openshock.dev",
+      "role": "member",
+      "memberStatus": "invited",
+      "deviceIdPresent": true,
+      "deviceLabel": "Reviewer Phone",
+      "deviceAuthStatus": "pending",
+      "emailVerificationStatus": "verified",
+      "recoveryStatus": "device_approval_required",
+      "permissionCount": 7
+    },
+    {
+      "at": "2026-04-28T15:07:40.231Z",
+      "step": "authorize_device consumed and final /v1/auth/session reflects recovered caller",
+      "status": "active",
+      "email": "recovery-refresh-reviewer@openshock.dev",
+      "role": "member",
+      "memberStatus": "invited",
+      "deviceIdPresent": true,
+      "deviceLabel": "Reviewer Phone",
+      "deviceAuthStatus": "authorized",
+      "emailVerificationStatus": "verified",
+      "recoveryStatus": "approval_required",
+      "permissionCount": 7
+    }
+  ],
+  "failedResponses": [],
+  "consoleProblems": [],
+  "finalSession": {
+    "status": "active",
+    "email": "recovery-refresh-reviewer@openshock.dev",
+    "role": "member",
+    "memberStatus": "invited",
+    "deviceIdPresent": true,
+    "deviceLabel": "Reviewer Phone",
+    "deviceAuthStatus": "authorized",
+    "emailVerificationStatus": "verified",
+    "recoveryStatus": "approval_required",
+    "permissionCount": 7
+  },
+  "screenshots": [
+    {
+      "name": "access-loaded",
+      "path": "/Users/lark/Lark_Project/9_OpenShock/output/testing/us-009-auth-recovery-refresh/run-attempt/run/screenshots/01-access-loaded.png"
+    },
+    {
+      "name": "final-recovered-session",
+      "path": "/Users/lark/Lark_Project/9_OpenShock/output/testing/us-009-auth-recovery-refresh/run-attempt/run/screenshots/02-final-recovered-session.png"
+    }
+  ],
+  "error": null
+}

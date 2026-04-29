@@ -48,6 +48,7 @@ export type MemoryArtifactDetail = {
 export type MemoryPolicyMode = "balanced" | "governed-first";
 export type MemoryPromotionKind = "skill" | "policy";
 export type MemoryPromotionStatus = "pending_review" | "approved" | "rejected";
+export type MemoryCompactionStatus = "candidate" | "approved" | "dismissed";
 export type MemoryProviderKind = "workspace-file" | "search-sidecar" | "external-persistent";
 export type MemoryProviderStatus = "healthy" | "standby" | "degraded";
 export type MemoryProviderActivityAction = "check" | "recovery";
@@ -184,11 +185,24 @@ export type MemoryCleanupState = {
   nextRunAt?: string;
 };
 
+export type MemoryCompactionCandidate = {
+  id: string;
+  sourceArtifactId: string;
+  sourcePath: string;
+  sourceSummary: string;
+  reason: string;
+  status: MemoryCompactionStatus;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy?: string;
+};
+
 export type MemoryCenter = {
 	policy: MemoryInjectionPolicy;
 	previews: MemoryInjectionPreview[];
 	providers: MemoryProviderBinding[];
 	promotions: MemoryPromotion[];
+	compactionQueue: MemoryCompactionCandidate[];
 	cleanup: MemoryCleanupState;
 	pendingCount: number;
   approvedCount: number;
@@ -215,6 +229,10 @@ export type MemoryPromotionInput = {
 export type MemoryPromotionReviewInput = {
   status: Extract<MemoryPromotionStatus, "approved" | "rejected">;
   reviewNote?: string;
+};
+
+export type MemoryCompactionReviewInput = {
+  status: Extract<MemoryCompactionStatus, "approved" | "dismissed">;
 };
 
 export type MemoryFeedbackInput = {
@@ -248,6 +266,11 @@ type MemoryPromotionResponse = {
 	center: MemoryCenter;
 };
 
+type MemoryCompactionResponse = {
+	candidate: MemoryCompactionCandidate;
+	center: MemoryCenter;
+};
+
 type MemoryCleanupResponse = {
   cleanup: MemoryCleanupRun;
   center: MemoryCenter;
@@ -276,6 +299,7 @@ const EMPTY_MEMORY_CENTER: MemoryCenter = {
   previews: [],
   providers: [],
   promotions: [],
+  compactionQueue: [],
   cleanup: {
     due: false,
     dueCount: 0,
@@ -432,6 +456,18 @@ export function useLiveMemoryCenter() {
     [commitCenter]
   );
 
+  const reviewCompactionCandidate = useCallback(
+    async (candidateId: string, input: MemoryCompactionReviewInput) => {
+      const payload = await requestJSON<MemoryCompactionResponse>(`/v1/memory-center/compaction/${candidateId}/review`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      commitCenter(payload.center);
+      return payload;
+    },
+    [commitCenter]
+  );
+
   const runCleanup = useCallback(async () => {
     const payload = await requestJSON<MemoryCleanupResponse>("/v1/memory-center/cleanup", {
       method: "POST",
@@ -475,6 +511,7 @@ export function useLiveMemoryCenter() {
     recoverProvider,
     createPromotion,
     reviewPromotion,
+    reviewCompactionCandidate,
     runCleanup,
     submitFeedback,
     forgetMemory,

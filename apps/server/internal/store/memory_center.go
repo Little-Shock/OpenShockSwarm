@@ -33,6 +33,10 @@ const (
 	memoryPromotionStatusApproved = "approved"
 	memoryPromotionStatusRejected = "rejected"
 
+	memoryCompactionStatusCandidate = "candidate"
+	memoryCompactionStatusApproved  = "approved"
+	memoryCompactionStatusDismissed = "dismissed"
+
 	memoryCleanupStatusCleaned   = "cleaned"
 	memoryCleanupStatusNoChanges = "no_changes"
 
@@ -46,18 +50,20 @@ const (
 )
 
 var (
-	ErrMemoryPolicyModeInvalid         = errors.New("memory policy mode is invalid")
-	ErrMemoryPolicyMaxItemsInvalid     = errors.New("memory policy maxItems is invalid")
-	ErrMemoryArtifactNotFound          = errors.New("memory artifact not found")
-	ErrMemoryPromotionKindInvalid      = errors.New("memory promotion kind is invalid")
-	ErrMemoryPromotionTitleRequired    = errors.New("memory promotion title is required")
-	ErrMemoryPromotionNotFound         = errors.New("memory promotion not found")
-	ErrMemoryPromotionReviewInvalid    = errors.New("memory promotion review decision is invalid")
-	ErrMemoryProviderBindingsRequired  = errors.New("memory provider bindings are required")
-	ErrMemoryProviderKindInvalid       = errors.New("memory provider kind is invalid")
-	ErrMemoryProviderScopeInvalid      = errors.New("memory provider scope is invalid")
-	ErrMemoryProviderWorkspaceRequired = errors.New("workspace-file provider must stay enabled")
-	ErrMemoryProviderNotFound          = errors.New("memory provider not found")
+	ErrMemoryPolicyModeInvalid           = errors.New("memory policy mode is invalid")
+	ErrMemoryPolicyMaxItemsInvalid       = errors.New("memory policy maxItems is invalid")
+	ErrMemoryArtifactNotFound            = errors.New("memory artifact not found")
+	ErrMemoryPromotionKindInvalid        = errors.New("memory promotion kind is invalid")
+	ErrMemoryPromotionTitleRequired      = errors.New("memory promotion title is required")
+	ErrMemoryPromotionNotFound           = errors.New("memory promotion not found")
+	ErrMemoryPromotionReviewInvalid      = errors.New("memory promotion review decision is invalid")
+	ErrMemoryProviderBindingsRequired    = errors.New("memory provider bindings are required")
+	ErrMemoryProviderKindInvalid         = errors.New("memory provider kind is invalid")
+	ErrMemoryProviderScopeInvalid        = errors.New("memory provider scope is invalid")
+	ErrMemoryProviderWorkspaceRequired   = errors.New("workspace-file provider must stay enabled")
+	ErrMemoryProviderNotFound            = errors.New("memory provider not found")
+	ErrMemoryCompactionReasonRequired    = errors.New("memory compaction reason is required")
+	ErrMemoryCompactionCandidateNotFound = errors.New("memory compaction candidate not found")
 )
 
 type MemoryInjectionPolicy struct {
@@ -141,6 +147,31 @@ type MemoryCleanupRun struct {
 	Stats       MemoryCleanupStats `json:"stats"`
 }
 
+type MemoryCleanupPreviewItem struct {
+	ID            string `json:"id"`
+	MemoryID      string `json:"memoryId"`
+	SourcePath    string `json:"sourcePath"`
+	SourceSummary string `json:"sourceSummary"`
+	SourceVersion int    `json:"sourceVersion"`
+	Kind          string `json:"kind"`
+	Title         string `json:"title"`
+	Status        string `json:"status"`
+	TargetPath    string `json:"targetPath"`
+	Reason        string `json:"reason"`
+	ProposedAt    string `json:"proposedAt"`
+	ReviewedAt    string `json:"reviewedAt,omitempty"`
+}
+
+type MemoryCleanupPreview struct {
+	DryRun       bool                       `json:"dryRun"`
+	Due          bool                       `json:"due"`
+	DueCount     int                        `json:"dueCount"`
+	NextRunAt    string                     `json:"nextRunAt"`
+	PendingAfter int                        `json:"pendingAfter"`
+	Stats        MemoryCleanupStats         `json:"stats"`
+	Items        []MemoryCleanupPreviewItem `json:"items"`
+}
+
 type MemoryCleanupState struct {
 	LastRunAt    string             `json:"lastRunAt,omitempty"`
 	LastRunBy    string             `json:"lastRunBy,omitempty"`
@@ -152,6 +183,18 @@ type MemoryCleanupState struct {
 	Due          bool               `json:"due"`
 	DueCount     int                `json:"dueCount"`
 	NextRunAt    string             `json:"nextRunAt,omitempty"`
+}
+
+type MemoryCompactionCandidate struct {
+	ID               string `json:"id"`
+	SourceArtifactID string `json:"sourceArtifactId"`
+	SourcePath       string `json:"sourcePath"`
+	SourceSummary    string `json:"sourceSummary"`
+	Reason           string `json:"reason"`
+	Status           string `json:"status"`
+	CreatedAt        string `json:"createdAt"`
+	UpdatedAt        string `json:"updatedAt"`
+	UpdatedBy        string `json:"updatedBy,omitempty"`
 }
 
 type MemoryProviderActivityRun struct {
@@ -193,14 +236,15 @@ type MemoryProviderBinding struct {
 }
 
 type MemoryCenter struct {
-	Policy        MemoryInjectionPolicy    `json:"policy"`
-	Previews      []MemoryInjectionPreview `json:"previews"`
-	Providers     []MemoryProviderBinding  `json:"providers"`
-	Promotions    []MemoryPromotion        `json:"promotions"`
-	Cleanup       MemoryCleanupState       `json:"cleanup"`
-	PendingCount  int                      `json:"pendingCount"`
-	ApprovedCount int                      `json:"approvedCount"`
-	RejectedCount int                      `json:"rejectedCount"`
+	Policy          MemoryInjectionPolicy       `json:"policy"`
+	Previews        []MemoryInjectionPreview    `json:"previews"`
+	Providers       []MemoryProviderBinding     `json:"providers"`
+	Promotions      []MemoryPromotion           `json:"promotions"`
+	CompactionQueue []MemoryCompactionCandidate `json:"compactionQueue"`
+	Cleanup         MemoryCleanupState          `json:"cleanup"`
+	PendingCount    int                         `json:"pendingCount"`
+	ApprovedCount   int                         `json:"approvedCount"`
+	RejectedCount   int                         `json:"rejectedCount"`
 }
 
 type MemoryPolicyInput struct {
@@ -228,11 +272,18 @@ type MemoryPromotionReviewInput struct {
 	ReviewedBy string
 }
 
+type MemoryCompactionCandidateInput struct {
+	SourceArtifactID string
+	Reason           string
+	UpdatedBy        string
+}
+
 type memoryCenterStateFile struct {
-	Policy     MemoryInjectionPolicy   `json:"policy"`
-	Providers  []MemoryProviderBinding `json:"providers"`
-	Promotions []MemoryPromotion       `json:"promotions"`
-	Cleanup    MemoryCleanupState      `json:"cleanup"`
+	Policy          MemoryInjectionPolicy       `json:"policy"`
+	Providers       []MemoryProviderBinding     `json:"providers"`
+	Promotions      []MemoryPromotion           `json:"promotions"`
+	CompactionQueue []MemoryCompactionCandidate `json:"compactionQueue"`
+	Cleanup         MemoryCleanupState          `json:"cleanup"`
 }
 
 type memoryProviderObservation struct {
@@ -253,6 +304,7 @@ type memorySearchSidecarIndexFile struct {
 type memoryCleanupEvaluation struct {
 	kept         []MemoryPromotion
 	stats        MemoryCleanupStats
+	items        []MemoryCleanupPreviewItem
 	pendingAfter int
 	nextRunAt    string
 }
@@ -270,6 +322,17 @@ type memoryExternalPersistentAdapterFile struct {
 	WriteScopes     []string `json:"writeScopes"`
 }
 
+type memoryFakeExternalProviderAdapterFile struct {
+	Version        int    `json:"version"`
+	Status         string `json:"status"`
+	GeneratedAt    string `json:"generatedAt"`
+	Summary        string `json:"summary"`
+	Detail         string `json:"detail,omitempty"`
+	LastError      string `json:"lastError,omitempty"`
+	NextAction     string `json:"nextAction,omitempty"`
+	RecoveryStatus string `json:"recoveryStatus,omitempty"`
+}
+
 func defaultMemoryCenterState(now string) memoryCenterStateFile {
 	return memoryCenterStateFile{
 		Policy: MemoryInjectionPolicy{
@@ -282,8 +345,9 @@ func defaultMemoryCenterState(now string) memoryCenterStateFile {
 			UpdatedAt:                now,
 			UpdatedBy:                "System",
 		},
-		Providers:  defaultMemoryProviderBindings(now),
-		Promotions: []MemoryPromotion{},
+		Providers:       defaultMemoryProviderBindings(now),
+		Promotions:      []MemoryPromotion{},
+		CompactionQueue: []MemoryCompactionCandidate{},
 		Cleanup: MemoryCleanupState{
 			Ledger: []MemoryCleanupRun{},
 		},
@@ -588,8 +652,62 @@ func (s *Store) normalizeMemoryCenterStateLocked(state memoryCenterStateFile) me
 	})
 
 	state.Promotions = normalizedPromotions
+	state.CompactionQueue = normalizeMemoryCompactionQueue(state.CompactionQueue, now)
 	state.Cleanup = normalizeMemoryCleanupState(state.Cleanup, now)
 	return state
+}
+
+func normalizeMemoryCompactionQueue(items []MemoryCompactionCandidate, now string) []MemoryCompactionCandidate {
+	normalized := make([]MemoryCompactionCandidate, 0, len(items))
+	for _, item := range items {
+		sourceArtifactID := strings.TrimSpace(item.SourceArtifactID)
+		reason := strings.TrimSpace(item.Reason)
+		if sourceArtifactID == "" || reason == "" {
+			continue
+		}
+
+		status := strings.TrimSpace(strings.ToLower(item.Status))
+		switch status {
+		case memoryCompactionStatusApproved, memoryCompactionStatusDismissed:
+		default:
+			status = memoryCompactionStatusCandidate
+		}
+
+		item.ID = defaultString(strings.TrimSpace(item.ID), fmt.Sprintf("memory-compaction-%s-%s", slugify(sourceArtifactID), slugify(reason)))
+		item.SourceArtifactID = sourceArtifactID
+		item.SourcePath = filepath.ToSlash(strings.TrimSpace(item.SourcePath))
+		item.SourceSummary = strings.TrimSpace(item.SourceSummary)
+		item.Reason = reason
+		item.Status = status
+		item.CreatedAt = defaultString(strings.TrimSpace(item.CreatedAt), now)
+		item.UpdatedAt = defaultString(strings.TrimSpace(item.UpdatedAt), item.CreatedAt)
+		item.UpdatedBy = defaultString(strings.TrimSpace(item.UpdatedBy), "System")
+		normalized = append(normalized, item)
+	}
+
+	sort.SliceStable(normalized, func(i, j int) bool {
+		if normalized[i].Status != normalized[j].Status {
+			return memoryCompactionStatusRank(normalized[i].Status) < memoryCompactionStatusRank(normalized[j].Status)
+		}
+		if normalized[i].UpdatedAt != normalized[j].UpdatedAt {
+			return normalized[i].UpdatedAt > normalized[j].UpdatedAt
+		}
+		return normalized[i].ID < normalized[j].ID
+	})
+	return normalized
+}
+
+func memoryCompactionStatusRank(status string) int {
+	switch status {
+	case memoryCompactionStatusCandidate:
+		return 0
+	case memoryCompactionStatusApproved:
+		return 1
+	case memoryCompactionStatusDismissed:
+		return 2
+	default:
+		return 3
+	}
 }
 
 func normalizeMemoryProviderBindings(items []MemoryProviderBinding, defaults []MemoryProviderBinding, now string, workspaceRoot string) []MemoryProviderBinding {
@@ -819,11 +937,14 @@ func observeExternalPersistentMemoryProvider(workspaceRoot string, enabled bool)
 	configPath := memoryExternalPersistentConfigPath(workspaceRoot)
 	body, err := os.ReadFile(configPath)
 	if err != nil {
+		if observation, ok := observeFakeExternalPersistentMemoryProvider(workspaceRoot); ok {
+			return observation
+		}
 		return memoryProviderObservation{
 			Status:     memoryProviderStatusDegraded,
-			Summary:    "External durable adapter stub is not configured.",
-			LastError:  fmt.Sprintf("External persistent config not found at %s", filepath.ToSlash(configPath)),
-			NextAction: "Attempt recovery to scaffold the local export adapter and relay files.",
+			Summary:    "External persistent memory is not configured.",
+			LastError:  fmt.Sprintf("No real external persistent config found at %s", filepath.ToSlash(configPath)),
+			NextAction: "Add a real external durable memory config, or use the fake adapter only in local harnesses.",
 		}
 	}
 
@@ -837,13 +958,20 @@ func observeExternalPersistentMemoryProvider(workspaceRoot string, enabled bool)
 		}
 	}
 
+	if !memoryExternalPersistentConfigIsReal(config) {
+		if observation, ok := observeFakeExternalPersistentMemoryProvider(workspaceRoot); ok {
+			return observation
+		}
+		return observeLocalExternalPersistentRelayStub(workspaceRoot, configPath, config)
+	}
+
 	relayPath := strings.TrimSpace(config.RelayPath)
 	if relayPath == "" {
 		return memoryProviderObservation{
 			Status:     memoryProviderStatusDegraded,
-			Summary:    "External durable adapter stub is missing a relay path.",
+			Summary:    "External persistent memory is configured but missing a relay path.",
 			LastError:  "External persistent config does not declare a relay path for queued exports.",
-			NextAction: "Attempt recovery to recreate the adapter stub with a relay queue file.",
+			NextAction: "Add a relay path to the real external durable memory config.",
 		}
 	}
 
@@ -854,17 +982,99 @@ func observeExternalPersistentMemoryProvider(workspaceRoot string, enabled bool)
 	if _, err := os.Stat(relayAbsolute); err != nil {
 		return memoryProviderObservation{
 			Status:     memoryProviderStatusDegraded,
-			Summary:    "External durable relay queue is missing.",
+			Summary:    "External persistent memory is configured but its relay queue is missing.",
 			LastError:  fmt.Sprintf("Relay queue not found at %s", filepath.ToSlash(relayAbsolute)),
-			NextAction: "Attempt recovery to recreate the relay queue and adapter stub.",
+			NextAction: "Restore the configured relay queue before external durable writes resume.",
 		}
 	}
 
 	return memoryProviderObservation{
 		Status:     memoryProviderStatusHealthy,
-		Summary:    "External durable adapter stub is configured in local relay mode.",
+		Summary:    "External persistent memory is configured with a real durable sink.",
 		Detail:     fmt.Sprintf("Config: %s / relay: %s / mode: %s", filepath.ToSlash(configPath), filepath.ToSlash(relayAbsolute), defaultString(config.Mode, "unknown")),
-		NextAction: "Attach a real remote durable sink when available; current relay stays local-only.",
+		NextAction: "External durable memory is available for governed exports.",
+	}
+}
+
+func observeFakeExternalPersistentMemoryProvider(workspaceRoot string) (memoryProviderObservation, bool) {
+	path := memoryFakeExternalPersistentAdapterPath(workspaceRoot)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return memoryProviderObservation{}, false
+		}
+		return memoryProviderObservation{
+			Status:     memoryProviderStatusDegraded,
+			Summary:    "Fake external memory provider adapter is unreadable.",
+			LastError:  fmt.Sprintf("Fake external adapter at %s cannot be read.", filepath.ToSlash(path)),
+			NextAction: "Rewrite the fake adapter file or remove it before running local harness checks.",
+		}, true
+	}
+
+	var fake memoryFakeExternalProviderAdapterFile
+	if err := json.Unmarshal(body, &fake); err != nil {
+		return memoryProviderObservation{
+			Status:     memoryProviderStatusDegraded,
+			Summary:    "Fake external memory provider adapter is invalid.",
+			LastError:  fmt.Sprintf("Fake external adapter at %s is invalid JSON.", filepath.ToSlash(path)),
+			NextAction: "Rewrite the fake adapter file with a healthy or degraded status.",
+		}, true
+	}
+
+	status := normalizeMemoryProviderStatus(fake.Status)
+	summary := strings.TrimSpace(fake.Summary)
+	if summary == "" {
+		switch status {
+		case memoryProviderStatusHealthy:
+			summary = "Fake external memory provider is healthy for local harness verification."
+		case memoryProviderStatusDegraded:
+			summary = "Fake external memory provider is degraded for local harness verification."
+		default:
+			summary = "Fake external memory provider is standing by for local harness verification."
+		}
+	}
+	nextAction := strings.TrimSpace(fake.NextAction)
+	if nextAction == "" && status == memoryProviderStatusDegraded {
+		nextAction = "Run fake provider recovery to simulate a durable fallback returning to service."
+	}
+
+	return memoryProviderObservation{
+		Status:     status,
+		Summary:    summary,
+		Detail:     strings.TrimSpace(fake.Detail),
+		LastError:  strings.TrimSpace(fake.LastError),
+		NextAction: nextAction,
+	}, true
+}
+
+func memoryExternalPersistentConfigIsReal(config memoryExternalPersistentAdapterFile) bool {
+	mode := strings.TrimSpace(strings.ToLower(config.Mode))
+	return mode != "" && mode != "local-export-stub"
+}
+
+func observeLocalExternalPersistentRelayStub(workspaceRoot string, configPath string, config memoryExternalPersistentAdapterFile) memoryProviderObservation {
+	relayPath := strings.TrimSpace(config.RelayPath)
+	if relayPath != "" {
+		relayAbsolute := relayPath
+		if !filepath.IsAbs(relayAbsolute) {
+			relayAbsolute = filepath.Join(workspaceRoot, filepath.FromSlash(relayPath))
+		}
+		if _, err := os.Stat(relayAbsolute); err != nil {
+			return memoryProviderObservation{
+				Status:     memoryProviderStatusDegraded,
+				Summary:    "External durable relay queue is missing.",
+				LastError:  fmt.Sprintf("Relay queue not found at %s", filepath.ToSlash(relayAbsolute)),
+				NextAction: "Recreate the local relay queue, then add a real external durable memory config before enabling production writes.",
+			}
+		}
+	}
+
+	return memoryProviderObservation{
+		Status:     memoryProviderStatusDegraded,
+		Summary:    "External persistent memory is not configured; only a local relay stub is present.",
+		Detail:     fmt.Sprintf("Stub config: %s / mode: %s", filepath.ToSlash(configPath), defaultString(config.Mode, "local-export-stub")),
+		LastError:  "No real external durable memory sink is attached.",
+		NextAction: "Add a real external durable memory config, or keep using the fake adapter only in local harnesses.",
 	}
 }
 
@@ -904,6 +1114,10 @@ func memorySearchSidecarIndexPath(workspaceRoot string) string {
 
 func memoryExternalPersistentConfigPath(workspaceRoot string) string {
 	return filepath.Join(workspaceRoot, ".openshock", "memory", "external-persistent", "config.json")
+}
+
+func memoryFakeExternalPersistentAdapterPath(workspaceRoot string) string {
+	return filepath.Join(workspaceRoot, ".openshock", "memory", "external-persistent", "fake-adapter.json")
 }
 
 func normalizeMemoryCleanupState(state MemoryCleanupState, now string) MemoryCleanupState {
@@ -1039,11 +1253,12 @@ func (s *Store) MemoryCenter() MemoryCenter {
 
 func buildMemoryCenter(snapshot State, state memoryCenterStateFile) MemoryCenter {
 	center := MemoryCenter{
-		Policy:     state.Policy,
-		Previews:   buildMemoryInjectionPreviews(snapshot, state.Policy, state.Providers),
-		Providers:  append([]MemoryProviderBinding{}, state.Providers...),
-		Promotions: append([]MemoryPromotion{}, state.Promotions...),
-		Cleanup:    state.Cleanup,
+		Policy:          state.Policy,
+		Previews:        buildMemoryInjectionPreviews(snapshot, state.Policy, state.Providers),
+		Providers:       append([]MemoryProviderBinding{}, state.Providers...),
+		Promotions:      append([]MemoryPromotion{}, state.Promotions...),
+		CompactionQueue: append([]MemoryCompactionCandidate{}, state.CompactionQueue...),
+		Cleanup:         state.Cleanup,
 	}
 
 	for _, promotion := range state.Promotions {
@@ -1537,6 +1752,32 @@ func (s *Store) RunDueMemoryCleanup(triggeredBy string) (State, *MemoryCleanupRu
 	return snapshot, &run, buildMemoryCenter(snapshot, state), true, nil
 }
 
+func (s *Store) PreviewMemoryCleanup() (State, MemoryCleanupPreview, MemoryCenter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ensureMemorySubsystemLocked()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryCleanupPreview{}, MemoryCenter{}, err
+	}
+
+	evaluation := evaluateMemoryCleanup(s.state, state.Promotions, time.Now().UTC())
+	preview := MemoryCleanupPreview{
+		DryRun:       true,
+		Due:          evaluation.stats.TotalRemoved > 0,
+		DueCount:     evaluation.stats.TotalRemoved,
+		NextRunAt:    evaluation.nextRunAt,
+		PendingAfter: evaluation.pendingAfter,
+		Stats:        evaluation.stats,
+		Items:        append([]MemoryCleanupPreviewItem{}, evaluation.items...),
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, preview, buildMemoryCenter(snapshot, state), nil
+}
+
 func (s *Store) runMemoryCleanupLocked(state *memoryCenterStateFile, actor string) MemoryCleanupRun {
 	now := time.Now().UTC()
 	evaluation := evaluateMemoryCleanup(s.state, state.Promotions, now)
@@ -1586,6 +1827,7 @@ func evaluateMemoryCleanup(snapshot State, promotions []MemoryPromotion, now tim
 	kept := make([]MemoryPromotion, 0, len(promotions))
 	seenPending := map[string]bool{}
 	stats := MemoryCleanupStats{}
+	items := []MemoryCleanupPreviewItem{}
 	var nextRunAt time.Time
 	hasNextRunAt := false
 
@@ -1593,6 +1835,7 @@ func evaluateMemoryCleanup(snapshot State, promotions []MemoryPromotion, now tim
 		artifact := findMemoryArtifactByIDInSnapshot(snapshot, promotion.MemoryID)
 		if promotion.Status != memoryPromotionStatusApproved && artifact == nil {
 			stats.OrphanedPromotions++
+			items = append(items, buildMemoryCleanupPreviewItem(promotion, "orphaned-promotion"))
 			continue
 		}
 
@@ -1600,20 +1843,24 @@ func evaluateMemoryCleanup(snapshot State, promotions []MemoryPromotion, now tim
 		case memoryPromotionStatusPending:
 			if artifact != nil && artifact.Forgotten {
 				stats.ForgottenSourcePending++
+				items = append(items, buildMemoryCleanupPreviewItem(promotion, "forgotten-source"))
 				continue
 			}
 			if latestVersion := artifactVersions[promotion.MemoryID]; artifact != nil && latestVersion > promotion.SourceVersion && promotion.SourceVersion > 0 {
 				stats.SupersededPending++
+				items = append(items, buildMemoryCleanupPreviewItem(promotion, "superseded-source-version"))
 				continue
 			}
 			if memoryCleanupExpired(promotion.ProposedAt, now, memoryCleanupPendingTTL) {
 				stats.ExpiredPending++
+				items = append(items, buildMemoryCleanupPreviewItem(promotion, "expired-pending-review"))
 				continue
 			}
 
 			key := memoryPromotionCleanupKey(promotion)
 			if seenPending[key] {
 				stats.DedupedPending++
+				items = append(items, buildMemoryCleanupPreviewItem(promotion, "duplicate-pending-request"))
 				continue
 			}
 			seenPending[key] = true
@@ -1621,11 +1868,13 @@ func evaluateMemoryCleanup(snapshot State, promotions []MemoryPromotion, now tim
 		case memoryPromotionStatusRejected:
 			if artifact != nil && artifact.Forgotten {
 				stats.ForgottenSourcePending++
+				items = append(items, buildMemoryCleanupPreviewItem(promotion, "forgotten-source"))
 				continue
 			}
 			reviewedAt := defaultString(strings.TrimSpace(promotion.ReviewedAt), promotion.ProposedAt)
 			if memoryCleanupExpired(reviewedAt, now, memoryCleanupRejectedTTL) {
 				stats.ExpiredRejected++
+				items = append(items, buildMemoryCleanupPreviewItem(promotion, "expired-rejected-review"))
 				continue
 			}
 			recordMemoryCleanupNextRunAt(&nextRunAt, &hasNextRunAt, reviewedAt, memoryCleanupRejectedTTL)
@@ -1638,12 +1887,30 @@ func evaluateMemoryCleanup(snapshot State, promotions []MemoryPromotion, now tim
 	evaluation := memoryCleanupEvaluation{
 		kept:         kept,
 		stats:        stats,
+		items:        items,
 		pendingAfter: countPromotionsByStatus(kept, memoryPromotionStatusPending),
 	}
 	if hasNextRunAt {
 		evaluation.nextRunAt = nextRunAt.UTC().Format(time.RFC3339)
 	}
 	return evaluation
+}
+
+func buildMemoryCleanupPreviewItem(promotion MemoryPromotion, reason string) MemoryCleanupPreviewItem {
+	return MemoryCleanupPreviewItem{
+		ID:            promotion.ID,
+		MemoryID:      promotion.MemoryID,
+		SourcePath:    promotion.SourcePath,
+		SourceSummary: promotion.SourceSummary,
+		SourceVersion: promotion.SourceVersion,
+		Kind:          promotion.Kind,
+		Title:         promotion.Title,
+		Status:        promotion.Status,
+		TargetPath:    promotion.TargetPath,
+		Reason:        reason,
+		ProposedAt:    promotion.ProposedAt,
+		ReviewedAt:    promotion.ReviewedAt,
+	}
 }
 
 func memoryCleanupExpired(value string, now time.Time, ttl time.Duration) bool {
@@ -2064,6 +2331,9 @@ func (s *Store) recoverMemoryProviderLocked(provider *MemoryProviderBinding, now
 		return fmt.Sprintf("Search sidecar index rebuilt with %d governed artifact(s).", indexFile.ArtifactCount),
 			fmt.Sprintf("Index file written to %s", filepath.ToSlash(memorySearchSidecarIndexPath(s.workspaceRoot))), nil
 	case memoryProviderKindExternalPersistent:
+		if summary, detail, ok, err := recoverFakeExternalPersistentMemoryProvider(s.workspaceRoot, now); ok || err != nil {
+			return summary, detail, err
+		}
 		if err := os.MkdirAll(filepath.Dir(memoryExternalPersistentConfigPath(s.workspaceRoot)), 0o755); err != nil {
 			return "", "", err
 		}
@@ -2086,11 +2356,49 @@ func (s *Store) recoverMemoryProviderLocked(provider *MemoryProviderBinding, now
 		if err := writeMemoryProviderJSONFile(memoryExternalPersistentConfigPath(s.workspaceRoot), config); err != nil {
 			return "", "", err
 		}
-		return "External durable adapter stub recovered in local relay mode.",
-			fmt.Sprintf("Config written to %s with relay queue %s", filepath.ToSlash(memoryExternalPersistentConfigPath(s.workspaceRoot)), filepath.ToSlash(relayPath)), nil
+		return "External persistent memory remains unconfigured; local relay scaffold refreshed.",
+			fmt.Sprintf("Stub config written to %s with relay queue %s. Add a real durable sink before treating external memory as configured.", filepath.ToSlash(memoryExternalPersistentConfigPath(s.workspaceRoot)), filepath.ToSlash(relayPath)), nil
 	default:
 		return "", "", ErrMemoryProviderNotFound
 	}
+}
+
+func recoverFakeExternalPersistentMemoryProvider(workspaceRoot string, now string) (string, string, bool, error) {
+	path := memoryFakeExternalPersistentAdapterPath(workspaceRoot)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", "", false, nil
+		}
+		return "", "", true, err
+	}
+
+	var fake memoryFakeExternalProviderAdapterFile
+	if err := json.Unmarshal(body, &fake); err != nil {
+		return "", "", true, err
+	}
+
+	fake.Version = 1
+	fake.GeneratedAt = now
+	fake.Status = normalizeMemoryProviderStatus(defaultString(strings.TrimSpace(fake.RecoveryStatus), memoryProviderStatusHealthy))
+	if fake.Status == memoryProviderStatusHealthy {
+		fake.Summary = "Fake external memory provider recovered and is healthy for local harness verification."
+		fake.LastError = ""
+		fake.NextAction = defaultString(strings.TrimSpace(fake.NextAction), "Keep this fake adapter confined to tests or local harnesses.")
+	} else {
+		fake.Summary = defaultString(strings.TrimSpace(fake.Summary), "Fake external memory provider recovery completed with a non-healthy harness state.")
+	}
+	if fake.Detail == "" {
+		fake.Detail = fmt.Sprintf("Fake adapter file: %s", filepath.ToSlash(path))
+	}
+	if err := writeMemoryProviderJSONFile(path, fake); err != nil {
+		return "", "", true, err
+	}
+
+	return "Fake external memory provider recovered for local harness verification.",
+		fmt.Sprintf("Fake adapter state written to %s with status %s.", filepath.ToSlash(path), fake.Status),
+		true,
+		nil
 }
 
 func collectMemoryArtifactPaths(items []MemoryArtifact) []string {
@@ -2113,6 +2421,95 @@ func writeMemoryProviderJSONFile(path string, payload any) error {
 		return err
 	}
 	return os.WriteFile(path, body, 0o644)
+}
+
+func (s *Store) MemoryCompactionQueue() []MemoryCompactionCandidate {
+	return append([]MemoryCompactionCandidate{}, s.MemoryCenter().CompactionQueue...)
+}
+
+func (s *Store) EnqueueMemoryCompactionCandidate(input MemoryCompactionCandidateInput) (State, MemoryCompactionCandidate, MemoryCenter, error) {
+	sourceArtifactID := strings.TrimSpace(input.SourceArtifactID)
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, ErrMemoryCompactionReasonRequired
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, err
+	}
+
+	artifact := findMemoryArtifactByIDInSnapshot(s.state, sourceArtifactID)
+	if artifact == nil {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, ErrMemoryArtifactNotFound
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	candidate := MemoryCompactionCandidate{
+		ID:               fmt.Sprintf("memory-compaction-%s-%d", slugify(artifact.Path), time.Now().UnixNano()),
+		SourceArtifactID: artifact.ID,
+		SourcePath:       artifact.Path,
+		SourceSummary:    artifact.Summary,
+		Reason:           reason,
+		Status:           memoryCompactionStatusCandidate,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		UpdatedBy:        defaultString(strings.TrimSpace(input.UpdatedBy), "System"),
+	}
+
+	state.CompactionQueue = append(state.CompactionQueue, candidate)
+	state = s.normalizeMemoryCenterStateLocked(state)
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, candidate, buildMemoryCenter(snapshot, state), nil
+}
+
+func (s *Store) ApproveMemoryCompactionCandidate(candidateID string, updatedBy string) (State, MemoryCompactionCandidate, MemoryCenter, error) {
+	return s.updateMemoryCompactionCandidateStatus(candidateID, memoryCompactionStatusApproved, updatedBy)
+}
+
+func (s *Store) DismissMemoryCompactionCandidate(candidateID string, updatedBy string) (State, MemoryCompactionCandidate, MemoryCenter, error) {
+	return s.updateMemoryCompactionCandidateStatus(candidateID, memoryCompactionStatusDismissed, updatedBy)
+}
+
+func (s *Store) updateMemoryCompactionCandidateStatus(candidateID string, status string, updatedBy string) (State, MemoryCompactionCandidate, MemoryCenter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadMemoryCenterStateLocked()
+	if err != nil {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, err
+	}
+
+	index := -1
+	for candidate := range state.CompactionQueue {
+		if state.CompactionQueue[candidate].ID == strings.TrimSpace(candidateID) {
+			index = candidate
+			break
+		}
+	}
+	if index == -1 {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, ErrMemoryCompactionCandidateNotFound
+	}
+
+	state.CompactionQueue[index].Status = status
+	state.CompactionQueue[index].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	state.CompactionQueue[index].UpdatedBy = defaultString(strings.TrimSpace(updatedBy), "System")
+	candidate := state.CompactionQueue[index]
+
+	state = s.normalizeMemoryCenterStateLocked(state)
+	if err := s.saveMemoryCenterStateLocked(state); err != nil {
+		return State{}, MemoryCompactionCandidate{}, MemoryCenter{}, err
+	}
+
+	snapshot := cloneState(s.state)
+	return snapshot, candidate, buildMemoryCenter(snapshot, state), nil
 }
 
 func (s *Store) RequestMemoryPromotion(input MemoryPromotionRequestInput) (State, MemoryPromotion, MemoryCenter, error) {
